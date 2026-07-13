@@ -1,73 +1,87 @@
-# UDrive UI — Phase 1
+# UDrive Unified Mobile App
 
-A functional frontend starter for UDrive, a tourism-focused ride and tour package platform for Azad Kashmir.
+A single Flutter mobile application for UDrive customers and drivers.
 
-## Included projects
+## Main behavior
 
-- `customer_app/` — Flutter customer application
-- `driver_app/` — Flutter driver application
-- `admin_portal/` — Next.js Super Admin portal
+- The app opens in **Customer mode** by default.
+- The customer can open **Profile → Switch to Driver mode**.
+- The dummy account is already marked as an approved driver.
+- Driver mode has its own dashboard and bottom navigation.
+- The driver can return through **Driver Profile → Switch to Customer mode**.
+- English and Urdu are supported in both modes, including RTL layout.
 
-## Current functionality
+## Customer features included
 
-### Customer app
-- English and Urdu switching with RTL support
+- Tourism-focused home screen
+- Local, intercity, full-day, shared and 4×4 ride entry points
 - Ride request form with validation
-- Suggested fare and customer offer
-- Simulated driver counteroffers
-- Driver comparison and booking confirmation
-- Tour package discovery and package details
-- Trip history and profile screens
+- Suggested price and customer fare offer
+- Simulated driver offers and driver selection
+- Tour-package discovery
+- Package detail and package price offer
+- Trip history
+- Wallet, safety, saved places and support UI
+- Customer-to-driver mode switch
 
-### Driver app
-- English and Urdu switching with RTL support
-- Online/offline dashboard
-- Ride request list with accept and counteroffer actions
-- Driver-created package list
-- Multi-step package creation form
-- Earnings and profile screens
+## Driver features included
 
-### Admin portal
-- Responsive operations dashboard
-- Booking, driver and package summaries
-- Package approval workflow using dummy data
-- Live operations visual panel
-- English/Urdu language toggle
+- Online/offline control
+- Nearby ride-request dashboard
+- Accept customer offer
+- Submit driver counteroffer
+- Driver-created tourism packages
+- Save package as draft
+- Submit package for admin approval
+- Package status and bookings
+- Earnings, commission and payout UI
+- Documents, vehicle, service areas and availability
+- Driver-to-customer mode switch
 
-## Run the Flutter apps
+## Run locally
 
-Flutter was not available in the generation environment. On a machine with Flutter installed, first generate the native platform scaffolding:
-
-```bash
-./bootstrap_flutter_projects.sh
-```
-
-Then run either app:
+Install Flutter and run:
 
 ```bash
-cd customer_app
+./bootstrap_mobile.sh
 flutter run
 ```
 
-```bash
-cd driver_app
+On Windows PowerShell:
+
+```powershell
+flutter create . --platforms=android,ios,web --project-name=udrive_mobile --org=com.udrive
+flutter pub get
 flutter run
 ```
 
-## Run the admin portal
+## Android builds
+
+Customer-first unified build:
 
 ```bash
-cd admin_portal
-npm install
-npm run dev
+flutter build appbundle --release --dart-define=DEFAULT_MODE=customer
 ```
 
-Then open `http://localhost:3000`.
+Driver-first build from the same codebase:
 
-## Architecture note
+```bash
+flutter build appbundle --release --dart-define=DEFAULT_MODE=driver
+```
 
-The apps intentionally avoid third-party state-management and mapping packages in Phase 1. Dummy repositories can later be replaced with REST/Firebase services without changing the primary screen structure.
+The app still allows switching between modes after launch.
 
-## Railway deployment
+For direct APK testing:
 
-Use the included `RAILWAY_DEPLOYMENT.md` guide. Dockerfiles are provided for all three services so the monorepo can be deployed directly from GitHub to Railway.
+```bash
+flutter build apk --release --dart-define=DEFAULT_MODE=customer
+```
+
+## Railway web preview
+
+Create a Railway service from this folder and use the included `Dockerfile`.
+No environment variables are required. Do not manually define `PORT`.
+
+## Backend readiness
+
+Dummy data is separated into `lib/data`. Replace it incrementally with API repositories for authentication, profiles, ride requests, driver offers, packages, live tracking, chat and payments.
