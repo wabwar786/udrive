@@ -6,7 +6,7 @@ RUN flutter config --enable-web \
     && flutter pub get \
     && flutter build web --release
 
-FROM node:22-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 RUN npm install --global serve@14.2.4
 COPY --from=builder /app/build/web /site
 EXPOSE 3000
