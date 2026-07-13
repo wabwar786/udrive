@@ -1,0 +1,22 @@
+name: udrive_mobile
+publish_to: "none"
+description: Unified UDrive customer and driver mobile app frontend for Azad Kashmir tourism.
+version: 2.0.0+2
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
