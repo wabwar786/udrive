@@ -92,3 +92,11 @@ Do not manually set a fixed `PORT`. Railway injects `PORT`; the included Dockerf
 
 ### Flutter build is slow
 The first Docker build downloads the Flutter image and compiles the web release. Later builds may use cached layers. Check Railway deployment logs for the exact failed command.
+
+## Admin npm build error correction
+
+If an earlier deployment failed with `npm error Exit handler never called!`,
+use the corrected files included in this archive. The Admin Dockerfile now uses
+Node 20 on Debian instead of Node 22 on Alpine, and the lockfile no longer
+contains private registry addresses. Push the correction and deploy the latest
+GitHub commit.
