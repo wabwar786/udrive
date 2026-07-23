@@ -1,12 +1,19 @@
-# Railway deployment
+# Railway Web Preview
 
-1. Commit the `udrive_unified_mobile` folder to GitHub.
-2. In Railway, create a new service from the repository.
-3. Set the service root directory to `/udrive_unified_mobile` when it is inside a monorepo.
-4. Railway will detect the included Dockerfile.
-5. Do not set a custom build command.
-6. Do not set a custom start command.
+This project can be deployed as a Flutter web preview from the existing UDrive monorepo.
+
+1. Push the complete update to GitHub.
+2. Open the UDrive Mobile service in Railway.
+3. Set **Root Directory** to:
+
+```text
+/udrive_unified_mobile
+```
+
+4. Keep the included `Dockerfile`.
+5. Remove any custom build command.
+6. Remove any custom start command.
 7. Do not manually create a `PORT` variable.
-8. Generate a public domain after deployment.
+8. Deploy the latest GitHub commit and generate a domain under Networking.
 
-The Railway deployment is a Flutter web preview. Android and iOS releases must be built using Flutter tooling and distributed through testing/app-store channels.
+Railway hosts the web build only. Use GitHub Actions or local Flutter tooling for APK/AAB files.

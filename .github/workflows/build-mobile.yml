@@ -1,0 +1,84 @@
+name: Build uDrive APK and AAB
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "udrive_unified_mobile/**"
+      - ".github/workflows/build-mobile.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: udrive-mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: Analyze, test and build Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: udrive_unified_mobile
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show Flutter environment
+        run: flutter doctor -v
+
+      - name: Complete generated platform files
+        run: >-
+          flutter create .
+          --platforms=android,ios,web
+          --project-name=udrive_mobile
+          --org=com.udrive
+
+      - name: Install packages
+        run: flutter pub get
+
+      - name: Analyze source
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build universal testing APK
+        run: flutter build apk --release --dart-define=DEFAULT_MODE=customer
+
+      - name: Build Play Store app bundle
+        run: flutter build appbundle --release --dart-define=DEFAULT_MODE=customer
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: udrive-premium-apk
+          path: udrive_unified_mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: udrive-play-store-aab
+          path: udrive_unified_mobile/build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30

@@ -1,87 +1,94 @@
-# UDrive Unified Mobile App
+# uDrive Premium Mobile
 
-A single Flutter mobile application for UDrive customers and drivers.
+A complete Flutter frontend for Azad Kashmir tourism with **Customer and Driver modes in one app**.
 
-## Main behavior
+## Included
 
-- The app opens in **Customer mode** by default.
-- The customer can open **Profile → Switch to Driver mode**.
-- The dummy account is already marked as an approved driver.
-- Driver mode has its own dashboard and bottom navigation.
-- The driver can return through **Driver Profile → Switch to Customer mode**.
-- English and Urdu are supported in both modes, including RTL layout.
+- Premium green uDrive visual identity and original route-shaped app icon
+- Native splash screen plus animated Flutter splash
+- Dummy phone login and OTP (`1234`)
+- English and Urdu with RTL layout
+- Premium left-side drawer in both modes
+- Customer/Driver mode switching
+- Ride request, suggested fare, customer offer and simulated driver counteroffers
+- Local, intercity, full-day, 4×4, shared and airport services
+- Destination discovery and driver-created tour packages
+- Trips, wallet, notifications, saved places, safety centre and support chat
+- Driver online/offline dashboard
+- Ride accept/counteroffer flow
+- Driver earnings, wallet and payout flow
+- Driver package creation and approval state
+- Four-step vehicle registration with document/photo status
+- Android, iOS and web platform folders
+- Railway web Dockerfile
+- GitHub workflow that builds an APK and AAB
 
-## Customer features included
+## Demo access
 
-- Tourism-focused home screen
-- Local, intercity, full-day, shared and 4×4 ride entry points
-- Ride request form with validation
-- Suggested price and customer fare offer
-- Simulated driver offers and driver selection
-- Tour-package discovery
-- Package detail and package price offer
-- Trip history
-- Wallet, safety, saved places and support UI
-- Customer-to-driver mode switch
-
-## Driver features included
-
-- Online/offline control
-- Nearby ride-request dashboard
-- Accept customer offer
-- Submit driver counteroffer
-- Driver-created tourism packages
-- Save package as draft
-- Submit package for admin approval
-- Package status and bookings
-- Earnings, commission and payout UI
-- Documents, vehicle, service areas and availability
-- Driver-to-customer mode switch
+- Any valid-looking Pakistani mobile number
+- OTP: `1234`
+- Or tap **Use demo account**
 
 ## Run locally
 
-Install Flutter and run:
+Run the Flutter scaffold command once after extracting or cloning. It safely completes generated platform files such as the Gradle wrapper:
 
 ```bash
-./bootstrap_mobile.sh
-flutter run
-```
-
-On Windows PowerShell:
-
-```powershell
 flutter create . --platforms=android,ios,web --project-name=udrive_mobile --org=com.udrive
 flutter pub get
 flutter run
 ```
 
-## Android builds
-
-Customer-first unified build:
+## Build an APK locally
 
 ```bash
-flutter build appbundle --release --dart-define=DEFAULT_MODE=customer
+flutter create . --platforms=android,ios,web --project-name=udrive_mobile --org=com.udrive
+flutter pub get
+flutter build apk --release
 ```
 
-Driver-first build from the same codebase:
+Output:
+
+```text
+build/app/outputs/flutter-apk/app-release.apk
+```
+
+## Build a Play Store AAB
 
 ```bash
-flutter build appbundle --release --dart-define=DEFAULT_MODE=driver
+flutter build appbundle --release
 ```
 
-The app still allows switching between modes after launch.
+Output:
 
-For direct APK testing:
-
-```bash
-flutter build apk --release --dart-define=DEFAULT_MODE=customer
+```text
+build/app/outputs/bundle/release/app-release.aab
 ```
 
-## Railway web preview
+The included Android release build uses the debug signing key for testing. Before Google Play publishing, configure your private upload keystore.
 
-Create a Railway service from this folder and use the included `Dockerfile`.
-No environment variables are required. Do not manually define `PORT`.
+## Build through GitHub
 
-## Backend readiness
+1. Keep this folder at `udrive_unified_mobile/` inside the existing UDrive repository.
+2. Open **Actions**.
+3. Open **Build uDrive APK and AAB**.
+4. Press **Run workflow**.
+5. Open the successful run and download:
+   - `udrive-premium-apk`
+   - `udrive-play-store-aab`
 
-Dummy data is separated into `lib/data`. Replace it incrementally with API repositories for authentication, profiles, ride requests, driver offers, packages, live tracking, chat and payments.
+The workflow completes any Flutter-generated platform files before compiling, runs analysis/tests, and uploads both build artifacts.
+
+## Railway web deployment
+
+Deploy this folder as a Railway service using the included `Dockerfile`.
+
+- No custom build command
+- No custom start command
+- No manual `PORT` variable
+
+For the existing monorepo, set the Railway service root directory to `/udrive_unified_mobile`.
+
+## Dummy-data architecture
+
+All app workflows currently use local dummy models and controller state. Replace the files under `lib/data/` and the methods in `lib/core/state/app_controller.dart` with API repositories later without redesigning the screens.

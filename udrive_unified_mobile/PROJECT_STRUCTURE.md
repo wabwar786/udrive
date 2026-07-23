@@ -1,32 +1,34 @@
-# Project structure
+# Project Structure
 
 ```text
-lib/
-├── app.dart
-├── main.dart
-├── core/
-│   ├── localization/app_language.dart
-│   ├── state/app_controller.dart
-│   ├── theme/app_theme.dart
-│   └── widgets/
-│       ├── mode_switch_card.dart
-│       └── udrive_logo.dart
-├── data/
-│   ├── driver_dummy_data.dart
-│   └── dummy_data.dart
-├── models/
-│   ├── driver_models.dart
-│   └── models.dart
-└── screens/
-    ├── app_mode_shell.dart
-    ├── customer_shell.dart
-    ├── home/
-    ├── explore/
-    ├── ride/
-    ├── packages/
-    ├── trips/
-    ├── profile/
-    └── driver/
+udrive/
+├── .github/
+│   └── workflows/
+│       └── build-mobile.yml
+├── admin_portal/
+├── docs/
+└── udrive_unified_mobile/
+    ├── android/
+    ├── ios/
+    ├── web/
+    ├── assets/images/
+    ├── lib/
+    │   ├── core/
+    │   │   ├── localization/
+    │   │   ├── state/
+    │   │   ├── theme/
+    │   │   └── widgets/
+    │   ├── data/
+    │   └── screens/
+    │       ├── auth/
+    │       ├── common/
+    │       ├── customer/
+    │       └── driver/
+    ├── test/
+    ├── tool/
+    ├── build_apk_windows.bat
+    ├── build_apk.sh
+    ├── Dockerfile
+    ├── pubspec.yaml
+    └── README.md
 ```
-
-`AppController` owns the active mode, locale, driver approval state and online state. The frontend is intentionally dependency-light and ready to connect to real repositories later.

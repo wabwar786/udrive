@@ -4,10 +4,10 @@ COPY . .
 RUN flutter config --enable-web \
     && flutter create . --platforms=web --project-name=udrive_mobile --org=com.udrive \
     && flutter pub get \
-    && flutter build web --release
+    && flutter build web --release --no-wasm-dry-run
 
-FROM node:20-bookworm-slim AS runner
-RUN npm install --global serve@14.2.4
-COPY --from=builder /app/build/web /site
-EXPOSE 3000
-CMD ["sh", "-c", "serve -s /site -l tcp://0.0.0.0:${PORT:-3000}"]
+FROM nginx:1.27-alpine AS runner
+COPY --from=builder /app/build/web /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+EXPOSE 8080
+CMD ["/bin/sh", "-c", "envsubst '$PORT' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]

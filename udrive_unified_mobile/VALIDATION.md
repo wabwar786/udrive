@@ -1,14 +1,25 @@
-# Validation report
+# Validation
 
-Validated before packaging:
+The repository patch was checked for:
 
-- 27 Dart source files included
-- Relative imports resolve to existing files
-- Parentheses, brackets and braces are balanced across Dart sources
-- Customer and Driver shells are connected through `AppController`
-- Customer → Driver and Driver → Customer mode switches are present
-- English and Urdu localization keys used by screens are available in both maps
-- Railway Dockerfile uses Flutter stable builder and Node 20 Debian runtime
-- No stale references to the previous separate app class or driver localization scope
+- Balanced Dart parentheses, brackets and braces
+- Existing relative Dart imports
+- English/Urdu localization-key parity
+- Missing localization keys used by screens
+- Empty `onPressed`, `onTap` and `onChanged` callbacks
+- GitHub Actions YAML syntax
+- JSON validity for web/iOS metadata
+- Android/iOS XML and plist parseability where applicable
+- Shell script syntax
+- Required Android, web, asset and source folders
 
-The full Flutter compiler could not be executed in this generation environment because the Flutter SDK is not installed. The project includes a bootstrap script and is structured for Flutter 3.44/stable, matching the Railway environment used for the earlier UDrive builds.
+The project includes a GitHub Actions workflow that performs the authoritative Flutter checks after upload:
+
+```text
+flutter create
+flutter pub get
+flutter analyze
+flutter test
+flutter build apk
+flutter build appbundle
+```
