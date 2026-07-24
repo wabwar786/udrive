@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -187,29 +188,112 @@ class AppController extends ChangeNotifier {
       );
 
   Future<void> initialize() async {
-    final prefs = await SharedPreferences.getInstance();
-    _locale = Locale(prefs.getString('language') ?? 'en');
-    _mode = (prefs.getString('mode') ?? 'customer') == 'driver'
-        ? UserMode.driver
-        : UserMode.customer;
-    _driverOnline = prefs.getBool('driverOnline') ?? true;
-    _liveTrip.shareEnabled = prefs.getBool('liveShareEnabled') ?? false;
-    _currentUser = await _sessionStore.readUser();
-    final accessToken = await _sessionStore.readAccessToken();
-    if (accessToken != null && accessToken.isNotEmpty) {
-      try {
-        _currentUser = await _authRepository.me();
+    if (_initialized) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 5));
+
+      _locale = Locale(prefs.getString('language') ?? 'en');
+      _mode = (prefs.getString('mode') ?? 'customer') == 'driver'
+          ? UserMode.driver
+          : UserMode.customer;
+      _driverOnline = prefs.getBool('driverOnline') ?? true;
+      _liveTrip.shareEnabled =
+          prefs.getBool('liveShareEnabled') ?? false;
+
+      _currentUser = await _sessionStore.readUser();
+
+      final accessToken = await _sessionStore.readAccessToken();
+      final refreshToken = await _sessionStore.readRefreshToken();
+      final accessExpiry = await _sessionStore.readAccessExpiry();
+
+      final accessTokenIsUsable =
+          _currentUser != null &&
+          accessToken != null &&
+          accessToken.isNotEmpty &&
+          accessExpiry != null &&
+          accessExpiry.isAfter(
+            DateTime.now().add(const Duration(seconds: 30)),
+          );
+
+      if (accessTokenIsUsable) {
         _loggedIn = true;
-        await _loadDriverState();
-      } catch (_) {
-        await _sessionStore.clear();
-        _currentUser = null;
+        _initialized = true;
+        notifyListeners();
+
+        unawaited(_validateCachedSession());
+        return;
+      }
+
+      final hasStoredSession =
+          (accessToken != null && accessToken.isNotEmpty) ||
+          (refreshToken != null && refreshToken.isNotEmpty);
+
+      if (hasStoredSession) {
+        try {
+          _currentUser = await _authRepository
+              .me()
+              .timeout(const Duration(seconds: 15));
+          _loggedIn = true;
+
+          await _loadDriverState()
+              .timeout(const Duration(seconds: 10));
+        } catch (_) {
+          await _resetSessionSafely();
+        }
+      } else {
         _loggedIn = false;
+        _currentUser = null;
         _mode = UserMode.customer;
       }
+    } catch (_) {
+      await _resetSessionSafely();
+    } finally {
+      if (!_initialized) {
+        _initialized = true;
+        notifyListeners();
+      }
     }
-    _initialized = true;
-    notifyListeners();
+  }
+
+  Future<void> _validateCachedSession() async {
+    try {
+      _currentUser = await _authRepository
+          .me()
+          .timeout(const Duration(seconds: 15));
+
+      await _loadDriverState()
+          .timeout(const Duration(seconds: 10));
+
+      _authError = null;
+    } on TimeoutException {
+      // Keep the valid cached account available in slow/offline mode.
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        await _resetSessionSafely();
+      }
+    } catch (_) {
+      // Temporary network/storage errors must not cause endless splash.
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  Future<void> _resetSessionSafely() async {
+    try {
+      await _sessionStore
+          .clear()
+          .timeout(const Duration(seconds: 6));
+    } catch (_) {
+      // Continue to Login even if secure storage cleanup fails.
+    }
+
+    _currentUser = null;
+    _driverProfile = null;
+    _liveVehicles = const [];
+    _loggedIn = false;
+    _mode = UserMode.customer;
   }
 
   Future<OtpChallenge> requestOtp(String phoneNumber) async {
