@@ -1,14 +1,17 @@
-# Phase 7 Validation
+# Phase 8 validation
 
-Static checks completed in the generation environment:
+Validated 38 Dart files, 308 localization keys and required platform files.
 
-- C# brace balance
-- Project XML parsing
-- JSON parsing
-- Ordered embedded SQL migrations
-- PostgreSQL/PostGIS schema review
-- EF Core snake_case naming alignment
-- Railway Dockerfile review
-- GitHub Actions path review
+Source delimiter/syntax-shape files checked: 81
+JSON/YAML files validated: 11
+Admin CSS classes used: 31; missing: 0
+Errors: 0
 
-The generation environment does not include the .NET SDK, so final restore/build validation will run through the included GitHub Action after the files are pushed.
+Additional checks:
+
+- Admin verification TSX passed TypeScript syntax/type-shape validation with dependency stubs.
+- C# positional-record constructor argument counts were checked against their record definitions.
+- Phase 8 SQL migration order and embedded-resource inclusion were checked.
+- GitHub workflow YAML parsed successfully.
+- Android cleartext HTTP is disabled and Android internet permission is present.
+- API and Flutter full compilation could not be executed in this environment because the .NET and Flutter SDKs are unavailable. The included GitHub Actions workflows run the authoritative restore/build/analyze/test/APK/AAB checks after push.

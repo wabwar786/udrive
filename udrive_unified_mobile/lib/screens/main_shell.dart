@@ -15,6 +15,7 @@ import 'driver/driver_pages.dart';
 import 'driver/advanced_package_screen.dart';
 import 'driver/driver_tourism_tools.dart';
 import 'driver/vehicle_registration_screen.dart';
+import 'driver/onboarding/driver_verification_screen.dart';
 import 'maps/live_tracking_screen.dart';
 import 'safety/safety_hub_screen.dart';
 
@@ -32,9 +33,14 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
     final driver = controller.mode == UserMode.driver;
-    final pageKey = driver ? _driverPage : _customerPage;
-    final page = driver ? _driverContent(pageKey) : _customerContent(pageKey);
-    final title = _titleFor(pageKey, driver);
+    final driverNeedsVerification = driver && !controller.driverApproved;
+    final pageKey = driverNeedsVerification ? 'driverVerification' : (driver ? _driverPage : _customerPage);
+    final page = driverNeedsVerification
+        ? const DriverVerificationScreen()
+        : (driver ? _driverContent(pageKey) : _customerContent(pageKey));
+    final title = driverNeedsVerification
+        ? (controller.locale.languageCode == 'ur' ? 'ڈرائیور کی تصدیق' : 'Driver verification')
+        : _titleFor(pageKey, driver);
 
     return Scaffold(
       drawer: _PremiumDrawer(
@@ -75,7 +81,7 @@ class _MainShellState extends State<MainShell> {
         duration: const Duration(milliseconds: 240),
         child: KeyedSubtree(key: ValueKey('${controller.mode.name}-$pageKey'), child: page),
       ),
-      bottomNavigationBar: _bottomNavigation(driver),
+      bottomNavigationBar: driverNeedsVerification ? null : _bottomNavigation(driver),
     );
   }
 
@@ -151,6 +157,7 @@ class _MainShellState extends State<MainShell> {
       'availability': 'availability',
       'reviews': 'reviews',
       'driverProfile': 'profile',
+      'driverVerification': 'documents',
     };
     return context.tr(mapping[key] ?? (driver ? 'driverDashboard' : 'home'));
   }
@@ -178,6 +185,7 @@ class _MainShellState extends State<MainShell> {
       };
 
   Widget _driverContent(String key) => switch (key) {
+        'driverVerification' => const DriverVerificationScreen(),
         'dashboard' => DriverHomeScreen(onNavigate: _driverNavigate),
         'requests' => const DriverRequestsScreen(),
         'activeTrip' => const ActiveDriverTripScreen(),
@@ -241,13 +249,16 @@ class _PremiumDrawer extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Shahzad Ahmad', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
+                            Text(AppControllerScope.of(context).currentUserName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
                             const SizedBox(height: 3),
                             Text(driver ? context.tr('driverMode') : context.tr('customerMode'), style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
                           ],
                         ),
                       ),
-                      const Icon(Icons.verified_rounded, color: AppColors.accent),
+                      Icon(
+                        AppControllerScope.of(context).driverApproved ? Icons.verified_rounded : Icons.pending_rounded,
+                        color: AppControllerScope.of(context).driverApproved ? AppColors.accent : Colors.white70,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -330,6 +341,7 @@ class _PremiumDrawer extends StatelessWidget {
       ];
 
   List<(String, IconData, String)> _driverEntries(BuildContext context) => [
+        if (!AppControllerScope.of(context).driverApproved) ('driverVerification', Icons.verified_user_rounded, AppControllerScope.of(context).locale.languageCode == 'ur' ? 'ڈرائیور کی تصدیق' : 'Driver verification'),
         ('dashboard', Icons.dashboard_rounded, context.tr('driverDashboard')),
         ('requests', Icons.notifications_active_rounded, context.tr('rideRequests')),
         ('activeTrip', Icons.navigation_rounded, context.tr('activeTrip')),

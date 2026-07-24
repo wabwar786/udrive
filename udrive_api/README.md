@@ -1,40 +1,77 @@
-# uDrive API — Phase 7
+# uDrive API — Phase 8
 
-Production-oriented backend foundation for the uDrive Kashmir tourism application.
+Live authentication and verification backend for the uDrive Kashmir tourism application.
 
 ## Stack
 
-- ASP.NET Core 10 LTS
-- PostgreSQL 17
-- PostGIS 3.5
-- EF Core 10 with Npgsql and NetTopologySuite
-- Embedded, ordered SQL migrations
+- ASP.NET Core 10
+- PostgreSQL 17 + PostGIS 3.5
+- EF Core/Npgsql
+- JWT access tokens and rotating refresh tokens
+- Server-side OTP challenges
+- Driver and vehicle verification
+- Protected verification-file storage
 - Railway Docker deployment
-- Swagger/OpenAPI
-- Readiness and liveness health checks
+- Swagger/OpenAPI and health checks
 
-## Local run
+## Phase 8 endpoints
 
-```bash
-docker compose up --build
+### Authentication
+
+- `POST /api/v1/auth/otp/request`
+- `POST /api/v1/auth/otp/verify`
+- `POST /api/v1/auth/refresh`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/auth/logout`
+
+### Driver onboarding
+
+- `GET /api/v1/driver/onboarding`
+- `PUT /api/v1/driver/onboarding`
+- `POST /api/v1/driver/onboarding/submit`
+- `GET /api/v1/driver/documents`
+- `POST /api/v1/driver/documents`
+- `GET /api/v1/driver/vehicles`
+- `POST /api/v1/driver/vehicles`
+- `PUT /api/v1/driver/vehicles/{vehicleId}`
+- `POST /api/v1/driver/vehicles/{vehicleId}/documents`
+- `POST /api/v1/driver/vehicles/{vehicleId}/submit`
+
+### Admin verification
+
+- `GET /api/v1/admin/verification/drivers`
+- `GET /api/v1/admin/verification/drivers/{driverProfileId}`
+- `PUT /api/v1/admin/verification/drivers/{driverProfileId}`
+- `GET /api/v1/admin/verification/vehicles`
+- `GET /api/v1/admin/verification/vehicles/{vehicleId}`
+- `PUT /api/v1/admin/verification/vehicles/{vehicleId}`
+- `GET /api/v1/admin/verification/files/{category}/{owner}/{fileName}`
+
+## Development test accounts
+
+- Approved Driver: `03000000001`, OTP `1234`
+- Admin: `03000000099`, OTP `1234`
+- New Customer: any valid Pakistani mobile number, OTP `1234`
+
+The fixed OTP provider is for staging/testing only. Configure a real SMS provider before a public launch.
+
+## Required Railway variables
+
+Copy values from `.env.phase8.example`. Replace all signing/hash secrets with strong independent random values.
+
+Attach a persistent volume to the API service:
+
+```text
+Mount path: /data/uploads
+UPLOAD_ROOT=/data/uploads
 ```
-
-Open:
-
-- API: `http://localhost:8080/api/v1/system/status`
-- Swagger: `http://localhost:8080/swagger`
-- Liveness: `http://localhost:8080/health/live`
-- Readiness: `http://localhost:8080/health/ready`
-
-## Current endpoints
-
-- `GET /api/v1/system/status`
-- `GET /api/v1/catalog/destinations?language=en`
-- `GET /api/v1/catalog/routes`
-- `GET /api/v1/catalog/packages`
 
 ## Database migrations
 
-SQL files inside `Infrastructure/Persistence/Migrations` are embedded in the API assembly and applied in filename order. Applied migration IDs are recorded in `public.schema_migrations`.
+Embedded SQL migrations are applied in filename order. Phase 8 is migration:
 
-Set `AUTO_APPLY_MIGRATIONS=false` to disable startup migrations.
+```text
+004_phase8_authentication_and_verification.sql
+```
+
+Applied migration IDs are recorded in `public.schema_migrations`.

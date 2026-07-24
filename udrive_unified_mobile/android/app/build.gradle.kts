@@ -20,7 +20,7 @@ android {
 
     defaultConfig {
         applicationId = "com.udrive.udrive_mobile"
-        minSdk = flutter.minSdkVersion
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

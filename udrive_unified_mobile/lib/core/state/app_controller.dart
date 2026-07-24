@@ -1,13 +1,26 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../auth/auth_repository.dart';
+import '../auth/session_store.dart';
+import '../../models/auth_models.dart';
 import '../../data/dummy_data.dart';
 import '../../data/models.dart';
 
 class AppController extends ChangeNotifier {
   AppController();
 
+  final SessionStore _sessionStore = SessionStore();
+  late final AuthRepository _authRepository = AuthRepository(_sessionStore);
+
   bool _initialized = false;
   bool _loggedIn = false;
+  bool _authBusy = false;
+  String? _authError;
+  CurrentUser? _currentUser;
+  OtpChallenge? _lastOtp;
+  DriverProfileLive? _driverProfile;
+  List<LiveVehicle> _liveVehicles = const [];
   Locale _locale = const Locale('en');
   UserMode _mode = UserMode.customer;
   bool _driverOnline = true;
@@ -123,10 +136,20 @@ class AppController extends ChangeNotifier {
 
   bool get initialized => _initialized;
   bool get loggedIn => _loggedIn;
+  bool get authBusy => _authBusy;
+  String? get authError => _authError;
+  CurrentUser? get currentUser => _currentUser;
+  OtpChallenge? get lastOtp => _lastOtp;
+  DriverProfileLive? get driverProfile => _driverProfile;
+  List<LiveVehicle> get liveVehicles => List.unmodifiable(_liveVehicles);
+  String get currentUserName => _currentUser?.fullName ?? 'uDrive User';
+  String get currentUserPhone => _currentUser?.phoneNumber ?? '';
+  String get driverVerificationStatus =>
+      _currentUser?.driverVerificationStatus ?? _driverProfile?.verificationStatus ?? 'Not registered';
   Locale get locale => _locale;
   UserMode get mode => _mode;
   bool get driverOnline => _driverOnline;
-  bool get driverApproved => _vehicles.any((v) => v.status == VerificationStatus.verified);
+  bool get driverApproved => _currentUser?.driverModeAvailable == true;
   int get walletBalance => _walletBalance;
   List<VehicleRecord> get vehicles => List.unmodifiable(_vehicles);
   List<TourPackage> get driverPackages => List.unmodifiable(_driverPackages);
@@ -165,24 +188,96 @@ class AppController extends ChangeNotifier {
 
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
-    _loggedIn = prefs.getBool('loggedIn') ?? false;
     _locale = Locale(prefs.getString('language') ?? 'en');
-    _mode = (prefs.getString('mode') ?? 'customer') == 'driver' ? UserMode.driver : UserMode.customer;
+    _mode = (prefs.getString('mode') ?? 'customer') == 'driver'
+        ? UserMode.driver
+        : UserMode.customer;
     _driverOnline = prefs.getBool('driverOnline') ?? true;
     _liveTrip.shareEnabled = prefs.getBool('liveShareEnabled') ?? false;
+    _currentUser = await _sessionStore.readUser();
+    final accessToken = await _sessionStore.readAccessToken();
+    if (accessToken != null && accessToken.isNotEmpty) {
+      try {
+        _currentUser = await _authRepository.me();
+        _loggedIn = true;
+        await _loadDriverState();
+      } catch (_) {
+        await _sessionStore.clear();
+        _currentUser = null;
+        _loggedIn = false;
+        _mode = UserMode.customer;
+      }
+    }
     _initialized = true;
     notifyListeners();
   }
 
+  Future<OtpChallenge> requestOtp(String phoneNumber) async {
+    _setAuthBusy(true);
+    try {
+      _lastOtp = await _authRepository.requestOtp(phoneNumber);
+      _authError = null;
+      return _lastOtp!;
+    } on ApiException catch (error) {
+      _authError = error.message;
+      rethrow;
+    } finally {
+      _setAuthBusy(false);
+    }
+  }
+
+  Future<void> verifyOtp({
+    required String phoneNumber,
+    required String code,
+    required String fullName,
+  }) async {
+    _setAuthBusy(true);
+    try {
+      _currentUser = await _authRepository.verifyOtp(
+        phoneNumber: phoneNumber,
+        code: code,
+        fullName: fullName,
+        language: _locale.languageCode,
+      );
+      _loggedIn = true;
+      _authError = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('loggedIn', true);
+      await _loadDriverState();
+    } on ApiException catch (error) {
+      _authError = error.message;
+      rethrow;
+    } finally {
+      _setAuthBusy(false);
+    }
+  }
+
   Future<void> login() async {
-    _loggedIn = true;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('loggedIn', true);
+    await requestOtp('03000000001');
+    await verifyOtp(
+      phoneNumber: '03000000001',
+      code: '1234',
+      fullName: 'uDrive Demo Driver',
+    );
+  }
+
+  Future<void> refreshAccount() async {
+    if (!_loggedIn) return;
+    _currentUser = await _authRepository.me();
+    await _loadDriverState();
     notifyListeners();
   }
 
   Future<void> logout() async {
+    try {
+      await _authRepository.logout();
+    } catch (_) {
+      await _sessionStore.clear();
+    }
     _loggedIn = false;
+    _currentUser = null;
+    _driverProfile = null;
+    _liveVehicles = const [];
     _mode = UserMode.customer;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('loggedIn', false);
@@ -202,6 +297,75 @@ class AppController extends ChangeNotifier {
     _mode = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('mode', value.name);
+    if (value == UserMode.driver) await _loadDriverState();
+    notifyListeners();
+  }
+
+  Future<DriverProfileLive> saveDriverProfile(Map<String, dynamic> payload) async {
+    _driverProfile = await _authRepository.saveDriverProfile(payload);
+    _currentUser = await _authRepository.me();
+    notifyListeners();
+    return _driverProfile!;
+  }
+
+  Future<void> uploadDriverDocument(String type, PlatformFile file, {String? expiryDate}) async {
+    await _authRepository.uploadDriverDocument(
+      documentType: type,
+      file: file,
+      expiryDate: expiryDate,
+    );
+    notifyListeners();
+  }
+
+  Future<DriverProfileLive> submitDriverProfile() async {
+    _driverProfile = await _authRepository.submitDriverProfile();
+    _currentUser = await _authRepository.me();
+    notifyListeners();
+    return _driverProfile!;
+  }
+
+  Future<LiveVehicle> createLiveVehicle(Map<String, dynamic> payload) async {
+    final vehicle = await _authRepository.createVehicle(payload);
+    _liveVehicles = [vehicle, ..._liveVehicles.where((item) => item.id != vehicle.id)];
+    notifyListeners();
+    return vehicle;
+  }
+
+  Future<void> uploadLiveVehicleDocument(
+    String vehicleId,
+    String type,
+    PlatformFile file, {
+    String? expiryDate,
+  }) async {
+    await _authRepository.uploadVehicleDocument(
+      vehicleId: vehicleId,
+      documentType: type,
+      file: file,
+      expiryDate: expiryDate,
+    );
+    _liveVehicles = await _authRepository.getVehicles();
+    notifyListeners();
+  }
+
+  Future<LiveVehicle> submitLiveVehicle(String vehicleId) async {
+    final vehicle = await _authRepository.submitVehicle(vehicleId);
+    _liveVehicles = [vehicle, ..._liveVehicles.where((item) => item.id != vehicle.id)];
+    notifyListeners();
+    return vehicle;
+  }
+
+  Future<void> _loadDriverState() async {
+    try {
+      _driverProfile = await _authRepository.getDriverProfile();
+      _liveVehicles = _driverProfile == null ? const [] : await _authRepository.getVehicles();
+    } catch (_) {
+      _driverProfile = null;
+      _liveVehicles = const [];
+    }
+  }
+
+  void _setAuthBusy(bool value) {
+    _authBusy = value;
     notifyListeners();
   }
 

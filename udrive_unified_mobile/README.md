@@ -1,57 +1,46 @@
-# uDrive Kashmir Tourism Mobile 5.0
+# uDrive Kashmir Tourism Mobile — Phase 8
 
-Unified Flutter application with Customer and Driver modes, premium tourism booking, advanced Driver package tools, safety workflows and a maps-ready live-trip experience.
+Unified Flutter Customer and Driver application connected to the live uDrive API.
 
-## Demo login
+## Live Phase 8 features
 
-- Phone: any valid-looking Pakistani mobile number
-- OTP: `1234`
-- Or tap **Use demo account**
+- Real server-side OTP request/verification
+- JWT access and rotating refresh-token sessions
+- Secure token storage
+- Persistent login
+- One account for Customer and approved Driver modes
+- Driver onboarding connected to PostgreSQL
+- CNIC, licence, selfie and identity-document uploads
+- Live vehicle registration and document uploads
+- Driver/vehicle approval status from the API
+- Driver mode unlocked only after Admin approval
+- Existing tourism, family-tour, shared-seat, package and safety dummy flows preserved
 
-## Customer highlights
+## Test accounts
 
-- Advance one-way/return booking
-- Per-seat and whole-vehicle booking
-- Join a Tour and smart matching
-- Family Tour Planner
-- Kashmir destination and package discovery
-- Driver offers and transparent pricing
-- Live trip simulation and location sharing
-- Trusted contacts and Tour Guardian
-- Safety check-ins, SOS and Offline Travel Card
-- Customer/Driver mode switching
+- New Customer: any valid Pakistani mobile number, OTP `1234`
+- Approved Driver demo: `03000000001`, OTP `1234`
 
-## Driver highlights
+## Driver approval sequence
 
-- Ride requests and counteroffers
-- Advanced tourism-package builder
-- Per-seat/whole-vehicle pricing
-- Package approval and booking controls
-- Vehicle registration with tourism safety equipment
-- Route suitability and mountain-readiness scoring
-- Road-condition reports
-- Live tracking and safety centre
-- Earnings and payout simulation
-
-## Languages
-
-- English
-- Urdu with RTL layout
+1. Save Driver profile.
+2. Upload CNIC front, CNIC back, driving licence and selfie.
+3. Register a vehicle.
+4. Upload registration book, front photo, rear photo and interior photo.
+5. Submit the vehicle.
+6. Admin verifies the vehicle.
+7. Submit the Driver application.
+8. Admin approves the Driver.
+9. Refresh account status in the app; Driver mode becomes available.
 
 ## Run locally
 
 ```bash
 flutter pub get
-flutter run
+flutter run --dart-define=API_BASE_URL=https://udrive-api-production.up.railway.app
 ```
 
-If native platform wrappers are missing, run once:
-
-```bash
-flutter create . --platforms=android,ios,web --project-name=udrive_mobile --org=com.udrive
-```
-
-## Build test APK
+## Build APK
 
 Linux/macOS:
 
@@ -71,26 +60,12 @@ Output:
 build/app/outputs/flutter-apk/app-release.apk
 ```
 
-## GitHub Actions
-
-The monorepo workflow is:
-
-```text
-.github/workflows/build-mobile.yml
-```
-
-It completes missing native scaffolding, validates files, analyzes source, runs tests, builds the Railway web release, APK and AAB, and uploads both Android artifacts.
-
 ## Railway
 
-Set service root directory to:
+Root directory:
 
 ```text
 /udrive_unified_mobile
 ```
 
-Do not add a custom build/start command or a manual `PORT` variable.
-
-## Google Maps
-
-The current map is a complete dummy simulation. See the repository-level `GOOGLE_MAPS_INTEGRATION.md` for the live provider plan.
+The default API URL is `https://udrive-api-production.up.railway.app`.
