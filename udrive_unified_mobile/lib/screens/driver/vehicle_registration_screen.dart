@@ -88,7 +88,6 @@ class VehicleRegistrationScreen extends StatefulWidget {
 class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   int _step = 0;
-  bool _confirmed = false;
   late final TextEditingController _make = TextEditingController(text: widget.existing?.make ?? 'Toyota');
   late final TextEditingController _model = TextEditingController(text: widget.existing?.model ?? 'Fortuner');
   late final TextEditingController _year = TextEditingController(text: '${widget.existing?.year ?? 2022}');
@@ -99,6 +98,7 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
   late int _luggage = widget.existing?.luggage ?? 4;
   late bool _ac = widget.existing?.airConditioning ?? true;
   late bool _fourByFour = widget.existing?.fourWheelDrive ?? true;
+  bool _declarationAccepted = true;
   late final Map<String, bool> _uploads = Map<String, bool>.from(widget.existing?.documents ?? {
     'Registration document': false,
     'Insurance document': false,
@@ -208,7 +208,7 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
         _ReviewRow(label: context.tr('uploadDocuments'), value: '$completed/${_uploads.length} completed', last: true),
       ])),
       const SizedBox(height: 14),
-      CheckboxListTile(value: _confirmed, onChanged: (value) => setState(() => _confirmed = value ?? false), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, title: const Text('I confirm that all submitted information is accurate.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+      CheckboxListTile(value: _declarationAccepted, onChanged: (value) => setState(() => _declarationAccepted = value ?? false), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, title: const Text('I confirm that all submitted information is accurate.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
     ]);
   }
 
@@ -224,8 +224,8 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
   }
 
   void _submit() {
-    if (!_confirmed) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please confirm the declaration before submitting.')));
+    if (!_declarationAccepted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please accept the declaration before submitting.')));
       return;
     }
     if (widget.existing == null) {

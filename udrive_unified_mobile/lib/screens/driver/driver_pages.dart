@@ -59,7 +59,7 @@ class ActiveDriverTripScreen extends StatelessWidget {
     const SizedBox(height: 16),
     PremiumCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Row(children: [StatusPill(label: 'Driving to pickup', color: AppColors.info), Spacer(), Text('18 min · 12.4 km', style: TextStyle(fontWeight: FontWeight.w900))]), const SizedBox(height: 15), const _RouteLine(icon: Icons.trip_origin_rounded, color: AppColors.primary, text: 'F-8 Markaz, Islamabad'), const SizedBox(height: 9), const _RouteLine(icon: Icons.location_on_rounded, color: AppColors.secondary, text: 'Muzaffarabad, Azad Kashmir'), const Divider(height: 26), const ListTile(contentPadding: EdgeInsets.zero, leading: CircleAvatar(child: Icon(Icons.person_rounded)), title: Text('Hassan Ali', style: TextStyle(fontWeight: FontWeight.w900)), subtitle: Text('3 passengers · 2 bags'), trailing: Icon(Icons.call_rounded, color: AppColors.primaryDark))])),
     const SizedBox(height: 14),
-    Row(children: [Expanded(child: OutlinedButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Demo customer chat opened.'))), icon: const Icon(Icons.chat_rounded), label: const Text('Message'))), const SizedBox(width: 9), Expanded(child: FilledButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Arrival notification sent to customer.'))), icon: const Icon(Icons.notifications_active_rounded), label: const Text('I have arrived')))]),
+    Row(children: [Expanded(child: OutlinedButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dummy customer chat opened.'))), icon: const Icon(Icons.chat_rounded), label: const Text('Message'))), const SizedBox(width: 9), Expanded(child: FilledButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Arrival notification sent to customer.'))), icon: const Icon(Icons.notifications_active_rounded), label: const Text('I have arrived')))]),
     const SizedBox(height: 12),
     FilledButton.icon(onPressed: () => _otp(context), icon: const Icon(Icons.pin_rounded), label: const Text('Start trip with OTP')),
     const SizedBox(height: 10),
@@ -96,62 +96,27 @@ class _CreatePackageScreenState extends State<CreatePackageScreen> {
   final _title = TextEditingController(text: 'Neelum Valley Family Adventure');
   final _route = TextEditingController(text: 'Islamabad · Muzaffarabad · Keran · Sharda');
   final _price = TextEditingController(text: '62000');
+  final _seatPrice = TextEditingController(text: '12000');
+  final _pickupPoint = TextEditingController(text: 'Ghari Pan, Muzaffarabad');
   final _description = TextEditingController(text: 'A private, flexible family tour with scenic stops and a verified tourism driver.');
-  int _days = 3; int _guests = 6; bool _offers = true; String _vehicle = 'Honda BR-V';
-  final List<String> _itinerary = [
-    'Day 1: Islamabad to Keran',
-    'Day 2: Sharda and Upper Neelum',
-    'Day 3: Return via Muzaffarabad',
-  ];
-  @override void dispose() { _title.dispose(); _route.dispose(); _price.dispose(); _description.dispose(); super.dispose(); }
+  int _days = 3; int _guests = 6; bool _offers = true; bool _familyOnly = true; String _vehicle = 'Honda BR-V';
+  @override void dispose() { _title.dispose(); _route.dispose(); _price.dispose(); _seatPrice.dispose(); _pickupPoint.dispose(); _description.dispose(); super.dispose(); }
   @override Widget build(BuildContext context) => Form(key: _form, child: ListView(padding: const EdgeInsets.fromLTRB(18, 4, 18, 30), children: [
     UploadTile(label: 'Package cover image', uploaded: true, icon: Icons.image_rounded, onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dummy cover image selected.')))), const SizedBox(height: 12),
     TextFormField(controller: _title, decoration: InputDecoration(labelText: context.tr('packageTitle')), validator: _required), const SizedBox(height: 12),
     TextFormField(controller: _route, maxLines: 2, decoration: InputDecoration(labelText: context.tr('startLocation')), validator: _required), const SizedBox(height: 12),
     DropdownButtonFormField<String>(value: _vehicle, decoration: InputDecoration(labelText: context.tr('vehicle')), items: const ['Honda BR-V', 'Toyota Corolla', 'Toyota Prado', 'Hiace Grand Cabin'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (value) => setState(() => _vehicle = value!)), const SizedBox(height: 12),
     Row(children: [Expanded(child: _NumberField(label: context.tr('duration'), value: _days, suffix: 'days', onChanged: (v) => setState(() => _days = v))), const SizedBox(width: 10), Expanded(child: _NumberField(label: context.tr('maxGuests'), value: _guests, suffix: 'guests', onChanged: (v) => setState(() => _guests = v)))]), const SizedBox(height: 12),
-    TextFormField(controller: _price, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('packagePrice'), prefixText: 'PKR '), validator: _required), const SizedBox(height: 12),
+    TextFormField(controller: _pickupPoint, decoration: InputDecoration(labelText: context.tr('pickupCity'), prefixIcon: const Icon(Icons.trip_origin_rounded)), validator: _required), const SizedBox(height: 12),
+    Row(children: [Expanded(child: TextFormField(controller: _seatPrice, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('perSeat'), prefixText: 'PKR '), validator: _required)), const SizedBox(width: 10), Expanded(child: TextFormField(controller: _price, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('wholeVehicle'), prefixText: 'PKR '), validator: _required))]), const SizedBox(height: 12),
     TextFormField(controller: _description, maxLines: 4, decoration: InputDecoration(labelText: context.tr('description')), validator: _required), const SizedBox(height: 12),
-    SwitchListTile(value: _offers, onChanged: (v) => setState(() => _offers = v), contentPadding: const EdgeInsets.symmetric(horizontal: 4), title: Text(context.tr('allowOffers'), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: const Text('Customers can send a different package price.')), const SizedBox(height: 12),
-    PremiumCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('itinerary'), style: const TextStyle(fontWeight: FontWeight.w900)), const SizedBox(height: 10), for (var index = 0; index < _itinerary.length; index++) Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [const Icon(Icons.drag_indicator_rounded, color: AppColors.muted), const SizedBox(width: 6), Expanded(child: Text(_itinerary[index], style: const TextStyle(fontWeight: FontWeight.w700))), IconButton(onPressed: () => _editItineraryDay(index), icon: const Icon(Icons.edit_outlined, size: 18))])), OutlinedButton.icon(onPressed: _addItineraryDay, icon: const Icon(Icons.add_rounded), label: const Text('Add itinerary day'))])), const SizedBox(height: 16),
+    SwitchListTile(value: _offers, onChanged: (v) => setState(() => _offers = v), contentPadding: const EdgeInsets.symmetric(horizontal: 4), title: Text(context.tr('allowOffers'), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: const Text('Customers can send a different package price.')),
+    SwitchListTile(value: _familyOnly, onChanged: (v) => setState(() => _familyOnly = v), contentPadding: const EdgeInsets.symmetric(horizontal: 4), title: Text(context.tr('familyOnlyPreference'), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: const Text('Package will be highlighted for family travellers.')), const SizedBox(height: 12),
+    PremiumCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('itinerary'), style: const TextStyle(fontWeight: FontWeight.w900)), const SizedBox(height: 10), for (final day in ['Day 1: Islamabad to Keran', 'Day 2: Sharda and Upper Neelum', 'Day 3: Return via Muzaffarabad']) Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [const Icon(Icons.drag_indicator_rounded, color: AppColors.muted), const SizedBox(width: 6), Expanded(child: Text(day, style: const TextStyle(fontWeight: FontWeight.w700))), const Icon(Icons.edit_outlined, size: 18)])), OutlinedButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('New itinerary day added in demo mode.'))), icon: const Icon(Icons.add_rounded), label: const Text('Add itinerary day'))])), const SizedBox(height: 16),
     Row(children: [Expanded(child: OutlinedButton(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Package saved as draft.'))), child: Text(context.tr('saveDraft')))), const SizedBox(width: 10), Expanded(flex: 2, child: FilledButton(onPressed: _submit, child: Text(context.tr('submitApproval'))))]),
   ]));
   String? _required(String? v) => (v ?? '').trim().isEmpty ? context.tr('required') : null;
-  Future<void> _addItineraryDay() async {
-    final field = TextEditingController(text: 'Day ${_itinerary.length + 1}: New destination or activity');
-    final value = await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Add itinerary day'),
-        content: TextField(controller: field, autofocus: true, maxLines: 2),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, field.text.trim()), child: const Text('Add')),
-        ],
-      ),
-    );
-    field.dispose();
-    if (value != null && value.isNotEmpty && mounted) setState(() => _itinerary.add(value));
-  }
-
-  Future<void> _editItineraryDay(int index) async {
-    final field = TextEditingController(text: _itinerary[index]);
-    final value = await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Edit itinerary day'),
-        content: TextField(controller: field, autofocus: true, maxLines: 2),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, field.text.trim()), child: const Text('Save')),
-        ],
-      ),
-    );
-    field.dispose();
-    if (value != null && value.isNotEmpty && mounted) setState(() => _itinerary[index] = value);
-  }
-
-  void _submit() { if (!_form.currentState!.validate()) return; AppControllerScope.of(context).addPackage(TourPackage(id: 'P-${DateTime.now().millisecondsSinceEpoch}', title: _title.text, route: _route.text, days: _days, price: int.parse(_price.text), image: 'assets/images/neelum.png', driver: 'Shahzad Ahmad', rating: 4.9, maxGuests: _guests, vehicle: _vehicle, description: _description.text, inclusions: const ['Private vehicle', 'Fuel and tolls', 'Driver services'], itinerary: List<String>.from(_itinerary), allowOffers: _offers, status: 'Pending')); showDialog(context: context, builder: (_) => AlertDialog(icon: const Icon(Icons.hourglass_top_rounded, color: AppColors.warning, size: 48), title: const Text('Submitted for approval'), content: const Text('The package is now visible in your dashboard with Pending status.'), actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))])); }
+  void _submit() { if (!_form.currentState!.validate()) return; AppControllerScope.of(context).addPackage(TourPackage(id: 'P-${DateTime.now().millisecondsSinceEpoch}', title: _title.text, route: _route.text, days: _days, price: int.parse(_price.text), image: 'assets/images/neelum.png', driver: 'Shahzad Ahmad', rating: 4.9, maxGuests: _guests, vehicle: _vehicle, description: _description.text, inclusions: const ['Private vehicle', 'Fuel and tolls', 'Driver services'], itinerary: const ['Day 1: Islamabad to Keran', 'Day 2: Sharda sightseeing', 'Day 3: Return'], allowOffers: _offers, status: 'Pending', pricePerSeat: int.parse(_seatPrice.text), wholeVehiclePrice: int.parse(_price.text), availableSeats: _guests, pickupPoint: _pickupPoint.text, familyOnly: _familyOnly)); showDialog(context: context, builder: (_) => AlertDialog(icon: const Icon(Icons.hourglass_top_rounded, color: AppColors.warning, size: 48), title: const Text('Submitted for approval'), content: const Text('The package is now visible in your dashboard with Pending status.'), actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))])); }
 }
 
 class _NumberField extends StatelessWidget {
@@ -177,7 +142,7 @@ class DriverWalletScreen extends StatelessWidget {
   void _payout(BuildContext context,AppController c){final f=TextEditingController(text:'5000');showModalBottomSheet(context:context,isScrollControlled:true,builder:(_)=>Padding(padding:EdgeInsets.fromLTRB(20,20,20,MediaQuery.viewInsetsOf(context).bottom+20),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[const Text('Request payout',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)),const SizedBox(height:14),TextField(controller:f,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount',prefixText:'PKR ')),const SizedBox(height:14),FilledButton(onPressed:(){c.requestPayout(int.tryParse(f.text)??0);Navigator.pop(context);},child:const Text('Submit payout request'))])));}
 }
 
-class DriverDocumentsScreen extends StatelessWidget { const DriverDocumentsScreen({super.key}); @override Widget build(BuildContext context)=>ListView(padding:const EdgeInsets.all(18),children:[PremiumCard(color:const Color(0xFFF1FAF6),child:const Row(children:[Icon(Icons.verified_user_rounded,color:AppColors.success,size:36),SizedBox(width:12),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Identity verified',style:TextStyle(fontWeight:FontWeight.w900)),SizedBox(height:4),Text('Your driver account can receive ride and package bookings.',style:TextStyle(color:AppColors.muted,fontSize:12))]))])),const SizedBox(height:16),...driverDocuments.map((d)=>Padding(padding:const EdgeInsets.only(bottom:10),child:PremiumCard(child:Row(children:[Container(width:45,height:45,decoration:BoxDecoration(color:verificationColor(d.status).withValues(alpha:.11),borderRadius:BorderRadius.circular(14)),child:Icon(Icons.description_rounded,color:verificationColor(d.status))),const SizedBox(width:12),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(d.title,style:const TextStyle(fontWeight:FontWeight.w900)),Text('${d.number} · Expiry: ${d.expiry}',style:const TextStyle(color:AppColors.muted,fontSize:11))])),StatusPill(label:verificationLabel(context,d.status),color:verificationColor(d.status))])))),OutlinedButton.icon(onPressed:()=>ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Dummy driver document selected and queued for review.'))),icon:const Icon(Icons.upload_file_rounded),label:const Text('Upload another document'))]); }
+class DriverDocumentsScreen extends StatelessWidget { const DriverDocumentsScreen({super.key}); @override Widget build(BuildContext context)=>ListView(padding:const EdgeInsets.all(18),children:[PremiumCard(color:const Color(0xFFF1FAF6),child:const Row(children:[Icon(Icons.verified_user_rounded,color:AppColors.success,size:36),SizedBox(width:12),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Identity verified',style:TextStyle(fontWeight:FontWeight.w900)),SizedBox(height:4),Text('Your driver account can receive ride and package bookings.',style:TextStyle(color:AppColors.muted,fontSize:12))]))])),const SizedBox(height:16),...driverDocuments.map((d)=>Padding(padding:const EdgeInsets.only(bottom:10),child:PremiumCard(child:Row(children:[Container(width:45,height:45,decoration:BoxDecoration(color:verificationColor(d.status).withValues(alpha:.11),borderRadius:BorderRadius.circular(14)),child:Icon(Icons.description_rounded,color:verificationColor(d.status))),const SizedBox(width:12),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(d.title,style:const TextStyle(fontWeight:FontWeight.w900)),Text('${d.number} · Expiry: ${d.expiry}',style:const TextStyle(color:AppColors.muted,fontSize:11))])),StatusPill(label:verificationLabel(context,d.status),color:verificationColor(d.status))])))),OutlinedButton.icon(onPressed:()=>ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Dummy document selected for upload.'))),icon:const Icon(Icons.upload_file_rounded),label:const Text('Upload another document'))]); }
 
 class DriverAvailabilityScreen extends StatefulWidget {
   const DriverAvailabilityScreen({super.key});

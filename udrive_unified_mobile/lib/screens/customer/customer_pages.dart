@@ -6,7 +6,7 @@ import '../../core/widgets/common_widgets.dart';
 import '../../data/dummy_data.dart';
 import '../../data/models.dart';
 import 'package_detail_screen.dart';
-import 'ride_booking_screen.dart';
+import 'tourism_booking_screen.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -22,7 +22,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     return ListView(padding: const EdgeInsets.fromLTRB(18, 4, 18, 30), children: [
       TextField(onChanged: (value) => setState(() => _query = value), decoration: InputDecoration(hintText: '${context.tr('search')} destinations', prefixIcon: const Icon(Icons.search_rounded))),
       const SizedBox(height: 18),
-      ...filtered.map((item) => Padding(padding: const EdgeInsets.only(bottom: 14), child: PremiumCard(padding: EdgeInsets.zero, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(23)), child: Image.asset(item.image, height: 190, width: double.infinity, fit: BoxFit.cover)), Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text(item.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900))), StatusPill(label: '${item.rating} ★', color: AppColors.accent)]), const SizedBox(height: 5), Text(item.location, style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700)), const SizedBox(height: 10), Text(item.description, style: const TextStyle(color: AppColors.muted, height: 1.4)), const SizedBox(height: 14), FilledButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RideBookingScreen(serviceId: item.name))), icon: const Icon(Icons.local_taxi_rounded), label: Text('Ride to ${item.name}'))]))])))),
+      ...filtered.map((item) => Padding(padding: const EdgeInsets.only(bottom: 14), child: PremiumCard(padding: EdgeInsets.zero, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(23)), child: Image.asset(item.image, height: 190, width: double.infinity, fit: BoxFit.cover)), Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text(item.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900))), StatusPill(label: '${item.rating} ★', color: AppColors.accent)]), const SizedBox(height: 5), Text(item.location, style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700)), const SizedBox(height: 10), Text(item.description, style: const TextStyle(color: AppColors.muted, height: 1.4)), const SizedBox(height: 14), FilledButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TourismBookingScreen(initialDestination: item.name))), icon: const Icon(Icons.local_taxi_rounded), label: Text('Ride to ${item.name}'))]))])))),
     ]);
   }
 }
@@ -39,42 +39,118 @@ class PackagesScreen extends StatelessWidget {
 
 class TripsScreen extends StatelessWidget {
   const TripsScreen({super.key});
+
   @override
-  Widget build(BuildContext context) => DefaultTabController(length: 3, child: Column(children: [TabBar(tabs: [Tab(text: context.tr('upcoming')), Tab(text: context.tr('completed')), Tab(text: context.tr('cancelled'))]), Expanded(child: TabBarView(children: [_TripList(filter: 'Upcoming'), _TripList(filter: 'Completed'), const _EmptyMessage(icon: Icons.event_busy_rounded, title: 'No cancelled trips')]))]));
+  Widget build(BuildContext context) => DefaultTabController(
+        length: 3,
+        child: Column(
+          children: [
+            TabBar(tabs: [Tab(text: context.tr('upcoming')), Tab(text: context.tr('completed')), Tab(text: context.tr('cancelled'))]),
+            const Expanded(
+              child: TabBarView(
+                children: [
+                  _UpcomingTrips(),
+                  _HistoricalTripList(filter: 'Completed'),
+                  _EmptyMessage(icon: Icons.event_busy_rounded, title: 'No cancelled trips'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
-class _TripList extends StatelessWidget {
-  const _TripList({required this.filter});
-  final String filter;
+class _UpcomingTrips extends StatelessWidget {
+  const _UpcomingTrips();
+
   @override
   Widget build(BuildContext context) {
-    final list = trips.where((e) => e.status == filter).toList();
-    return ListView(padding: const EdgeInsets.all(18), children: list.map((trip) => Padding(padding: const EdgeInsets.only(bottom: 13), child: PremiumCard(onTap: () => _tripDetail(context, trip), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text(trip.route, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))), StatusPill(label: trip.status, color: trip.status == 'Completed' ? AppColors.success : AppColors.info)]), const SizedBox(height: 8), Text(trip.date, style: const TextStyle(color: AppColors.muted, fontSize: 12)), const Divider(height: 24), Row(children: [const CircleAvatar(radius: 19, child: Icon(Icons.person_rounded, size: 19)), const SizedBox(width: 9), Expanded(child: Text('${trip.driver}\n${trip.vehicle}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))), Text('PKR ${trip.price}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))])])))).toList());
+    final controller = AppControllerScope.of(context);
+    final advance = controller.advanceBookings;
+    final scheduled = trips.where((trip) => trip.status == 'Upcoming').toList();
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        if (advance.isNotEmpty) ...[
+          SectionHeader(title: context.tr('advanceBooking')),
+          const SizedBox(height: 9),
+          ...advance.map((booking) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: PremiumCard(
+                  color: const Color(0xFFF0FAF6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [Expanded(child: Text('${booking.pickup} → ${booking.destination}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15))), StatusPill(label: booking.status)]),
+                      const SizedBox(height: 8),
+                      Text('${MaterialLocalizations.of(context).formatFullDate(booking.departureDate)} · ${booking.departureTime.format(context)}', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                      const Divider(height: 22),
+                      Row(children: [Icon(booking.bookingType == BookingType.perSeat ? Icons.event_seat_rounded : Icons.directions_car_filled_rounded, color: AppColors.primaryDark), const SizedBox(width: 8), Expanded(child: Text('${booking.vehicle} · ${booking.adults + booking.children} travellers', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), Text('PKR ${booking.estimatedTotal}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))]),
+                    ],
+                  ),
+                ),
+              )),
+          const SizedBox(height: 8),
+        ],
+        if (scheduled.isNotEmpty) ...[
+          SectionHeader(title: context.tr('upcoming')),
+          const SizedBox(height: 9),
+          ...scheduled.map((trip) => Padding(padding: const EdgeInsets.only(bottom: 13), child: _TripCard(trip: trip))),
+        ],
+      ],
+    );
   }
-  void _tripDetail(BuildContext context, TripRecord trip) => showModalBottomSheet(context: context, isScrollControlled: true, builder: (_) => SafeArea(child: Padding(padding: const EdgeInsets.all(20), child: Column(mainAxisSize: MainAxisSize.min, children: [const MapPreview(height: 220), const SizedBox(height: 15), ListTile(contentPadding: EdgeInsets.zero, title: Text(trip.route, style: const TextStyle(fontWeight: FontWeight.w900)), subtitle: Text('${trip.date}\n${trip.driver} · ${trip.vehicle}'), trailing: Text('PKR ${trip.price}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))), FilledButton.icon(onPressed: () => _receipt(context, trip), icon: const Icon(Icons.receipt_long_rounded), label: const Text('View receipt'))]))));
+}
 
-  void _receipt(BuildContext context, TripRecord trip) => showDialog(
+class _HistoricalTripList extends StatelessWidget {
+  const _HistoricalTripList({required this.filter});
+  final String filter;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = trips.where((trip) => trip.status == filter).toList();
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: list.map((trip) => Padding(padding: const EdgeInsets.only(bottom: 13), child: _TripCard(trip: trip))).toList(),
+    );
+  }
+}
+
+class _TripCard extends StatelessWidget {
+  const _TripCard({required this.trip});
+  final TripRecord trip;
+
+  @override
+  Widget build(BuildContext context) => PremiumCard(
+        onTap: () => _tripDetail(context),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [Expanded(child: Text(trip.route, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))), StatusPill(label: trip.status, color: trip.status == 'Completed' ? AppColors.success : AppColors.info)]),
+            const SizedBox(height: 8),
+            Text(trip.date, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+            const Divider(height: 24),
+            Row(children: [const CircleAvatar(radius: 19, child: Icon(Icons.person_rounded, size: 19)), const SizedBox(width: 9), Expanded(child: Text('${trip.driver}\n${trip.vehicle}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))), Text('PKR ${trip.price}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))]),
+          ],
+        ),
+      );
+
+  void _tripDetail(BuildContext context) => showModalBottomSheet(
         context: context,
-        builder: (_) => AlertDialog(
-          icon: const Icon(Icons.receipt_long_rounded, color: AppColors.primaryDark, size: 46),
-          title: const Text('uDrive trip receipt'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(trip.route, style: const TextStyle(fontWeight: FontWeight.w900)),
-              const SizedBox(height: 10),
-              Text('Trip ID: ${trip.id}'),
-              Text('Date: ${trip.date}'),
-              Text('Driver: ${trip.driver}'),
-              Text('Vehicle: ${trip.vehicle}'),
-              const Divider(height: 24),
-              Text('Total: PKR ${trip.price}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark)),
-              const SizedBox(height: 8),
-              const Text('Dummy receipt generated locally for frontend testing.', style: TextStyle(color: AppColors.muted, fontSize: 11)),
-            ],
+        isScrollControlled: true,
+        builder: (_) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const MapPreview(height: 220),
+                const SizedBox(height: 15),
+                ListTile(contentPadding: EdgeInsets.zero, title: Text(trip.route, style: const TextStyle(fontWeight: FontWeight.w900)), subtitle: Text('${trip.date}\n${trip.driver} · ${trip.vehicle}'), trailing: Text('PKR ${trip.price}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))),
+                FilledButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dummy receipt opened.'))), icon: const Icon(Icons.receipt_long_rounded), label: const Text('View receipt')),
+              ],
+            ),
           ),
-          actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
         ),
       );
 }

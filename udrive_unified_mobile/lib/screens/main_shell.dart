@@ -7,7 +7,9 @@ import '../data/models.dart';
 import 'common/common_pages.dart';
 import 'customer/customer_home_screen.dart';
 import 'customer/customer_pages.dart';
-import 'customer/ride_booking_screen.dart';
+import 'customer/family_tour_planner_screen.dart';
+import 'customer/join_tour_screen.dart';
+import 'customer/tourism_booking_screen.dart';
 import 'driver/driver_home_screen.dart';
 import 'driver/driver_pages.dart';
 import 'driver/vehicle_registration_screen.dart';
@@ -112,6 +114,8 @@ class _MainShellState extends State<MainShell> {
     final mapping = <String, String>{
       'home': 'home',
       'bookRide': 'bookRide',
+      'joinTour': 'joinTour',
+      'familyPlanner': 'familyTourPlanner',
       'explore': 'explore',
       'packages': 'packages',
       'trips': 'trips',
@@ -140,7 +144,9 @@ class _MainShellState extends State<MainShell> {
 
   Widget _customerContent(String key) => switch (key) {
         'home' => CustomerHomeScreen(onNavigate: _customerNavigate),
-        'bookRide' => const RideBookingScreen(),
+        'bookRide' => const TourismBookingScreen(),
+        'joinTour' => const JoinTourScreen(),
+        'familyPlanner' => const FamilyTourPlannerScreen(),
         'explore' => const ExploreScreen(),
         'packages' => const PackagesScreen(),
         'trips' => const TripsScreen(),
@@ -283,6 +289,8 @@ class _PremiumDrawer extends StatelessWidget {
   List<(String, IconData, String)> _customerEntries(BuildContext context) => [
         ('home', Icons.home_rounded, context.tr('home')),
         ('bookRide', Icons.local_taxi_rounded, context.tr('bookRide')),
+        ('joinTour', Icons.groups_rounded, context.tr('joinTour')),
+        ('familyPlanner', Icons.family_restroom_rounded, context.tr('familyTourPlanner')),
         ('explore', Icons.explore_rounded, context.tr('explore')),
         ('packages', Icons.luggage_rounded, context.tr('packages')),
         ('trips', Icons.route_rounded, context.tr('trips')),

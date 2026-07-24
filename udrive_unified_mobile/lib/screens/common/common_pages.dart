@@ -76,7 +76,7 @@ class SettingsScreen extends StatelessWidget {
       const SizedBox(height: 10),
       for (final item in [(Icons.notifications_rounded, 'Notification preferences'), (Icons.lock_rounded, context.tr('privacy')), (Icons.description_rounded, context.tr('terms')), (Icons.info_rounded, context.tr('about'))]) Padding(padding: const EdgeInsets.only(bottom: 9), child: PremiumCard(onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${item.$2} opened with dummy content.'))), child: Row(children: [Icon(item.$1, color: AppColors.primaryDark), const SizedBox(width: 13), Expanded(child: Text(item.$2, style: const TextStyle(fontWeight: FontWeight.w900))), const Icon(Icons.chevron_right_rounded)]))),
       const SizedBox(height: 8),
-      const Center(child: Text('uDrive Mobile 3.0.0 · Demo frontend', style: TextStyle(color: AppColors.muted, fontSize: 11))),
+      const Center(child: Text('uDrive Mobile 4.0.0 · Tourism demo frontend', style: TextStyle(color: AppColors.muted, fontSize: 11))),
     ]);
   }
 }

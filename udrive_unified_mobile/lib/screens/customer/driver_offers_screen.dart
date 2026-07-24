@@ -25,7 +25,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   void initState() {
     super.initState();
     var index = 0;
-    _timer = Timer.periodic(const Duration(milliseconds: 850), (timer) {
+    _timer = Timer.periodic(const Duration(milliseconds: 260), (timer) {
       if (!mounted || index >= driverOffers.length) {
         timer.cancel();
         return;
@@ -120,7 +120,7 @@ class _OfferCard extends StatelessWidget {
                 Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text('PKR ${offer.price}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primaryDark)), Text('${offer.eta} min away', style: const TextStyle(color: AppColors.muted, fontSize: 11))]),
               ]),
               const Divider(height: 26),
-              Row(children: [const Icon(Icons.star_rounded, color: AppColors.accent, size: 18), Text(' ${offer.rating}', style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(width: 15), const Icon(Icons.route_rounded, color: AppColors.muted, size: 17), Text(' ${offer.trips} trips', style: const TextStyle(color: AppColors.muted, fontSize: 12)), const Spacer(), if (selected) const Icon(Icons.check_circle_rounded, color: AppColors.primary)]),
+              Row(children: [const Icon(Icons.star_rounded, color: AppColors.accent, size: 18), Text(' ${offer.rating}', style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(width: 12), const Icon(Icons.route_rounded, color: AppColors.muted, size: 17), Text(' ${offer.routeExperience} route trips', style: const TextStyle(color: AppColors.muted, fontSize: 11)), const Spacer(), const Icon(Icons.shield_rounded, color: AppColors.success, size: 17), Text(' ${offer.safetyScore}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11)), if (selected) const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check_circle_rounded, color: AppColors.primary))]),
             ]),
           ),
         ),

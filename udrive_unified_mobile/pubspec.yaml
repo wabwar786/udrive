@@ -1,7 +1,7 @@
 name: udrive_mobile
 publish_to: "none"
 description: Premium unified UDrive customer and driver app for Azad Kashmir tourism.
-version: 3.0.0+3
+version: 4.0.0+4
 
 environment:
   sdk: ">=3.8.0 <4.0.0"

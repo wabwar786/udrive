@@ -1,8 +1,10 @@
 FROM ghcr.io/cirruslabs/flutter:stable AS builder
 WORKDIR /app
-COPY . .
+COPY pubspec.yaml analysis_options.yaml ./
+COPY assets ./assets
+COPY lib ./lib
+COPY web ./web
 RUN flutter config --enable-web \
-    && flutter create . --platforms=web --project-name=udrive_mobile --org=com.udrive \
     && flutter pub get \
     && flutter build web --release --no-wasm-dry-run
 

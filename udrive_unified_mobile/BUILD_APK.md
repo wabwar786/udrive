@@ -1,8 +1,8 @@
 # Build and Download the Android APK
 
-## GitHub Actions method
+## GitHub Actions
 
-The workflow is stored at the repository root:
+The monorepo contains:
 
 ```text
 .github/workflows/build-mobile.yml
@@ -12,49 +12,28 @@ After pushing to `main`:
 
 1. Open the GitHub repository.
 2. Select **Actions**.
-3. Select **Build uDrive APK and AAB**.
+3. Open **Build uDrive APK and AAB**.
 4. Select **Run workflow**.
 5. Open the completed green run.
-6. Download `udrive-premium-apk` under **Artifacts**.
-7. Extract the downloaded artifact ZIP to get `app-release.apk`.
+6. Download `udrive-tourism-apk`.
+7. Extract the downloaded artifact to obtain `app-release.apk`.
 
-## Windows local method
+The same run also provides `udrive-play-store-aab`.
 
-Open this folder:
+## Local Windows build
 
-```text
-udrive_unified_mobile
-```
-
-Double-click:
-
-```text
-build_apk_windows.bat
-```
-
-Or run:
-
-```bat
-build_apk_windows.bat
-```
-
-## Command-line method
+Open Terminal in `udrive_unified_mobile` and run:
 
 ```bash
-cd udrive_unified_mobile
-flutter create . --platforms=android,ios,web --project-name=udrive_mobile --org=com.udrive
+flutter doctor
 flutter pub get
-flutter analyze --no-fatal-infos --no-fatal-warnings
-flutter test
-flutter build apk --release --dart-define=DEFAULT_MODE=customer
+flutter build apk --release
 ```
 
-The APK appears at:
+APK output:
 
 ```text
-udrive_unified_mobile/build/app/outputs/flutter-apk/app-release.apk
+build/app/outputs/flutter-apk/app-release.apk
 ```
 
-## Google Play
-
-Download the `udrive-play-store-aab` artifact for Google Play testing. Before public publishing, configure a private production upload keystore; the included release configuration uses test signing.
+A private upload keystore is required before publishing to Google Play. The current configuration is suitable for testing builds.

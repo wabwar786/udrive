@@ -12,6 +12,7 @@ class AppController extends ChangeNotifier {
   UserMode _mode = UserMode.customer;
   bool _driverOnline = true;
   int _walletBalance = 15700;
+
   final List<VehicleRecord> _vehicles = [
     VehicleRecord(
       id: 'V-1001',
@@ -35,8 +36,12 @@ class AppController extends ChangeNotifier {
       },
     ),
   ];
+
   final List<TourPackage> _driverPackages = [tourPackages.first];
   final List<RideRequest> _requests = List<RideRequest>.from(rideRequests);
+  final List<AdvanceBooking> _advanceBookings = [];
+  final List<TourInterest> _tourInterests = [];
+  final List<FamilyTourPlan> _familyPlans = [];
 
   bool get initialized => _initialized;
   bool get loggedIn => _loggedIn;
@@ -48,6 +53,9 @@ class AppController extends ChangeNotifier {
   List<VehicleRecord> get vehicles => List.unmodifiable(_vehicles);
   List<TourPackage> get driverPackages => List.unmodifiable(_driverPackages);
   List<RideRequest> get requests => List.unmodifiable(_requests);
+  List<AdvanceBooking> get advanceBookings => List.unmodifiable(_advanceBookings);
+  List<TourInterest> get tourInterests => List.unmodifiable(_tourInterests);
+  List<FamilyTourPlan> get familyPlans => List.unmodifiable(_familyPlans);
 
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
@@ -55,7 +63,6 @@ class AppController extends ChangeNotifier {
     _locale = Locale(prefs.getString('language') ?? 'en');
     _mode = (prefs.getString('mode') ?? 'customer') == 'driver' ? UserMode.driver : UserMode.customer;
     _driverOnline = prefs.getBool('driverOnline') ?? true;
-    await Future<void>.delayed(const Duration(milliseconds: 700));
     _initialized = true;
     notifyListeners();
   }
@@ -105,6 +112,21 @@ class AppController extends ChangeNotifier {
 
   void addPackage(TourPackage package) {
     _driverPackages.add(package);
+    notifyListeners();
+  }
+
+  void addAdvanceBooking(AdvanceBooking booking) {
+    _advanceBookings.insert(0, booking);
+    notifyListeners();
+  }
+
+  void addTourInterest(TourInterest interest) {
+    _tourInterests.insert(0, interest);
+    notifyListeners();
+  }
+
+  void addFamilyPlan(FamilyTourPlan plan) {
+    _familyPlans.insert(0, plan);
     notifyListeners();
   }
 

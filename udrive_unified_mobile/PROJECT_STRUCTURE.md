@@ -1,34 +1,26 @@
 # Project Structure
 
 ```text
-udrive/
-├── .github/
-│   └── workflows/
-│       └── build-mobile.yml
-├── admin_portal/
-├── docs/
-└── udrive_unified_mobile/
-    ├── android/
-    ├── ios/
-    ├── web/
-    ├── assets/images/
-    ├── lib/
-    │   ├── core/
-    │   │   ├── localization/
-    │   │   ├── state/
-    │   │   ├── theme/
-    │   │   └── widgets/
-    │   ├── data/
-    │   └── screens/
-    │       ├── auth/
-    │       ├── common/
-    │       ├── customer/
-    │       └── driver/
-    ├── test/
-    ├── tool/
-    ├── build_apk_windows.bat
-    ├── build_apk.sh
-    ├── Dockerfile
-    ├── pubspec.yaml
-    └── README.md
+udrive_premium_mobile/
+├── .github/workflows/build-mobile.yml
+├── android/                    # Android application and native splash/icon
+├── ios/                        # iOS application resources
+├── web/                        # PWA/web files
+├── assets/images/              # Brand and local destination artwork
+├── lib/
+│   ├── core/
+│   │   ├── localization/
+│   │   ├── state/
+│   │   ├── theme/
+│   │   └── widgets/
+│   ├── data/                   # Dummy models and data
+│   └── screens/
+│       ├── auth/
+│       ├── common/
+│       ├── customer/
+│       └── driver/
+├── test/
+├── Dockerfile
+├── pubspec.yaml
+└── README.md
 ```

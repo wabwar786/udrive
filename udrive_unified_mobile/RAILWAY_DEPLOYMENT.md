@@ -1,19 +1,21 @@
-# Railway Web Preview
+# Railway Web Deployment
 
-This project can be deployed as a Flutter web preview from the existing UDrive monorepo.
+Use the existing GitHub repository and Mobile Railway service.
 
-1. Push the complete update to GitHub.
-2. Open the UDrive Mobile service in Railway.
-3. Set **Root Directory** to:
+## Service settings
 
 ```text
-/udrive_unified_mobile
+Repository: wabwar786/udrive
+Branch: main
+Root directory: /udrive_unified_mobile
 ```
 
-4. Keep the included `Dockerfile`.
-5. Remove any custom build command.
-6. Remove any custom start command.
-7. Do not manually create a `PORT` variable.
-8. Deploy the latest GitHub commit and generate a domain under Networking.
+Do not configure:
 
-Railway hosts the web build only. Use GitHub Actions or local Flutter tooling for APK/AAB files.
+- Custom build command
+- Custom start command
+- Manual PORT variable
+
+Deploy the latest commit. The Dockerfile uses a cached Flutter dependency layer, builds the release web application and serves it through Nginx.
+
+After deployment, hard-refresh the browser if an older Flutter web version is cached.

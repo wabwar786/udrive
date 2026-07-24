@@ -1,25 +1,20 @@
-# Validation
+# Validation report
 
-The repository patch was checked for:
+The packaged repository update was checked for:
 
-- Balanced Dart parentheses, brackets and braces
-- Existing relative Dart imports
-- English/Urdu localization-key parity
-- Missing localization keys used by screens
-- Empty `onPressed`, `onTap` and `onChanged` callbacks
-- GitHub Actions YAML syntax
-- JSON validity for web/iOS metadata
-- Android/iOS XML and plist parseability where applicable
-- Shell script syntax
-- Required Android, web, asset and source folders
+- Balanced Dart delimiters across 25 Dart files
+- Valid relative imports
+- English and Urdu coverage for all 234 localization keys used by screens
+- No empty visible button/tap callbacks
+- Referenced local image assets
+- Required Android, iOS and web platform files
+- JSON validity for web and iOS asset manifests
+- XML validity for Android resources and manifests
+- YAML validity for the monorepo GitHub Actions workflow
+- Shell syntax for the local APK build script
+- Railway Dockerfile and Nginx configuration presence
+- APK and AAB artifact paths in GitHub Actions
 
-The project includes a GitHub Actions workflow that performs the authoritative Flutter checks after upload:
+## Compiler note
 
-```text
-flutter create
-flutter pub get
-flutter analyze
-flutter test
-flutter build apk
-flutter build appbundle
-```
+The generation environment does not contain the Flutter SDK, so Flutter/Gradle compilation could not be executed locally. After the update is pushed, the included GitHub Actions workflow runs project validation, `flutter analyze`, tests, APK compilation and AAB compilation. Railway separately compiles the Flutter web release through the included Dockerfile.
