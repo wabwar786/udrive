@@ -80,7 +80,7 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
             DropdownButtonFormField<String>(
               initialValue: _category,
               decoration: const InputDecoration(labelText: 'Vehicle category', prefixIcon: Icon(Icons.category_outlined)),
-              items: const ['Economy', 'Sedan', 'SUV', '7-Seater', 'Hiace', 'Coaster', '4×4 Jeep', 'Luxury'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+              items: const ['Economy', 'Sedan', 'SUV', '7-Seater', 'Hiace', 'Coaster', '4Ã—4 Jeep', 'Luxury'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
               onChanged: (value) => setState(() => _category = value ?? _category),
             ),
             const SizedBox(height: 11),
@@ -94,7 +94,7 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
             _counter('Luggage capacity', _luggage, 0, 100, (v) => setState(() => _luggage = v)),
             _switch('Air conditioning', _ac, (v) => setState(() => _ac = v)),
             _switch('Heating', _heating, (v) => setState(() => _heating = v)),
-            _switch('4×4 capability', _fourByFour, (v) => setState(() => _fourByFour = v)),
+            _switch('4Ã—4 capability', _fourByFour, (v) => setState(() => _fourByFour = v)),
             _switch('First-aid kit', _firstAid, (v) => setState(() => _firstAid = v)),
             _switch('Fire extinguisher', _fireExtinguisher, (v) => setState(() => _fireExtinguisher = v)),
             _switch('Spare tyre and tools', _spareTyre, (v) => setState(() => _spareTyre = v)),
@@ -118,7 +118,7 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('${_created!.make} ${_created!.model}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-              Text('${_created!.registrationNumber} · readiness ${_created!.mountainReadinessScore}%', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+              Text('${_created!.registrationNumber} Â· readiness ${_created!.mountainReadinessScore}%', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
             ])),
           ]),
         ),
@@ -205,7 +205,7 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
   }
 
   Future<void> _upload(String type) async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
       withData: true,

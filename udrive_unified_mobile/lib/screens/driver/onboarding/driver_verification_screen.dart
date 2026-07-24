@@ -64,7 +64,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
                   const CircleAvatar(radius: 28, backgroundColor: Colors.white, child: Icon(Icons.badge_outlined, color: AppColors.primaryDark, size: 31)),
                   const SizedBox(width: 13),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(urdu ? 'ڈرائیور کی تصدیق' : 'Driver verification', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+                    Text(urdu ? 'ÚˆØ±Ø§Ø¦ÛŒÙˆØ± Ú©ÛŒ ØªØµØ¯ÛŒÙ‚' : 'Driver verification', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 3),
                     Text(controller.currentUserPhone, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
                   ])),
@@ -72,7 +72,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
                 const SizedBox(height: 18),
                 Text(
                   urdu
-                      ? 'محفوظ سیاحت کے لیے شناخت، لائسنس، سیلفی اور گاڑی کی تصدیق ضروری ہے۔'
+                      ? 'Ù…Ø­ÙÙˆØ¸ Ø³ÛŒØ§Ø­Øª Ú©Û’ Ù„ÛŒÛ’ Ø´Ù†Ø§Ø®ØªØŒ Ù„Ø§Ø¦Ø³Ù†Ø³ØŒ Ø³ÛŒÙ„ÙÛŒ Ø§ÙˆØ± Ú¯Ø§Ú‘ÛŒ Ú©ÛŒ ØªØµØ¯ÛŒÙ‚ Ø¶Ø±ÙˆØ±ÛŒ ÛÛ’Û”'
                       : 'Identity, licence, selfie and vehicle verification are required before accepting real tourism bookings.',
                   style: const TextStyle(color: Colors.white, height: 1.45, fontWeight: FontWeight.w600),
                 ),
@@ -99,13 +99,13 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
             FilledButton.icon(
               onPressed: _busy ? null : _submitApplication,
               icon: const Icon(Icons.send_rounded),
-              label: Text(urdu ? 'تصدیق کے لیے جمع کریں' : 'Submit complete application'),
+              label: Text(urdu ? 'ØªØµØ¯ÛŒÙ‚ Ú©Û’ Ù„ÛŒÛ’ Ø¬Ù…Ø¹ Ú©Ø±ÛŒÚº' : 'Submit complete application'),
             ),
           const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: _busy ? null : AppControllerScope.of(context).refreshAccount,
             icon: const Icon(Icons.refresh_rounded),
-            label: Text(urdu ? 'حالت دوبارہ چیک کریں' : 'Refresh approval status'),
+            label: Text(urdu ? 'Ø­Ø§Ù„Øª Ø¯ÙˆØ¨Ø§Ø±Û Ú†ÛŒÚ© Ú©Ø±ÛŒÚº' : 'Refresh approval status'),
           ),
         ],
       ),
@@ -116,21 +116,21 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
         child: Form(
           key: _formKey,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(urdu ? 'ذاتی اور قانونی معلومات' : 'Personal and legal information', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            Text(urdu ? 'Ø°Ø§ØªÛŒ Ø§ÙˆØ± Ù‚Ø§Ù†ÙˆÙ†ÛŒ Ù…Ø¹Ù„ÙˆÙ…Ø§Øª' : 'Personal and legal information', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
             const SizedBox(height: 15),
-            _field(_name, urdu ? 'پورا نام' : 'Full legal name', Icons.person_outline, required: true),
-            _field(_cnic, urdu ? 'شناختی کارڈ نمبر (13 ہندسے)' : 'CNIC number (13 digits)', Icons.credit_card_rounded, keyboard: TextInputType.number, required: true),
-            _field(_licence, urdu ? 'ڈرائیونگ لائسنس نمبر' : 'Driving licence number', Icons.badge_outlined, required: true),
-            _field(_address, urdu ? 'مکمل پتہ' : 'Residential address', Icons.home_outlined, required: true, lines: 2),
-            _field(_emergencyName, urdu ? 'ایمرجنسی رابطے کا نام' : 'Emergency contact name', Icons.contact_emergency_outlined, required: true),
-            _field(_emergencyPhone, urdu ? 'ایمرجنسی موبائل نمبر' : 'Emergency mobile number', Icons.phone_outlined, keyboard: TextInputType.phone, required: true),
-            _field(_bankTitle, urdu ? 'اکاؤنٹ کا عنوان' : 'Bank/wallet account title', Icons.account_balance_outlined),
-            _field(_payoutAccount, urdu ? 'بینک/والٹ اکاؤنٹ' : 'Bank account, IBAN or wallet number', Icons.payments_outlined),
+            _field(_name, urdu ? 'Ù¾ÙˆØ±Ø§ Ù†Ø§Ù…' : 'Full legal name', Icons.person_outline, required: true),
+            _field(_cnic, urdu ? 'Ø´Ù†Ø§Ø®ØªÛŒ Ú©Ø§Ø±Úˆ Ù†Ù…Ø¨Ø± (13 ÛÙ†Ø¯Ø³Û’)' : 'CNIC number (13 digits)', Icons.credit_card_rounded, keyboard: TextInputType.number, required: true),
+            _field(_licence, urdu ? 'ÚˆØ±Ø§Ø¦ÛŒÙˆÙ†Ú¯ Ù„Ø§Ø¦Ø³Ù†Ø³ Ù†Ù…Ø¨Ø±' : 'Driving licence number', Icons.badge_outlined, required: true),
+            _field(_address, urdu ? 'Ù…Ú©Ù…Ù„ Ù¾ØªÛ' : 'Residential address', Icons.home_outlined, required: true, lines: 2),
+            _field(_emergencyName, urdu ? 'Ø§ÛŒÙ…Ø±Ø¬Ù†Ø³ÛŒ Ø±Ø§Ø¨Ø·Û’ Ú©Ø§ Ù†Ø§Ù…' : 'Emergency contact name', Icons.contact_emergency_outlined, required: true),
+            _field(_emergencyPhone, urdu ? 'Ø§ÛŒÙ…Ø±Ø¬Ù†Ø³ÛŒ Ù…ÙˆØ¨Ø§Ø¦Ù„ Ù†Ù…Ø¨Ø±' : 'Emergency mobile number', Icons.phone_outlined, keyboard: TextInputType.phone, required: true),
+            _field(_bankTitle, urdu ? 'Ø§Ú©Ø§Ø¤Ù†Ù¹ Ú©Ø§ Ø¹Ù†ÙˆØ§Ù†' : 'Bank/wallet account title', Icons.account_balance_outlined),
+            _field(_payoutAccount, urdu ? 'Ø¨ÛŒÙ†Ú©/ÙˆØ§Ù„Ù¹ Ø§Ú©Ø§Ø¤Ù†Ù¹' : 'Bank account, IBAN or wallet number', Icons.payments_outlined),
             const SizedBox(height: 6),
             FilledButton.icon(
               onPressed: _busy ? null : _saveProfile,
               icon: const Icon(Icons.save_outlined),
-              label: Text(urdu ? 'معلومات محفوظ کریں' : 'Save registration details'),
+              label: Text(urdu ? 'Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ù…Ø­ÙÙˆØ¸ Ú©Ø±ÛŒÚº' : 'Save registration details'),
             ),
           ]),
         ),
@@ -138,12 +138,12 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
 
   Widget _submittedProfile(DriverProfileLive profile, bool urdu) => PremiumCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(urdu ? 'محفوظ معلومات' : 'Saved registration', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          Text(urdu ? 'Ù…Ø­ÙÙˆØ¸ Ù…Ø¹Ù„ÙˆÙ…Ø§Øª' : 'Saved registration', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           const SizedBox(height: 12),
-          _info('CNIC', profile.cnicMasked ?? '—'),
-          _info(urdu ? 'لائسنس' : 'Licence', profile.drivingLicenceMasked ?? '—'),
-          _info(urdu ? 'زبانیں' : 'Languages', profile.languages.join(', ')),
-          _info(urdu ? 'سروس ایریاز' : 'Service areas', profile.serviceAreas.join(', ')),
+          _info('CNIC', profile.cnicMasked ?? 'â€”'),
+          _info(urdu ? 'Ù„Ø§Ø¦Ø³Ù†Ø³' : 'Licence', profile.drivingLicenceMasked ?? 'â€”'),
+          _info(urdu ? 'Ø²Ø¨Ø§Ù†ÛŒÚº' : 'Languages', profile.languages.join(', ')),
+          _info(urdu ? 'Ø³Ø±ÙˆØ³ Ø§ÛŒØ±ÛŒØ§Ø²' : 'Service areas', profile.serviceAreas.join(', ')),
         ]),
       );
 
@@ -156,9 +156,9 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
     ];
     return PremiumCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(urdu ? 'ضروری دستاویزات' : 'Required driver documents', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+        Text(urdu ? 'Ø¶Ø±ÙˆØ±ÛŒ Ø¯Ø³ØªØ§ÙˆÛŒØ²Ø§Øª' : 'Required driver documents', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
         const SizedBox(height: 5),
-        Text(urdu ? 'JPG، PNG، WebP یا PDF، زیادہ سے زیادہ 10 MB۔' : 'JPG, PNG, WebP or PDF, maximum 10 MB.', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+        Text(urdu ? 'JPGØŒ PNGØŒ WebP ÛŒØ§ PDFØŒ Ø²ÛŒØ§Ø¯Û Ø³Û’ Ø²ÛŒØ§Ø¯Û 10 MBÛ”' : 'JPG, PNG, WebP or PDF, maximum 10 MB.', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
         const SizedBox(height: 10),
         for (final item in documents)
           ListTile(
@@ -177,7 +177,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
     return PremiumCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          Expanded(child: Text(urdu ? 'رجسٹرڈ گاڑیاں' : 'Registered vehicles', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
+          Expanded(child: Text(urdu ? 'Ø±Ø¬Ø³Ù¹Ø±Úˆ Ú¯Ø§Ú‘ÛŒØ§Úº' : 'Registered vehicles', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
           IconButton.filledTonal(
             onPressed: _busy ? null : _openVehicleRegistration,
             icon: const Icon(Icons.add_rounded),
@@ -186,7 +186,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
         if (vehicles.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Text(urdu ? 'ابھی کوئی گاڑی رجسٹر نہیں ہوئی۔' : 'No live vehicle is registered yet.', textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted)),
+            child: Text(urdu ? 'Ø§Ø¨Ú¾ÛŒ Ú©ÙˆØ¦ÛŒ Ú¯Ø§Ú‘ÛŒ Ø±Ø¬Ø³Ù¹Ø± Ù†ÛÛŒÚº ÛÙˆØ¦ÛŒÛ”' : 'No live vehicle is registered yet.', textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted)),
           )
         else
           for (final vehicle in vehicles)
@@ -199,7 +199,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${vehicle.make} ${vehicle.model} ${vehicle.year}', style: const TextStyle(fontWeight: FontWeight.w900)),
-                  Text('${vehicle.registrationNumber} · ${vehicle.passengerCapacity} seats · readiness ${vehicle.mountainReadinessScore}%', style: const TextStyle(color: AppColors.muted, fontSize: 11)),
+                  Text('${vehicle.registrationNumber} Â· ${vehicle.passengerCapacity} seats Â· readiness ${vehicle.mountainReadinessScore}%', style: const TextStyle(color: AppColors.muted, fontSize: 11)),
                 ])),
                 _StatusPill(vehicle.status),
               ]),
@@ -208,7 +208,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
         OutlinedButton.icon(
           onPressed: _busy ? null : _openVehicleRegistration,
           icon: const Icon(Icons.add_road_rounded),
-          label: Text(urdu ? 'نئی گاڑی رجسٹر کریں' : 'Register another vehicle'),
+          label: Text(urdu ? 'Ù†Ø¦ÛŒ Ú¯Ø§Ú‘ÛŒ Ø±Ø¬Ø³Ù¹Ø± Ú©Ø±ÛŒÚº' : 'Register another vehicle'),
         ),
       ]),
     );
@@ -229,7 +229,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
         padding: const EdgeInsets.only(bottom: 9),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(width: 105, child: Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 12))),
-          Expanded(child: Text(value.isEmpty ? '—' : value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
+          Expanded(child: Text(value.isEmpty ? 'â€”' : value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
         ]),
       );
 
@@ -254,7 +254,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
   }
 
   Future<void> _pickAndUploadDriverDocument(String type) async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
       withData: true,
