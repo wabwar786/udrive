@@ -1,0 +1,13 @@
+diff --git a/udrive_unified_mobile/lib/screens/driver/onboarding/driver_verification_screen.dart b/udrive_unified_mobile/lib/screens/driver/onboarding/driver_verification_screen.dart
+--- a/udrive_unified_mobile/lib/screens/driver/onboarding/driver_verification_screen.dart
++++ b/udrive_unified_mobile/lib/screens/driver/onboarding/driver_verification_screen.dart
+@@
+-    final result = await FilePicker.platform.pickFiles(
++    final result = await FilePicker.pickFiles(
+
+diff --git a/udrive_unified_mobile/lib/screens/driver/onboarding/live_vehicle_registration_screen.dart b/udrive_unified_mobile/lib/screens/driver/onboarding/live_vehicle_registration_screen.dart
+--- a/udrive_unified_mobile/lib/screens/driver/onboarding/live_vehicle_registration_screen.dart
++++ b/udrive_unified_mobile/lib/screens/driver/onboarding/live_vehicle_registration_screen.dart
+@@
+-    final result = await FilePicker.platform.pickFiles(
++    final result = await FilePicker.pickFiles(
