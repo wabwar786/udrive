@@ -1,39 +1,38 @@
-# Build and Download the Android APK
+# Build and Download Android APK/AAB
 
 ## GitHub Actions
 
-The monorepo contains:
+1. Push the update to `main`.
+2. Open GitHub → Actions.
+3. Open **Build uDrive APK and AAB**.
+4. Run the workflow.
+5. Download `udrive-tourism-phase-3-6-apk`.
+6. Extract it to obtain `app-release.apk`.
+
+The same run uploads `udrive-tourism-phase-3-6-aab` for later Play Store use.
+
+The workflow automatically runs `flutter create` only when required native wrapper/project files are missing.
+
+## Local Windows
+
+Inside `udrive_unified_mobile`, run:
 
 ```text
-.github/workflows/build-mobile.yml
+build_apk_windows.bat
 ```
 
-After pushing to `main`:
-
-1. Open the GitHub repository.
-2. Select **Actions**.
-3. Open **Build uDrive APK and AAB**.
-4. Select **Run workflow**.
-5. Open the completed green run.
-6. Download `udrive-tourism-apk`.
-7. Extract the downloaded artifact to obtain `app-release.apk`.
-
-The same run also provides `udrive-play-store-aab`.
-
-## Local Windows build
-
-Open Terminal in `udrive_unified_mobile` and run:
+## Local Linux/macOS
 
 ```bash
-flutter doctor
-flutter pub get
-flutter build apk --release
+chmod +x build_apk.sh
+./build_apk.sh
 ```
 
-APK output:
+## Outputs
 
 ```text
 build/app/outputs/flutter-apk/app-release.apk
+build/app/outputs/bundle/release/app-release.aab
 ```
 
-A private upload keystore is required before publishing to Google Play. The current configuration is suitable for testing builds.
+The current release build uses debug signing for test installation. Configure a private upload keystore before Google Play production publishing.

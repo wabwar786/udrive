@@ -94,6 +94,24 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                   SectionHeader(title: context.tr('included')),
                   const SizedBox(height: 10),
                   Wrap(spacing: 8, runSpacing: 8, children: widget.package.inclusions.map((item) => Chip(avatar: const Icon(Icons.check_circle_rounded, size: 17, color: AppColors.success), label: Text(item))).toList()),
+                  if (widget.package.exclusions.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    SectionHeader(title: context.tr('exclusions')),
+                    const SizedBox(height: 10),
+                    Wrap(spacing: 8, runSpacing: 8, children: widget.package.exclusions.map((item) => Chip(avatar: const Icon(Icons.remove_circle_outline_rounded, size: 17, color: AppColors.danger), label: Text(item))).toList()),
+                  ],
+                  const SizedBox(height: 18),
+                  PremiumCard(
+                    color: const Color(0xFFF1FAF6),
+                    child: Column(
+                      children: [
+                        _DetailLine(icon: Icons.privacy_tip_rounded, text: widget.package.passengerPolicy),
+                        _DetailLine(icon: Icons.luggage_rounded, text: widget.package.luggageAllowance),
+                        _DetailLine(icon: Icons.event_available_rounded, text: widget.package.cancellationPolicy),
+                        _DetailLine(icon: Icons.verified_user_rounded, text: widget.package.verifiedPassengers ? 'Verified passenger group and OTP trip start' : 'Passenger verification pending'),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 22),
                   SectionHeader(title: context.tr('itinerary')),
                   const SizedBox(height: 10),

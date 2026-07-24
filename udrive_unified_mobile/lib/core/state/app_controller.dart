@@ -12,6 +12,7 @@ class AppController extends ChangeNotifier {
   UserMode _mode = UserMode.customer;
   bool _driverOnline = true;
   int _walletBalance = 15700;
+  ShareDuration _shareDuration = ShareDuration.untilDestination;
 
   final List<VehicleRecord> _vehicles = [
     VehicleRecord(
@@ -26,13 +27,21 @@ class AppController extends ChangeNotifier {
       luggage: 4,
       airConditioning: true,
       fourWheelDrive: false,
+      heating: true,
+      firstAidKit: true,
+      fireExtinguisher: true,
+      spareTyre: true,
+      roofCarrier: true,
+      childSeat: true,
       status: VerificationStatus.verified,
-      documents: {
+      routeEligibility: const ['City', 'Intercity', 'Family tours', 'Neelum Valley'],
+      documents: const {
         'Registration document': true,
         'Insurance document': true,
         'Fitness certificate': true,
         'Front photo': true,
         'Rear photo': true,
+        'Interior photo': true,
       },
     ),
   ];
@@ -42,6 +51,75 @@ class AppController extends ChangeNotifier {
   final List<AdvanceBooking> _advanceBookings = [];
   final List<TourInterest> _tourInterests = [];
   final List<FamilyTourPlan> _familyPlans = [];
+  final List<PackageBooking> _packageBookings = [
+    PackageBooking(
+      id: 'PB-2041',
+      packageTitle: '3-Day Neelum Valley Escape',
+      customer: 'Ayesha Noor',
+      phone: '+92 300 555 0188',
+      travelDate: '15 Aug 2026',
+      bookingType: BookingType.perSeat,
+      seats: 3,
+      total: 36000,
+      status: 'Confirmed',
+    ),
+    PackageBooking(
+      id: 'PB-2042',
+      packageTitle: '3-Day Neelum Valley Escape',
+      customer: 'Hassan Ali',
+      phone: '+92 333 220 1104',
+      travelDate: '15 Aug 2026',
+      bookingType: BookingType.perSeat,
+      seats: 2,
+      total: 24000,
+    ),
+  ];
+
+  final List<TrustedContact> _trustedContacts = [
+    TrustedContact(
+      id: 'TC-1',
+      name: 'Amir Qureshi',
+      relationship: 'Brother',
+      phone: '+92 300 555 0112',
+      whatsapp: '+92 300 555 0112',
+      isGuardian: true,
+    ),
+    TrustedContact(
+      id: 'TC-2',
+      name: 'Sara Ahmad',
+      relationship: 'Spouse',
+      phone: '+92 321 400 8891',
+      whatsapp: '+92 321 400 8891',
+    ),
+  ];
+
+  final LiveTripSession _liveTrip = LiveTripSession(
+    id: 'TR-2048',
+    route: 'Ghari Pan → Keran → Sharda',
+    driver: 'Adeel Khan',
+    vehicle: 'Honda BR-V 2022',
+    registration: 'AJK-2190',
+    destination: 'Keran, Neelum Valley',
+    etaMinutes: 96,
+    currentLocation: 'Near Kohala Bridge',
+  );
+
+  final List<SafetyCheckIn> _checkIns = [
+    SafetyCheckIn(id: 'SC-1', tripId: 'TR-2048', prompt: 'Are you safe and comfortable?', dueLabel: 'Due in 18 minutes'),
+    SafetyCheckIn(id: 'SC-2', tripId: 'TR-2048', prompt: 'Confirm arrival at the planned rest stop.', dueLabel: 'After 1 hour'),
+  ];
+
+  final List<SafetyIncident> _incidents = [];
+  final List<RoadReport> _roadReports = [
+    RoadReport(
+      id: 'RR-101',
+      route: 'Muzaffarabad → Keran',
+      type: 'Light rain',
+      details: 'Road is open. Daylight travel is recommended.',
+      reportedAt: 'Today, 8:20 AM',
+      status: 'Verified by operations',
+    ),
+  ];
 
   bool get initialized => _initialized;
   bool get loggedIn => _loggedIn;
@@ -56,6 +134,34 @@ class AppController extends ChangeNotifier {
   List<AdvanceBooking> get advanceBookings => List.unmodifiable(_advanceBookings);
   List<TourInterest> get tourInterests => List.unmodifiable(_tourInterests);
   List<FamilyTourPlan> get familyPlans => List.unmodifiable(_familyPlans);
+  List<PackageBooking> get packageBookings => List.unmodifiable(_packageBookings);
+  List<TrustedContact> get trustedContacts => List.unmodifiable(_trustedContacts);
+  LiveTripSession get liveTrip => _liveTrip;
+  List<SafetyCheckIn> get safetyCheckIns => List.unmodifiable(_checkIns);
+  List<SafetyIncident> get incidents => List.unmodifiable(_incidents);
+  List<RoadReport> get roadReports => List.unmodifiable(_roadReports);
+  ShareDuration get shareDuration => _shareDuration;
+  TrustedContact? get guardian {
+    for (final contact in _trustedContacts) {
+      if (contact.isGuardian) return contact;
+    }
+    return null;
+  }
+
+  OfflineTravelCard get offlineTravelCard => OfflineTravelCard(
+        bookingId: _liveTrip.id,
+        driver: _liveTrip.driver,
+        driverPhone: '+92 300 901 2204',
+        vehicle: _liveTrip.vehicle,
+        registration: _liveTrip.registration,
+        pickup: 'Ghari Pan, Muzaffarabad',
+        destination: _liveTrip.destination,
+        tripOtp: '6421',
+        emergencyNumbers: const ['Rescue 1122', 'Police 15', 'uDrive Safety +92 300 000 1122'],
+        itinerary: const ['Muzaffarabad', 'Kohala viewpoint', 'Keran', 'Sharda'],
+        hotel: 'Neelum View Hotel, Keran',
+        lastKnownLocation: _liveTrip.currentLocation,
+      );
 
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
@@ -63,6 +169,7 @@ class AppController extends ChangeNotifier {
     _locale = Locale(prefs.getString('language') ?? 'en');
     _mode = (prefs.getString('mode') ?? 'customer') == 'driver' ? UserMode.driver : UserMode.customer;
     _driverOnline = prefs.getBool('driverOnline') ?? true;
+    _liveTrip.shareEnabled = prefs.getBool('liveShareEnabled') ?? false;
     _initialized = true;
     notifyListeners();
   }
@@ -110,8 +217,26 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateVehicleStatus(String id, VerificationStatus status) {
+    final vehicle = _vehicles.firstWhere((item) => item.id == id);
+    vehicle.status = status;
+    notifyListeners();
+  }
+
   void addPackage(TourPackage package) {
-    _driverPackages.add(package);
+    _driverPackages.insert(0, package);
+    notifyListeners();
+  }
+
+  void togglePackage(String id) {
+    final package = _driverPackages.firstWhere((item) => item.id == id);
+    package.status = package.status == 'Active' ? 'Paused' : 'Active';
+    notifyListeners();
+  }
+
+  void updatePackageBooking(String id, String status) {
+    final booking = _packageBookings.firstWhere((item) => item.id == id);
+    booking.status = status;
     notifyListeners();
   }
 
@@ -145,6 +270,109 @@ class AppController extends ChangeNotifier {
     _walletBalance -= amount;
     notifyListeners();
   }
+
+  void addTrustedContact(TrustedContact contact) {
+    _trustedContacts.add(contact);
+    notifyListeners();
+  }
+
+  void removeTrustedContact(String id) {
+    _trustedContacts.removeWhere((item) => item.id == id);
+    notifyListeners();
+  }
+
+  void setGuardian(String id) {
+    for (final contact in _trustedContacts) {
+      contact.isGuardian = contact.id == id;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setLiveSharing(bool value, ShareDuration duration) async {
+    _liveTrip.shareEnabled = value;
+    _shareDuration = duration;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('liveShareEnabled', value);
+    notifyListeners();
+  }
+
+  void advanceLiveTrip() {
+    final next = (_liveTrip.progress + .06).clamp(0.0, 1.0).toDouble();
+    applySimulatedLocation(
+      label: next < .45
+          ? 'Kohala Road'
+          : next < .72
+              ? 'Near Athmuqam'
+              : next < 1
+                  ? 'Approaching Keran'
+                  : 'Keran, Neelum Valley',
+      progress: next,
+      etaMinutes: (_liveTrip.etaMinutes - 6).clamp(0, 300).toInt(),
+    );
+  }
+
+  void applySimulatedLocation({required String label, required double progress, required int etaMinutes}) {
+    _liveTrip.currentLocation = label;
+    _liveTrip.progress = progress.clamp(0.0, 1.0).toDouble();
+    _liveTrip.etaMinutes = etaMinutes.clamp(0, 300).toInt();
+    _liveTrip.lastUpdated = 'Just now';
+    notifyListeners();
+  }
+
+  void setRouteDeviation(bool value) {
+    _liveTrip.routeDeviation = value;
+    if (value) {
+      createIncident(
+        title: 'Route deviation detected',
+        details: 'Vehicle moved away from the planned Muzaffarabad–Keran route.',
+        location: _liveTrip.currentLocation,
+        severity: 'Medium',
+      );
+    }
+    notifyListeners();
+  }
+
+  void respondToCheckIn(String id, SafetyCheckInStatus status) {
+    final checkIn = _checkIns.firstWhere((item) => item.id == id);
+    checkIn.status = status;
+    if (status == SafetyCheckInStatus.unsafe || status == SafetyCheckInStatus.medicalHelp) {
+      createIncident(
+        title: status == SafetyCheckInStatus.medicalHelp ? 'Medical help requested' : 'Passenger reported unsafe situation',
+        details: checkIn.prompt,
+        location: _liveTrip.currentLocation,
+        severity: 'Critical',
+      );
+    }
+    notifyListeners();
+  }
+
+  void createIncident({required String title, required String details, required String location, String severity = 'High'}) {
+    _incidents.insert(
+      0,
+      SafetyIncident(
+        id: 'INC-${DateTime.now().millisecondsSinceEpoch}',
+        title: title,
+        details: details,
+        location: location,
+        createdAt: 'Just now',
+        severity: severity,
+      ),
+    );
+    notifyListeners();
+  }
+
+  void resolveIncident(String id) {
+    final incident = _incidents.firstWhere((item) => item.id == id);
+    incident.status = IncidentStatus.resolved;
+    notifyListeners();
+  }
+
+  void addRoadReport(RoadReport report) {
+    _roadReports.insert(0, report);
+    notifyListeners();
+  }
+
+  String buildShareLink() => 'https://track.udrive.app/${_liveTrip.id.toLowerCase()}?demo=1';
 }
 
 class AppControllerScope extends InheritedNotifier<AppController> {

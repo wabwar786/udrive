@@ -1,36 +1,42 @@
-# uDrive Kashmir Tourism Mobile 4.0
+# uDrive Kashmir Tourism Mobile 5.0
 
-Unified Flutter mobile application with Customer and Driver modes, dummy authentication and local dummy data. The project already includes Android, iOS and web platform files.
+Unified Flutter application with Customer and Driver modes, premium tourism booking, advanced Driver package tools, safety workflows and a maps-ready live-trip experience.
 
 ## Demo login
 
-- Mobile number: any valid-looking Pakistani number
+- Phone: any valid-looking Pakistani mobile number
 - OTP: `1234`
-- Or select **Use demo account**
+- Or tap **Use demo account**
 
-## Phase 1 and Phase 2 features
+## Customer highlights
 
-- Faster startup with no artificial splash delay
-- Tourism-first premium home screen
-- Simple six-action customer dashboard
-- Advance date/time and return booking
+- Advance one-way/return booking
 - Per-seat and whole-vehicle booking
-- Transparent estimated price breakdown
-- Vehicle suitability recommendations
-- Family-only and women/family preferences
-- Join-a-Tour departures with privacy-safe passenger counts
-- Register tour interest and receive dummy matching notifications
-- Smart match percentage and route safety score
-- Family Tour Planner with generated itinerary
-- Dummy family driver search
-- Expanded Kashmir destinations and packages
-- Driver package creation with per-seat and whole-vehicle prices
-- Pickup point and family-only package options
+- Join a Tour and smart matching
+- Family Tour Planner
+- Kashmir destination and package discovery
+- Driver offers and transparent pricing
+- Live trip simulation and location sharing
+- Trusted contacts and Tour Guardian
+- Safety check-ins, SOS and Offline Travel Card
 - Customer/Driver mode switching
-- English and Urdu RTL
-- Complete vehicle registration
-- Railway web Docker deployment
-- GitHub APK and AAB build workflow
+
+## Driver highlights
+
+- Ride requests and counteroffers
+- Advanced tourism-package builder
+- Per-seat/whole-vehicle pricing
+- Package approval and booking controls
+- Vehicle registration with tourism safety equipment
+- Route suitability and mountain-readiness scoring
+- Road-condition reports
+- Live tracking and safety centre
+- Earnings and payout simulation
+
+## Languages
+
+- English
+- Urdu with RTL layout
 
 ## Run locally
 
@@ -39,17 +45,24 @@ flutter pub get
 flutter run
 ```
 
-Run in Chrome:
+If native platform wrappers are missing, run once:
 
 ```bash
-flutter run -d chrome
+flutter create . --platforms=android,ios,web --project-name=udrive_mobile --org=com.udrive
 ```
 
-## Build Android APK
+## Build test APK
+
+Linux/macOS:
 
 ```bash
-flutter pub get
-flutter build apk --release --dart-define=DEFAULT_MODE=customer
+./build_apk.sh
+```
+
+Windows:
+
+```text
+build_apk_windows.bat
 ```
 
 Output:
@@ -58,42 +71,26 @@ Output:
 build/app/outputs/flutter-apk/app-release.apk
 ```
 
-## Build Play Store AAB
+## GitHub Actions
 
-```bash
-flutter build appbundle --release --dart-define=DEFAULT_MODE=customer
-```
-
-Output:
-
-```text
-build/app/outputs/bundle/release/app-release.aab
-```
-
-## GitHub monorepo
-
-Keep this folder at:
-
-```text
-udrive_unified_mobile/
-```
-
-The root workflow is located at:
+The monorepo workflow is:
 
 ```text
 .github/workflows/build-mobile.yml
 ```
 
+It completes missing native scaffolding, validates files, analyzes source, runs tests, builds the Railway web release, APK and AAB, and uploads both Android artifacts.
+
 ## Railway
 
-Set the Railway Mobile service root directory to:
+Set service root directory to:
 
 ```text
 /udrive_unified_mobile
 ```
 
-Do not add a custom build command, start command or manual `PORT` variable.
+Do not add a custom build/start command or a manual `PORT` variable.
 
-## Architecture
+## Google Maps
 
-All current workflows use models in `lib/data/` and state in `lib/core/state/app_controller.dart`. These local repositories can later be replaced by authenticated APIs without redesigning the screens.
+The current map is a complete dummy simulation. See the repository-level `GOOGLE_MAPS_INTEGRATION.md` for the live provider plan.

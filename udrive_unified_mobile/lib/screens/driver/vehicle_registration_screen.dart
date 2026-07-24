@@ -98,6 +98,13 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
   late int _luggage = widget.existing?.luggage ?? 4;
   late bool _ac = widget.existing?.airConditioning ?? true;
   late bool _fourByFour = widget.existing?.fourWheelDrive ?? true;
+  late bool _heating = widget.existing?.heating ?? true;
+  late bool _firstAidKit = widget.existing?.firstAidKit ?? true;
+  late bool _fireExtinguisher = widget.existing?.fireExtinguisher ?? true;
+  late bool _spareTyre = widget.existing?.spareTyre ?? true;
+  late bool _snowChains = widget.existing?.snowChains ?? false;
+  late bool _roofCarrier = widget.existing?.roofCarrier ?? true;
+  late bool _childSeat = widget.existing?.childSeat ?? false;
   bool _declarationAccepted = true;
   late final Map<String, bool> _uploads = Map<String, bool>.from(widget.existing?.documents ?? {
     'Registration document': false,
@@ -179,12 +186,43 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
         _ValueSelector(label: context.tr('luggageCapacity'), icon: Icons.luggage_rounded, value: _luggage, min: 0, max: 20, onChanged: (v) => setState(() => _luggage = v)),
         const SizedBox(height: 12),
         PremiumCard(child: Column(children: [
-          SwitchListTile(contentPadding: EdgeInsets.zero, secondary: const Icon(Icons.ac_unit_rounded, color: AppColors.secondary), value: _ac, onChanged: (v) => setState(() => _ac = v), title: Text(context.tr('airConditioning'), style: const TextStyle(fontWeight: FontWeight.w900)), subtitle: const Text('Working air conditioning for passenger comfort.')),
+          _CapabilitySwitch(icon: Icons.ac_unit_rounded, title: context.tr('airConditioning'), subtitle: 'Working cooling system for passenger comfort.', value: _ac, onChanged: (v) => setState(() => _ac = v)),
           const Divider(),
-          SwitchListTile(contentPadding: EdgeInsets.zero, secondary: const Icon(Icons.terrain_rounded, color: AppColors.primaryDark), value: _fourByFour, onChanged: (v) => setState(() => _fourByFour = v), title: Text(context.tr('fourWheelDrive'), style: const TextStyle(fontWeight: FontWeight.w900)), subtitle: const Text('Eligible for approved mountain and rough-road routes.')),
+          _CapabilitySwitch(icon: Icons.device_thermostat_rounded, title: 'Heating', subtitle: 'Recommended for winter and high-altitude tours.', value: _heating, onChanged: (v) => setState(() => _heating = v)),
+          const Divider(),
+          _CapabilitySwitch(icon: Icons.terrain_rounded, title: context.tr('fourWheelDrive'), subtitle: 'Required for selected mountain and rough-road routes.', value: _fourByFour, onChanged: (v) => setState(() => _fourByFour = v)),
+          const Divider(),
+          _CapabilitySwitch(icon: Icons.medical_services_rounded, title: 'First-aid kit', subtitle: 'Sealed and available inside the vehicle.', value: _firstAidKit, onChanged: (v) => setState(() => _firstAidKit = v)),
+          const Divider(),
+          _CapabilitySwitch(icon: Icons.fire_extinguisher_rounded, title: 'Fire extinguisher', subtitle: 'Valid and easily accessible.', value: _fireExtinguisher, onChanged: (v) => setState(() => _fireExtinguisher = v)),
+          const Divider(),
+          _CapabilitySwitch(icon: Icons.tire_repair_rounded, title: 'Spare tyre and tools', subtitle: 'Required for intercity and tourism routes.', value: _spareTyre, onChanged: (v) => setState(() => _spareTyre = v)),
+          const Divider(),
+          _CapabilitySwitch(icon: Icons.ac_unit_outlined, title: 'Snow chains', subtitle: 'Required for approved snow routes.', value: _snowChains, onChanged: (v) => setState(() => _snowChains = v)),
+          const Divider(),
+          _CapabilitySwitch(icon: Icons.luggage_rounded, title: 'Roof carrier', subtitle: 'Secure luggage carrier for group tours.', value: _roofCarrier, onChanged: (v) => setState(() => _roofCarrier = v)),
+          const Divider(),
+          _CapabilitySwitch(icon: Icons.child_friendly_rounded, title: 'Child seat available', subtitle: 'Helps qualify for family-friendly packages.', value: _childSeat, onChanged: (v) => setState(() => _childSeat = v)),
         ])),
         const SizedBox(height: 12),
-        PremiumCard(color: const Color(0xFFEAF4FF), child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.route_rounded, color: AppColors.info), SizedBox(width: 10), Expanded(child: Text('Route eligibility is finalized by an administrator after vehicle and document inspection.', style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.4)))])),
+        PremiumCard(
+          color: const Color(0xFFEAF4FF),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.route_rounded, color: AppColors.info),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _fourByFour && _firstAidKit && _spareTyre
+                      ? 'Mountain-ready profile detected. Final route eligibility is assigned after admin inspection.'
+                      : 'Add 4×4 capability, first-aid kit and spare tyre for mountain-route eligibility.',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
       ]);
 
   Widget _documentsStep() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -205,6 +243,8 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
         _ReviewRow(label: context.tr('category'), value: _category),
         _ReviewRow(label: 'Capacity', value: '$_seats seats · $_luggage bags'),
         _ReviewRow(label: context.tr('fourWheelDrive'), value: _fourByFour ? 'Yes' : 'No'),
+        _ReviewRow(label: 'Tourism safety kit', value: '${[_firstAidKit, _fireExtinguisher, _spareTyre].where((e) => e).length}/3 ready'),
+        _ReviewRow(label: 'Family readiness', value: _childSeat ? 'Child seat available' : 'Standard seating'),
         _ReviewRow(label: context.tr('uploadDocuments'), value: '$completed/${_uploads.length} completed', last: true),
       ])),
       const SizedBox(height: 14),
@@ -241,6 +281,20 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
         luggage: _luggage,
         airConditioning: _ac,
         fourWheelDrive: _fourByFour,
+        heating: _heating,
+        firstAidKit: _firstAidKit,
+        fireExtinguisher: _fireExtinguisher,
+        spareTyre: _spareTyre,
+        snowChains: _snowChains,
+        roofCarrier: _roofCarrier,
+        childSeat: _childSeat,
+        routeEligibility: [
+          'City',
+          'Intercity',
+          if (_childSeat || _seats >= 5) 'Family tours',
+          if (_fourByFour && _firstAidKit && _spareTyre) 'Mountain routes',
+          if (_fourByFour && _snowChains) 'Snow routes',
+        ],
         status: VerificationStatus.pending,
         documents: _uploads,
       ));
@@ -256,6 +310,33 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
       ),
     );
   }
+}
+
+
+class _CapabilitySwitch extends StatelessWidget {
+  const _CapabilitySwitch({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        secondary: Icon(icon, color: value ? AppColors.primaryDark : AppColors.muted),
+        value: value,
+        onChanged: onChanged,
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
+      );
 }
 
 class _StepTitle extends StatelessWidget {

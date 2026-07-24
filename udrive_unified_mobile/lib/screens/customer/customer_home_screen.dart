@@ -23,6 +23,8 @@ class CustomerHomeScreen extends StatelessWidget {
             const _CustomerHeader(),
             const SizedBox(height: 18),
             _QuickSearch(onTap: () => _openBooking(context)),
+            const SizedBox(height: 14),
+            _LiveTripShortcut(onTap: () => onNavigate('liveTracking')),
             const SizedBox(height: 18),
             _PrimaryActionGrid(onNavigate: onNavigate),
             const SizedBox(height: 20),
@@ -98,6 +100,40 @@ class _QuickSearch extends StatelessWidget {
             const SizedBox(height: 14),
             Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(17)), child: Row(children: [const Icon(Icons.search_rounded, color: AppColors.primaryDark), const SizedBox(width: 9), Expanded(child: Text(context.tr('searchDestination'), style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700))), const Icon(Icons.arrow_forward_rounded, color: AppColors.navy)])),
           ]),
+        ),
+      );
+}
+
+
+class _LiveTripShortcut extends StatelessWidget {
+  const _LiveTripShortcut({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => PremiumCard(
+        onTap: onTap,
+        color: const Color(0xFFEAF4FF),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(color: AppColors.info.withValues(alpha: .12), borderRadius: BorderRadius.circular(15)),
+              child: const Icon(Icons.share_location_rounded, color: AppColors.info),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Live trip to Neelum Valley', style: TextStyle(fontWeight: FontWeight.w900)),
+                  SizedBox(height: 3),
+                  Text('Near Kohala Bridge · 96 min ETA · Guardian monitoring ready', style: TextStyle(color: AppColors.muted, fontSize: 11, height: 1.35)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded),
+          ],
         ),
       );
 }

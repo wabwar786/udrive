@@ -224,6 +224,8 @@ Color verificationColor(VerificationStatus status) {
     VerificationStatus.pending => AppColors.warning,
     VerificationStatus.draft => AppColors.muted,
     VerificationStatus.rejected => AppColors.danger,
+    VerificationStatus.suspended => AppColors.danger,
+    VerificationStatus.expired => AppColors.muted,
   };
 }
 
@@ -233,5 +235,7 @@ String verificationLabel(BuildContext context, VerificationStatus status) {
     VerificationStatus.pending => context.tr('pending'),
     VerificationStatus.draft => context.tr('draft'),
     VerificationStatus.rejected => 'Rejected',
+    VerificationStatus.suspended => 'Suspended',
+    VerificationStatus.expired => 'Expired',
   };
 }

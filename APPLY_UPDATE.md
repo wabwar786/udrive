@@ -1,58 +1,49 @@
-# Apply this update to `wabwar786/udrive`
+# Apply uDrive Phase 3–6 Update
 
-This package is aligned with the existing monorepo. It intentionally contains only:
+This package is designed for the `wabwar786/udrive` monorepo.
 
-```text
-.github/workflows/build-mobile.yml
-udrive_unified_mobile/
-```
+## Safe replacement
 
-It does not replace or modify `admin_portal` or `docs`.
+1. Extract this ZIP.
+2. In your local repository, delete the existing `udrive_unified_mobile` folder.
+3. Copy the extracted `udrive_unified_mobile` folder into the repository root.
+4. Copy/merge `.github/workflows/build-mobile.yml` into the repository root.
+5. Do not replace or delete `admin_portal`.
 
-## Windows steps
-
-1. Download and extract this ZIP.
-2. Open your local cloned `udrive` repository.
-3. Delete the existing `udrive_unified_mobile` folder.
-4. Copy the extracted `.github` and `udrive_unified_mobile` folders into the repository root.
-5. Confirm the repository looks like:
+Expected structure:
 
 ```text
 udrive/
-├── .github/
-│   └── workflows/
-│       └── build-mobile.yml
+├── .github/workflows/build-mobile.yml
 ├── admin_portal/
 ├── docs/
 └── udrive_unified_mobile/
 ```
 
-6. Commit and push:
+## Push
 
 ```bash
+git status
 git add .
-git commit -m "Upgrade unified uDrive premium mobile app"
+git commit -m "Add uDrive tourism phases 3 to 6"
 git push origin main
 ```
 
 ## Railway
 
-Keep the mobile service root directory as:
+Keep the Mobile service root directory:
 
 ```text
 /udrive_unified_mobile
 ```
 
-The included Dockerfile builds and hosts the Flutter web preview.
+Use **Deploy Latest Commit**. Do not configure a custom build command, start command or manual `PORT` variable.
 
-## Download APK from GitHub
+## APK and AAB
 
-1. Open the repository on GitHub.
-2. Select **Actions**.
-3. Open **Build uDrive APK and AAB**.
-4. Select **Run workflow**.
-5. Open the completed run.
-6. Download `udrive-premium-apk` under **Artifacts**.
-7. Extract the artifact ZIP to get `app-release.apk`.
+Open GitHub → Actions → **Build uDrive APK and AAB** → Run workflow.
 
-The `udrive-play-store-aab` artifact is for Google Play after production signing is configured.
+Artifacts:
+
+- `udrive-tourism-phase-3-6-apk`
+- `udrive-tourism-phase-3-6-aab`

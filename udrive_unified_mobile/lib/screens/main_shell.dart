@@ -12,7 +12,11 @@ import 'customer/join_tour_screen.dart';
 import 'customer/tourism_booking_screen.dart';
 import 'driver/driver_home_screen.dart';
 import 'driver/driver_pages.dart';
+import 'driver/advanced_package_screen.dart';
+import 'driver/driver_tourism_tools.dart';
 import 'driver/vehicle_registration_screen.dart';
+import 'maps/live_tracking_screen.dart';
+import 'safety/safety_hub_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -122,6 +126,10 @@ class _MainShellState extends State<MainShell> {
       'wallet': 'wallet',
       'saved': 'savedPlaces',
       'safety': 'safety',
+      'liveTracking': 'liveTracking',
+      'trustedContacts': 'trustedContacts',
+      'tourGuardian': 'tourGuardian',
+      'offlineCard': 'offlineTravelCard',
       'notifications': 'notifications',
       'support': 'support',
       'settings': 'settings',
@@ -131,6 +139,11 @@ class _MainShellState extends State<MainShell> {
       'activeTrip': 'activeTrip',
       'driverPackages': 'myPackages',
       'createPackage': 'createPackage',
+      'packageBookings': 'packageBookings',
+      'vehicleSuitability': 'vehicleSuitability',
+      'roadReports': 'roadReports',
+      'driverSafety': 'safety',
+      'driverLiveTracking': 'liveTracking',
       'earnings': 'earnings',
       'payouts': 'payouts',
       'vehicles': 'vehicles',
@@ -152,7 +165,11 @@ class _MainShellState extends State<MainShell> {
         'trips' => const TripsScreen(),
         'wallet' => const WalletScreen(),
         'saved' => const SavedPlacesScreen(),
-        'safety' => const SafetyScreen(),
+        'safety' => const SafetyHubScreen(),
+        'liveTracking' => const LiveTrackingScreen(),
+        'trustedContacts' => const TrustedContactsScreen(),
+        'tourGuardian' => const TourGuardianScreen(),
+        'offlineCard' => const OfflineTravelCardScreen(),
         'notifications' => const NotificationsScreen(),
         'support' => const SupportScreen(),
         'settings' => const SettingsScreen(),
@@ -164,8 +181,13 @@ class _MainShellState extends State<MainShell> {
         'dashboard' => DriverHomeScreen(onNavigate: _driverNavigate),
         'requests' => const DriverRequestsScreen(),
         'activeTrip' => const ActiveDriverTripScreen(),
-        'driverPackages' => DriverPackagesScreen(onNavigate: _driverNavigate),
-        'createPackage' => const CreatePackageScreen(),
+        'driverPackages' => DriverTourismPackagesScreen(onNavigate: _driverNavigate),
+        'createPackage' => const AdvancedCreatePackageScreen(),
+        'packageBookings' => const PackageBookingsScreen(),
+        'vehicleSuitability' => const VehicleSuitabilityScreen(),
+        'roadReports' => const DriverRoadReportsScreen(),
+        'driverSafety' => const SafetyHubScreen(),
+        'driverLiveTracking' => const LiveTrackingScreen(),
         'earnings' => const DriverEarningsScreen(),
         'payouts' => const DriverWalletScreen(),
         'vehicles' => const VehicleListScreen(),
@@ -297,6 +319,10 @@ class _PremiumDrawer extends StatelessWidget {
         ('wallet', Icons.account_balance_wallet_rounded, context.tr('wallet')),
         ('saved', Icons.bookmark_rounded, context.tr('savedPlaces')),
         ('safety', Icons.health_and_safety_rounded, context.tr('safety')),
+        ('liveTracking', Icons.share_location_rounded, context.tr('liveTracking')),
+        ('trustedContacts', Icons.people_alt_rounded, context.tr('trustedContacts')),
+        ('tourGuardian', Icons.admin_panel_settings_rounded, context.tr('tourGuardian')),
+        ('offlineCard', Icons.download_for_offline_rounded, context.tr('offlineTravelCard')),
         ('notifications', Icons.notifications_rounded, context.tr('notifications')),
         ('support', Icons.support_agent_rounded, context.tr('support')),
         ('settings', Icons.settings_rounded, context.tr('settings')),
@@ -309,11 +335,16 @@ class _PremiumDrawer extends StatelessWidget {
         ('activeTrip', Icons.navigation_rounded, context.tr('activeTrip')),
         ('driverPackages', Icons.luggage_rounded, context.tr('myPackages')),
         ('createPackage', Icons.add_box_rounded, context.tr('createPackage')),
+        ('packageBookings', Icons.confirmation_number_rounded, context.tr('packageBookings')),
+        ('vehicleSuitability', Icons.terrain_rounded, context.tr('vehicleSuitability')),
         ('earnings', Icons.insights_rounded, context.tr('earnings')),
         ('payouts', Icons.account_balance_wallet_rounded, context.tr('payouts')),
         ('vehicles', Icons.directions_car_filled_rounded, context.tr('vehicles')),
         ('documents', Icons.fact_check_rounded, context.tr('documents')),
         ('availability', Icons.calendar_month_rounded, context.tr('availability')),
+        ('roadReports', Icons.add_road_rounded, context.tr('roadReports')),
+        ('driverLiveTracking', Icons.share_location_rounded, context.tr('liveTracking')),
+        ('driverSafety', Icons.health_and_safety_rounded, context.tr('safety')),
         ('reviews', Icons.star_rounded, context.tr('reviews')),
         ('support', Icons.support_agent_rounded, context.tr('support')),
         ('settings', Icons.settings_rounded, context.tr('settings')),

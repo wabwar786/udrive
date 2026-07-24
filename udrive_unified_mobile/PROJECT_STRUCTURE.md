@@ -1,26 +1,27 @@
 # Project Structure
 
 ```text
-udrive_premium_mobile/
-├── .github/workflows/build-mobile.yml
-├── android/                    # Android application and native splash/icon
-├── ios/                        # iOS application resources
-├── web/                        # PWA/web files
-├── assets/images/              # Brand and local destination artwork
-├── lib/
-│   ├── core/
-│   │   ├── localization/
-│   │   ├── state/
-│   │   ├── theme/
-│   │   └── widgets/
-│   ├── data/                   # Dummy models and data
-│   └── screens/
-│       ├── auth/
-│       ├── common/
-│       ├── customer/
-│       └── driver/
-├── test/
-├── Dockerfile
-├── pubspec.yaml
-└── README.md
+lib/
+├── core/
+│   ├── localization/
+│   ├── services/
+│   │   ├── map_config.dart
+│   │   └── simulated_location_service.dart
+│   ├── state/app_controller.dart
+│   ├── theme/
+│   └── widgets/
+├── data/
+│   ├── dummy_data.dart
+│   └── models.dart
+└── screens/
+    ├── auth/
+    ├── common/
+    ├── customer/
+    ├── driver/
+    ├── maps/live_tracking_screen.dart
+    ├── safety/safety_hub_screen.dart
+    ├── main_shell.dart
+    └── splash_screen.dart
 ```
+
+`AppController` is the dummy state boundary. Later, replace its local mutations with authenticated API repositories while keeping screen contracts stable.

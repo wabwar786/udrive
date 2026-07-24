@@ -61,8 +61,10 @@ class DriverHomeScreen extends StatelessWidget {
           children: [
             _DriverTool(icon: Icons.directions_car_filled_rounded, label: context.tr('vehicles'), color: AppColors.primary, onTap: () => onNavigate('vehicles')),
             _DriverTool(icon: Icons.add_box_rounded, label: context.tr('createPackage'), color: const Color(0xFF7C3AED), onTap: () => onNavigate('createPackage')),
-            _DriverTool(icon: Icons.account_balance_wallet_rounded, label: context.tr('payouts'), color: AppColors.secondary, onTap: () => onNavigate('payouts')),
-            _DriverTool(icon: Icons.calendar_month_rounded, label: context.tr('availability'), color: AppColors.accent, onTap: () => onNavigate('availability')),
+            _DriverTool(icon: Icons.confirmation_number_rounded, label: context.tr('packageBookings'), color: AppColors.secondary, onTap: () => onNavigate('packageBookings')),
+            _DriverTool(icon: Icons.terrain_rounded, label: context.tr('vehicleSuitability'), color: const Color(0xFFEA580C), onTap: () => onNavigate('vehicleSuitability')),
+            _DriverTool(icon: Icons.add_road_rounded, label: context.tr('roadReports'), color: AppColors.warning, onTap: () => onNavigate('roadReports')),
+            _DriverTool(icon: Icons.account_balance_wallet_rounded, label: context.tr('payouts'), color: AppColors.info, onTap: () => onNavigate('payouts')),
           ],
         ),
         const SizedBox(height: 22),
