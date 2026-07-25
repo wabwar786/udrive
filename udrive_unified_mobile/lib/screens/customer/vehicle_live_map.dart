@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -20,6 +21,7 @@ class VehicleLiveMap extends StatefulWidget {
 }
 
 class _VehicleLiveMapState extends State<VehicleLiveMap> {
+  final MapController _mapController = MapController();
   LivePackageVehicleLocation? _vehicle;
   Position? _customer;
   String? _error;
@@ -30,12 +32,16 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) => _load(silent: true));
+    _refreshTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _load(silent: true),
+    );
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -51,13 +57,12 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
         _customer = customer;
         _error = null;
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _fitMap());
     } catch (_) {
-      // A Driver may not have published a GPS point yet. Keep the detail and
-      // booking screen usable instead of exposing a generic API exception.
       if (!mounted) return;
       setState(() {
         _customer = customer;
-        _error = 'Live vehicle location is not available yet. You can still review and book available seats.';
+        _error = 'Live vehicle location is not available yet. The map will update automatically every minute.';
       });
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -102,6 +107,28 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
       ? null
       : LatLng(_customer!.latitude, _customer!.longitude);
 
+  List<LatLng> get _visiblePoints => [
+        if (_vehiclePoint != null) _vehiclePoint!,
+        if (_customerPoint != null) _customerPoint!,
+        if (_destinationPoint != null) _destinationPoint!,
+      ];
+
+  void _fitMap() {
+    final points = _visiblePoints;
+    if (!mounted || points.isEmpty) return;
+    if (points.length == 1) {
+      _mapController.move(points.first, 13);
+      return;
+    }
+    _mapController.fitCamera(
+      CameraFit.coordinates(
+        coordinates: points,
+        padding: const EdgeInsets.all(42),
+        maxZoom: 15,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final vehiclePoint = _vehiclePoint;
@@ -139,55 +166,63 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
                 Positioned.fill(
                   child: mapCenter == null
                       ? _MapUnavailable(loading: _loading)
-                      : GoogleMap(
-                          initialCameraPosition: CameraPosition(
-                            target: mapCenter,
-                            zoom: vehiclePoint != null ? 14 : 11,
+                      : FlutterMap(
+                          mapController: _mapController,
+                          options: MapOptions(
+                            initialCenter: mapCenter,
+                            initialZoom: vehiclePoint != null ? 14 : 11,
+                            interactionOptions: const InteractionOptions(
+                              flags: InteractiveFlag.all &
+                                  ~InteractiveFlag.rotate,
+                            ),
                           ),
-                          myLocationEnabled: customerPoint != null,
-                          myLocationButtonEnabled: true,
-                          zoomControlsEnabled: false,
-                          mapToolbarEnabled: false,
-                          markers: {
-                            if (vehiclePoint != null)
-                              Marker(
-                                markerId: const MarkerId('vehicle'),
-                                position: vehiclePoint,
-                                infoWindow: InfoWindow(
-                                  title: widget.package.vehicle,
-                                  snippet: widget.package.registrationNumber,
-                                ),
-                              ),
-                            if (customerPoint != null)
-                              Marker(
-                                markerId: const MarkerId('customer'),
-                                position: customerPoint,
-                                icon: BitmapDescriptor.defaultMarkerWithHue(
-                                  BitmapDescriptor.hueAzure,
-                                ),
-                                infoWindow: const InfoWindow(title: 'Your location'),
-                              ),
-                            if (destinationPoint != null)
-                              Marker(
-                                markerId: const MarkerId('destination'),
-                                position: destinationPoint,
-                                icon: BitmapDescriptor.defaultMarkerWithHue(
-                                  BitmapDescriptor.hueGreen,
-                                ),
-                                infoWindow: InfoWindow(
-                                  title: widget.package.destination,
-                                ),
-                              ),
-                          },
-                          polylines: {
+                          children: [
+                            TileLayer(
+                              urlTemplate:
+                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.udrive.mobile',
+                              maxZoom: 19,
+                            ),
                             if (vehiclePoint != null && customerPoint != null)
-                              Polyline(
-                                polylineId: const PolylineId('vehicle-to-customer'),
-                                points: [vehiclePoint, customerPoint],
-                                width: 5,
-                                color: AppColors.primary,
+                              PolylineLayer(
+                                polylines: [
+                                  Polyline(
+                                    points: [vehiclePoint, customerPoint],
+                                    strokeWidth: 5,
+                                    color: AppColors.primary,
+                                  ),
+                                ],
                               ),
-                          },
+                            MarkerLayer(
+                              markers: [
+                                if (vehiclePoint != null)
+                                  _marker(
+                                    vehiclePoint,
+                                    Icons.directions_car_filled_rounded,
+                                    AppColors.primary,
+                                  ),
+                                if (customerPoint != null)
+                                  _marker(
+                                    customerPoint,
+                                    Icons.person_pin_circle_rounded,
+                                    Colors.blue,
+                                  ),
+                                if (destinationPoint != null)
+                                  _marker(
+                                    destinationPoint,
+                                    Icons.flag_circle_rounded,
+                                    AppColors.success,
+                                  ),
+                              ],
+                            ),
+                            const RichAttributionWidget(
+                              attributions: [
+                                TextSourceAttribution(
+                                  'OpenStreetMap contributors',
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                 ),
                 Positioned(
@@ -263,10 +298,10 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
                 const SizedBox(height: 6),
                 Text(
                   vehiclePoint == null
-                      ? 'The destination is shown. Vehicle GPS will appear when the Driver starts sharing location.'
+                      ? 'Vehicle GPS will appear when the assigned Driver starts sharing location.'
                       : distanceKm == null
-                          ? 'Vehicle location is live. Allow location access to calculate arrival time to you.'
-                          : '${distanceKm.toStringAsFixed(1)} km from your current location. ETA is approximate and may change with traffic.',
+                          ? 'Vehicle location is live. Allow your location to calculate approximate arrival time.'
+                          : '${distanceKm.toStringAsFixed(1)} km from you. ETA is approximate and does not include live traffic.',
                   style: const TextStyle(
                     color: AppColors.muted,
                     fontSize: 11,
@@ -293,6 +328,15 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 6),
+                const Text(
+                  'Location refreshes automatically every 1 minute.',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
             ),
           ),
@@ -300,6 +344,26 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
       ),
     );
   }
+
+  Marker _marker(LatLng point, IconData icon, Color color) => Marker(
+        point: point,
+        width: 46,
+        height: 46,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .18),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+          child: Icon(icon, color: color, size: 25),
+        ),
+      );
 
   double _distanceKm(LatLng a, LatLng b) {
     const radius = 6371.0;
@@ -385,7 +449,9 @@ class _MapUnavailable extends StatelessWidget {
               const Icon(Icons.map_outlined, size: 44, color: AppColors.muted),
             const SizedBox(height: 10),
             Text(
-              loading ? 'Loading live map…' : 'Waiting for the Driver to share live GPS.',
+              loading
+                  ? 'Loading live map…'
+                  : 'Waiting for the Driver to share live GPS.',
               style: const TextStyle(
                 color: AppColors.muted,
                 fontWeight: FontWeight.w700,

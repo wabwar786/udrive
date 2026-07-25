@@ -1,13 +1,32 @@
-# Phase 13.5 — Home Vehicle Cards Final Cleanup
+# uDrive free one-minute live tracking update
 
-Replace the included files under `udrive_unified_mobile`.
+## What changed
 
-Changes:
-- Compact vehicle cards with image, route, date/time, fare and free seats.
-- Entire vehicle card opens the existing live-location and booking page.
-- Search filters **destination only** (not vehicle, registration, pickup or starting city).
-- Maximum 10 cards remain visible on Home.
-- A failed optional marketplace request no longer adds a generic error below successfully loaded vehicles.
-- Missing Driver GPS now shows a clean waiting state; booking remains usable.
+- Google Maps JavaScript API and API-key dependency removed.
+- Embedded map now uses `flutter_map` with OpenStreetMap tiles.
+- Driver app sends authenticated GPS every 60 seconds while an eligible active trip exists and the app is open.
+- Driver identity and trip ownership remain validated by the API/JWT.
+- Customer vehicle map refreshes every 60 seconds.
+- Customer sees vehicle, own position, destination, last update, straight-line distance and approximate ETA.
+- Offline Driver points continue to queue and retry in chronological order.
 
-Deploy Flutter web and clear the service-worker/site cache once after deployment.
+## Replace/add files
+
+Copy the `udrive_unified_mobile` folder over the current project and overwrite files.
+
+## Build
+
+```bash
+flutter pub get
+flutter analyze
+flutter build web --release --no-wasm-dry-run
+```
+
+No Google Maps key is required after this update.
+
+## Important behavior
+
+- Tracking runs only for assigned active trip states: DriverAccepted, DriverEnRoute, DriverArrived, TripStarted, Emergency.
+- It stops after completion/cancellation/no active assignment.
+- Web browsers may throttle timers in a hidden/background tab. Native Android/iOS background tracking requires platform background-location permission and an OS foreground/background service configuration.
+- ETA is approximate from straight-line distance and an assumed 30 km/h speed; it is not live-traffic routing.

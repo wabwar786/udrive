@@ -3,6 +3,7 @@ import '../core/localization/app_strings.dart';
 import '../core/state/app_controller.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/brand.dart';
+import '../core/widgets/driver_location_coordinator.dart';
 import '../data/models.dart';
 import 'common/common_pages.dart';
 import 'customer/customer_home_screen.dart';
@@ -52,7 +53,9 @@ class _MainShellState extends State<MainShell> {
         ? (controller.locale.languageCode == 'ur' ? 'ڈرائیور کی تصدیق' : 'Driver verification')
         : _titleFor(pageKey, driver);
 
-    return Scaffold(
+    return DriverLocationCoordinator(
+      enabled: driver && !driverNeedsVerification,
+      child: Scaffold(
       drawer: _PremiumDrawer(
         mode: controller.mode,
         current: pageKey,
@@ -74,45 +77,17 @@ class _MainShellState extends State<MainShell> {
         },
       ),
       appBar: AppBar(
-        title: Text(
-          !driver && pageKey == 'home'
-              ? _customerGreeting(controller)
-              : title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: !driver && pageKey == 'home' ? 18 : 20,
-          ),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
         actions: [
           IconButton(
             tooltip: context.tr('notifications'),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => Scaffold(
-                  appBar: AppBar(title: Text(context.tr('notifications'))),
-                  body: const NotificationsScreen(),
-                ),
-              ),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: Text(context.tr('notifications'))), body: const NotificationsScreen()))),
+            icon: Badge(
+              label: const Text('2'),
+              child: const Icon(Icons.notifications_none_rounded),
             ),
-            icon: const Icon(Icons.notifications_none_rounded),
           ),
-          if (!driver)
-            Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: IconButton.filledTonal(
-                tooltip: context.tr('profile'),
-                onPressed: () => setState(() => _customerPage = 'profile'),
-                icon: Text(
-                  _initials(controller.currentUserName),
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
-                ),
-              ),
-            )
-          else
-            const SizedBox(width: 8),
+          const SizedBox(width: 8),
         ],
       ),
       body: AnimatedSwitcher(
@@ -120,24 +95,8 @@ class _MainShellState extends State<MainShell> {
         child: KeyedSubtree(key: ValueKey('${controller.mode.name}-$pageKey'), child: page),
       ),
       bottomNavigationBar: driverNeedsVerification ? null : _bottomNavigation(driver),
+      ),
     );
-  }
-
-  String _customerGreeting(AppController controller) {
-    final hour = DateTime.now().toUtc().add(const Duration(hours: 5)).hour;
-    final nameParts = controller.currentUserName.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
-    final firstName = nameParts.isEmpty ? 'uDrive User' : nameParts.first;
-    if (controller.locale.languageCode == 'ur') {
-      final greeting = hour < 12 ? 'صبح بخیر' : hour < 17 ? 'دوپہر بخیر' : 'شب بخیر';
-      return '$greeting، $firstName';
-    }
-    final greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-    return '$greeting, $firstName';
-  }
-
-  String _initials(String value) {
-    final parts = value.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).take(2).toList();
-    return parts.isEmpty ? 'U' : parts.map((part) => part.substring(0, 1).toUpperCase()).join();
   }
 
   Widget _bottomNavigation(bool driver) {
