@@ -41,18 +41,24 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
 
   Future<void> _load({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loading = true);
+    final customer = await _readCustomerPosition();
     try {
       final vehicle = await AppControllerScope.of(context)
           .loadPackageVehicleLocation(widget.package.id);
-      final customer = await _readCustomerPosition();
       if (!mounted) return;
       setState(() {
         _vehicle = vehicle;
         _customer = customer;
         _error = null;
       });
-    } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+    } catch (_) {
+      // A Driver may not have published a GPS point yet. Keep the detail and
+      // booking screen usable instead of exposing a generic API exception.
+      if (!mounted) return;
+      setState(() {
+        _customer = customer;
+        _error = 'Live vehicle location is not available yet. You can still review and book available seats.';
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -282,7 +288,7 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
                   Text(
                     _error!,
                     style: const TextStyle(
-                      color: AppColors.danger,
+                      color: AppColors.muted,
                       fontSize: 11,
                     ),
                   ),
@@ -379,7 +385,7 @@ class _MapUnavailable extends StatelessWidget {
               const Icon(Icons.map_outlined, size: 44, color: AppColors.muted),
             const SizedBox(height: 10),
             Text(
-              loading ? 'Loading live map…' : 'Map coordinates are unavailable.',
+              loading ? 'Loading live map…' : 'Waiting for the Driver to share live GPS.',
               style: const TextStyle(
                 color: AppColors.muted,
                 fontWeight: FontWeight.w700,

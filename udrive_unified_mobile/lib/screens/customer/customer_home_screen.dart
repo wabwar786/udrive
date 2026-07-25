@@ -159,8 +159,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           _VehiclesSectionHeader(
             title: _t('Vehicles going your way', 'آپ کے راستے کی گاڑیاں'),
             subtitle: _t(
-              'Search a city and reserve an available seat.',
-              'شہر تلاش کریں اور دستیاب سیٹ بک کریں۔',
+              'Search your destination and reserve an available seat.',
+              'اپنی منزل تلاش کریں اور دستیاب سیٹ بک کریں۔',
             ),
             onViewAll: () => widget.onNavigate('packages'),
           ),
@@ -170,8 +170,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
               hintText: _t(
-                'Search destination, city or vehicle',
-                'منزل، شہر یا گاڑی تلاش کریں',
+                'Where do you want to go?',
+                'آپ کہاں جانا چاہتے ہیں؟',
               ),
               prefixIcon: const Icon(Icons.search_rounded),
               suffixIcon: _query.isEmpty
@@ -211,10 +211,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
               ),
             ),
-          if (controller.marketplaceError != null) ...[
+          // Optional marketplace requests must not place a generic error at
+          // the bottom of Home when scheduled vehicles loaded successfully.
+          if (controller.marketplaceError != null && vehicles.isEmpty && !controller.marketplaceBusy) ...[
             const SizedBox(height: 8),
             _ErrorBanner(
-              message: controller.marketplaceError!,
+              message: _t(
+                'Vehicles could not be refreshed. Pull down or tap retry.',
+                'گاڑیاں ریفریش نہیں ہو سکیں۔ نیچے کھینچیں یا دوبارہ کوشش کریں۔',
+              ),
               onRetry: _refresh,
             ),
           ],
@@ -228,17 +233,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ..sort((a, b) => a.departureAt.compareTo(b.departureAt));
     final filtered = _query.isEmpty
         ? sorted
-        : sorted.where((package) {
-            final searchable = [
-              package.startingCity,
-              package.pickupPoint,
-              package.destination,
-              package.title,
-              package.vehicle,
-              package.registrationNumber,
-            ].join(' ').toLowerCase();
-            return searchable.contains(_query);
-          });
+        : sorted.where(
+            (package) => package.destination.toLowerCase().contains(_query),
+          );
     return filtered.take(10).toList();
   }
 
@@ -388,41 +385,34 @@ class _ScheduledVehicleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final seats = package.bookableSeats;
-    final urgent = seats > 0 && seats <= 3;
     final money = NumberFormat('#,###').format(package.pricePerSeat);
+    final image = package.coverImageUrl?.trim();
 
     return PremiumCard(
       onTap: seats > 0 ? onTap : null,
       padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFFEAF2FF), Color(0xFFF7FAFF)],
-              ),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Row(
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF3568D4), Color(0xFF5A8AF0)],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(
-                    _vehicleIcon(package.vehicle),
-                    color: Colors.white,
-                    size: 27,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(13),
+                  child: SizedBox(
+                    width: 58,
+                    height: 58,
+                    child: image != null && image.isNotEmpty
+                        ? Image.network(
+                            image,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _vehicleFallback(),
+                          )
+                        : _vehicleFallback(),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,10 +423,10 @@ class _ScheduledVehicleCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
-                          fontSize: 15,
+                          fontSize: 14.5,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         package.registrationNumber.isEmpty
                             ? package.title
@@ -445,146 +435,126 @@ class _ScheduledVehicleCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: AppColors.muted,
-                          fontSize: 10.5,
+                          fontSize: 10,
                         ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.schedule_rounded, size: 14, color: AppColors.muted),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              DateFormat('dd MMM · hh:mm a').format(package.departureAt),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
-                StatusPill(
-                  label: seats > 0 ? '$seats free' : 'Full',
-                  color: seats == 0
-                      ? AppColors.danger
-                      : urgent
-                          ? AppColors.warning
-                          : AppColors.success,
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Expanded(
-                      child: _RoutePlace(
-                        icon: Icons.trip_origin_rounded,
-                        label: package.startingCity,
+                    const Text(
+                      'Fare per seat',
+                      style: TextStyle(color: AppColors.muted, fontSize: 9.5),
+                    ),
+                    Text(
+                      'PKR $money',
+                      maxLines: 1,
+                      softWrap: false,
+                      style: const TextStyle(
+                        color: AppColors.primaryDark,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 18,
-                        color: AppColors.muted,
+                    const SizedBox(height: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: seats > 0
+                            ? const Color(0xFFE2F7EF)
+                            : const Color(0xFFFFE8E8),
+                        borderRadius: BorderRadius.circular(999),
                       ),
-                    ),
-                    Expanded(
-                      child: _RoutePlace(
-                        icon: Icons.location_on_rounded,
-                        label: package.destination,
-                        alignEnd: true,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _FactChip(
-                      icon: Icons.schedule_rounded,
-                      text: DateFormat('dd MMM · hh:mm a')
-                          .format(package.departureAt),
-                    ),
-                    _FactChip(
-                      icon: Icons.airline_seat_recline_normal_rounded,
-                      text: '$seats/${package.totalSeats} seats available',
-                    ),
-                  ],
-                ),
-                const Divider(height: 24),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F7F1),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFBFE8D8)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Fare per seat',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'PKR $money',
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.fade,
-                        style: const TextStyle(
+                      child: Text(
+                        seats > 0 ? '$seats seats free' : 'Full',
+                        style: TextStyle(
+                          color: seats > 0 ? AppColors.primaryDark : AppColors.danger,
                           fontWeight: FontWeight.w900,
-                          fontSize: 18,
-                          color: AppColors.primaryDark,
+                          fontSize: 9.5,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: seats > 0 ? onTap : null,
-                    icon: const Icon(Icons.map_rounded, size: 18),
-                    label: Text(
-                      seats > 0
-                          ? 'View live location & book seat'
-                          : 'Fully booked',
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 9),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2F8F6),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.trip_origin_rounded, size: 14, color: AppColors.primary),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      package.startingCity,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    child: Icon(Icons.arrow_forward_rounded, size: 15, color: AppColors.muted),
+                  ),
+                  Expanded(
+                    child: Text(
+                      package.destination,
+                      textAlign: TextAlign.end,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.primaryDark,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  const Icon(Icons.location_on_rounded, size: 14, color: AppColors.primary),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  static IconData _vehicleIcon(String value) {
-    final lower = value.toLowerCase();
-    if (lower.contains('coaster') || lower.contains('bus')) {
-      return Icons.directions_bus_filled_rounded;
-    }
-    if (lower.contains('jeep') || lower.contains('land cruiser')) {
-      return Icons.terrain_rounded;
-    }
-    if (lower.contains('van') || lower.contains('hiace')) {
-      return Icons.airport_shuttle_rounded;
-    }
-    return Icons.directions_car_filled_rounded;
-  }
+  static Widget _vehicleFallback() => const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF3568D4), Color(0xFF5A8AF0)],
+          ),
+        ),
+        child: Icon(Icons.directions_car_filled_rounded, color: Colors.white, size: 28),
+      );
 }
 
 class _RoutePlace extends StatelessWidget {
