@@ -615,7 +615,7 @@ class _RoutePlace extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontWeight: FontWeight.w900,
-                color: alignEnd ? AppColors.primaryDark : AppColors.text,
+                color: alignEnd ? AppColors.primaryDark : AppColors.navy,
               ),
             ),
           ),
