@@ -526,7 +526,12 @@ class AppController extends ChangeNotifier {
 
   Future<void> loadRideOffers(String rideRequestId) async {
     try {
-      _liveDriverOffers = await _bookingRepository.getRideOffers(rideRequestId);
+      final results = await Future.wait([
+        _bookingRepository.getRideOffers(rideRequestId),
+        _bookingRepository.getMyRideRequests(),
+      ]);
+      _liveDriverOffers = results[0] as List<LiveDriverOffer>;
+      _liveRideRequests = results[1] as List<LiveRideRequest>;
       notifyListeners();
     } catch (error) {
       _marketplaceError = _message(error);
@@ -552,19 +557,17 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> loadDriverMarketplace({bool notify = true}) async {
+    _marketplaceError = null;
     try {
-      final results = await Future.wait([
-        _bookingRepository.getDriverRideRequests(),
-        _bookingRepository.getDriverPackages(),
-        _bookingRepository.getDriverPackageOffers(),
-        _bookingRepository.getDriverPackageBookings(),
-        _bookingRepository.getDriverPackageWaitlist(),
-      ]);
-      _liveDriverRideRequests = results[0] as List<LiveRideRequest>;
-      _liveDriverPackages = results[1] as List<LiveTourPackage>;
-      _liveDriverPackageOffers = results[2] as List<LivePackageOffer>;
-      _liveDriverPackageBookings = results[3] as List<LiveBooking>;
-      _liveDriverPackageWaitlist = results[4] as List<LivePackageWaitlist>;
+      // Open customer requests are the Driver dashboard's primary data. Load
+      // them first so optional package endpoints cannot delay or hide them.
+      _liveDriverRideRequests = await _bookingRepository.getDriverRideRequests();
+      if (notify) notifyListeners();
+
+      try { _liveDriverPackages = await _bookingRepository.getDriverPackages(); } catch (_) {}
+      try { _liveDriverPackageOffers = await _bookingRepository.getDriverPackageOffers(); } catch (_) {}
+      try { _liveDriverPackageBookings = await _bookingRepository.getDriverPackageBookings(); } catch (_) {}
+      try { _liveDriverPackageWaitlist = await _bookingRepository.getDriverPackageWaitlist(); } catch (_) {}
       if (notify) notifyListeners();
     } catch (error) {
       _marketplaceError = _message(error);

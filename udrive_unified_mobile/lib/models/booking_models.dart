@@ -18,6 +18,8 @@ class LiveRideRequest {
     required this.offersCount,
     this.returnAt,
     this.selectedOfferId,
+    this.expiresAt,
+    this.createdAt,
   });
 
   final String id;
@@ -38,6 +40,8 @@ class LiveRideRequest {
   final String status;
   final int offersCount;
   final String? selectedOfferId;
+  final DateTime? expiresAt;
+  final DateTime? createdAt;
 
   factory LiveRideRequest.fromJson(Map<String, dynamic> json) => LiveRideRequest(
         id: json['id'].toString(),
@@ -58,6 +62,8 @@ class LiveRideRequest {
         status: json['status']?.toString() ?? 'ReceivingOffers',
         offersCount: _int(json['offersCount']),
         selectedOfferId: json['selectedOfferId']?.toString(),
+        expiresAt: _date(json['expiresAt']),
+        createdAt: _date(json['createdAt']),
       );
 }
 
@@ -559,65 +565,5 @@ class LivePassengerManifest {
               ),
             )
             .toList(),
-      );
-}
-
-class LivePackageVehicleLocation {
-  const LivePackageVehicleLocation({
-    required this.tourPackageId,
-    required this.vehicleId,
-    required this.vehicle,
-    required this.registrationNumber,
-    required this.startingCity,
-    required this.pickupPoint,
-    required this.destination,
-    required this.isLive,
-    required this.isStale,
-    this.latitude,
-    this.longitude,
-    this.lastUpdatedAt,
-    this.destinationLatitude,
-    this.destinationLongitude,
-  });
-
-  final String tourPackageId;
-  final String vehicleId;
-  final String vehicle;
-  final String registrationNumber;
-  final String startingCity;
-  final String pickupPoint;
-  final String destination;
-  final double? latitude;
-  final double? longitude;
-  final DateTime? lastUpdatedAt;
-  final bool isLive;
-  final bool isStale;
-  final double? destinationLatitude;
-  final double? destinationLongitude;
-
-  bool get hasLiveCoordinates => latitude != null && longitude != null;
-  bool get hasDestinationCoordinates =>
-      destinationLatitude != null && destinationLongitude != null;
-
-  factory LivePackageVehicleLocation.fromJson(Map<String, dynamic> json) =>
-      LivePackageVehicleLocation(
-        tourPackageId: json['tourPackageId'].toString(),
-        vehicleId: json['vehicleId'].toString(),
-        vehicle: json['vehicle']?.toString() ?? '',
-        registrationNumber: json['registrationNumber']?.toString() ?? '',
-        startingCity: json['startingCity']?.toString() ?? '',
-        pickupPoint: json['pickupPoint']?.toString() ?? '',
-        destination: json['destination']?.toString() ?? '',
-        latitude: json['latitude'] == null ? null : _double(json['latitude']),
-        longitude: json['longitude'] == null ? null : _double(json['longitude']),
-        lastUpdatedAt: _date(json['lastUpdatedAt']),
-        isLive: json['isLive'] == true,
-        isStale: json['isStale'] == true,
-        destinationLatitude: json['destinationLatitude'] == null
-            ? null
-            : _double(json['destinationLatitude']),
-        destinationLongitude: json['destinationLongitude'] == null
-            ? null
-            : _double(json['destinationLongitude']),
       );
 }

@@ -1,12 +1,13 @@
-# Test checklist
+# API and Flutter Testing Checklist
 
-- Log in as a Customer.
-- Leave the form open long enough for the access token to approach expiry, then submit.
-- Confirm the request is created instead of showing a false session-expired error.
-- Confirm `GET /api/v1/bookings/ride-requests/my` contains the new request.
-- Log in as an approved Driver with a verified vehicle.
-- Open Driver mode > Live requests.
-- Confirm the customer request appears automatically within 20 seconds.
-- Submit a Driver offer.
-- Confirm the Customer offers screen receives the offer.
-- Verify an unapproved Driver receives HTTP 403 and cannot view live requests.
+1. Login as a Customer and create a ride request.
+2. Verify `expiresAt` is approximately one hour after `createdAt` in `GET /api/v1/bookings/ride-requests/my`.
+3. Login as an approved Driver with a verified vehicle.
+4. Verify the request appears in `GET /api/v1/driver/marketplace/ride-requests`.
+5. Verify Driver dashboard displays the Customer fare and countdown.
+6. Submit an offer with `POST /api/v1/driver/marketplace/ride-requests/{id}/offers`.
+7. Verify the Customer sees the offer and can select it.
+8. Create another request and do not submit an offer. After expiry, call the Customer or Driver request endpoint and verify status `NoDriverAccepted`.
+9. Verify a request dated before the current Pakistan date does not appear in the Driver queue and becomes `Expired`.
+10. Verify an unapproved Driver or Driver without a verified suitable vehicle cannot send an offer.
+11. Verify a vehicle with insufficient seats is not selectable in the offer sheet.

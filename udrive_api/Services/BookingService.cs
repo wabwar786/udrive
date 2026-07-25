@@ -29,7 +29,7 @@ public sealed class BookingService(
         }
 
         var id = Guid.NewGuid();
-        var expiresAt = DateTimeOffset.UtcNow.AddMinutes(30);
+        var expiresAt = DateTimeOffset.UtcNow.AddHours(1);
 
         const string sql = """
             INSERT INTO udrive.ride_requests
@@ -139,6 +139,8 @@ public sealed class BookingService(
         Guid userId,
         CancellationToken cancellationToken)
     {
+        await ExpireRideRequestsAsync(cancellationToken);
+
         const string sql = """
             SELECT rr.id, rr.pickup_label, rr.destination_label,
                    ST_Y(rr.pickup_location::geometry) AS pickup_latitude,
@@ -177,6 +179,8 @@ public sealed class BookingService(
         Guid driverUserId,
         CancellationToken cancellationToken)
     {
+        await ExpireRideRequestsAsync(cancellationToken);
+
         var driver = await GetApprovedDriverAsync(driverUserId, cancellationToken);
         if (driver is null)
         {
@@ -230,6 +234,8 @@ public sealed class BookingService(
         SubmitDriverOfferRequest request,
         CancellationToken cancellationToken)
     {
+        await ExpireRideRequestsAsync(cancellationToken);
+
         var driver = await GetApprovedDriverAsync(driverUserId, cancellationToken);
         if (driver is null)
         {
@@ -284,7 +290,7 @@ public sealed class BookingService(
         }
 
         var offerId = Guid.NewGuid();
-        var offerExpiresAt = DateTimeOffset.UtcNow.AddMinutes(15);
+        var offerExpiresAt = pickupAt;
         const string offerSql = """
             INSERT INTO udrive.driver_offers
                 (id, ride_request_id, driver_profile_id, vehicle_id, amount,
@@ -342,6 +348,8 @@ public sealed class BookingService(
         Guid rideRequestId,
         CancellationToken cancellationToken)
     {
+        await ExpireRideRequestsAsync(cancellationToken);
+
         const string ownerSql = "SELECT 1 FROM udrive.ride_requests WHERE id = @id AND customer_user_id = @userId;";
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -425,7 +433,7 @@ public sealed class BookingService(
                 "You cannot select a Driver for another Customer's request.");
         }
 
-        if (rideStatus is not ("Open" or "ReceivingOffers"))
+        if (rideStatus is not ("Open" or "ReceivingOffers" or "OffersReceived"))
         {
             return ServiceResult<BookingDto>.Fail(
                 StatusCodes.Status409Conflict,
@@ -964,6 +972,45 @@ public sealed class BookingService(
                 "The booking was not found.");
         }
         return ServiceResult<BookingDto>.Ok(ReadBooking(reader, tripOtp));
+    }
+
+    private async Task ExpireRideRequestsAsync(CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE udrive.ride_requests rr
+            SET status = CASE
+                    WHEN (rr.pickup_at AT TIME ZONE 'Asia/Karachi')::date
+                         < (now() AT TIME ZONE 'Asia/Karachi')::date
+                        THEN 'Expired'
+                    WHEN rr.expires_at IS NOT NULL AND rr.expires_at <= now()
+                         AND EXISTS (
+                             SELECT 1 FROM udrive.driver_offers o
+                             WHERE o.ride_request_id = rr.id
+                         )
+                        THEN 'OffersReceived'
+                    ELSE 'NoDriverAccepted'
+                END,
+                version = version + 1,
+                updated_at = now()
+            WHERE rr.status IN ('Open', 'ReceivingOffers')
+              AND (
+                    (rr.pickup_at AT TIME ZONE 'Asia/Karachi')::date
+                        < (now() AT TIME ZONE 'Asia/Karachi')::date
+                    OR (rr.expires_at IS NOT NULL AND rr.expires_at <= now())
+                  );
+
+            UPDATE udrive.driver_offers o
+            SET status = 'Expired', version = version + 1, updated_at = now()
+            FROM udrive.ride_requests rr
+            WHERE o.ride_request_id = rr.id
+              AND o.status IN ('Pending', 'Countered', 'Accepted')
+              AND (o.expires_at <= now() OR rr.status IN ('Expired', 'NoDriverAccepted', 'Cancelled', 'Confirmed'));
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task<ApprovedDriverContext?> GetApprovedDriverAsync(

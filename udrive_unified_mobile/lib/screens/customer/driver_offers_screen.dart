@@ -59,6 +59,10 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
+    LiveRideRequest? request;
+    for (final item in controller.liveRideRequests) {
+      if (item.id == widget.rideRequestId) { request = item; break; }
+    }
     final offers = controller.liveDriverOffers
         .where((offer) => offer.rideRequestId == widget.rideRequestId)
         .toList()
@@ -88,7 +92,9 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                   Row(
                     children: [
                       StatusPill(
-                        label: offers.isEmpty
+                        label: request?.status == 'NoDriverAccepted'
+                            ? _t(context, 'No Driver accepted', 'کسی ڈرائیور نے قبول نہیں کیا')
+                            : offers.isEmpty
                             ? _t(context, 'Finding drivers', 'ڈرائیور تلاش ہو رہے ہیں')
                             : _t(context, '${offers.length} offers received', '${offers.length} آفرز موصول'),
                       ),
@@ -126,7 +132,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
               ),
             ),
             const SizedBox(height: 18),
-            if (offers.isEmpty) _emptyState(context) else ...offers.map(_offerCard),
+            if (offers.isEmpty) _emptyState(context, request) else ...offers.map(_offerCard),
           ],
         ),
       ),
@@ -153,7 +159,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     );
   }
 
-  Widget _emptyState(BuildContext context) => Padding(
+  Widget _emptyState(BuildContext context, LiveRideRequest? request) => Padding(
         padding: const EdgeInsets.only(top: 58),
         child: Column(
           children: [
@@ -168,15 +174,21 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
             ),
             const SizedBox(height: 18),
             Text(
-              _t(context, 'Waiting for verified Drivers', 'تصدیق شدہ ڈرائیورز کا انتظار ہے'),
+              request?.status == 'NoDriverAccepted'
+                  ? _t(context, 'No Driver accepted within 1 hour', 'ایک گھنٹے میں کسی ڈرائیور نے قبول نہیں کیا')
+                  : _t(context, 'Waiting for verified Drivers', 'تصدیق شدہ ڈرائیورز کا انتظار ہے'),
               style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
             ),
             const SizedBox(height: 8),
             Text(
               _t(
                 context,
-                'This page refreshes automatically. A demo verified Driver offer is also created when demo marketplace mode is enabled.',
-                'یہ صفحہ خودکار تازہ ہوتا ہے۔ ڈیمو مارکیٹ پلیس فعال ہو تو ایک تصدیق شدہ ڈرائیور آفر بھی بنتی ہے۔',
+                request?.status == 'NoDriverAccepted'
+                    ? 'Try again, change the departure time, or increase your offered fare.'
+                    : 'This page refreshes automatically for up to one hour.',
+                request?.status == 'NoDriverAccepted'
+                    ? 'دوبارہ کوشش کریں، وقت تبدیل کریں یا اپنی آفر بڑھائیں۔'
+                    : 'یہ صفحہ ایک گھنٹے تک خودکار تازہ ہوتا ہے۔',
               ),
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppColors.muted, height: 1.45),

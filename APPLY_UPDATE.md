@@ -1,24 +1,14 @@
-# Phase 13.5 — Compact Vehicle Search & View All
+# Phase 13.5 — Driver Open Requests & Fare Offers
 
-## Apply
-Copy the included files over the latest uDrive source, preserving paths.
+Apply this ZIP over the latest uDrive source tree. Preserve the folder paths exactly.
 
-## Changes
-- Removed the large "Vehicles going your way" heading/subtitle block from Customer Home.
-- Moved `View all` to the right of the destination search field.
-- Kept the existing Home header unchanged.
-- Added a dedicated `Find a vehicle` screen.
-- Added destination-only search.
-- Added tourist-point selection chips from live package destinations.
-- Added All / 4 Wheel / 2 Wheel / 3 Wheel filters.
-- Shows every active customer-bookable scheduled vehicle returned by the live API; Home still limits the preview list.
-- Whole vehicle card remains clickable and opens live location plus booking details.
+## Deployment order
 
-## Build
-```bash
-flutter pub get
-flutter analyze
-flutter build web --release --no-wasm-dry-run
-```
+1. Overlay all files.
+2. Deploy `udrive_api` first.
+3. Confirm `/health/live` and `/health/ready` return HTTP 200.
+4. Confirm migration `011_driver_marketplace_expiry` is recorded in `udrive.schema_migrations`.
+5. Deploy `udrive_unified_mobile` Flutter web.
+6. Clear the Flutter service worker/site cache once after deployment.
 
-No API or database migration is required.
+No APK/AAB is included.

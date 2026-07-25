@@ -68,6 +68,42 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             const SizedBox(width: 9),
             Expanded(child: _Metric(label: _t('Completed', 'مکمل'), value: '$completed', icon: Icons.task_alt_rounded, color: AppColors.success)),
           ]),
+          const SizedBox(height: 18),
+          SectionHeader(
+            title: _t('Pending customer requests', 'زیر التوا کسٹمر درخواستیں'),
+            action: c.liveDriverRideRequests.isEmpty ? null : _t('View all', 'سب دیکھیں'),
+            onAction: c.liveDriverRideRequests.isEmpty ? null : () => widget.onNavigate('requests'),
+          ),
+          const SizedBox(height: 9),
+          if (c.liveDriverRideRequests.isEmpty)
+            _Empty(message: _t('No open customer request is waiting for a Driver.', 'کوئی کھلی کسٹمر درخواست ڈرائیور کا انتظار نہیں کر رہی۔'))
+          else
+            ...c.liveDriverRideRequests.take(5).map((r) => Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: PremiumCard(
+                onTap: () => widget.onNavigate('requests'),
+                padding: const EdgeInsets.all(13),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text('${r.pickupLabel} → ${r.destinationLabel}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13))),
+                    const SizedBox(width: 8),
+                    Text('PKR ${NumberFormat('#,##0').format(r.customerOffer)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark, fontSize: 13)),
+                  ]),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    const Icon(Icons.schedule_rounded, size: 14, color: AppColors.muted),
+                    const SizedBox(width: 4),
+                    Text(DateFormat('dd MMM · hh:mm a').format(r.pickupAt), style: const TextStyle(color: AppColors.muted, fontSize: 10)),
+                    const SizedBox(width: 12),
+                    const Icon(Icons.event_seat_rounded, size: 14, color: AppColors.muted),
+                    const SizedBox(width: 4),
+                    Text('${r.seatsRequested} seats', style: const TextStyle(color: AppColors.muted, fontSize: 10)),
+                    const Spacer(),
+                    const Icon(Icons.chevron_right_rounded, color: AppColors.primaryDark),
+                  ]),
+                ]),
+              ),
+            )),
           const SizedBox(height: 20),
           SectionHeader(title: _t('Driver tools', 'ڈرائیور ٹولز')),
           const SizedBox(height: 10),
