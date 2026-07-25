@@ -1,35 +1,26 @@
-# uDrive Phase 13.5 — Booking-First Customer Home
+# Phase 13.5 — Customer Booking Flow Fix
 
-Apply this update over the latest Phase 13.5 mobile source.
+Overlay the included `udrive_unified_mobile` folder on the latest source.
 
-## Files
+## Included fixes
 
-Copy and overwrite:
-
-- `udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart`
-- `udrive_unified_mobile/lib/screens/customer/tourism_booking_screen.dart`
-- `udrive_unified_mobile/lib/screens/customer/live_packages_screen.dart`
-
-No API or database migration is required.
+- Home vehicle thumbnail containers now use a white background and bordered image surface.
+- Vehicle/package images use `BoxFit.contain` so they do not look like blue icon tiles.
+- Pickup defaults to the customer's current GPS location when permission is available.
+- A location button lets the customer retry automatic pickup detection.
+- Scheduled vehicle matches shown while entering pickup/destination are informational only and cannot be opened by tapping.
+- Recommended vehicle selection now respects the selected passenger count.
+- Vehicles with insufficient capacity are visibly disabled.
+- The best matching vehicle is selected automatically when passenger count changes.
+- Booking submission uses the authenticated customer's actual pickup coordinates when available.
+- Booking submission failures now show useful session/server/network messages instead of only a generic error.
 
 ## Build
 
 ```bash
-cd udrive_unified_mobile
 flutter pub get
 flutter analyze
 flutter build web --release --no-wasm-dry-run
 ```
 
-Deploy the Flutter web service and clear the service-worker/site cache once after deployment.
-
-## Verification
-
-1. Home shows the booking hero first.
-2. `Vehicles going your way` appears immediately below it.
-3. Active/Upcoming/Offers and Quick Actions appear after vehicles.
-4. Home vehicle search filters destination only.
-5. Tapping the hero opens the premium route-search screen.
-6. Entering destination and departure date filters live package vehicles.
-7. Tapping a matching vehicle opens live location and booking detail.
-8. Itinerary appears as a numbered formatted timeline.
+No API or database migration is required for this UI patch.

@@ -398,19 +398,23 @@ class _ScheduledVehicleCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(13),
-                  child: SizedBox(
-                    width: 58,
-                    height: 58,
-                    child: image != null && image.isNotEmpty
+                Container(
+                  width: 58,
+                  height: 58,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: image != null && image.isNotEmpty
                         ? Image.network(
                             image,
-                            fit: BoxFit.cover,
+                            fit: BoxFit.contain,
                             errorBuilder: (_, __, ___) => _vehicleFallback(),
                           )
                         : _vehicleFallback(),
-                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -548,12 +552,12 @@ class _ScheduledVehicleCard extends StatelessWidget {
   }
 
   static Widget _vehicleFallback() => const DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF3568D4), Color(0xFF5A8AF0)],
-          ),
+        decoration: BoxDecoration(color: Colors.white),
+        child: Icon(
+          Icons.directions_car_filled_rounded,
+          color: AppColors.primaryDark,
+          size: 28,
         ),
-        child: Icon(Icons.directions_car_filled_rounded, color: Colors.white, size: 28),
       );
 }
 

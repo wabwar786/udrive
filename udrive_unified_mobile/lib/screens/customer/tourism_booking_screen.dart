@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
+import '../../models/auth_models.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../data/dummy_data.dart';
@@ -38,6 +40,9 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
   int _luggage = 2;
   VehicleCategory _vehicle = vehicleCategories[2];
   bool _submitting = false;
+  bool _locatingPickup = false;
+  double? _pickupLatitude;
+  double? _pickupLongitude;
 
   @override
   void initState() {
@@ -47,7 +52,11 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
     _destination.addListener(_refreshSearchResults);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      await AppControllerScope.of(context).refreshPhase9Marketplace();
+      await Future.wait([
+        AppControllerScope.of(context).refreshPhase9Marketplace(),
+        _useCurrentLocation(silent: true),
+      ]);
+      if (mounted) _syncRecommendedVehicle();
     });
   }
 
@@ -134,6 +143,20 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
                   prefixIcon: const Icon(Icons.trip_origin_rounded),
                   labelText: context.tr('pickup'),
                   hintText: 'Your pickup city or point',
+                  suffixIcon: _locatingPickup
+                      ? const Padding(
+                          padding: EdgeInsets.all(13),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : IconButton(
+                          tooltip: 'Use my current location',
+                          onPressed: _useCurrentLocation,
+                          icon: const Icon(Icons.my_location_rounded),
+                        ),
                 ),
                 validator: _required,
               ),
@@ -192,7 +215,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    'Tap a vehicle to view location and reserve seats.',
+                    'Matching scheduled vehicles are shown for reference. Continue to complete your request below.',
                     style: TextStyle(color: AppColors.muted, fontSize: 11),
                   ),
                 ],
@@ -242,7 +265,6 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
               padding: const EdgeInsets.only(bottom: 9),
               child: _SearchVehicleCard(
                 package: package,
-                onTap: () => _openScheduledVehicle(package),
               ),
             ),
           ),
@@ -367,9 +389,9 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
           PremiumCard(
             child: Column(
               children: [
-                _CounterRow(label: context.tr('adults'), icon: Icons.person_rounded, value: _adults, min: 1, onChanged: (value) => setState(() => _adults = value)),
+                _CounterRow(label: context.tr('adults'), icon: Icons.person_rounded, value: _adults, min: 1, onChanged: (value) { setState(() => _adults = value); _syncRecommendedVehicle(); }),
                 const Divider(),
-                _CounterRow(label: context.tr('children'), icon: Icons.child_care_rounded, value: _children, onChanged: (value) => setState(() => _children = value)),
+                _CounterRow(label: context.tr('children'), icon: Icons.child_care_rounded, value: _children, onChanged: (value) { setState(() => _children = value); _syncRecommendedVehicle(); }),
                 const Divider(),
                 _CounterRow(label: context.tr('luggage'), icon: Icons.luggage_rounded, value: _luggage, onChanged: (value) => setState(() => _luggage = value)),
               ],
@@ -412,15 +434,19 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
           _StepIntro(icon: Icons.directions_car_filled_rounded, title: context.tr('selectVehicle'), subtitle: context.tr('bookingStepThreeHelp')),
           const SizedBox(height: 18),
           ...vehicleCategories.map(
-            (vehicle) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _VehicleChoice(
-                vehicle: vehicle,
-                selected: _vehicle.name == vehicle.name,
-                recommended: _recommended(vehicle),
-                onTap: () => setState(() => _vehicle = vehicle),
-              ),
-            ),
+            (vehicle) {
+              final enabled = vehicle.seats >= _travellers;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _VehicleChoice(
+                  vehicle: vehicle,
+                  selected: _vehicle.name == vehicle.name,
+                  recommended: _recommended(vehicle),
+                  enabled: enabled,
+                  onTap: enabled ? () => setState(() => _vehicle = vehicle) : null,
+                ),
+              );
+            },
           ),
           const SizedBox(height: 8),
           TextFormField(
@@ -531,7 +557,9 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
               _departureTime.hour,
               _departureTime.minute,
             );
-      final pickupCoordinates = _coordinatesFor(_pickup.text, pickup: true);
+      final pickupCoordinates = (_pickupLatitude != null && _pickupLongitude != null)
+          ? (_pickupLatitude!, _pickupLongitude!)
+          : _coordinatesFor(_pickup.text, pickup: true);
       final destinationCoordinates = _coordinatesFor(_destination.text);
       final total = _estimate;
       final controller = AppControllerScope.of(context);
@@ -595,10 +623,21 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
           ),
         ),
       );
-    } catch (error) {
+    } on ApiException catch (error) {
+      if (mounted) {
+        final message = error.statusCode == 401
+            ? 'Your session has expired. Please log in again.'
+            : error.statusCode != null && error.statusCode! >= 500
+                ? 'Booking service is temporarily unavailable. Please retry in a moment.'
+                : error.message;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$error')),
+          const SnackBar(content: Text('The booking request could not be sent. Please check your connection and retry.')),
         );
       }
     } finally {
@@ -620,11 +659,72 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
   String? _required(String? value) => value == null || value.trim().isEmpty ? context.tr('required') : null;
 
   bool _recommended(VehicleCategory vehicle) {
+    if (vehicle.seats < _travellers) return false;
     final destination = _destination.text.toLowerCase();
-    if (destination.contains('arang') || destination.contains('ratti') || destination.contains('kel')) return vehicle.name == '4×4 Jeep';
-    if (_travellers > 7) return vehicle.name == 'Hiace' || vehicle.name == 'Coaster';
-    if (_partyType == TripPartyType.family) return vehicle.name == 'SUV';
+    if (destination.contains('arang') || destination.contains('ratti') || destination.contains('kel')) {
+      return vehicle.name == '4×4 Jeep';
+    }
+    if (_travellers > 14) return vehicle.name == 'Coaster';
+    if (_travellers > 6) return vehicle.name == 'Hiace';
+    if (_travellers > 4 || _partyType == TripPartyType.family) return vehicle.name == 'SUV';
     return vehicle.name == 'Comfort';
+  }
+
+  void _syncRecommendedVehicle() {
+    final candidates = vehicleCategories.where((vehicle) => vehicle.seats >= _travellers).toList();
+    if (candidates.isEmpty) return;
+    final preferred = candidates.where(_recommended).toList();
+    final recommended = preferred.isNotEmpty ? preferred.first : candidates.first;
+    if (_vehicle.name != recommended.name && mounted) {
+      setState(() => _vehicle = recommended);
+    }
+  }
+
+  Future<void> _useCurrentLocation({bool silent = false}) async {
+    if (_locatingPickup) return;
+    if (mounted) setState(() => _locatingPickup = true);
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        if (!silent && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please enable location services to use your current pickup.')),
+          );
+        }
+        return;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        if (!silent && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission is required for automatic pickup.')),
+          );
+        }
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _pickupLatitude = position.latitude;
+        _pickupLongitude = position.longitude;
+        _pickup.text = 'My current location';
+      });
+    } catch (_) {
+      if (!silent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Current location could not be detected. You can enter pickup manually.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _locatingPickup = false);
+    }
   }
 
   void _selectParty(TripPartyType value) => setState(() => _partyType = value);
@@ -657,11 +757,11 @@ class _CompactDateField extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
+        onTap: null,
         borderRadius: BorderRadius.circular(15),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
@@ -743,90 +843,90 @@ class _VehicleSearchHint extends StatelessWidget {
 }
 
 class _SearchVehicleCard extends StatelessWidget {
-  const _SearchVehicleCard({required this.package, required this.onTap});
+  const _SearchVehicleCard({required this.package});
 
   final LiveTourPackage package;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final image = package.coverImageUrl?.trim();
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(17),
-      child: InkWell(
-        onTap: onTap,
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAF9),
         borderRadius: BorderRadius.circular(17),
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(17),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: SizedBox(
-                  width: 62,
-                  height: 62,
-                  child: image != null && image.isNotEmpty
-                      ? Image.network(
-                          image,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const ColoredBox(
-                            color: Color(0xFFE9F4F0),
-                            child: Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark),
-                          ),
-                        )
-                      : const ColoredBox(
-                          color: Color(0xFFE9F4F0),
-                          child: Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark),
-                        ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      package.vehicle.isEmpty ? package.title : package.vehicle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: image != null && image.isNotEmpty
+                ? Image.network(
+                    image,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.directions_bus_rounded,
+                      color: AppColors.primaryDark,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${package.startingCity} → ${package.destination}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      '${DateFormat('hh:mm a').format(package.departureAt)} · ${package.bookableSeats} seats free',
-                      style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 10.5),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'PKR ${NumberFormat('#,###').format(package.pricePerSeat)}',
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+                  )
+                : const Icon(
+                    Icons.directions_bus_rounded,
+                    color: AppColors.primaryDark,
                   ),
-                  const Text('per seat', style: TextStyle(color: AppColors.muted, fontSize: 9)),
-                  const SizedBox(height: 8),
-                  const Icon(Icons.chevron_right_rounded, color: AppColors.primaryDark),
-                ],
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  package.vehicle.isEmpty ? package.title : package.vehicle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${package.startingCity} → ${package.destination}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '${DateFormat('hh:mm a').format(package.departureAt)} · ${package.bookableSeats} seats free',
+                  style: const TextStyle(
+                    color: AppColors.primaryDark,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'PKR ${NumberFormat('#,###').format(package.pricePerSeat)}',
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
               ),
+              const Text('per seat', style: TextStyle(color: AppColors.muted, fontSize: 9)),
+              const SizedBox(height: 8),
+              const Icon(Icons.lock_outline_rounded, color: AppColors.muted, size: 18),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -893,12 +993,20 @@ class _DateCard extends StatelessWidget {
 }
 
 class _ChoiceCard extends StatelessWidget {
-  const _ChoiceCard({required this.selected, required this.icon, required this.title, required this.subtitle, required this.onTap});
+  const _ChoiceCard({
+    required this.selected,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
   final bool selected;
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) => InkWell(
         onTap: onTap,
@@ -906,8 +1014,45 @@ class _ChoiceCard extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: selected ? const Color(0xFFEAF8F2) : Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.6 : 1)),
-          child: Row(children: [Container(width: 48, height: 48, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(15)), child: Icon(icon, color: AppColors.primaryDark)), const SizedBox(width: 13), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w900)), const SizedBox(height: 3), Text(subtitle, style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35))])), Icon(selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: selected ? AppColors.primary : AppColors.border)]),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF8F2) : Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border,
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(icon, color: AppColors.primaryDark),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                color: selected ? AppColors.primary : AppColors.border,
+              ),
+            ],
+          ),
         ),
       );
 }
@@ -944,19 +1089,87 @@ class _PartyChip extends StatelessWidget {
 }
 
 class _VehicleChoice extends StatelessWidget {
-  const _VehicleChoice({required this.vehicle, required this.selected, required this.recommended, required this.onTap});
+  const _VehicleChoice({
+    required this.vehicle,
+    required this.selected,
+    required this.recommended,
+    required this.enabled,
+    required this.onTap,
+  });
+
   final VehicleCategory vehicle;
   final bool selected;
   final bool recommended;
-  final VoidCallback onTap;
+  final bool enabled;
+  final VoidCallback? onTap;
+
   @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          padding: const EdgeInsets.all(15),
-          decoration: BoxDecoration(color: selected ? const Color(0xFFEAF8F2) : Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.6 : 1)),
-          child: Row(children: [Container(width: 52, height: 52, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .11), borderRadius: BorderRadius.circular(16)), child: Icon(vehicle.icon, color: AppColors.primaryDark)), const SizedBox(width: 13), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Flexible(child: Text(vehicle.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15))), if (recommended) ...[const SizedBox(width: 7), StatusPill(label: context.tr('recommended'))]]), const SizedBox(height: 3), Text('${vehicle.seats} seats · ${vehicle.luggage} bags', style: const TextStyle(color: AppColors.muted, fontSize: 12)), Text(vehicle.description, style: const TextStyle(color: AppColors.muted, fontSize: 11))])), Icon(selected ? Icons.check_circle_rounded : Icons.chevron_right_rounded, color: selected ? AppColors.primary : AppColors.muted)]),
+  Widget build(BuildContext context) => Opacity(
+        opacity: enabled ? 1 : .48,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: selected ? const Color(0xFFEAF8F2) : Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: selected ? AppColors.primary : AppColors.border,
+                width: selected ? 1.6 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: .11),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(vehicle.icon, color: AppColors.primaryDark),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              vehicle.name,
+                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                            ),
+                          ),
+                          if (recommended) ...[
+                            const SizedBox(width: 7),
+                            StatusPill(label: context.tr('recommended')),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        enabled
+                            ? '${vehicle.seats} seats · ${vehicle.luggage} bags'
+                            : '${vehicle.seats} seats · Not enough capacity',
+                        style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                      ),
+                      Text(
+                        vehicle.description,
+                        style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  selected ? Icons.check_circle_rounded : Icons.chevron_right_rounded,
+                  color: selected ? AppColors.primary : AppColors.muted,
+                ),
+              ],
+            ),
+          ),
         ),
       );
 }
