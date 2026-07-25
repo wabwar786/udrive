@@ -70,7 +70,88 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
+          _VehiclesSectionHeader(
+            title: _t('Vehicles going your way', 'آپ کے راستے کی گاڑیاں'),
+            subtitle: _t(
+              'Search your destination and reserve an available seat.',
+              'اپنی منزل تلاش کریں اور دستیاب سیٹ بک کریں۔',
+            ),
+            onViewAll: () => widget.onNavigate('packages'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _vehicleSearch,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: _t(
+                'Search destination, e.g. Neelum Valley',
+                'منزل تلاش کریں، مثلاً نیلم ویلی',
+              ),
+              prefixIcon: const Icon(Icons.location_searching_rounded),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: _t('Clear search', 'تلاش صاف کریں'),
+                      onPressed: _vehicleSearch.clear,
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (controller.marketplaceBusy && vehicles.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(36),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (vehicles.isEmpty)
+            _EmptyLiveData(
+              message: _query.isEmpty
+                  ? _t(
+                      'No scheduled vehicle is currently available.',
+                      'اس وقت کوئی شیڈول گاڑی دستیاب نہیں۔',
+                    )
+                  : _t(
+                      'No vehicle is going to this destination right now.',
+                      'اس وقت اس منزل کی طرف کوئی گاڑی نہیں جا رہی۔',
+                    ),
+            )
+          else
+            ...vehicles.map(
+              (package) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _ScheduledVehicleCard(
+                  package: package,
+                  onTap: () => _openVehicle(package),
+                ),
+              ),
+            ),
+          if (controller.marketplaceError != null &&
+              vehicles.isEmpty &&
+              !controller.marketplaceBusy) ...[
+            const SizedBox(height: 8),
+            _ErrorBanner(
+              message: _t(
+                'Vehicles could not be refreshed. Pull down or tap retry.',
+                'گاڑیاں ریفریش نہیں ہو سکیں۔ نیچے کھینچیں یا دوبارہ کوشش کریں۔',
+              ),
+              onRetry: _refresh,
+            ),
+          ],
+          if (active.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            SectionHeader(
+              title: _t('Current booking', 'موجودہ بکنگ'),
+              action: _t('View all', 'سب دیکھیں'),
+              onAction: () => widget.onNavigate('trips'),
+            ),
+            const SizedBox(height: 10),
+            _LiveBookingCard(
+              booking: active.first,
+              onTap: () => widget.onNavigate('trips'),
+            ),
+          ],
+          const SizedBox(height: 18),
           Row(
             children: [
               Expanded(
@@ -101,19 +182,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ],
           ),
-          if (active.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            SectionHeader(
-              title: _t('Current booking', 'موجودہ بکنگ'),
-              action: _t('View all', 'سب دیکھیں'),
-              onAction: () => widget.onNavigate('trips'),
-            ),
-            const SizedBox(height: 10),
-            _LiveBookingCard(
-              booking: active.first,
-              onTap: () => widget.onNavigate('trips'),
-            ),
-          ],
           const SizedBox(height: 20),
           SectionHeader(title: _t('Quick actions', 'فوری سہولیات')),
           const SizedBox(height: 10),
@@ -155,74 +223,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 22),
-          _VehiclesSectionHeader(
-            title: _t('Vehicles going your way', 'آپ کے راستے کی گاڑیاں'),
-            subtitle: _t(
-              'Search your destination and reserve an available seat.',
-              'اپنی منزل تلاش کریں اور دستیاب سیٹ بک کریں۔',
-            ),
-            onViewAll: () => widget.onNavigate('packages'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _vehicleSearch,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: _t(
-                'Where do you want to go?',
-                'آپ کہاں جانا چاہتے ہیں؟',
-              ),
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: _query.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: _t('Clear search', 'تلاش صاف کریں'),
-                      onPressed: _vehicleSearch.clear,
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (controller.marketplaceBusy && vehicles.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(36),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (vehicles.isEmpty)
-            _EmptyLiveData(
-              message: _query.isEmpty
-                  ? _t(
-                      'No scheduled vehicle is currently available.',
-                      'اس وقت کوئی شیڈول گاڑی دستیاب نہیں۔',
-                    )
-                  : _t(
-                      'No vehicle is going to this city right now.',
-                      'اس وقت اس شہر کی طرف کوئی گاڑی نہیں جا رہی۔',
-                    ),
-            )
-          else
-            ...vehicles.map(
-              (package) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _ScheduledVehicleCard(
-                  package: package,
-                  onTap: () => _openVehicle(package),
-                ),
-              ),
-            ),
-          // Optional marketplace requests must not place a generic error at
-          // the bottom of Home when scheduled vehicles loaded successfully.
-          if (controller.marketplaceError != null && vehicles.isEmpty && !controller.marketplaceBusy) ...[
-            const SizedBox(height: 8),
-            _ErrorBanner(
-              message: _t(
-                'Vehicles could not be refreshed. Pull down or tap retry.',
-                'گاڑیاں ریفریش نہیں ہو سکیں۔ نیچے کھینچیں یا دوبارہ کوشش کریں۔',
-              ),
-              onRetry: _refresh,
-            ),
-          ],
         ],
       ),
     );

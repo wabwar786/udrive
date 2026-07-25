@@ -1,8 +1,5 @@
-udrive_unified_mobile/lib/core/services/trip_location_service.dart
-udrive_unified_mobile/lib/core/widgets/driver_location_coordinator.dart
-udrive_unified_mobile/lib/screens/main_shell.dart
-udrive_unified_mobile/lib/screens/customer/vehicle_live_map.dart
-udrive_unified_mobile/pubspec.yaml
-udrive_unified_mobile/web/index.html
+udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart
+udrive_unified_mobile/lib/screens/customer/tourism_booking_screen.dart
+udrive_unified_mobile/lib/screens/customer/live_packages_screen.dart
 APPLY_UPDATE.md
 FILE_MANIFEST.txt

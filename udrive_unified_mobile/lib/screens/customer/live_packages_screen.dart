@@ -342,9 +342,18 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
                 if (package.inclusions.isEmpty) const Text('Verified Driver · Route support · Trip safety tools') else ...package.inclusions.map((item) => Padding(padding: const EdgeInsets.only(bottom: 7), child: Row(children: [const Icon(Icons.check_circle_rounded, size: 18, color: AppColors.success), const SizedBox(width: 8), Expanded(child: Text(item))]))),
                 if (package.itinerary.isNotEmpty) ...[
                   const Divider(height: 26),
-                  const Text('Itinerary', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                  const SizedBox(height: 8),
-                  ...package.itinerary.asMap().entries.map((entry) => Padding(padding: const EdgeInsets.only(bottom: 7), child: Text('${entry.key + 1}. ${entry.value}'))),
+                  const Row(
+                    children: [
+                      Icon(Icons.alt_route_rounded, color: AppColors.primaryDark),
+                      SizedBox(width: 8),
+                      Text(
+                        'Trip itinerary',
+                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _ItineraryTimeline(items: package.itinerary),
                 ],
               ],
             ),
@@ -501,6 +510,110 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
   Future<void> _sendOffer() async {
     final input = TextEditingController(text: (_bookingType == 'WholeVehicle' ? package.wholeVehiclePrice * .9 : package.pricePerSeat * _seats * .9).round().toString());
     await showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (sheet) => Padding(padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.viewInsetsOf(sheet).bottom + 20), child: Column(mainAxisSize: MainAxisSize.min, children: [const Text('Send package offer', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)), const SizedBox(height: 14), TextField(controller: input, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Your total offer (PKR)', prefixIcon: Icon(Icons.payments_rounded))), const SizedBox(height: 16), FilledButton(onPressed: () async { try { await AppControllerScope.of(context).createLivePackageOffer(packageId: package.id, bookingType: _bookingType, seats: _bookingType == 'WholeVehicle' ? package.totalSeats : _seats, amount: double.parse(input.text), message: 'Customer tourism package offer'); if (!mounted) return; Navigator.pop(sheet); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offer sent to Driver'))); } catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error'))); } }, child: const Text('Send offer'))])));
+  }
+}
+
+
+class _ItineraryTimeline extends StatelessWidget {
+  const _ItineraryTimeline({required this.items});
+
+  final List<String> items;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        children: items.asMap().entries.map((entry) {
+          final parsed = _parse(entry.value);
+          final last = entry.key == items.length - 1;
+          return IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: 30,
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 26,
+                        height: 26,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primaryDark,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '${entry.key + 1}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      if (!last)
+                        Expanded(
+                          child: Container(
+                            width: 2,
+                            margin: const EdgeInsets.symmetric(vertical: 4),
+                            color: const Color(0xFFDCECE6),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
+                    margin: EdgeInsets.only(bottom: last ? 0 : 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF6F9F8),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          parsed.$1,
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5),
+                        ),
+                        if (parsed.$2.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            parsed.$2,
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      );
+
+  (String, String) _parse(String raw) {
+    final value = raw.trim().replaceFirst(RegExp(r'^\d+[.)-]?\s*'), '');
+    for (final separator in const [' — ', ' - ', ': ']) {
+      final index = value.indexOf(separator);
+      if (index > 0 && index < value.length - separator.length) {
+        return (
+          value.substring(0, index).trim(),
+          value.substring(index + separator.length).trim(),
+        );
+      }
+    }
+    final words = value.split(RegExp(r'\s+'));
+    if (words.length > 8) {
+      return (words.take(5).join(' '), words.skip(5).join(' '));
+    }
+    return (value, '');
   }
 }
 

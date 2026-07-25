@@ -1,32 +1,35 @@
-# uDrive free one-minute live tracking update
+# uDrive Phase 13.5 — Booking-First Customer Home
 
-## What changed
+Apply this update over the latest Phase 13.5 mobile source.
 
-- Google Maps JavaScript API and API-key dependency removed.
-- Embedded map now uses `flutter_map` with OpenStreetMap tiles.
-- Driver app sends authenticated GPS every 60 seconds while an eligible active trip exists and the app is open.
-- Driver identity and trip ownership remain validated by the API/JWT.
-- Customer vehicle map refreshes every 60 seconds.
-- Customer sees vehicle, own position, destination, last update, straight-line distance and approximate ETA.
-- Offline Driver points continue to queue and retry in chronological order.
+## Files
 
-## Replace/add files
+Copy and overwrite:
 
-Copy the `udrive_unified_mobile` folder over the current project and overwrite files.
+- `udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart`
+- `udrive_unified_mobile/lib/screens/customer/tourism_booking_screen.dart`
+- `udrive_unified_mobile/lib/screens/customer/live_packages_screen.dart`
+
+No API or database migration is required.
 
 ## Build
 
 ```bash
+cd udrive_unified_mobile
 flutter pub get
 flutter analyze
 flutter build web --release --no-wasm-dry-run
 ```
 
-No Google Maps key is required after this update.
+Deploy the Flutter web service and clear the service-worker/site cache once after deployment.
 
-## Important behavior
+## Verification
 
-- Tracking runs only for assigned active trip states: DriverAccepted, DriverEnRoute, DriverArrived, TripStarted, Emergency.
-- It stops after completion/cancellation/no active assignment.
-- Web browsers may throttle timers in a hidden/background tab. Native Android/iOS background tracking requires platform background-location permission and an OS foreground/background service configuration.
-- ETA is approximate from straight-line distance and an assumed 30 km/h speed; it is not live-traffic routing.
+1. Home shows the booking hero first.
+2. `Vehicles going your way` appears immediately below it.
+3. Active/Upcoming/Offers and Quick Actions appear after vehicles.
+4. Home vehicle search filters destination only.
+5. Tapping the hero opens the premium route-search screen.
+6. Entering destination and departure date filters live package vehicles.
+7. Tapping a matching vehicle opens live location and booking detail.
+8. Itinerary appears as a numbered formatted timeline.

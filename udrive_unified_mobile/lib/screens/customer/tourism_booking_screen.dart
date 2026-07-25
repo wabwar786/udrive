@@ -6,7 +6,9 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../data/dummy_data.dart';
 import '../../data/models.dart';
+import '../../models/booking_models.dart';
 import 'driver_offers_screen.dart';
+import 'live_packages_screen.dart';
 
 class TourismBookingScreen extends StatefulWidget {
   const TourismBookingScreen({this.initialType, this.initialDestination, super.key});
@@ -19,7 +21,7 @@ class TourismBookingScreen extends StatefulWidget {
 
 class _TourismBookingScreenState extends State<TourismBookingScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _pickup = TextEditingController(text: 'Ghari Pan, Muzaffarabad');
+  final _pickup = TextEditingController();
   late final TextEditingController _destination;
   final _notes = TextEditingController();
   int _step = 0;
@@ -41,23 +43,32 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
   void initState() {
     super.initState();
     _bookingType = widget.initialType ?? BookingType.perSeat;
-    _destination = TextEditingController(text: widget.initialDestination ?? 'Neelum Valley');
+    _destination = TextEditingController(text: widget.initialDestination ?? '');
+    _destination.addListener(_refreshSearchResults);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await AppControllerScope.of(context).refreshPhase9Marketplace();
+    });
+  }
+
+  void _refreshSearchResults() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _pickup.dispose();
-    _destination.dispose();
+    _destination
+      ..removeListener(_refreshSearchResults)
+      ..dispose();
     _notes.dispose();
     super.dispose();
   }
 
   int get _travellers => _adults + _children;
-  int get _seatFare => (_vehicle.baseFare / _vehicle.seats).ceil();
   int get _estimate => _bookingType == BookingType.perSeat
-      ? _seatFare * _travellers
-      : _vehicle.baseFare;
-  int get _availableSeats => (_vehicle.seats - _travellers).clamp(0, _vehicle.seats);
+      ? (_vehicle.baseFare * .55 * _travellers).round()
+      : (_vehicle.baseFare * 2.8).round();
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -86,54 +97,251 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
         ),
       );
 
-  Widget _routeStep() => ListView(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-        children: [
-          _StepIntro(
-            icon: Icons.route_rounded,
-            title: context.tr('whereTo'),
-            subtitle: context.tr('bookingStepOneHelp'),
-          ),
-          const SizedBox(height: 18),
-          TextFormField(
-            controller: _pickup,
-            textInputAction: TextInputAction.next,
-            decoration: InputDecoration(prefixIcon: const Icon(Icons.trip_origin_rounded), labelText: context.tr('pickup')),
-            validator: _required,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _destination,
-            decoration: InputDecoration(prefixIcon: const Icon(Icons.location_on_rounded), labelText: context.tr('destination')),
-            validator: _required,
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(child: _DateCard(label: context.tr('departureDate'), value: DateFormat('dd MMM yyyy').format(_departureDate), icon: Icons.calendar_month_rounded, onTap: _pickDepartureDate)),
-              const SizedBox(width: 10),
-              Expanded(child: _DateCard(label: context.tr('departureTime'), value: _departureTime.format(context), icon: Icons.schedule_rounded, onTap: _pickTime)),
+  Widget _routeStep() {
+    final controller = AppControllerScope.of(context);
+    final matches = _matchingVehicles(controller.liveMarketplacePackages);
+    final destinationEntered = _destination.text.trim().isNotEmpty;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
+      children: [
+        _StepIntro(
+          icon: Icons.route_rounded,
+          title: context.tr('whereTo'),
+          subtitle: 'Enter your destination and date. Available vehicles will appear instantly.',
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .035),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          SwitchListTile.adaptive(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            tileColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: AppColors.border)),
-            value: _returnTrip,
-            onChanged: (value) => setState(() {
-              _returnTrip = value;
-              _returnDate = value ? _departureDate.add(const Duration(days: 2)) : null;
-            }),
-            title: Text(context.tr('returnTrip'), style: const TextStyle(fontWeight: FontWeight.w900)),
-            subtitle: Text(context.tr('returnTripHelp'), style: const TextStyle(fontSize: 12)),
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _pickup,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.trip_origin_rounded),
+                  labelText: context.tr('pickup'),
+                  hintText: 'Your pickup city or point',
+                ),
+                validator: _required,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _destination,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.location_on_rounded),
+                  labelText: context.tr('destination'),
+                  hintText: 'e.g. Neelum Valley, Sharda, Arang Kel',
+                  suffixIcon: _destination.text.trim().isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: _destination.clear,
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                ),
+                validator: _required,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _CompactDateField(
+                      label: context.tr('departureDate'),
+                      value: DateFormat('dd MMM yyyy').format(_departureDate),
+                      icon: Icons.calendar_month_rounded,
+                      onTap: _pickDepartureDate,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _CompactDateField(
+                      label: context.tr('departureTime'),
+                      value: _departureTime.format(context),
+                      icon: Icons.schedule_rounded,
+                      onTap: _pickTime,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          if (_returnTrip) ...[
-            const SizedBox(height: 12),
-            _DateCard(label: context.tr('returnDate'), value: DateFormat('dd MMM yyyy').format(_returnDate!), icon: Icons.event_repeat_rounded, onTap: _pickReturnDate),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Available vehicles',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Tap a vehicle to view location and reserve seats.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            if (destinationEntered)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE7F6F0),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${matches.length} found',
+                  style: const TextStyle(
+                    color: AppColors.primaryDark,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
           ],
+        ),
+        const SizedBox(height: 10),
+        if (controller.marketplaceBusy && controller.liveMarketplacePackages.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(28),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (!destinationEntered)
+          const _VehicleSearchHint(
+            icon: Icons.travel_explore_rounded,
+            title: 'Type your destination',
+            message: 'Vehicles will be filtered automatically by destination and departure date.',
+          )
+        else if (matches.isEmpty)
+          _VehicleSearchHint(
+            icon: Icons.event_busy_rounded,
+            title: 'No vehicle found for this date',
+            message: 'Change the date or continue to request a private vehicle from verified Drivers.',
+            actionLabel: 'Show next available date',
+            onAction: _showNextAvailableDate,
+          )
+        else
+          ...matches.map(
+            (package) => Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: _SearchVehicleCard(
+                package: package,
+                onTap: () => _openScheduledVehicle(package),
+              ),
+            ),
+          ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F7FA),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline_rounded, color: AppColors.info, size: 20),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'No suitable scheduled vehicle? Continue below to request a private or shared ride and receive Driver offers.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 11, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SwitchListTile.adaptive(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          tileColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: AppColors.border),
+          ),
+          value: _returnTrip,
+          onChanged: (value) => setState(() {
+            _returnTrip = value;
+            _returnDate = value ? _departureDate.add(const Duration(days: 2)) : null;
+          }),
+          title: Text(
+            context.tr('returnTrip'),
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          subtitle: Text(
+            context.tr('returnTripHelp'),
+            style: const TextStyle(fontSize: 11),
+          ),
+        ),
+        if (_returnTrip) ...[
+          const SizedBox(height: 10),
+          _DateCard(
+            label: context.tr('returnDate'),
+            value: DateFormat('dd MMM yyyy').format(_returnDate!),
+            icon: Icons.event_repeat_rounded,
+            onTap: _pickReturnDate,
+          ),
         ],
-      );
+      ],
+    );
+  }
+
+  List<LiveTourPackage> _matchingVehicles(List<LiveTourPackage> source) {
+    final destination = _destination.text.trim().toLowerCase();
+    if (destination.isEmpty) return const [];
+    final target = DateUtils.dateOnly(_departureDate);
+    final matches = source.where((package) {
+      final packageDate = DateUtils.dateOnly(package.departureAt);
+      return package.destination.toLowerCase().contains(destination) &&
+          packageDate == target &&
+          package.bookableSeats > 0;
+    }).toList()
+      ..sort((a, b) => a.departureAt.compareTo(b.departureAt));
+    return matches.take(10).toList();
+  }
+
+  Future<void> _showNextAvailableDate() async {
+    final destination = _destination.text.trim().toLowerCase();
+    final packages = AppControllerScope.of(context).liveMarketplacePackages
+        .where(
+          (package) =>
+              package.destination.toLowerCase().contains(destination) &&
+              package.bookableSeats > 0 &&
+              package.departureAt.isAfter(DateTime.now()),
+        )
+        .toList()
+      ..sort((a, b) => a.departureAt.compareTo(b.departureAt));
+    if (packages.isEmpty) return;
+    setState(() => _departureDate = DateUtils.dateOnly(packages.first.departureAt));
+  }
+
+  Future<void> _openScheduledVehicle(LiveTourPackage package) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LivePackageDetailScreen(package: package),
+      ),
+    );
+    if (mounted) {
+      await AppControllerScope.of(context).refreshPhase9Marketplace();
+    }
+  }
 
   Widget _travelStep() => ListView(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
@@ -249,19 +457,16 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
               children: [
                 Text(context.tr('transparentPrice'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
                 const SizedBox(height: 12),
-                if (_bookingType == BookingType.perSeat) ...[
-                  _PriceLine(label: 'Fare per seat', value: _seatFare),
-                  _PriceLine(label: 'Seats selected', value: _travellers, plainNumber: true),
-                  _PriceLine(label: 'Seats available after booking', value: _availableSeats, plainNumber: true),
-                ] else
-                  _PriceLine(label: context.tr('vehicleFare'), value: _estimate),
+                _PriceLine(label: _bookingType == BookingType.perSeat ? context.tr('seatFare') : context.tr('vehicleFare'), value: _estimate),
                 const Divider(height: 24),
                 _PriceLine(label: context.tr('estimatedTotal'), value: _estimate, bold: true),
-                const SizedBox(height: 10),
-                if (_bookingType == BookingType.perSeat)
-                  const Text('Fuel, tolls and uDrive charges are included in the seat fare. You only pay the total shown above.', style: TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w800, height: 1.4))
-                else
-                  const Text('Toll charges, if applicable, will be paid by the customer at actual cost.', style: TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w700, height: 1.4)),
+                const SizedBox(height: 8),
+                Text(
+                  _bookingType == BookingType.perSeat
+                      ? 'Fuel, toll and uDrive charges are included in the seat fare.'
+                      : 'Toll charges, if applicable, will be paid by the customer at actual cost.',
+                  style: const TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w800),
+                ),
               ],
             ),
           ),
@@ -440,6 +645,193 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
   }
 }
 
+
+class _CompactDateField extends StatelessWidget {
+  const _CompactDateField({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF6F9F8),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: AppColors.primaryDark, size: 19),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 9)),
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _VehicleSearchHint extends StatelessWidget {
+  const _VehicleSearchHint({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F8FA),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 34, color: AppColors.muted),
+            const SizedBox(height: 8),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 4),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.muted, fontSize: 11, height: 1.4),
+            ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 10),
+              TextButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.event_available_rounded, size: 18),
+                label: Text(actionLabel!),
+              ),
+            ],
+          ],
+        ),
+      );
+}
+
+class _SearchVehicleCard extends StatelessWidget {
+  const _SearchVehicleCard({required this.package, required this.onTap});
+
+  final LiveTourPackage package;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = package.coverImageUrl?.trim();
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(17),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(17),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(17),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 62,
+                  height: 62,
+                  child: image != null && image.isNotEmpty
+                      ? Image.network(
+                          image,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const ColoredBox(
+                            color: Color(0xFFE9F4F0),
+                            child: Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark),
+                          ),
+                        )
+                      : const ColoredBox(
+                          color: Color(0xFFE9F4F0),
+                          child: Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      package.vehicle.isEmpty ? package.title : package.vehicle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${package.startingCity} → ${package.destination}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${DateFormat('hh:mm a').format(package.departureAt)} · ${package.bookableSeats} seats free',
+                      style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 10.5),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'PKR ${NumberFormat('#,###').format(package.pricePerSeat)}',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+                  ),
+                  const Text('per seat', style: TextStyle(color: AppColors.muted, fontSize: 9)),
+                  const SizedBox(height: 8),
+                  const Icon(Icons.chevron_right_rounded, color: AppColors.primaryDark),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _BookingProgress extends StatelessWidget {
   const _BookingProgress({required this.current});
   final int current;
@@ -578,19 +970,10 @@ class _ReviewLine extends StatelessWidget {
 }
 
 class _PriceLine extends StatelessWidget {
-  const _PriceLine({required this.label, required this.value, this.bold = false, this.plainNumber = false});
+  const _PriceLine({required this.label, required this.value, this.bold = false});
   final String label;
   final int value;
   final bool bold;
-  final bool plainNumber;
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: TextStyle(color: bold ? AppColors.navy : AppColors.muted, fontWeight: bold ? FontWeight.w900 : FontWeight.w600))),
-            Text(plainNumber ? NumberFormat('#,###').format(value) : 'PKR ${NumberFormat('#,###').format(value)}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: bold ? 17 : 13, color: AppColors.navy)),
-          ],
-        ),
-      );
+  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [Expanded(child: Text(label, style: TextStyle(color: bold ? AppColors.navy : AppColors.muted, fontWeight: bold ? FontWeight.w900 : FontWeight.w600))), Text('PKR ${NumberFormat('#,###').format(value)}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: bold ? 17 : 13, color: AppColors.navy))]));
 }
