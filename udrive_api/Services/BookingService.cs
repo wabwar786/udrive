@@ -265,6 +265,7 @@ public sealed class BookingService(
             WHERE id = @rideRequestId
             FOR UPDATE;
             """;
+        DateTimeOffset pickupAt;
         await using (var lockCommand = new NpgsqlCommand(lockSql, connection, transaction))
         {
             lockCommand.Parameters.AddWithValue("rideRequestId", rideRequestId);
@@ -278,7 +279,7 @@ public sealed class BookingService(
             }
 
             var status = reader.GetString(0);
-            var pickupAt = reader.GetFieldValue<DateTimeOffset>(1);
+            pickupAt = reader.GetFieldValue<DateTimeOffset>(1);
             var expiresAt = reader.IsDBNull(2) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(2);
             if (status is not ("Open" or "ReceivingOffers") || pickupAt <= DateTimeOffset.UtcNow || expiresAt <= DateTimeOffset.UtcNow)
             {

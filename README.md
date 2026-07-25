@@ -1,7 +1,6 @@
-# Vehicle Card Build Hotfix
+# Driver Offer pickupAt Build Hotfix
 
 Replace:
+`udrive_api/Services/BookingService.cs`
 
-`udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart`
-
-Fix: replaces nonexistent `AppColors.text` with existing `AppColors.navy`.
+Fixes CS0103 by declaring `pickupAt` outside the lock-command scope so it remains available when setting the Driver offer expiry.
