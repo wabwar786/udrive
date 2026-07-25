@@ -68,10 +68,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             crossAxisSpacing: 10,
             childAspectRatio: 1.7,
             children: [
-              _Action(icon: Icons.local_taxi_rounded, title: _t('Book a ride', 'رائیڈ بک کریں'), onTap: () => widget.onNavigate('bookRide')),
-              _Action(icon: Icons.luggage_rounded, title: _t('Tour packages', 'ٹور پیکجز'), onTap: () => widget.onNavigate('packages')),
-              _Action(icon: Icons.groups_rounded, title: _t('Join a tour', 'ٹور جوائن کریں'), onTap: () => widget.onNavigate('joinTour')),
-              _Action(icon: Icons.health_and_safety_rounded, title: _t('Safety centre', 'سیفٹی سینٹر'), onTap: () => widget.onNavigate('safety')),
+              _Action(icon: Icons.local_taxi_rounded, title: _t('Book a ride', 'رائیڈ بک کریں'), subtitle: _t('Private or shared', 'پرائیویٹ یا شیئرڈ'), colors: const [Color(0xFF0E8F68), Color(0xFF16B982)], onTap: () => widget.onNavigate('bookRide')),
+              _Action(icon: Icons.luggage_rounded, title: _t('Tour packages', 'ٹور پیکجز'), subtitle: _t('Explore Kashmir', 'کشمیر دیکھیں'), colors: const [Color(0xFF3568D4), Color(0xFF5A8AF0)], onTap: () => widget.onNavigate('packages')),
+              _Action(icon: Icons.groups_rounded, title: _t('Join a tour', 'ٹور جوائن کریں'), subtitle: _t('Reserve your seat', 'اپنی سیٹ بک کریں'), colors: const [Color(0xFF7A42C8), Color(0xFFA164E8)], onTap: () => widget.onNavigate('joinTour')),
+              _Action(icon: Icons.health_and_safety_rounded, title: _t('Safety centre', 'سیفٹی سینٹر'), subtitle: _t('Tracking & support', 'ٹریکنگ اور مدد'), colors: const [Color(0xFFE5702A), Color(0xFFF49A46)], onTap: () => widget.onNavigate('safety')),
             ],
           ),
           const SizedBox(height: 20),
@@ -155,10 +155,38 @@ class _Metric extends StatelessWidget {
 }
 
 class _Action extends StatelessWidget {
-  const _Action({required this.icon, required this.title, required this.onTap});
-  final IconData icon; final String title; final VoidCallback onTap;
+  const _Action({required this.icon, required this.title, required this.subtitle, required this.colors, required this.onTap});
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<Color> colors;
+  final VoidCallback onTap;
+
   @override
-  Widget build(BuildContext context) => PremiumCard(onTap: onTap, padding: const EdgeInsets.all(13), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: AppColors.primaryDark)), const SizedBox(width: 10), Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)))]));
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: colors.last.withValues(alpha: .22), blurRadius: 14, offset: const Offset(0, 6))],
+          ),
+          child: Row(
+            children: [
+              Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .2), borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: Colors.white)),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12)),
+                const SizedBox(height: 3),
+                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: .82), fontSize: 9.5, fontWeight: FontWeight.w600)),
+              ])),
+              const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14),
+            ],
+          ),
+        ),
+      );
 }
 
 class _LiveBookingCard extends StatelessWidget {

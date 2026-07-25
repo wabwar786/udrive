@@ -1,25 +1,22 @@
-# uDrive Kashmir Demo Data + Live UI Hotfix
+# Shared-seat pricing and colorful Customer Home update
 
-## Included
-- Pakistan-time greeting fix (UTC+05:00)
-- 50 approved demo Driver accounts
-- 50 verified demo vehicles with remote vehicle image URLs
-- 35 major AJK/Kashmir tourism destinations with coordinates and cover images
-- 15 active tour packages
-- Live Explore screen backed by `/api/v1/catalog/destinations`
-- Package cards render `coverImageUrl`
-- Driver vehicle cards render `imageUrl`
+Overlay the included files on the latest uDrive project.
 
-## Apply
-1. Overlay all files on the latest project.
-2. Deploy the API first. Migration `010_demo_fleet_kashmir_catalog.sql` is additive and idempotent.
-3. Confirm `/health/live`, `/health/ready`, and `/api/v1/catalog/destinations`.
-4. Deploy Flutter web.
-5. Hard refresh and clear the Flutter service-worker cache if the previous greeting remains visible.
+## Changes
+- Per-seat booking displays one inclusive seat fare.
+- Fuel, toll, and uDrive fees are not shown separately for shared-seat bookings.
+- Selected seats and remaining seats are shown before submission.
+- Whole-vehicle booking displays the vehicle fare and a short actual-toll notice.
+- Submitted ride-request amount now matches the displayed total.
+- Customer Home quick actions use colorful gradient buttons instead of white cards.
 
-## Test Driver accounts
-Phones: `+923109000001` through `+923109000050`.
-Use the configured Development OTP only in a non-production test environment.
+## Build
+```bash
+cd udrive_unified_mobile
+flutter pub get
+flutter analyze
+flutter build web --release --no-wasm-dry-run
+```
 
-## Important
-The seeded records are clearly identifiable by `demo.driverXX@udrive.local`, deterministic UUID ranges `400...` / `410...` / `420...`, and registrations `AJK-1001` through `AJK-1050`.
+## Tracking
+Authenticated live tracking is already available from My Trips after a Driver is assigned. It reads `/api/v1/trips/{bookingId}/tracking` every 15 seconds. A Google Maps tile/provider key remains environment-specific and should be configured separately before replacing the current live route canvas.

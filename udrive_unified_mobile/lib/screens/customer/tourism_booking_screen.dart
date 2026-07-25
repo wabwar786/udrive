@@ -53,9 +53,11 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
   }
 
   int get _travellers => _adults + _children;
+  int get _seatFare => (_vehicle.baseFare / _vehicle.seats).ceil();
   int get _estimate => _bookingType == BookingType.perSeat
-      ? (_vehicle.baseFare * .55 * _travellers).round()
-      : (_vehicle.baseFare * 2.8).round();
+      ? _seatFare * _travellers
+      : _vehicle.baseFare;
+  int get _availableSeats => (_vehicle.seats - _travellers).clamp(0, _vehicle.seats);
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -247,13 +249,19 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
               children: [
                 Text(context.tr('transparentPrice'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
                 const SizedBox(height: 12),
-                _PriceLine(label: _bookingType == BookingType.perSeat ? context.tr('seatFare') : context.tr('vehicleFare'), value: _estimate),
-                const _PriceLine(label: 'Fuel & toll estimate', value: 900),
-                const _PriceLine(label: 'uDrive service fee', value: 180),
+                if (_bookingType == BookingType.perSeat) ...[
+                  _PriceLine(label: 'Fare per seat', value: _seatFare),
+                  _PriceLine(label: 'Seats selected', value: _travellers, plainNumber: true),
+                  _PriceLine(label: 'Seats available after booking', value: _availableSeats, plainNumber: true),
+                ] else
+                  _PriceLine(label: context.tr('vehicleFare'), value: _estimate),
                 const Divider(height: 24),
-                _PriceLine(label: context.tr('estimatedTotal'), value: _estimate + 1080, bold: true),
-                const SizedBox(height: 8),
-                Text(context.tr('noHiddenCharges'), style: const TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w800)),
+                _PriceLine(label: context.tr('estimatedTotal'), value: _estimate, bold: true),
+                const SizedBox(height: 10),
+                if (_bookingType == BookingType.perSeat)
+                  const Text('Fuel, tolls and uDrive charges are included in the seat fare. You only pay the total shown above.', style: TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w800, height: 1.4))
+                else
+                  const Text('Toll charges, if applicable, will be paid by the customer at actual cost.', style: TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w700, height: 1.4)),
               ],
             ),
           ),
@@ -320,7 +328,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
             );
       final pickupCoordinates = _coordinatesFor(_pickup.text, pickup: true);
       final destinationCoordinates = _coordinatesFor(_destination.text);
-      final total = _estimate + 1080;
+      final total = _estimate;
       final controller = AppControllerScope.of(context);
       final request = await controller.createLiveRideRequest({
         'pickupLabel': _pickup.text.trim(),
@@ -570,10 +578,19 @@ class _ReviewLine extends StatelessWidget {
 }
 
 class _PriceLine extends StatelessWidget {
-  const _PriceLine({required this.label, required this.value, this.bold = false});
+  const _PriceLine({required this.label, required this.value, this.bold = false, this.plainNumber = false});
   final String label;
   final int value;
   final bool bold;
+  final bool plainNumber;
   @override
-  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [Expanded(child: Text(label, style: TextStyle(color: bold ? AppColors.navy : AppColors.muted, fontWeight: bold ? FontWeight.w900 : FontWeight.w600))), Text('PKR ${NumberFormat('#,###').format(value)}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: bold ? 17 : 13, color: AppColors.navy))]));
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Expanded(child: Text(label, style: TextStyle(color: bold ? AppColors.navy : AppColors.muted, fontWeight: bold ? FontWeight.w900 : FontWeight.w600))),
+            Text(plainNumber ? NumberFormat('#,###').format(value) : 'PKR ${NumberFormat('#,###').format(value)}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: bold ? 17 : 13, color: AppColors.navy)),
+          ],
+        ),
+      );
 }
