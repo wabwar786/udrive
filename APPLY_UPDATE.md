@@ -1,22 +1,16 @@
-# Shared-seat pricing and colorful Customer Home update
+# uDrive Phase 13.5 — Customer Home Screen Update 1
 
-Overlay the included files on the latest uDrive project.
+Apply this ZIP over the latest deployed Phase 13.5 source tree.
 
-## Changes
-- Per-seat booking displays one inclusive seat fare.
-- Fuel, toll, and uDrive fees are not shown separately for shared-seat bookings.
-- Selected seats and remaining seats are shown before submission.
-- Whole-vehicle booking displays the vehicle fare and a short actual-toll notice.
-- Submitted ride-request amount now matches the displayed total.
-- Customer Home quick actions use colorful gradient buttons instead of white cards.
+## Deployment order
 
-## Build
-```bash
-cd udrive_unified_mobile
-flutter pub get
-flutter analyze
-flutter build web --release --no-wasm-dry-run
-```
+1. Replace the included API and Flutter files.
+2. Deploy `udrive_api` first.
+3. Confirm Swagger contains:
+   `GET /api/v1/packages/{packageId}/vehicle-location`
+4. Confirm `/health/live` and `/health/ready` return HTTP 200.
+5. Deploy `udrive_unified_mobile`.
+6. Flutter build runs `flutter pub get`; this update adds `url_launcher`.
+7. Clear the Flutter web service-worker/site cache after deployment.
 
-## Tracking
-Authenticated live tracking is already available from My Trips after a Driver is assigned. It reads `/api/v1/trips/{bookingId}/tracking` every 15 seconds. A Google Maps tile/provider key remains environment-specific and should be configured separately before replacing the current live route canvas.
+No database migration is required.

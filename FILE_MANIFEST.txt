@@ -1,4 +1,14 @@
-udrive_unified_mobile/lib/screens/customer/tourism_booking_screen.dart
-udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart
 APPLY_UPDATE.md
 FILE_MANIFEST.txt
+HOME_SCREEN_CHANGES.md
+TESTING_CHECKLIST.md
+udrive_api/Controllers/PackagesController.cs
+udrive_api/Models/BookingDtos.cs
+udrive_api/Services/PackageMarketplaceService.cs
+udrive_unified_mobile/lib/core/booking/booking_repository.dart
+udrive_unified_mobile/lib/core/state/app_controller.dart
+udrive_unified_mobile/lib/models/booking_models.dart
+udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart
+udrive_unified_mobile/lib/screens/customer/live_packages_screen.dart
+udrive_unified_mobile/lib/screens/main_shell.dart
+udrive_unified_mobile/pubspec.yaml

@@ -99,6 +99,17 @@ class BookingRepository {
     return _list(response, LiveTourPackage.fromJson);
   }
 
+  Future<LivePackageVehicleLocation> getPackageVehicleLocation(
+    String packageId,
+  ) async {
+    final response = await client.getJson(
+      '/api/v1/packages/$packageId/vehicle-location',
+    );
+    return LivePackageVehicleLocation.fromJson(
+      Map<String, dynamic>.from(response['data'] as Map),
+    );
+  }
+
   Future<List<LiveTourPackage>> getDriverPackages() async {
     final response = await client.getJson('/api/v1/driver/marketplace/packages');
     return _list(response, LiveTourPackage.fromJson);

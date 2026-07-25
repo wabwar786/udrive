@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -108,7 +109,7 @@ class _LivePackagesScreenState extends State<LivePackagesScreen> {
   Future<void> _openPackage(LiveTourPackage package) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => _LivePackageDetail(package: package)),
+      MaterialPageRoute(builder: (_) => LivePackageDetailScreen(package: package)),
     );
     if (mounted) await _refresh();
   }
@@ -268,18 +269,20 @@ class _WaitlistCard extends StatelessWidget {
       );
 }
 
-class _LivePackageDetail extends StatefulWidget {
-  const _LivePackageDetail({required this.package});
+class LivePackageDetailScreen extends StatefulWidget {
+  const LivePackageDetailScreen({required this.package, super.key});
   final LiveTourPackage package;
 
   @override
-  State<_LivePackageDetail> createState() => _LivePackageDetailState();
+  State<LivePackageDetailScreen> createState() => _LivePackageDetailScreenState();
 }
 
-class _LivePackageDetailState extends State<_LivePackageDetail> {
+class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
   String _bookingType = 'PerSeat';
   int _seats = 1;
   bool _busy = false;
+  bool _locationBusy = false;
+  LivePackageVehicleLocation? _vehicleLocation;
 
   LiveTourPackage get package => widget.package;
 
@@ -295,7 +298,12 @@ class _LivePackageDetailState extends State<_LivePackageDetail> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 6, 18, 120),
         children: [
-          const MapPreview(height: 200),
+          _VehicleMapCard(
+            package: package,
+            location: _vehicleLocation,
+            busy: _locationBusy,
+            onOpenMap: _openVehicleMap,
+          ),
           const SizedBox(height: 16),
           PremiumCard(
             child: Column(
@@ -370,6 +378,50 @@ class _LivePackageDetailState extends State<_LivePackageDetail> {
       ),
       floatingActionButton: package.customerOffersAllowed ? FloatingActionButton.extended(onPressed: _busy ? null : _sendOffer, icon: const Icon(Icons.local_offer_rounded), label: const Text('Make offer')) : null,
     );
+  }
+
+  Future<void> _openVehicleMap() async {
+    if (_locationBusy) return;
+    setState(() => _locationBusy = true);
+    try {
+      final location = await AppControllerScope.of(context)
+          .loadPackageVehicleLocation(package.id);
+      if (!mounted) return;
+      setState(() => _vehicleLocation = location);
+
+      final latitude = location.hasLiveCoordinates
+          ? location.latitude
+          : location.destinationLatitude;
+      final longitude = location.hasLiveCoordinates
+          ? location.longitude
+          : location.destinationLongitude;
+      if (latitude == null || longitude == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Vehicle location is not available yet.'),
+          ),
+        );
+        return;
+      }
+
+      final uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude',
+      );
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Google Maps could not be opened.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _locationBusy = false);
+    }
   }
 
   Future<void> _reserve() async {
@@ -500,6 +552,119 @@ class _LivePackageDetailState extends State<_LivePackageDetail> {
   Future<void> _sendOffer() async {
     final input = TextEditingController(text: (_bookingType == 'WholeVehicle' ? package.wholeVehiclePrice * .9 : package.pricePerSeat * _seats * .9).round().toString());
     await showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (sheet) => Padding(padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.viewInsetsOf(sheet).bottom + 20), child: Column(mainAxisSize: MainAxisSize.min, children: [const Text('Send package offer', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)), const SizedBox(height: 14), TextField(controller: input, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Your total offer (PKR)', prefixIcon: Icon(Icons.payments_rounded))), const SizedBox(height: 16), FilledButton(onPressed: () async { try { await AppControllerScope.of(context).createLivePackageOffer(packageId: package.id, bookingType: _bookingType, seats: _bookingType == 'WholeVehicle' ? package.totalSeats : _seats, amount: double.parse(input.text), message: 'Customer tourism package offer'); if (!mounted) return; Navigator.pop(sheet); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offer sent to Driver'))); } catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error'))); } }, child: const Text('Send offer'))])));
+  }
+}
+
+class _VehicleMapCard extends StatelessWidget {
+  const _VehicleMapCard({
+    required this.package,
+    required this.location,
+    required this.busy,
+    required this.onOpenMap,
+  });
+
+  final LiveTourPackage package;
+  final LivePackageVehicleLocation? location;
+  final bool busy;
+  final VoidCallback onOpenMap;
+
+  @override
+  Widget build(BuildContext context) {
+    final live = location?.hasLiveCoordinates == true;
+    final status = location == null
+        ? 'Check where this vehicle is now'
+        : live
+            ? (location!.isLive ? 'Vehicle is live now' : 'Last known vehicle location')
+            : 'Live GPS is not available yet';
+    return Container(
+      height: 205,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFEAF2FF), Color(0xFFF3F8FF)],
+        ),
+        border: Border.all(color: const Color(0xFFD5E3FA)),
+      ),
+      child: Stack(
+        children: [
+          const Positioned(
+            right: 6,
+            top: 4,
+            child: Icon(Icons.map_rounded, size: 92, color: Color(0x223568D4)),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3568D4),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: const Icon(
+                      Icons.directions_bus_filled_rounded,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Live vehicle map',
+                          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+                        ),
+                        Text(
+                          status,
+                          style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Text(
+                '${package.startingCity} → ${package.destination}',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                location?.lastUpdatedAt == null
+                    ? 'Current position appears when the Driver shares fresh GPS.'
+                    : 'Updated ${DateFormat('dd MMM · hh:mm a').format(location!.lastUpdatedAt!.toLocal())}',
+                style: const TextStyle(color: AppColors.muted, fontSize: 11),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: busy ? null : onOpenMap,
+                  icon: busy
+                      ? const SizedBox(
+                          width: 17,
+                          height: 17,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.location_on_rounded),
+                  label: Text(busy ? 'Checking location...' : 'Open in Google Maps'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 

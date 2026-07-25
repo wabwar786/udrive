@@ -299,6 +299,66 @@ public sealed class PackageMarketplaceService(
         CancellationToken cancellationToken) =>
         GetPackageByIdAsync(packageId, null, includeNonPublic: false, cancellationToken);
 
+    public async Task<ServiceResult<PackageVehicleLocationDto>> GetPackageVehicleLocationAsync(
+        Guid packageId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT tp.id, tp.vehicle_id,
+                   concat_ws(' ', v.make, v.model, v.year::text),
+                   v.registration_number, tp.starting_city, tp.pickup_point,
+                   d.name_en,
+                   CASE WHEN l.server_timestamp >= now() - interval '15 minutes'
+                        THEN ST_Y(l.location::geometry) END,
+                   CASE WHEN l.server_timestamp >= now() - interval '15 minutes'
+                        THEN ST_X(l.location::geometry) END,
+                   l.server_timestamp,
+                   COALESCE(l.server_timestamp >= now() - interval '2 minutes', false),
+                   COALESCE(l.server_timestamp < now() - interval '2 minutes', true),
+                   ST_Y(d.location::geometry), ST_X(d.location::geometry)
+            FROM udrive.tour_packages tp
+            JOIN udrive.driver_profiles dp ON dp.id = tp.driver_profile_id
+            JOIN udrive.vehicles v ON v.id = tp.vehicle_id
+            JOIN udrive.destinations d ON d.id = tp.destination_id
+            LEFT JOIN udrive.driver_latest_locations l
+              ON l.driver_profile_id = dp.id
+            WHERE tp.id = @packageId
+              AND tp.status = 'Active'
+              AND tp.departure_at > now();
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("packageId", packageId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return ServiceResult<PackageVehicleLocationDto>.Fail(
+                StatusCodes.Status404NotFound,
+                "package_not_found",
+                "The scheduled vehicle is not available.");
+        }
+
+        var dto = new PackageVehicleLocationDto(
+            reader.GetGuid(0),
+            reader.GetGuid(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5),
+            reader.GetString(6),
+            reader.IsDBNull(7) ? null : reader.GetDouble(7),
+            reader.IsDBNull(8) ? null : reader.GetDouble(8),
+            reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9),
+            reader.GetBoolean(10),
+            reader.GetBoolean(11),
+            reader.IsDBNull(12) ? null : reader.GetDouble(12),
+            reader.IsDBNull(13) ? null : reader.GetDouble(13));
+
+        return ServiceResult<PackageVehicleLocationDto>.Ok(dto);
+    }
+
     public async Task<ServiceResult<PackageAvailabilityDto>> GetAvailabilityAsync(
         Guid packageId,
         CancellationToken cancellationToken)

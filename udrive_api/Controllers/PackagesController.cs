@@ -34,6 +34,15 @@ public sealed class PackagesController(
             packageId,
             cancellationToken));
 
+    [Authorize]
+    [HttpGet("{packageId:guid}/vehicle-location")]
+    public async Task<IActionResult> GetVehicleLocation(
+        Guid packageId,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await packageService.GetPackageVehicleLocationAsync(
+            packageId,
+            cancellationToken));
+
     [AllowAnonymous]
     [HttpGet("{packageId:guid}/availability")]
     public async Task<IActionResult> GetAvailability(

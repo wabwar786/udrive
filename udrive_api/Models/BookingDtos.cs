@@ -323,3 +323,19 @@ public sealed record PassengerManifestDto(
     string BookingReference,
     int SeatsBooked,
     IReadOnlyList<PassengerManifestItemDto> Passengers);
+
+public sealed record PackageVehicleLocationDto(
+    Guid TourPackageId,
+    Guid VehicleId,
+    string Vehicle,
+    string RegistrationNumber,
+    string StartingCity,
+    string PickupPoint,
+    string Destination,
+    double? Latitude,
+    double? Longitude,
+    DateTimeOffset? LastUpdatedAt,
+    bool IsLive,
+    bool IsStale,
+    double? DestinationLatitude,
+    double? DestinationLongitude);
