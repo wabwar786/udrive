@@ -1,33 +1,20 @@
-# Phase 11–12 API Endpoints
+# Phase 13 API Endpoints
 
-## Admin operations
+## Admin Finance
+- `GET /api/v1/admin/finance/dashboard`
+- `GET /api/v1/admin/finance/transactions?search=&status=&page=1&pageSize=25`
+- `GET /api/v1/admin/finance/earnings`
+- `GET /api/v1/admin/finance/wallets`
+- `GET /api/v1/admin/finance/payouts`
+- `PUT /api/v1/admin/finance/payouts/{id}`
+- `GET /api/v1/admin/finance/refunds`
+- `POST /api/v1/admin/finance/refunds`
+- `PUT /api/v1/admin/finance/refunds/{id}`
+- `GET /api/v1/admin/finance/commission-rules`
+- `POST /api/v1/admin/finance/commission-rules` (SuperAdmin)
+- `POST /api/v1/admin/finance/adjustments` (SuperAdmin)
+- `POST /api/v1/admin/finance/reconcile-completed-trips` (SuperAdmin)
 
-- `GET /api/v1/admin/trip-operations`
-- `GET /api/v1/admin/trip-operations/{bookingId}`
-- `GET /api/v1/admin/trip-operations/{bookingId}/suitable-drivers`
-- `POST /api/v1/admin/trip-operations/{bookingId}/assign`
-- `POST /api/v1/admin/trip-operations/{bookingId}/offers`
-- `PUT /api/v1/admin/trip-operations/{bookingId}/status`
-- `POST /api/v1/admin/trip-operations/{bookingId}/notes`
-- `PUT /api/v1/admin/trip-operations/{bookingId}/schedule`
-
-## Driver and customer operations
-
-- `GET /api/v1/trips/driver/offers`
-- `PUT /api/v1/trips/driver/offers/{offerId}`
-- `GET /api/v1/trips/driver/my`
-- `GET /api/v1/trips/customer/my`
-- `PUT /api/v1/trips/{bookingId}/driver-status`
-- `PUT /api/v1/trips/{bookingId}/customer-status`
-- `GET /api/v1/trips/{bookingId}/tracking`
-- `POST /api/v1/trips/{bookingId}/tracking-link`
-- `DELETE /api/v1/trips/{bookingId}/tracking-link`
-
-## Tracking
-
-- `POST /api/v1/tracking/driver/location`
-- `GET /api/v1/tracking/admin/active`
-- `GET /api/v1/tracking/admin/{bookingId}`
-- `GET /api/v1/public/tracking/{token}`
-
-Admin endpoints require SuperAdmin/Admin/Manager/Operations. Private mobile endpoints require authentication and booking ownership/assignment.
+## Driver Finance
+- `GET /api/v1/driver/finance`
+- `POST /api/v1/driver/finance/payouts`

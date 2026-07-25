@@ -1,46 +1,19 @@
-# Phase 11–12 Testing Checklist
+# Phase 13 API Testing Checklist
 
-## API and migration
-
-- [ ] `/health/live` returns success.
-- [ ] `/health/ready` confirms PostgreSQL.
-- [ ] Migration 008 appears in migration history.
-- [ ] Existing bookings have one `trip_operations` row.
-- [ ] Existing booking/authentication/verification endpoints still work.
-
-## Operations
-
-- [ ] Admin filters/search/pagination work.
-- [ ] Unverified/suspended driver cannot be assigned.
-- [ ] Unverified/suspended vehicle cannot be assigned.
-- [ ] Vehicle below passenger capacity is blocked.
-- [ ] Driver/vehicle overlap is blocked.
-- [ ] Duplicate pending offer is blocked.
-- [ ] Driver can accept or reject with reason.
-- [ ] Other driver cannot respond to the offer.
-- [ ] Invalid lifecycle transition returns 409.
-- [ ] Trip cannot start before accepted verified assignment.
-- [ ] Completed/cancelled trip cannot restart without authorized override.
-- [ ] Audit log and notifications are created.
-
-## Tracking
-
-- [ ] Another driver cannot update the trip location.
-- [ ] Another customer cannot view tracking.
-- [ ] Invalid coordinates/timestamps are rejected.
-- [ ] Fast repeated updates receive 429 or are suppressed.
-- [ ] Duplicate client event is idempotent.
-- [ ] Admin sees live/stale/emergency indicators.
-- [ ] Customer sees only their trip.
-- [ ] Public token expires and can be revoked.
-- [ ] Public token stops after completion/cancellation.
-- [ ] Offline points retry in chronological order.
-- [ ] Older cached point does not overwrite newer latest location.
-
-## UI
-
-- [ ] Desktop/tablet/mobile Admin layouts remain compact.
-- [ ] Driver Dispatch and Marketplace tabs both work.
-- [ ] Customer My Trips shows assignment and status progression.
-- [ ] English/Urdu application mode remains functional.
-- [ ] No APK/AAB is generated.
+- [ ] Finance dashboard returns HTTP 200 for SuperAdmin/Admin/FinanceOfficer.
+- [ ] Driver finance endpoint denies Customer tokens.
+- [ ] Completing an assigned booking creates exactly one earning and wallet credit.
+- [ ] Repeating completion/reconcile does not create duplicate earning.
+- [ ] Commission amount and net amount reconcile to gross fare.
+- [ ] Payout greater than available balance is rejected.
+- [ ] Second active payout request is rejected.
+- [ ] Stale wallet or payout version returns HTTP 409.
+- [ ] Paid payout moves pending balance to paid balance.
+- [ ] Rejected/failed payout restores available balance.
+- [ ] Refund greater than paid amount is rejected.
+- [ ] Completed refund updates payment refund amount/status.
+- [ ] Final payout/refund cannot be edited.
+- [ ] Only SuperAdmin can create commission rules or adjustments.
+- [ ] Every payout/refund/adjustment action creates an audit log.
+- [ ] Admin Finance page uses live API data and displays empty/error/loading states.
+- [ ] Driver earnings screen loads live wallet activity and submits payout request.

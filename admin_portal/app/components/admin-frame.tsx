@@ -66,7 +66,8 @@ const groups = [
     label: 'CONTROL CENTRE',
     items: [
       ['/safety', 'Safety incidents', ShieldAlert],
-      ['/payments', 'Payments', CircleDollarSign],
+      ['/finance', 'Finance & settlements', CircleDollarSign],
+      ['/payments', 'Legacy payments', CircleDollarSign],
       ['/support', 'Support tickets', Headphones],
       ['/notifications', 'Notifications', Megaphone],
       ['/audit', 'Audit log', ClipboardList],

@@ -60,6 +60,7 @@ builder.Services.AddScoped<AdminUserManagementService>(_ =>
     new AdminUserManagementService(connectionString));
 builder.Services.AddScoped<TripOperationsService>(_ => new TripOperationsService(connectionString));
 builder.Services.AddScoped<TrackingService>(_ => new TrackingService(connectionString));
+builder.Services.AddScoped<FinanceService>(_ => new FinanceService(connectionString));
 builder.Services.AddScoped<VerificationFileLookupService>(serviceProvider =>
     new VerificationFileLookupService(
         connectionString,

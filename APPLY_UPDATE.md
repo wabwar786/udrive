@@ -1,21 +1,12 @@
-# Apply Phase 11–12 Update
+# uDrive Phase 13 Update
 
-This package is an additive overlay for the latest uDrive repository. Do not delete existing folders.
+Overlay the included files on the latest Phase 11–12 codebase. Do not delete existing files or migrations.
 
-1. Back up the production PostgreSQL database.
-2. Copy the included files into the repository, preserving paths.
-3. Confirm Railway API volume mount `/app/uploads` and `UPLOAD_ROOT=/app/uploads`.
-4. Deploy `udrive_api`. Migration `008_phase11_12_trip_operations_tracking.sql` is embedded and applied by the existing migration runner when `AUTO_APPLY_MIGRATIONS` is not `false`.
-5. Confirm `/health/live` and `/health/ready`.
-6. Confirm all Phase 11–12 tables and indexes listed in `DATABASE_CHANGES.md`.
-7. Deploy `admin_portal`.
-8. Run `flutter pub get`, configure Android/iOS location permissions, then deploy Flutter web only when required. Do not build APK/AAB for this phase.
-
-No existing table or production column is removed or renamed.
-
-## Build hotfix — duplicate DriverOfferDto
-
-The existing ride marketplace already defines `DriverOfferDto` in `Models/BookingDtos.cs`.
-Phase 11 operations now uses the distinct `OperationsDriverOfferDto` type in
-`Models/TripOperationsDtos.cs` and `Services/TripOperationsService.cs`.
-This preserves both API contracts and prevents CS0101/CS8863 during publish.
+1. Back up the Railway PostgreSQL database.
+2. Copy the update files preserving paths.
+3. Deploy `udrive_api`; migration `009_phase13_finance_wallets.sql` is additive and auto-applies when `AUTO_APPLY_MIGRATIONS` is not `false`.
+4. Confirm `/health/live`, `/health/ready`, and Swagger.
+5. In Swagger confirm `Finance` and `DriverFinance` controllers.
+6. Deploy `admin_portal` and hard refresh.
+7. Run `flutter pub get`; deploy Flutter web only when required. Do not build APK/AAB yet.
+8. As SuperAdmin call `POST /api/v1/admin/finance/reconcile-completed-trips` once to create missing earnings for historical completed trips.

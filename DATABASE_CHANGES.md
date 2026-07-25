@@ -1,32 +1,16 @@
 # Database Changes
 
-Migration: `008_phase11_12_trip_operations_tracking.sql`
+Migration `009_phase13_finance_wallets.sql` is additive.
 
-## Additive booking columns
+New tables:
+- `commission_rules`
+- `driver_wallets`
+- `driver_earnings`
+- `driver_wallet_entries`
+- `driver_payout_requests`
+- `refund_requests`
+- `financial_adjustments`
 
-- `payment_status`
-- `special_instructions`
-- `emergency_contact_name`
-- `emergency_contact_phone`
+Added safe columns/indexes on `payments` for idempotency, refund totals, and finance review metadata.
 
-## New tables
-
-- `trip_operations`
-- `trip_assignments`
-- `driver_booking_offers`
-- `trip_status_history`
-- `trip_notes`
-- `trip_incidents`
-- `driver_latest_locations`
-- `trip_location_history`
-- `trip_tracking_tokens`
-
-## Safety and concurrency
-
-- One active assignment per booking.
-- One pending offer per booking/driver.
-- Unique client location event per driver.
-- Version columns for optimistic concurrency.
-- Overlap checks use trip time ranges.
-- PostGIS GiST indexes support location access.
-- Existing bookings are backfilled into `trip_operations` without changing original booking IDs.
+A PostgreSQL trigger calls `udrive.ensure_driver_earning(booking_id)` when a booking first changes to `Completed`. The booking remains the source of truth for gross fare. The selected commission rule is resolved server-side, and only one earning can exist per booking.
