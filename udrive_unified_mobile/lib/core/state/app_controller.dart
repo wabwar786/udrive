@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/auth_repository.dart';
 import '../auth/session_store.dart';
+import '../booking/booking_repository.dart';
 import '../../models/auth_models.dart';
+import '../../models/booking_models.dart';
 import '../../data/dummy_data.dart';
 import '../../data/models.dart';
 
@@ -13,6 +15,7 @@ class AppController extends ChangeNotifier {
 
   final SessionStore _sessionStore = SessionStore();
   late final AuthRepository _authRepository = AuthRepository(_sessionStore);
+  late final BookingRepository _bookingRepository = BookingRepository(_authRepository.client);
 
   bool _initialized = false;
   bool _loggedIn = false;
@@ -22,6 +25,21 @@ class AppController extends ChangeNotifier {
   OtpChallenge? _lastOtp;
   DriverProfileLive? _driverProfile;
   List<LiveVehicle> _liveVehicles = const [];
+  List<LiveRideRequest> _liveRideRequests = const [];
+  List<LiveRideRequest> _liveDriverRideRequests = const [];
+  List<LiveDriverOffer> _liveDriverOffers = const [];
+  List<LiveBooking> _liveBookings = const [];
+  List<LiveTourPackage> _liveMarketplacePackages = const [];
+  List<LiveTourPackage> _liveDriverPackages = const [];
+  List<LivePackageOffer> _liveCustomerPackageOffers = const [];
+  List<LivePackageOffer> _liveDriverPackageOffers = const [];
+  List<LiveBooking> _liveDriverPackageBookings = const [];
+  List<LivePackageWaitlist> _liveCustomerPackageWaitlist = const [];
+  List<LivePackageWaitlist> _liveDriverPackageWaitlist = const [];
+  List<LiveTourInterest> _liveTourInterests = const [];
+  List<LiveTourMatch> _liveTourMatches = const [];
+  bool _marketplaceBusy = false;
+  String? _marketplaceError;
   Locale _locale = const Locale('en');
   UserMode _mode = UserMode.customer;
   bool _driverOnline = true;
@@ -143,6 +161,21 @@ class AppController extends ChangeNotifier {
   OtpChallenge? get lastOtp => _lastOtp;
   DriverProfileLive? get driverProfile => _driverProfile;
   List<LiveVehicle> get liveVehicles => List.unmodifiable(_liveVehicles);
+  List<LiveRideRequest> get liveRideRequests => List.unmodifiable(_liveRideRequests);
+  List<LiveRideRequest> get liveDriverRideRequests => List.unmodifiable(_liveDriverRideRequests);
+  List<LiveDriverOffer> get liveDriverOffers => List.unmodifiable(_liveDriverOffers);
+  List<LiveBooking> get liveBookings => List.unmodifiable(_liveBookings);
+  List<LiveTourPackage> get liveMarketplacePackages => List.unmodifiable(_liveMarketplacePackages);
+  List<LiveTourPackage> get liveDriverPackages => List.unmodifiable(_liveDriverPackages);
+  List<LivePackageOffer> get liveCustomerPackageOffers => List.unmodifiable(_liveCustomerPackageOffers);
+  List<LivePackageOffer> get liveDriverPackageOffers => List.unmodifiable(_liveDriverPackageOffers);
+  List<LiveBooking> get liveDriverPackageBookings => List.unmodifiable(_liveDriverPackageBookings);
+  List<LivePackageWaitlist> get liveCustomerPackageWaitlist => List.unmodifiable(_liveCustomerPackageWaitlist);
+  List<LivePackageWaitlist> get liveDriverPackageWaitlist => List.unmodifiable(_liveDriverPackageWaitlist);
+  List<LiveTourInterest> get liveTourInterests => List.unmodifiable(_liveTourInterests);
+  List<LiveTourMatch> get liveTourMatches => List.unmodifiable(_liveTourMatches);
+  bool get marketplaceBusy => _marketplaceBusy;
+  String? get marketplaceError => _marketplaceError;
   String get currentUserName => _currentUser?.fullName ?? 'uDrive User';
   String get currentUserPhone => _currentUser?.phoneNumber ?? '';
   String get driverVerificationStatus =>
@@ -189,63 +222,39 @@ class AppController extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_initialized) return;
-
     try {
       final prefs = await SharedPreferences.getInstance()
           .timeout(const Duration(seconds: 5));
-
       _locale = Locale(prefs.getString('language') ?? 'en');
       _mode = (prefs.getString('mode') ?? 'customer') == 'driver'
           ? UserMode.driver
           : UserMode.customer;
       _driverOnline = prefs.getBool('driverOnline') ?? true;
-      _liveTrip.shareEnabled =
-          prefs.getBool('liveShareEnabled') ?? false;
-
+      _liveTrip.shareEnabled = prefs.getBool('liveShareEnabled') ?? false;
       _currentUser = await _sessionStore.readUser();
-
       final accessToken = await _sessionStore.readAccessToken();
       final refreshToken = await _sessionStore.readRefreshToken();
       final accessExpiry = await _sessionStore.readAccessExpiry();
-
-      final accessTokenIsUsable =
-          _currentUser != null &&
-          accessToken != null &&
-          accessToken.isNotEmpty &&
+      final usable = _currentUser != null &&
+          accessToken != null && accessToken.isNotEmpty &&
           accessExpiry != null &&
-          accessExpiry.isAfter(
-            DateTime.now().add(const Duration(seconds: 30)),
-          );
-
-      if (accessTokenIsUsable) {
+          accessExpiry.isAfter(DateTime.now().add(const Duration(seconds: 30)));
+      if (usable) {
         _loggedIn = true;
         _initialized = true;
         notifyListeners();
-
         unawaited(_validateCachedSession());
         return;
       }
-
-      final hasStoredSession =
-          (accessToken != null && accessToken.isNotEmpty) ||
-          (refreshToken != null && refreshToken.isNotEmpty);
-
-      if (hasStoredSession) {
+      if ((accessToken?.isNotEmpty ?? false) || (refreshToken?.isNotEmpty ?? false)) {
         try {
-          _currentUser = await _authRepository
-              .me()
-              .timeout(const Duration(seconds: 15));
+          _currentUser = await _authRepository.me().timeout(const Duration(seconds: 15));
           _loggedIn = true;
-
-          await _loadDriverState()
-              .timeout(const Duration(seconds: 10));
+          await _loadDriverState().timeout(const Duration(seconds: 10));
+          await _loadPhase9State().timeout(const Duration(seconds: 15));
         } catch (_) {
           await _resetSessionSafely();
         }
-      } else {
-        _loggedIn = false;
-        _currentUser = null;
-        _mode = UserMode.customer;
       }
     } catch (_) {
       await _resetSessionSafely();
@@ -259,22 +268,18 @@ class AppController extends ChangeNotifier {
 
   Future<void> _validateCachedSession() async {
     try {
-      _currentUser = await _authRepository
-          .me()
-          .timeout(const Duration(seconds: 15));
-
-      await _loadDriverState()
-          .timeout(const Duration(seconds: 10));
-
+      _currentUser = await _authRepository.me().timeout(const Duration(seconds: 15));
+      await _loadDriverState().timeout(const Duration(seconds: 10));
+      await _loadPhase9State().timeout(const Duration(seconds: 15));
       _authError = null;
     } on TimeoutException {
-      // Keep the valid cached account available in slow/offline mode.
+      // Keep the valid cached session available during Railway cold starts.
     } on ApiException catch (error) {
       if (error.statusCode == 401 || error.statusCode == 403) {
         await _resetSessionSafely();
       }
     } catch (_) {
-      // Temporary network/storage errors must not cause endless splash.
+      // A temporary network issue must not trap the app on Splash.
     } finally {
       notifyListeners();
     }
@@ -282,13 +287,8 @@ class AppController extends ChangeNotifier {
 
   Future<void> _resetSessionSafely() async {
     try {
-      await _sessionStore
-          .clear()
-          .timeout(const Duration(seconds: 6));
-    } catch (_) {
-      // Continue to Login even if secure storage cleanup fails.
-    }
-
+      await _sessionStore.clear().timeout(const Duration(seconds: 6));
+    } catch (_) {}
     _currentUser = null;
     _driverProfile = null;
     _liveVehicles = const [];
@@ -328,6 +328,7 @@ class AppController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('loggedIn', true);
       await _loadDriverState();
+      await _loadPhase9State();
     } on ApiException catch (error) {
       _authError = error.message;
       rethrow;
@@ -349,6 +350,7 @@ class AppController extends ChangeNotifier {
     if (!_loggedIn) return;
     _currentUser = await _authRepository.me();
     await _loadDriverState();
+    await _loadPhase9State();
     notifyListeners();
   }
 
@@ -362,6 +364,19 @@ class AppController extends ChangeNotifier {
     _currentUser = null;
     _driverProfile = null;
     _liveVehicles = const [];
+    _liveRideRequests = const [];
+    _liveDriverRideRequests = const [];
+    _liveDriverOffers = const [];
+    _liveBookings = const [];
+    _liveMarketplacePackages = const [];
+    _liveDriverPackages = const [];
+    _liveCustomerPackageOffers = const [];
+    _liveDriverPackageOffers = const [];
+    _liveDriverPackageBookings = const [];
+    _liveCustomerPackageWaitlist = const [];
+    _liveDriverPackageWaitlist = const [];
+    _liveTourInterests = const [];
+    _liveTourMatches = const [];
     _mode = UserMode.customer;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('loggedIn', false);
@@ -381,7 +396,10 @@ class AppController extends ChangeNotifier {
     _mode = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('mode', value.name);
-    if (value == UserMode.driver) await _loadDriverState();
+    if (value == UserMode.driver) {
+      await _loadDriverState();
+      await loadDriverMarketplace();
+    }
     notifyListeners();
   }
 
@@ -452,6 +470,311 @@ class AppController extends ChangeNotifier {
     _authBusy = value;
     notifyListeners();
   }
+
+  Future<void> _loadPhase9State() async {
+    try {
+      final results = await Future.wait([
+        _bookingRepository.getMyRideRequests(),
+        _bookingRepository.getMyBookings(),
+        _bookingRepository.getPublicPackages(),
+        _bookingRepository.getCustomerPackageOffers(),
+        _bookingRepository.getTourInterests(),
+        _bookingRepository.getTourMatches(),
+        _bookingRepository.getCustomerPackageWaitlist(),
+      ]);
+      _liveRideRequests = results[0] as List<LiveRideRequest>;
+      _liveBookings = results[1] as List<LiveBooking>;
+      _liveMarketplacePackages = results[2] as List<LiveTourPackage>;
+      _liveCustomerPackageOffers = results[3] as List<LivePackageOffer>;
+      _liveTourInterests = results[4] as List<LiveTourInterest>;
+      _liveTourMatches = results[5] as List<LiveTourMatch>;
+      _liveCustomerPackageWaitlist = results[6] as List<LivePackageWaitlist>;
+      if (driverApproved) await loadDriverMarketplace(notify: false);
+    } catch (_) {
+      // Other dummy tourism modules remain available while API retries later.
+    }
+  }
+
+  Future<LiveRideRequest> createLiveRideRequest(Map<String, dynamic> payload) async {
+    return _runMarketplace(() async {
+      final request = await _bookingRepository.createRideRequest(payload);
+      _liveRideRequests = [request, ..._liveRideRequests.where((e) => e.id != request.id)];
+      _liveDriverOffers = await _bookingRepository.getRideOffers(request.id);
+      return request;
+    });
+  }
+
+  Future<void> loadRideOffers(String rideRequestId) async {
+    try {
+      _liveDriverOffers = await _bookingRepository.getRideOffers(rideRequestId);
+      notifyListeners();
+    } catch (error) {
+      _marketplaceError = _message(error);
+      notifyListeners();
+    }
+  }
+
+  Future<LiveBooking> selectLiveDriverOffer({
+    required String rideRequestId,
+    required String offerId,
+    double advanceAmount = 0,
+  }) async {
+    return _runMarketplace(() async {
+      final booking = await _bookingRepository.selectDriverOffer(
+        rideRequestId: rideRequestId,
+        offerId: offerId,
+        advanceAmount: advanceAmount,
+      );
+      _liveBookings = [booking, ..._liveBookings.where((e) => e.id != booking.id)];
+      _liveRideRequests = await _bookingRepository.getMyRideRequests();
+      return booking;
+    });
+  }
+
+  Future<void> loadDriverMarketplace({bool notify = true}) async {
+    try {
+      final results = await Future.wait([
+        _bookingRepository.getDriverRideRequests(),
+        _bookingRepository.getDriverPackages(),
+        _bookingRepository.getDriverPackageOffers(),
+        _bookingRepository.getDriverPackageBookings(),
+        _bookingRepository.getDriverPackageWaitlist(),
+      ]);
+      _liveDriverRideRequests = results[0] as List<LiveRideRequest>;
+      _liveDriverPackages = results[1] as List<LiveTourPackage>;
+      _liveDriverPackageOffers = results[2] as List<LivePackageOffer>;
+      _liveDriverPackageBookings = results[3] as List<LiveBooking>;
+      _liveDriverPackageWaitlist = results[4] as List<LivePackageWaitlist>;
+      if (notify) notifyListeners();
+    } catch (error) {
+      _marketplaceError = _message(error);
+      if (notify) notifyListeners();
+    }
+  }
+
+  Future<LiveDriverOffer> submitLiveDriverOffer({
+    required String rideRequestId,
+    required String vehicleId,
+    required double amount,
+    int etaMinutes = 20,
+    String? message,
+  }) async {
+    return _runMarketplace(() async {
+      final offer = await _bookingRepository.submitDriverOffer(
+        rideRequestId: rideRequestId,
+        vehicleId: vehicleId,
+        amount: amount,
+        estimatedArrivalMinutes: etaMinutes,
+        message: message,
+      );
+      await loadDriverMarketplace(notify: false);
+      return offer;
+    });
+  }
+
+  Future<void> refreshPhase9Marketplace() async {
+    await _loadPhase9State();
+    notifyListeners();
+  }
+
+  Future<LiveBooking> cancelLiveBooking(String bookingId, String reason) async {
+    return _runMarketplace(() async {
+      final booking = await _bookingRepository.cancelBooking(bookingId, reason);
+      _liveBookings = [booking, ..._liveBookings.where((item) => item.id != booking.id)];
+      return booking;
+    });
+  }
+
+  Future<LiveBooking> rescheduleLiveBooking({
+    required String bookingId,
+    required DateTime pickupAt,
+    DateTime? returnAt,
+    String? reason,
+  }) async {
+    return _runMarketplace(() async {
+      final booking = await _bookingRepository.rescheduleBooking(
+        bookingId: bookingId,
+        pickupAt: pickupAt,
+        returnAt: returnAt,
+        reason: reason,
+      );
+      _liveBookings = [booking, ..._liveBookings.where((item) => item.id != booking.id)];
+      return booking;
+    });
+  }
+
+  Future<void> refreshLiveBookings() async {
+    _liveBookings = await _bookingRepository.getMyBookings();
+    notifyListeners();
+  }
+
+  Future<LivePackageHold> acquireLivePackageHold({
+    required String packageId,
+    required String bookingType,
+    required int seats,
+  }) => _runMarketplace(() => _bookingRepository.acquirePackageHold(
+        packageId: packageId,
+        bookingType: bookingType,
+        seats: seats,
+      ));
+
+  Future<LiveBooking> confirmLivePackageBooking({
+    required String packageId,
+    required String holdId,
+    required double advanceAmount,
+    List<Map<String, dynamic>> passengers = const [],
+  }) async {
+    return _runMarketplace(() async {
+      final booking = await _bookingRepository.confirmPackageBooking(
+        packageId: packageId,
+        holdId: holdId,
+        advanceAmount: advanceAmount,
+        passengers: passengers,
+      );
+      await _loadPhase9State();
+      return booking;
+    });
+  }
+
+  Future<LivePackageWaitlist> joinLivePackageWaitlist({
+    required String packageId,
+    required String bookingType,
+    required int seats,
+    String? notes,
+  }) async {
+    return _runMarketplace(() async {
+      final entry = await _bookingRepository.joinPackageWaitlist(
+        packageId: packageId,
+        bookingType: bookingType,
+        seats: seats,
+        notes: notes,
+      );
+      _liveCustomerPackageWaitlist =
+          await _bookingRepository.getCustomerPackageWaitlist();
+      return entry;
+    });
+  }
+
+  Future<LivePassengerManifest> loadPassengerManifest(
+    String bookingId,
+  ) => _runMarketplace(
+        () => _bookingRepository.getPassengerManifest(bookingId),
+      );
+
+  Future<LivePackageOffer> createLivePackageOffer({
+    required String packageId,
+    required String bookingType,
+    required int seats,
+    required double amount,
+    String? message,
+  }) async {
+    return _runMarketplace(() async {
+      final offer = await _bookingRepository.createPackageOffer(
+        packageId: packageId,
+        bookingType: bookingType,
+        seats: seats,
+        amount: amount,
+        message: message,
+      );
+      _liveCustomerPackageOffers = await _bookingRepository.getCustomerPackageOffers();
+      return offer;
+    });
+  }
+
+  Future<LiveBooking> confirmLivePackageOffer({
+    required String offerId,
+    double advanceAmount = 0,
+  }) async {
+    return _runMarketplace(() async {
+      final booking = await _bookingRepository.confirmPackageOffer(
+        offerId: offerId,
+        advanceAmount: advanceAmount,
+      );
+      await _loadPhase9State();
+      return booking;
+    });
+  }
+
+  Future<LiveTourPackage> createLiveDriverPackage(Map<String, dynamic> payload) async {
+    return _runMarketplace(() async {
+      final package = await _bookingRepository.createDriverPackage(payload);
+      _liveDriverPackages = [package, ..._liveDriverPackages.where((e) => e.id != package.id)];
+      return package;
+    });
+  }
+
+  Future<LiveTourPackage> submitLiveDriverPackage(String packageId) async {
+    return _runMarketplace(() async {
+      final package = await _bookingRepository.submitDriverPackage(packageId);
+      _liveDriverPackages = [package, ..._liveDriverPackages.where((e) => e.id != package.id)];
+      return package;
+    });
+  }
+
+  Future<LiveTourPackage> toggleLiveDriverPackage(
+    String packageId,
+    bool active,
+  ) async {
+    return _runMarketplace(() async {
+      final package = await _bookingRepository.toggleDriverPackage(packageId, active);
+      _liveDriverPackages = [
+        package,
+        ..._liveDriverPackages.where((item) => item.id != package.id),
+      ];
+      return package;
+    });
+  }
+
+  Future<LivePackageOffer> reviewLivePackageOffer({
+    required String offerId,
+    required String decision,
+    double? counterAmount,
+    String? message,
+  }) async {
+    return _runMarketplace(() async {
+      final offer = await _bookingRepository.reviewPackageOffer(
+        offerId: offerId,
+        decision: decision,
+        counterAmount: counterAmount,
+        message: message,
+      );
+      final results = await Future.wait([
+        _bookingRepository.getDriverPackageOffers(),
+        _bookingRepository.getDriverPackageBookings(),
+        _bookingRepository.getDriverPackageWaitlist(),
+      ]);
+      _liveDriverPackageOffers = results[0] as List<LivePackageOffer>;
+      _liveDriverPackageBookings = results[1] as List<LiveBooking>;
+      _liveDriverPackageWaitlist = results[2] as List<LivePackageWaitlist>;
+      return offer;
+    });
+  }
+
+  Future<LiveTourInterest> createLiveTourInterest(Map<String, dynamic> payload) async {
+    return _runMarketplace(() async {
+      final interest = await _bookingRepository.createTourInterest(payload);
+      _liveTourInterests = [interest, ..._liveTourInterests.where((e) => e.id != interest.id)];
+      _liveTourMatches = await _bookingRepository.getTourMatches();
+      return interest;
+    });
+  }
+
+  Future<T> _runMarketplace<T>(Future<T> Function() action) async {
+    _marketplaceBusy = true;
+    _marketplaceError = null;
+    notifyListeners();
+    try {
+      return await action();
+    } catch (error) {
+      _marketplaceError = _message(error);
+      rethrow;
+    } finally {
+      _marketplaceBusy = false;
+      notifyListeners();
+    }
+  }
+
+  String _message(Object error) => error is ApiException ? error.message : 'The live marketplace request could not be completed.';
 
   Future<void> toggleDriverOnline(bool value) async {
     _driverOnline = value;

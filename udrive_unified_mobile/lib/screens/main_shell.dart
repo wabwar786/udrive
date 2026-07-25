@@ -9,6 +9,13 @@ import 'customer/customer_home_screen.dart';
 import 'customer/customer_pages.dart';
 import 'customer/family_tour_planner_screen.dart';
 import 'customer/join_tour_screen.dart';
+import 'customer/live_bookings_screen.dart';
+import 'customer/live_packages_screen.dart';
+import 'customer/live_tour_interest_screen.dart';
+import 'driver/live_create_package_screen.dart';
+import 'driver/live_driver_packages_screen.dart';
+import 'driver/live_driver_package_bookings_screen.dart';
+import 'driver/live_driver_requests_screen.dart';
 import 'customer/tourism_booking_screen.dart';
 import 'driver/driver_home_screen.dart';
 import 'driver/driver_pages.dart';
@@ -165,11 +172,11 @@ class _MainShellState extends State<MainShell> {
   Widget _customerContent(String key) => switch (key) {
         'home' => CustomerHomeScreen(onNavigate: _customerNavigate),
         'bookRide' => const TourismBookingScreen(),
-        'joinTour' => const JoinTourScreen(),
+        'joinTour' => const LiveTourInterestScreen(),
         'familyPlanner' => const FamilyTourPlannerScreen(),
         'explore' => const ExploreScreen(),
-        'packages' => const PackagesScreen(),
-        'trips' => const TripsScreen(),
+        'packages' => const LivePackagesScreen(),
+        'trips' => const LiveBookingsScreen(),
         'wallet' => const WalletScreen(),
         'saved' => const SavedPlacesScreen(),
         'safety' => const SafetyHubScreen(),
@@ -187,11 +194,11 @@ class _MainShellState extends State<MainShell> {
   Widget _driverContent(String key) => switch (key) {
         'driverVerification' => const DriverVerificationScreen(),
         'dashboard' => DriverHomeScreen(onNavigate: _driverNavigate),
-        'requests' => const DriverRequestsScreen(),
+        'requests' => const LiveDriverRequestsScreen(),
         'activeTrip' => const ActiveDriverTripScreen(),
-        'driverPackages' => DriverTourismPackagesScreen(onNavigate: _driverNavigate),
-        'createPackage' => const AdvancedCreatePackageScreen(),
-        'packageBookings' => const PackageBookingsScreen(),
+        'driverPackages' => const LiveDriverPackagesScreen(),
+        'createPackage' => const LiveCreatePackageScreen(),
+        'packageBookings' => const LiveDriverPackageBookingsScreen(),
         'vehicleSuitability' => const VehicleSuitabilityScreen(),
         'roadReports' => const DriverRoadReportsScreen(),
         'driverSafety' => const SafetyHubScreen(),

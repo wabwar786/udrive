@@ -69,3 +69,9 @@ Root directory:
 ```
 
 The default API URL is `https://udrive-api-production.up.railway.app`.
+
+## Phase 9 — Live Marketplace
+
+The mobile app now connects Customer booking, approved Driver offers, live tourism package inventory, package negotiation, tour persons, waiting lists and confirmed booking management to the ASP.NET/PostgreSQL API.
+
+Build version: `9.0.0+10`.

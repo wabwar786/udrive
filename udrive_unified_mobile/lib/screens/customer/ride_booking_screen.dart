@@ -4,7 +4,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../data/dummy_data.dart';
 import '../../data/models.dart';
-import 'driver_offers_screen.dart';
+import 'tourism_booking_screen.dart';
 
 class RideBookingScreen extends StatefulWidget {
   const RideBookingScreen({this.serviceId = 'local', super.key});
@@ -166,19 +166,15 @@ class _RideBookingScreenState extends State<RideBookingScreen> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
-    Navigator.push(
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => DriverOffersScreen(
-          pickup: _pickup.text,
-          destination: _destination.text,
-          customerOffer: int.parse(_offer.text),
-          vehicle: _vehicle,
+        builder: (_) => TourismBookingScreen(
+          initialDestination: _destination.text.trim(),
         ),
       ),
     );
-  }
-}
+  }}
 
 class _CounterTile extends StatelessWidget {
   const _CounterTile({required this.label, required this.icon, required this.value, required this.onChanged});

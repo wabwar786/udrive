@@ -75,3 +75,15 @@ Embedded SQL migrations are applied in filename order. Phase 8 is migration:
 ```
 
 Applied migration IDs are recorded in `public.schema_migrations`.
+
+## Phase 9 — Live Booking Marketplace
+
+Phase 9 adds database-backed advance ride requests, Driver offers, transactional offer selection, live bookings, tourism package approval, ten-minute seat holds, whole-vehicle locking, package negotiation, passenger manifests, waiting lists and tour-interest matching.
+
+For development testing add:
+
+```env
+ENABLE_DEMO_MARKETPLACE=true
+```
+
+Swagger contains all Phase 9 endpoints after migration `005_phase9_live_booking_marketplace` is applied.

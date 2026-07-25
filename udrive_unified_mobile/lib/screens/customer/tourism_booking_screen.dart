@@ -35,6 +35,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
   int _children = 1;
   int _luggage = 2;
   VehicleCategory _vehicle = vehicleCategories[2];
+  bool _submitting = false;
 
   @override
   void initState() {
@@ -282,8 +283,10 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
             ],
             Expanded(
               child: FilledButton(
-                onPressed: _step == 3 ? _submit : _next,
-                child: Text(_step == 3 ? context.tr('findVerifiedDrivers') : context.tr('continue')),
+                onPressed: _submitting ? null : (_step == 3 ? _submit : _next),
+                child: _submitting
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Text(_step == 3 ? context.tr('findVerifiedDrivers') : context.tr('continue')),
               ),
             ),
           ],
@@ -295,35 +298,110 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
     setState(() => _step++);
   }
 
-  void _submit() {
-    final booking = AdvanceBooking(
-      id: 'AB-${DateTime.now().millisecondsSinceEpoch}',
-      pickup: _pickup.text.trim(),
-      destination: _destination.text.trim(),
-      departureDate: _departureDate,
-      departureTime: _departureTime,
-      bookingType: _bookingType,
-      adults: _adults,
-      children: _children,
-      luggage: _luggage,
-      vehicle: _vehicle.name,
-      estimatedTotal: _estimate + 1080,
-      partyType: _partyType,
-      returnDate: _returnDate,
-      notes: _notes.text.trim(),
-    );
-    AppControllerScope.of(context).addAdvanceBooking(booking);
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => DriverOffersScreen(
-          pickup: booking.pickup,
-          destination: booking.destination,
-          customerOffer: booking.estimatedTotal,
-          vehicle: _vehicle,
+  Future<void> _submit() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      final departure = DateTime(
+        _departureDate.year,
+        _departureDate.month,
+        _departureDate.day,
+        _departureTime.hour,
+        _departureTime.minute,
+      );
+      final returnAt = _returnDate == null
+          ? null
+          : DateTime(
+              _returnDate!.year,
+              _returnDate!.month,
+              _returnDate!.day,
+              _departureTime.hour,
+              _departureTime.minute,
+            );
+      final pickupCoordinates = _coordinatesFor(_pickup.text, pickup: true);
+      final destinationCoordinates = _coordinatesFor(_destination.text);
+      final total = _estimate + 1080;
+      final controller = AppControllerScope.of(context);
+      final request = await controller.createLiveRideRequest({
+        'pickupLabel': _pickup.text.trim(),
+        'destinationLabel': _destination.text.trim(),
+        'pickupLatitude': pickupCoordinates.$1,
+        'pickupLongitude': pickupCoordinates.$2,
+        'destinationLatitude': destinationCoordinates.$1,
+        'destinationLongitude': destinationCoordinates.$2,
+        'pickupAt': departure.toUtc().toIso8601String(),
+        'returnAt': returnAt?.toUtc().toIso8601String(),
+        'bookingType': _bookingType == BookingType.perSeat ? 'PerSeat' : 'WholeVehicle',
+        'seatsRequested': _bookingType == BookingType.wholeVehicle ? _vehicle.seats : _travellers,
+        'adults': _adults,
+        'children': _children,
+        'luggageCount': _luggage,
+        'customerOffer': total,
+        'vehicleCategory': _vehicle.name,
+        'partyType': switch (_partyType) {
+          TripPartyType.family => 'Family',
+          TripPartyType.womenOnly => 'WomenOnly',
+          TripPartyType.group => 'Group',
+          TripPartyType.maleOnly => 'MaleOnly',
+          TripPartyType.couple => 'Couple',
+          _ => 'Individual',
+        },
+        'familyOnly': _familyOnly,
+        'womenOnly': _femalePreference || _partyType == TripPartyType.womenOnly,
+        'notes': _notes.text.trim(),
+      });
+
+      final localBooking = AdvanceBooking(
+        id: request.id,
+        pickup: _pickup.text.trim(),
+        destination: _destination.text.trim(),
+        departureDate: _departureDate,
+        departureTime: _departureTime,
+        bookingType: _bookingType,
+        adults: _adults,
+        children: _children,
+        luggage: _luggage,
+        vehicle: _vehicle.name,
+        estimatedTotal: total,
+        partyType: _partyType,
+        returnDate: _returnDate,
+        notes: _notes.text.trim(),
+      );
+      controller.addAdvanceBooking(localBooking);
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DriverOffersScreen(
+            rideRequestId: request.id,
+            pickup: request.pickupLabel,
+            destination: request.destinationLabel,
+            customerOffer: request.customerOffer.round(),
+            vehicleName: request.vehicleCategory,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  (double, double) _coordinatesFor(String label, {bool pickup = false}) {
+    final value = label.toLowerCase();
+    if (value.contains('sharda')) return (34.7932, 74.1832);
+    if (value.contains('keran') || value.contains('neelum')) return (34.6500, 73.9500);
+    if (value.contains('rawalakot')) return (33.8578, 73.7604);
+    if (value.contains('banjosa')) return (33.8098, 73.8162);
+    if (value.contains('pir chinasi')) return (34.3870, 73.5335);
+    if (value.contains('islamabad')) return (33.6844, 73.0479);
+    return pickup ? (34.3700, 73.4700) : (34.6500, 73.9500);
   }
 
   String? _required(String? value) => value == null || value.trim().isEmpty ? context.tr('required') : null;

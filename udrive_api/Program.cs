@@ -46,6 +46,12 @@ builder.Services.AddScoped<DriverVerificationService>(serviceProvider =>
         serviceProvider.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<AdminVerificationService>(_ =>
     new AdminVerificationService(connectionString));
+builder.Services.AddScoped<BookingService>(_ =>
+    new BookingService(connectionString, authOptions));
+builder.Services.AddScoped<PackageMarketplaceService>(_ =>
+    new PackageMarketplaceService(connectionString, authOptions));
+builder.Services.AddScoped<TourInterestService>(_ =>
+    new TourInterestService(connectionString));
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
