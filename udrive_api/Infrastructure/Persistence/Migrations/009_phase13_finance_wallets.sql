@@ -1,5 +1,3 @@
-BEGIN;
-
 ALTER TABLE udrive.payments ADD COLUMN IF NOT EXISTS idempotency_key varchar(120);
 ALTER TABLE udrive.payments ADD COLUMN IF NOT EXISTS refund_amount numeric(12,2) NOT NULL DEFAULT 0;
 ALTER TABLE udrive.payments ADD COLUMN IF NOT EXISTS review_notes varchar(1000);
@@ -175,5 +173,3 @@ CREATE TRIGGER trg_booking_finance_completion AFTER UPDATE OF status ON udrive.b
 INSERT INTO udrive.commission_rules(id,name,percentage,is_active,effective_from,created_at,updated_at)
 SELECT gen_random_uuid(),'Default platform commission',15,true,now(),now(),now()
 WHERE NOT EXISTS (SELECT 1 FROM udrive.commission_rules WHERE is_active=true);
-
-COMMIT;

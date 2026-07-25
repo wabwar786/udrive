@@ -25,7 +25,8 @@ public sealed class SqlMigrationRunner(IConfiguration configuration, ILogger<Sql
 
         var assembly = Assembly.GetExecutingAssembly();
         var resources = assembly.GetManifestResourceNames()
-            .Where(name => name.Contains("Infrastructure.Persistence.Migrations", StringComparison.Ordinal) && name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
+            .Where(name => name.Contains("Infrastructure.Persistence.Migrations", StringComparison.Ordinal)
+                && name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
@@ -64,9 +65,29 @@ public sealed class SqlMigrationRunner(IConfiguration configuration, ILogger<Sql
                 await transaction.CommitAsync(cancellationToken);
                 logger.LogInformation("Applied database migration {MigrationId}", migrationId);
             }
-            catch
+            catch (Exception migrationException)
             {
-                await transaction.RollbackAsync(cancellationToken);
+                logger.LogError(migrationException, "Database migration {MigrationId} failed", migrationId);
+
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch (InvalidOperationException rollbackException)
+                {
+                    logger.LogWarning(
+                        rollbackException,
+                        "Migration transaction {MigrationId} was already completed; rollback was skipped",
+                        migrationId);
+                }
+                catch (Exception rollbackException)
+                {
+                    logger.LogWarning(
+                        rollbackException,
+                        "Rollback failed for database migration {MigrationId}",
+                        migrationId);
+                }
+
                 throw;
             }
         }
