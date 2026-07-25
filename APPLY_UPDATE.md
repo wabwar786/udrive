@@ -12,3 +12,10 @@ This package is an additive overlay for the latest uDrive repository. Do not del
 8. Run `flutter pub get`, configure Android/iOS location permissions, then deploy Flutter web only when required. Do not build APK/AAB for this phase.
 
 No existing table or production column is removed or renamed.
+
+## Build hotfix — duplicate DriverOfferDto
+
+The existing ride marketplace already defines `DriverOfferDto` in `Models/BookingDtos.cs`.
+Phase 11 operations now uses the distinct `OperationsDriverOfferDto` type in
+`Models/TripOperationsDtos.cs` and `Services/TripOperationsService.cs`.
+This preserves both API contracts and prevents CS0101/CS8863 during publish.

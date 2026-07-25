@@ -10,8 +10,8 @@ public sealed record TripPersonDto(Guid Id,string FullName,string PhoneNumber,st
 public sealed record TripVehicleDto(Guid Id,string Make,string Model,string RegistrationNumber,string Category,int PassengerCapacity,string Status);
 public sealed record TripTimelineDto(string Status,string? PreviousStatus,string Source,string? Reason,string? ChangedBy,DateTimeOffset CreatedAt);
 public sealed record TripNoteDto(Guid Id,string NoteType,string Note,string Author,bool IsCustomerVisible,DateTimeOffset CreatedAt);
-public sealed record DriverOfferDto(Guid Id,Guid DriverProfileId,string DriverName,string? Vehicle,string Status,DateTimeOffset ExpiresAt,string? RejectionReason,string? OfferNotes,DateTimeOffset CreatedAt);
-public sealed record TripOperationsDetailDto(OperationsBookingDto Booking,TripPersonDto Customer,TripPersonDto? Driver,TripVehicleDto? Vehicle,string? TourismPackage,decimal Fare,string? SpecialInstructions,string? EmergencyContact,IReadOnlyList<TripTimelineDto> Timeline,IReadOnlyList<TripNoteDto> Notes,IReadOnlyList<DriverOfferDto> Offers,int Version);
+public sealed record OperationsDriverOfferDto(Guid Id,Guid DriverProfileId,string DriverName,string? Vehicle,string Status,DateTimeOffset ExpiresAt,string? RejectionReason,string? OfferNotes,DateTimeOffset CreatedAt);
+public sealed record TripOperationsDetailDto(OperationsBookingDto Booking,TripPersonDto Customer,TripPersonDto? Driver,TripVehicleDto? Vehicle,string? TourismPackage,decimal Fare,string? SpecialInstructions,string? EmergencyContact,IReadOnlyList<TripTimelineDto> Timeline,IReadOnlyList<TripNoteDto> Notes,IReadOnlyList<OperationsDriverOfferDto> Offers,int Version);
 public sealed record SuitableDriverDto(Guid DriverProfileId,Guid UserId,string DriverName,string Phone,string VerificationStatus,bool IsOnline,int ActiveTrips,decimal Rating,string City,Guid? VehicleId,string? Vehicle,string? Registration,int? Capacity,string VehicleStatus,double? DistanceKm,bool Available,string? UnavailableReason);
 
 public sealed record AssignTripRequest([Required] Guid DriverProfileId,[Required] Guid VehicleId,[StringLength(1000)] string? Notes,bool EmergencyReplacement=false);
