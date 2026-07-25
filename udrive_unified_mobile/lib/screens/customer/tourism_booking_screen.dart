@@ -52,10 +52,14 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
     _destination.addListener(_refreshSearchResults);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      await Future.wait([
-        AppControllerScope.of(context).refreshPhase9Marketplace(),
-        _useCurrentLocation(silent: true),
-      ]);
+      // Marketplace loading must not block automatic pickup GPS detection.
+      try {
+        await AppControllerScope.of(context).refreshPhase9Marketplace();
+      } catch (_) {
+        // Customer can still continue with a private ride request.
+      }
+      if (!mounted) return;
+      await _useCurrentLocation(silent: true);
       if (mounted) _syncRecommendedVehicle();
     });
   }
@@ -110,6 +114,9 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
     final controller = AppControllerScope.of(context);
     final matches = _matchingVehicles(controller.liveMarketplacePackages);
     final destinationEntered = _destination.text.trim().isNotEmpty;
+    final destinationSuggestions = _destinationSuggestions(
+      controller.liveMarketplacePackages,
+    );
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
@@ -177,6 +184,51 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
                 ),
                 validator: _required,
               ),
+              if (destinationSuggestions.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 170),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FBFA),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    itemCount: destinationSuggestions.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final suggestion = destinationSuggestions[index];
+                      return ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        leading: const Icon(
+                          Icons.location_on_outlined,
+                          color: AppColors.primaryDark,
+                          size: 19,
+                        ),
+                        title: Text(
+                          suggestion,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                        onTap: () {
+                          _destination.value = TextEditingValue(
+                            text: suggestion,
+                            selection: TextSelection.collapsed(
+                              offset: suggestion.length,
+                            ),
+                          );
+                          FocusScope.of(context).unfocus();
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -322,6 +374,31 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
         ],
       ],
     );
+  }
+
+  List<String> _destinationSuggestions(List<LiveTourPackage> source) {
+    final query = _destination.text.trim().toLowerCase();
+    if (query.isEmpty) return const [];
+
+    final values = <String>{
+      ...source.map((package) => package.destination.trim()),
+      ...destinations.map((item) => item.name.trim()),
+    }..removeWhere((value) => value.isEmpty);
+
+    if (values.any((value) => value.toLowerCase() == query)) {
+      return const [];
+    }
+
+    final suggestions = values
+        .where((value) => value.toLowerCase().contains(query))
+        .toList()
+      ..sort((a, b) {
+        final aStarts = a.toLowerCase().startsWith(query);
+        final bStarts = b.toLowerCase().startsWith(query);
+        if (aStarts != bStarts) return aStarts ? -1 : 1;
+        return a.compareTo(b);
+      });
+    return suggestions.take(6).toList(growable: false);
   }
 
   List<LiveTourPackage> _matchingVehicles(List<LiveTourPackage> source) {
@@ -714,7 +791,8 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
       setState(() {
         _pickupLatitude = position.latitude;
         _pickupLongitude = position.longitude;
-        _pickup.text = 'My current location';
+        _pickup.text =
+            'Current location (${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)})';
       });
     } catch (_) {
       if (!silent && mounted) {
@@ -761,7 +839,7 @@ class _CompactDateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => InkWell(
-        onTap: null,
+        onTap: onTap,
         borderRadius: BorderRadius.circular(15),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),

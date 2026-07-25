@@ -1,26 +1,24 @@
-# Phase 13.5 — Customer Booking Flow Fix
+# Phase 13.5 Advance Booking Input Fix
 
-Overlay the included `udrive_unified_mobile` folder on the latest source.
+Replace the included Flutter file in the latest codebase.
 
-## Included fixes
+## Fixed
+- Departure date remains clickable/editable.
+- Departure time remains clickable/editable.
+- Only matching vehicle preview cards remain non-clickable.
+- Pickup GPS loading is isolated from marketplace/API loading failures.
+- Pickup is automatically filled with current coordinates when browser/device permission is granted.
+- Destination suggestions appear from live package destinations and the app destination catalogue.
+- Selecting a suggestion fills the destination field and filters vehicles by destination/date.
 
-- Home vehicle thumbnail containers now use a white background and bordered image surface.
-- Vehicle/package images use `BoxFit.contain` so they do not look like blue icon tiles.
-- Pickup defaults to the customer's current GPS location when permission is available.
-- A location button lets the customer retry automatic pickup detection.
-- Scheduled vehicle matches shown while entering pickup/destination are informational only and cannot be opened by tapping.
-- Recommended vehicle selection now respects the selected passenger count.
-- Vehicles with insufficient capacity are visibly disabled.
-- The best matching vehicle is selected automatically when passenger count changes.
-- Booking submission uses the authenticated customer's actual pickup coordinates when available.
-- Booking submission failures now show useful session/server/network messages instead of only a generic error.
+## Browser location requirements
+- The deployed site must use HTTPS.
+- Browser location permission must be allowed for the uDrive domain.
+- Device location services must be enabled.
 
 ## Build
-
 ```bash
 flutter pub get
 flutter analyze
 flutter build web --release --no-wasm-dry-run
 ```
-
-No API or database migration is required for this UI patch.
