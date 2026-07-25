@@ -23,6 +23,7 @@ type Envelope<T> = {
 };
 
 const KEY = 'udrive-admin-session-v10';
+export const ADMIN_PORTAL_BUILD = 'verification-list-v2';
 
 export const PORTAL_ROLES = ['SuperAdmin', 'Admin', 'Manager'] as const;
 export type PortalRole = (typeof PORTAL_ROLES)[number];

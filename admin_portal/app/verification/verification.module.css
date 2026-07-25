@@ -1054,3 +1054,48 @@
   }
 }
 
+
+
+.workspaceTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspaceTitleRow h2 {
+  margin: 0;
+}
+
+.revisionBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #e3f5ed;
+  color: #087754;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.retryAttachmentButton {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #e6b8be;
+  border-radius: 8px;
+  background: #fff;
+  color: #9d2635;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.retryAttachmentButton:hover {
+  background: #fff1f2;
+}
