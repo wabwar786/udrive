@@ -8,7 +8,7 @@ using UDrive.Api.Services;
 namespace UDrive.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = "Admin,Operations")]
+[Authorize(Roles = "Admin,Operations,VerificationOfficer")]
 [Route("api/v1/admin/verification")]
 public sealed class AdminVerificationController(
     AdminVerificationService adminService) : ControllerBase
@@ -18,7 +18,9 @@ public sealed class AdminVerificationController(
         [FromQuery] string? status,
         CancellationToken cancellationToken)
     {
-        return ToActionResult(await adminService.GetDriversAsync(status, cancellationToken));
+        return ToActionResult(await adminService.GetDriversAsync(
+            status,
+            cancellationToken));
     }
 
     [HttpGet("drivers/{driverProfileId:guid}")]
@@ -50,7 +52,9 @@ public sealed class AdminVerificationController(
         [FromQuery] string? status,
         CancellationToken cancellationToken)
     {
-        return ToActionResult(await adminService.GetVehiclesAsync(status, cancellationToken));
+        return ToActionResult(await adminService.GetVehiclesAsync(
+            status,
+            cancellationToken));
     }
 
     [HttpGet("vehicles/{vehicleId:guid}")]

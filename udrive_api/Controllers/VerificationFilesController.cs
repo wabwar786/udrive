@@ -5,15 +5,22 @@ using UDrive.Api.Services;
 namespace UDrive.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = "Admin,Operations")]
+[Authorize(Roles = "Admin,Operations,VerificationOfficer")]
 [Route("api/v1/admin/verification/files")]
 public sealed class VerificationFilesController(
     LocalFileStorageService fileStorage) : ControllerBase
 {
     [HttpGet("{category}/{owner}/{fileName}")]
-    public IActionResult Download(string category, string owner, string fileName)
+    public IActionResult Download(
+        string category,
+        string owner,
+        string fileName)
     {
-        var file = fileStorage.ResolveProtectedFile(category, owner, fileName);
+        var file = fileStorage.ResolveProtectedFile(
+            category,
+            owner,
+            fileName);
+
         if (file is null)
         {
             return NotFound(new
@@ -26,6 +33,12 @@ public sealed class VerificationFilesController(
 
         Response.Headers.CacheControl = "private,no-store";
         Response.Headers["X-Content-Type-Options"] = "nosniff";
-        return new PhysicalFileResult(file.Value.Path, file.Value.ContentType) { EnableRangeProcessing = true };
+
+        return new PhysicalFileResult(
+            file.Value.Path,
+            file.Value.ContentType)
+        {
+            EnableRangeProcessing = true
+        };
     }
 }
