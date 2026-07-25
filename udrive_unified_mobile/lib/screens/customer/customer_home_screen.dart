@@ -88,33 +88,39 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             selected: _vehicleType,
             onSelected: (value) => setState(() => _vehicleType = value),
           ),
-          const SizedBox(height: 18),
-          _VehiclesSectionHeader(
-            title: _t('Vehicles going your way', 'آپ کے راستے کی گاڑیاں'),
-            subtitle: _t(
-              'Search your destination and reserve an available seat.',
-              'اپنی منزل تلاش کریں اور دستیاب سیٹ بک کریں۔',
-            ),
-            onViewAll: () => widget.onNavigate('packages'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _vehicleSearch,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: _t(
-                'Search destination, e.g. Neelum Valley',
-                'منزل تلاش کریں، مثلاً نیلم ویلی',
-              ),
-              prefixIcon: const Icon(Icons.location_searching_rounded),
-              suffixIcon: _query.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: _t('Clear search', 'تلاش صاف کریں'),
-                      onPressed: _vehicleSearch.clear,
-                      icon: const Icon(Icons.close_rounded),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _vehicleSearch,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: _t(
+                      'Search destination, e.g. Neelum Valley',
+                      'منزل تلاش کریں، مثلاً نیلم ویلی',
                     ),
-            ),
+                    prefixIcon: const Icon(Icons.location_searching_rounded),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: _t('Clear search', 'تلاش صاف کریں'),
+                            onPressed: _vehicleSearch.clear,
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: _openAllVehicles,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+                  minimumSize: const Size(0, 48),
+                ),
+                child: Text(_t('View all', 'سب دیکھیں')),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           if (controller.marketplaceBusy && vehicles.isEmpty)
@@ -283,6 +289,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return _VehicleTypeFilter.fourWheel;
   }
 
+  Future<void> _openAllVehicles() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const _AllAvailableVehiclesScreen(),
+      ),
+    );
+    if (mounted) await _refresh();
+  }
+
   Future<void> _openVehicle(LiveTourPackage package) async {
     await Navigator.push(
       context,
@@ -448,53 +464,285 @@ class _VehicleTypeSelector extends StatelessWidget {
       );
 }
 
-class _VehiclesSectionHeader extends StatelessWidget {
-  const _VehiclesSectionHeader({
-    required this.title,
-    required this.subtitle,
-    required this.onViewAll,
-  });
 
-  final String title;
-  final String subtitle;
-  final VoidCallback onViewAll;
+class _AllAvailableVehiclesScreen extends StatefulWidget {
+  const _AllAvailableVehiclesScreen();
 
   @override
-  Widget build(BuildContext context) => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE7F7F1),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFCAEBDD)),
-            ),
-            child: const Icon(
-              Icons.route_rounded,
-              color: AppColors.primaryDark,
-            ),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+  State<_AllAvailableVehiclesScreen> createState() =>
+      _AllAvailableVehiclesScreenState();
+}
+
+class _AllAvailableVehiclesScreenState
+    extends State<_AllAvailableVehiclesScreen> {
+  final TextEditingController _search = TextEditingController();
+  String _query = '';
+  String? _destination;
+  _VehicleTypeFilter? _vehicleType;
+
+  @override
+  void initState() {
+    super.initState();
+    _search.addListener(() {
+      final value = _search.text.trim().toLowerCase();
+      if (value != _query) setState(() => _query = value);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller = AppControllerScope.of(context);
+      if (controller.liveMarketplacePackages.isEmpty) {
+        controller.refreshHomeVehicles();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = AppControllerScope.of(context);
+    final all = [...controller.liveMarketplacePackages]
+      ..sort((a, b) => a.departureAt.compareTo(b.departureAt));
+    final destinations = all
+        .map((item) => item.destination.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    final filtered = all.where((package) {
+      final destinationText = package.destination.toLowerCase();
+      final matchesSearch = _query.isEmpty || destinationText.contains(_query);
+      final matchesDestination = _destination == null ||
+          package.destination.toLowerCase() == _destination!.toLowerCase();
+      final matchesType = _vehicleType == null ||
+          _vehicleTypeForPackage(package) == _vehicleType;
+      return matchesSearch && matchesDestination && matchesType;
+    }).toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Find a vehicle'),
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => controller.refreshHomeVehicles(force: true),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF073F32), Color(0xFF129E6A)],
                 ),
-                const SizedBox(height: 3),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Where do you want to go?',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Choose a tourist point or search a destination, then tap a vehicle to reserve your seat.',
+                    style: TextStyle(color: Colors.white70, fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _search,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: 'Search destination',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: _search.clear,
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Popular tourist points',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 38,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _DestinationChoiceChip(
+                    label: 'All',
+                    selected: _destination == null,
+                    onTap: () => setState(() => _destination = null),
+                  ),
+                  ...destinations.map(
+                    (destination) => _DestinationChoiceChip(
+                      label: destination,
+                      selected: _destination == destination,
+                      onTap: () => setState(() {
+                        _destination = destination;
+                        _search.clear();
+                      }),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 38,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _DestinationChoiceChip(
+                    label: 'All vehicles',
+                    selected: _vehicleType == null,
+                    onTap: () => setState(() => _vehicleType = null),
+                  ),
+                  ..._VehicleTypeFilter.values.map(
+                    (type) => _DestinationChoiceChip(
+                      label: type.label,
+                      icon: type.icon,
+                      selected: _vehicleType == type,
+                      onTap: () => setState(() => _vehicleType = type),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Available departures',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                  ),
+                ),
                 Text(
-                  subtitle,
-                  style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                  '${filtered.length} found',
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            if (controller.marketplaceBusy && all.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(36),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (filtered.isEmpty)
+              const _EmptyLiveData(
+                message: 'No bookable vehicle is available for this destination right now.',
+              )
+            else
+              ...filtered.map(
+                (package) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _ScheduledVehicleCard(
+                    package: package,
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => LivePackageDetailScreen(package: package),
+                        ),
+                      );
+                      if (mounted) {
+                        await controller.refreshHomeVehicles(force: true);
+                      }
+                    },
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  _VehicleTypeFilter _vehicleTypeForPackage(LiveTourPackage package) {
+    final text =
+        '${package.vehicle} ${package.title} ${package.registrationNumber}'
+            .toLowerCase();
+    if (text.contains('rickshaw') ||
+        text.contains('qinqi') ||
+        text.contains('three wheel') ||
+        text.contains('3 wheel')) {
+      return _VehicleTypeFilter.threeWheel;
+    }
+    if (text.contains('motorcycle') ||
+        text.contains('motor bike') ||
+        text.contains('motorbike') ||
+        text.contains('scooter') ||
+        text.contains('bike') ||
+        text.contains('two wheel') ||
+        text.contains('2 wheel')) {
+      return _VehicleTypeFilter.twoWheel;
+    }
+    return _VehicleTypeFilter.fourWheel;
+  }
+}
+
+class _DestinationChoiceChip extends StatelessWidget {
+  const _DestinationChoiceChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: ChoiceChip(
+          selected: selected,
+          onSelected: (_) => onTap(),
+          avatar: icon == null
+              ? null
+              : Icon(
+                  icon,
+                  size: 16,
+                  color: selected ? Colors.white : AppColors.primaryDark,
+                ),
+          label: Text(label),
+          labelStyle: TextStyle(
+            color: selected ? Colors.white : AppColors.navy,
+            fontWeight: FontWeight.w800,
+            fontSize: 11,
           ),
-          TextButton(onPressed: onViewAll, child: const Text('View all')),
-        ],
+          selectedColor: AppColors.primary,
+          backgroundColor: Colors.white,
+          side: BorderSide(
+            color: selected ? AppColors.primary : AppColors.border,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
       );
 }
 

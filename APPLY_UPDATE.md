@@ -1,29 +1,24 @@
-# uDrive Phase 13.5 — Home Vehicle Type Filters & Fast Loading
+# Phase 13.5 — Compact Vehicle Search & View All
 
-Overlay the `udrive_unified_mobile` folder on the latest source tree.
-
-## Updated files
-
-- `lib/screens/customer/customer_home_screen.dart`
-- `lib/screens/main_shell.dart`
-- `lib/core/state/app_controller.dart`
+## Apply
+Copy the included files over the latest uDrive source, preserving paths.
 
 ## Changes
-
-- Added compact 4 Wheel, 2 Wheel and 3 Wheel filter controls with icons.
-- Destination search and vehicle-type filters work together.
-- Home AppBar shows Pakistan-time greeting and authenticated user's first name.
-- Notification and profile actions are shown on the right.
-- Removed the fake notification count.
-- Added a dedicated public-package request so Home vehicles do not wait for slower booking/offers/tour-interest requests.
-- Existing vehicle results remain in memory while background dashboard data refreshes.
+- Removed the large "Vehicles going your way" heading/subtitle block from Customer Home.
+- Moved `View all` to the right of the destination search field.
+- Kept the existing Home header unchanged.
+- Added a dedicated `Find a vehicle` screen.
+- Added destination-only search.
+- Added tourist-point selection chips from live package destinations.
+- Added All / 4 Wheel / 2 Wheel / 3 Wheel filters.
+- Shows every active customer-bookable scheduled vehicle returned by the live API; Home still limits the preview list.
+- Whole vehicle card remains clickable and opens live location plus booking details.
 
 ## Build
-
 ```bash
 flutter pub get
 flutter analyze
 flutter build web --release --no-wasm-dry-run
 ```
 
-Redeploy Flutter web and clear the service worker/site data once after deployment.
+No API or database migration is required.
