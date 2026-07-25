@@ -494,7 +494,7 @@ class AppController extends ChangeNotifier {
       _liveCustomerPackageWaitlist = results[6] as List<LivePackageWaitlist>;
       if (driverApproved) await loadDriverMarketplace(notify: false);
     } catch (_) {
-      // Other dummy tourism modules remain available while API retries later.
+      // Keep the last successfully loaded live values and expose the API error on retry.
     }
   }
 

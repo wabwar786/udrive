@@ -1,268 +1,190 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
 import '../../core/localization/app_strings.dart';
+import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
-import '../../data/dummy_data.dart';
-import '../../data/models.dart';
-import 'family_tour_planner_screen.dart';
-import 'join_tour_screen.dart';
-import 'package_detail_screen.dart';
+import '../../models/booking_models.dart';
+import 'live_packages_screen.dart';
 import 'tourism_booking_screen.dart';
 
-class CustomerHomeScreen extends StatelessWidget {
+class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({required this.onNavigate, super.key});
   final ValueChanged<String> onNavigate;
 
   @override
-  Widget build(BuildContext context) => RefreshIndicator(
-        onRefresh: () async {},
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 4, 18, 30),
-          cacheExtent: 900,
-          children: [
-            const _CustomerHeader(),
-            const SizedBox(height: 18),
-            _QuickSearch(onTap: () => _openBooking(context)),
-            const SizedBox(height: 14),
-            _LiveTripShortcut(onTap: () => onNavigate('liveTracking')),
-            const SizedBox(height: 18),
-            _PrimaryActionGrid(onNavigate: onNavigate),
-            const SizedBox(height: 20),
-            const _TourismSafetyStrip(),
-            const SizedBox(height: 22),
-            SectionHeader(title: context.tr('quickServices')),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 94,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: services.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 9),
-                itemBuilder: (context, index) => _QuickService(item: services[index]),
-              ),
-            ),
-            const SizedBox(height: 22),
-            SectionHeader(title: context.tr('departingSoon'), action: context.tr('viewAll'), onAction: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JoinTourScreen()))),
-            const SizedBox(height: 10),
-            _DepartingSoonCard(tour: sharedTours.first),
-            const SizedBox(height: 22),
-            const _RoadAdvisoryCard(),
-            const SizedBox(height: 22),
-            SectionHeader(title: context.tr('popularPlaces'), action: context.tr('viewAll'), onAction: () => onNavigate('explore')),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 218,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: destinations.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (context, index) => RepaintBoundary(child: _DestinationCard(item: destinations[index])),
-              ),
-            ),
-            const SizedBox(height: 22),
-            SectionHeader(title: context.tr('recommendedPackages'), action: context.tr('viewAll'), onAction: () => onNavigate('packages')),
-            const SizedBox(height: 10),
-            ...tourPackages.take(2).map((package) => Padding(padding: const EdgeInsets.only(bottom: 12), child: _PackagePreview(package: package))),
-          ],
-        ),
-      );
-
-  void _openBooking(BuildContext context, {BookingType? type, String? destination}) => Navigator.push(context, MaterialPageRoute(builder: (_) => TourismBookingScreen(initialType: type, initialDestination: destination)));
+  State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
 }
 
-class _CustomerHeader extends StatelessWidget {
-  const _CustomerHeader();
+class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
-  Widget build(BuildContext context) => Row(
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+  }
+
+  Future<void> _refresh() => AppControllerScope.of(context).refreshPhase9Marketplace();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppControllerScope.of(context);
+    final active = c.liveBookings.where((b) => !_closed.contains(b.status)).toList()
+      ..sort((a, b) => a.pickupAt.compareTo(b.pickupAt));
+    final upcoming = active.where((b) => b.pickupAt.isAfter(DateTime.now())).length;
+    final pendingOffers = c.liveRideRequests.fold<int>(0, (sum, item) => sum + item.offersCount);
+    final packages = c.liveMarketplacePackages.take(3).toList();
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 6, 18, 32),
         children: [
-          Container(width: 48, height: 48, decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: AppColors.border)), child: const Icon(Icons.person_rounded, color: AppColors.primaryDark)),
-          const SizedBox(width: 11),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('goodMorning'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.navy)), const SizedBox(height: 3), Row(children: [const Icon(Icons.location_on_rounded, size: 15, color: AppColors.primary), const SizedBox(width: 3), Flexible(child: Text(context.tr('currentLocationDemo'), overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w700)))])])),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7), decoration: BoxDecoration(color: const Color(0xFFEAF8F2), borderRadius: BorderRadius.circular(12)), child: Row(children: [const Icon(Icons.cloud_done_rounded, size: 15, color: AppColors.primaryDark), const SizedBox(width: 5), Text(context.tr('offlineReady'), style: const TextStyle(color: AppColors.primaryDark, fontSize: 10, fontWeight: FontWeight.w900))])),
+          _AccountHeader(name: c.currentUserName, phone: c.currentUserPhone),
+          const SizedBox(height: 16),
+          _BookingHero(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TourismBookingScreen()))),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(child: _Metric(icon: Icons.route_rounded, label: _t('Active trips', 'فعال سفر'), value: '${active.length}', color: AppColors.primary)),
+            const SizedBox(width: 10),
+            Expanded(child: _Metric(icon: Icons.calendar_month_rounded, label: _t('Upcoming', 'آنے والے'), value: '$upcoming', color: AppColors.info)),
+            const SizedBox(width: 10),
+            Expanded(child: _Metric(icon: Icons.local_offer_rounded, label: _t('Offers', 'آفرز'), value: '$pendingOffers', color: AppColors.secondary)),
+          ]),
+          if (active.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            SectionHeader(title: _t('Current booking', 'موجودہ بکنگ'), action: _t('View all', 'سب دیکھیں'), onAction: () => widget.onNavigate('trips')),
+            const SizedBox(height: 10),
+            _LiveBookingCard(booking: active.first, onTap: () => widget.onNavigate('trips')),
+          ],
+          const SizedBox(height: 20),
+          SectionHeader(title: _t('Quick actions', 'فوری سہولیات')),
+          const SizedBox(height: 10),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.7,
+            children: [
+              _Action(icon: Icons.local_taxi_rounded, title: _t('Book a ride', 'رائیڈ بک کریں'), onTap: () => widget.onNavigate('bookRide')),
+              _Action(icon: Icons.luggage_rounded, title: _t('Tour packages', 'ٹور پیکجز'), onTap: () => widget.onNavigate('packages')),
+              _Action(icon: Icons.groups_rounded, title: _t('Join a tour', 'ٹور جوائن کریں'), onTap: () => widget.onNavigate('joinTour')),
+              _Action(icon: Icons.health_and_safety_rounded, title: _t('Safety centre', 'سیفٹی سینٹر'), onTap: () => widget.onNavigate('safety')),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SectionHeader(title: _t('Live tourism packages', 'لائیو ٹورزم پیکجز'), action: _t('View all', 'سب دیکھیں'), onAction: () => widget.onNavigate('packages')),
+          const SizedBox(height: 10),
+          if (c.marketplaceBusy && packages.isEmpty)
+            const Padding(padding: EdgeInsets.all(36), child: Center(child: CircularProgressIndicator()))
+          else if (packages.isEmpty)
+            _EmptyLiveData(message: _t('No Admin-approved package is currently available.', 'اس وقت کوئی ایڈمن منظور شدہ پیکج دستیاب نہیں۔'))
+          else
+            ...packages.map((p) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _PackagePreview(package: p, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LivePackagesScreen()))))),
+          if (c.marketplaceError != null) ...[
+            const SizedBox(height: 8),
+            _ErrorBanner(message: c.marketplaceError!, onRetry: _refresh),
+          ],
         ],
-      );
+      ),
+    );
+  }
+
+  String _t(String en, String ur) => AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
+
+  static const _closed = {'Completed', 'Cancelled', 'NoShow'};
 }
 
-class _QuickSearch extends StatelessWidget {
-  const _QuickSearch({required this.onTap});
+class _AccountHeader extends StatelessWidget {
+  const _AccountHeader({required this.name, required this.phone});
+  final String name;
+  final String phone;
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        CircleAvatar(radius: 24, backgroundColor: AppColors.primary.withValues(alpha: .12), child: Text(_initials(name), style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900))),
+        const SizedBox(width: 11),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)), const SizedBox(height: 2), Text(phone.isEmpty ? '—' : phone, style: const TextStyle(color: AppColors.muted, fontSize: 12))])),
+        const StatusPill(label: 'Live', color: AppColors.success),
+      ]);
+
+  static String _initials(String value) {
+    final parts = value.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).take(2).toList();
+    return parts.isEmpty ? 'U' : parts.map((e) => e[0].toUpperCase()).join();
+  }
+}
+
+class _BookingHero extends StatelessWidget {
+  const _BookingHero({required this.onTap});
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(24),
         child: Container(
-          padding: const EdgeInsets.all(17),
-          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF063F32), Color(0xFF129E6A)]), borderRadius: BorderRadius.circular(24)),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), gradient: const LinearGradient(colors: [Color(0xFF063F32), Color(0xFF129E6A)])),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(context.tr('whereTo'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 21)),
+            Text(context.tr('whereTo'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22)),
             const SizedBox(height: 5),
-            Text(context.tr('homeSearchSubtitle'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
-            const SizedBox(height: 14),
-            Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(17)), child: Row(children: [const Icon(Icons.search_rounded, color: AppColors.primaryDark), const SizedBox(width: 9), Expanded(child: Text(context.tr('searchDestination'), style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700))), const Icon(Icons.arrow_forward_rounded, color: AppColors.navy)])),
+            const Text('Create a ride request and receive offers from verified Drivers.', style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4)),
+            const SizedBox(height: 15),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)), child: const Row(children: [Icon(Icons.search_rounded, color: AppColors.primaryDark), SizedBox(width: 9), Expanded(child: Text('Pickup and destination', style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700))), Icon(Icons.arrow_forward_rounded)])),
           ]),
         ),
       );
 }
 
-
-class _LiveTripShortcut extends StatelessWidget {
-  const _LiveTripShortcut({required this.onTap});
-  final VoidCallback onTap;
-
+class _Metric extends StatelessWidget {
+  const _Metric({required this.icon, required this.label, required this.value, required this.color});
+  final IconData icon; final String label; final String value; final Color color;
   @override
-  Widget build(BuildContext context) => PremiumCard(
-        onTap: onTap,
-        color: const Color(0xFFEAF4FF),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(color: AppColors.info.withValues(alpha: .12), borderRadius: BorderRadius.circular(15)),
-              child: const Icon(Icons.share_location_rounded, color: AppColors.info),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Live trip to Neelum Valley', style: TextStyle(fontWeight: FontWeight.w900)),
-                  SizedBox(height: 3),
-                  Text('Near Kohala Bridge · 96 min ETA · Guardian monitoring ready', style: TextStyle(color: AppColors.muted, fontSize: 11, height: 1.35)),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded),
-          ],
-        ),
-      );
+  Widget build(BuildContext context) => PremiumCard(padding: const EdgeInsets.all(12), child: Column(children: [Icon(icon, color: color, size: 21), const SizedBox(height: 6), Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)), Text(label, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted, fontSize: 10))]));
 }
 
-class _PrimaryActionGrid extends StatelessWidget {
-  const _PrimaryActionGrid({required this.onNavigate});
-  final ValueChanged<String> onNavigate;
-
+class _Action extends StatelessWidget {
+  const _Action({required this.icon, required this.title, required this.onTap});
+  final IconData icon; final String title; final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) {
-    final actions = <_HomeAction>[
-      _HomeAction(context.tr('bookVehicle'), context.tr('bookVehicleHint'), Icons.directions_car_filled_rounded, AppColors.primary, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TourismBookingScreen()))),
-      _HomeAction(context.tr('joinTour'), context.tr('joinTourHint'), Icons.groups_rounded, const Color(0xFF7C3AED), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JoinTourScreen()))),
-      _HomeAction(context.tr('familyTour'), context.tr('familyTourHint'), Icons.family_restroom_rounded, const Color(0xFFEA580C), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FamilyTourPlannerScreen()))),
-      _HomeAction(context.tr('explore'), context.tr('exploreHint'), Icons.explore_rounded, AppColors.secondary, () => onNavigate('explore')),
-      _HomeAction(context.tr('trips'), context.tr('tripsHint'), Icons.route_rounded, const Color(0xFF0284C7), () => onNavigate('trips')),
-      _HomeAction(context.tr('emergencySafety'), context.tr('safetyHint'), Icons.health_and_safety_rounded, AppColors.danger, () => onNavigate('safety')),
-    ];
-    return GridView.builder(
-      physics: const NeverScrollableScrollPhysics(),
-      shrinkWrap: true,
-      itemCount: actions.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 1.42),
-      itemBuilder: (context, index) => _HomeActionCard(action: actions[index]),
-    );
-  }
+  Widget build(BuildContext context) => PremiumCard(onTap: onTap, padding: const EdgeInsets.all(13), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: AppColors.primaryDark)), const SizedBox(width: 10), Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)))]));
 }
 
-class _HomeAction {
-  const _HomeAction(this.title, this.subtitle, this.icon, this.color, this.onTap);
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-}
-
-class _HomeActionCard extends StatelessWidget {
-  const _HomeActionCard({required this.action});
-  final _HomeAction action;
+class _LiveBookingCard extends StatelessWidget {
+  const _LiveBookingCard({required this.booking, required this.onTap});
+  final LiveBooking booking; final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: action.onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.border)),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: 40, height: 40, decoration: BoxDecoration(color: action.color.withValues(alpha: .12), borderRadius: BorderRadius.circular(13)), child: Icon(action.icon, color: action.color, size: 21)), const SizedBox(width: 9), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [Text(action.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, height: 1.1)), const SizedBox(height: 4), Text(action.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted, fontSize: 9.5, height: 1.2))]))]),
-        ),
-      );
-}
-
-class _TourismSafetyStrip extends StatelessWidget {
-  const _TourismSafetyStrip();
-  @override
-  Widget build(BuildContext context) => PremiumCard(
-        color: const Color(0xFFFFF8E8),
-        child: Row(children: [Container(width: 46, height: 46, decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: .18), borderRadius: BorderRadius.circular(15)), child: const Icon(Icons.shield_rounded, color: Color(0xFF8A5B00))), const SizedBox(width: 11), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('safeTourismPromise'), style: const TextStyle(fontWeight: FontWeight.w900)), const SizedBox(height: 3), Text(context.tr('safeTourismPromiseText'), style: const TextStyle(color: AppColors.muted, fontSize: 11, height: 1.3))])), const Icon(Icons.chevron_right_rounded)]),
-      );
-}
-
-class _QuickService extends StatelessWidget {
-  const _QuickService({required this.item});
-  final ServiceItem item;
-  @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: () {
-          final type = item.id == 'perSeat' ? BookingType.perSeat : item.id == 'wholeVehicle' ? BookingType.wholeVehicle : null;
-          Navigator.push(context, MaterialPageRoute(builder: (_) => TourismBookingScreen(initialType: type)));
-        },
-        borderRadius: BorderRadius.circular(18),
-        child: Container(width: 92, padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: 36, height: 36, decoration: BoxDecoration(color: item.color.withValues(alpha: .12), borderRadius: BorderRadius.circular(12)), child: Icon(item.icon, color: item.color, size: 19)), const Spacer(), Text(context.tr(item.titleKey), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900, height: 1.1))])),
-      );
-}
-
-class _DepartingSoonCard extends StatelessWidget {
-  const _DepartingSoonCard({required this.tour});
-  final SharedTour tour;
-  @override
-  Widget build(BuildContext context) => PremiumCard(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JoinTourScreen())),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [StatusPill(label: '${tour.matchPercent}% ${context.tr('match')}'), const Spacer(), Text('${tour.availableSeats} ${context.tr('seatsLeft')}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))]),
-          const SizedBox(height: 11),
-          Text(tour.title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-          const SizedBox(height: 5),
-          Text('${tour.pickup} → ${tour.destination}', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
-          const SizedBox(height: 12),
-          Row(children: [const Icon(Icons.schedule_rounded, size: 17, color: AppColors.primaryDark), const SizedBox(width: 5), Text('${tour.departureDate} · ${tour.departureTime}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)), const Spacer(), Text('PKR ${tour.pricePerSeat}/${context.tr('seat')}', style: const TextStyle(fontWeight: FontWeight.w900))]),
-        ]),
-      );
-}
-
-class _RoadAdvisoryCard extends StatelessWidget {
-  const _RoadAdvisoryCard();
-  @override
-  Widget build(BuildContext context) => PremiumCard(
-        color: const Color(0xFFFFF9E9),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: 44, height: 44, decoration: BoxDecoration(color: AppColors.warning.withValues(alpha: .15), borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.warning_amber_rounded, color: AppColors.warning)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('muzaffarabadKeran'), style: const TextStyle(fontWeight: FontWeight.w900)), const SizedBox(height: 4), Text(context.tr('roadAlertDemo'), style: const TextStyle(color: AppColors.muted, height: 1.35, fontSize: 12))])), StatusPill(label: context.tr('caution'), color: AppColors.warning)]),
-      );
-}
-
-class _DestinationCard extends StatelessWidget {
-  const _DestinationCard({required this.item});
-  final DestinationItem item;
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 190,
-        child: PremiumCard(
-          padding: EdgeInsets.zero,
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TourismBookingScreen(initialDestination: item.name))),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(23),
-            child: Stack(children: [
-              Positioned.fill(child: Image.asset(item.image, fit: BoxFit.cover, cacheWidth: 500, filterQuality: FilterQuality.medium)),
-              Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, AppColors.navy.withValues(alpha: .9)])))),
-              Positioned(left: 13, right: 13, bottom: 13, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(item.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 17)), const SizedBox(height: 4), Row(children: [const Icon(Icons.star_rounded, color: AppColors.accent, size: 16), Text(' ${item.rating}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), const Spacer(), Text(item.travelTime, style: const TextStyle(color: Colors.white70, fontSize: 11))]), const SizedBox(height: 5), Row(children: [const Icon(Icons.shield_rounded, color: AppColors.success, size: 14), const SizedBox(width: 4), Text('${item.safetyScore}/100', style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w800))])])),
-            ]),
-          ),
-        ),
-      );
+  Widget build(BuildContext context) => PremiumCard(onTap: onTap, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [Expanded(child: Text(booking.bookingReference, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))), StatusPill(label: booking.status)]),
+        const SizedBox(height: 10),
+        Text('${booking.pickupLabel} → ${booking.destinationLabel}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+        const SizedBox(height: 7),
+        Text(DateFormat('dd MMM yyyy · hh:mm a').format(booking.pickupAt), style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+        if (booking.driverName != null) ...[const SizedBox(height: 6), Text('${booking.driverName} · ${booking.vehicle ?? ''} ${booking.registrationNumber ?? ''}', style: const TextStyle(color: AppColors.muted, fontSize: 12))],
+        const Divider(height: 22),
+        Row(children: [Text('${booking.bookingType} · ${booking.seatsBooked} seat(s)', style: const TextStyle(fontSize: 11, color: AppColors.muted)), const Spacer(), Text('PKR ${NumberFormat('#,##0').format(booking.totalAmount)}', style: const TextStyle(fontWeight: FontWeight.w900))]),
+      ]));
 }
 
 class _PackagePreview extends StatelessWidget {
-  const _PackagePreview({required this.package});
-  final TourPackage package;
+  const _PackagePreview({required this.package, required this.onTap});
+  final LiveTourPackage package; final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => PremiumCard(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PackageDetailScreen(package: package))),
-        child: Row(children: [ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.asset(package.image, width: 82, height: 82, fit: BoxFit.cover, cacheWidth: 260)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text(package.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900))), StatusPill(label: '${package.safetyScore}/100')]), const SizedBox(height: 5), Text('${package.days} days · ${package.vehicle}', style: const TextStyle(color: AppColors.muted, fontSize: 11)), const SizedBox(height: 7), Row(children: [Text('PKR ${package.pricePerSeat ?? package.price}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark)), Text(package.pricePerSeat != null ? '/${context.tr('seat')}' : '', style: const TextStyle(color: AppColors.muted, fontSize: 10)), const Spacer(), const Icon(Icons.chevron_right_rounded)])]))]),
-      );
+  Widget build(BuildContext context) => PremiumCard(onTap: onTap, child: Row(children: [
+        Container(width: 52, height: 52, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .11), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.landscape_rounded, color: AppColors.primaryDark)),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(package.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900)), const SizedBox(height: 4), Text('${package.startingCity} → ${package.destination} · ${package.bookableSeats} seats', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted, fontSize: 11))])),
+        const SizedBox(width: 8),
+        Text('PKR ${NumberFormat('#,##0').format(package.pricePerSeat)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark, fontSize: 12)),
+      ]));
+}
+
+class _EmptyLiveData extends StatelessWidget {
+  const _EmptyLiveData({required this.message}); final String message;
+  @override Widget build(BuildContext context) => PremiumCard(child: Row(children: [const Icon(Icons.inbox_outlined, color: AppColors.muted), const SizedBox(width: 10), Expanded(child: Text(message, style: const TextStyle(color: AppColors.muted, fontSize: 12)))]));
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message, required this.onRetry}); final String message; final VoidCallback onRetry;
+  @override Widget build(BuildContext context) => PremiumCard(color: const Color(0xFFFFF3F2), child: Row(children: [const Icon(Icons.error_outline_rounded, color: AppColors.danger), const SizedBox(width: 10), Expanded(child: Text(message, style: const TextStyle(fontSize: 11))), TextButton(onPressed: onRetry, child: const Text('Retry'))]));
 }

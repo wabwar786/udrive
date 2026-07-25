@@ -1,19 +1,16 @@
-# Phase 13 API Testing Checklist
+# Testing Checklist
 
-- [ ] Finance dashboard returns HTTP 200 for SuperAdmin/Admin/FinanceOfficer.
-- [ ] Driver finance endpoint denies Customer tokens.
-- [ ] Completing an assigned booking creates exactly one earning and wallet credit.
-- [ ] Repeating completion/reconcile does not create duplicate earning.
-- [ ] Commission amount and net amount reconcile to gross fare.
-- [ ] Payout greater than available balance is rejected.
-- [ ] Second active payout request is rejected.
-- [ ] Stale wallet or payout version returns HTTP 409.
-- [ ] Paid payout moves pending balance to paid balance.
-- [ ] Rejected/failed payout restores available balance.
-- [ ] Refund greater than paid amount is rejected.
-- [ ] Completed refund updates payment refund amount/status.
-- [ ] Final payout/refund cannot be edited.
-- [ ] Only SuperAdmin can create commission rules or adjustments.
-- [ ] Every payout/refund/adjustment action creates an audit log.
-- [ ] Admin Finance page uses live API data and displays empty/error/loading states.
-- [ ] Driver earnings screen loads live wallet activity and submits payout request.
+- [ ] Login as a Customer and confirm name/phone match `/api/v1/auth/me`.
+- [ ] Pull-to-refresh Customer Home and confirm live bookings/packages update.
+- [ ] Create a ride request and confirm offer count changes after Driver offers exist.
+- [ ] Confirm an active booking displays its real reference, route, date, fare and assignment.
+- [ ] Login/switch to Driver mode and confirm verification status matches the API.
+- [ ] Confirm Driver request count matches `/api/v1/driver/marketplace/ride-requests`.
+- [ ] Confirm registered vehicles match `/api/v1/driver/vehicles`.
+- [ ] Open Vehicles and verify the live registration screen creates a database vehicle.
+- [ ] Open Documents and verify live onboarding/document records are displayed.
+- [ ] Open Earnings/Payouts and verify Finance API values are shown.
+- [ ] Test empty account states with no bookings, packages or vehicles.
+- [ ] Test API failure and retry behavior.
+- [ ] Test English and Urdu modes.
+- [ ] Run `flutter analyze` and `flutter build web --release`.

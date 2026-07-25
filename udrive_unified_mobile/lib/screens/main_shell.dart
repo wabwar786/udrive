@@ -18,10 +18,12 @@ import 'driver/live_driver_package_bookings_screen.dart';
 import 'driver/live_driver_requests_screen.dart';
 import 'customer/tourism_booking_screen.dart';
 import 'driver/driver_home_screen.dart';
+import 'driver/driver_earnings_screen.dart';
 import 'driver/driver_pages.dart';
 import 'driver/advanced_package_screen.dart';
 import 'driver/driver_tourism_tools.dart';
 import 'driver/vehicle_registration_screen.dart';
+import 'driver/live_vehicle_list_screen.dart';
 import 'driver/onboarding/driver_verification_screen.dart';
 import 'maps/live_tracking_screen.dart';
 import 'safety/safety_hub_screen.dart';
@@ -204,9 +206,9 @@ class _MainShellState extends State<MainShell> {
         'driverSafety' => const SafetyHubScreen(),
         'driverLiveTracking' => const LiveTrackingScreen(),
         'earnings' => const DriverEarningsScreen(),
-        'payouts' => const DriverWalletScreen(),
-        'vehicles' => const VehicleListScreen(),
-        'documents' => const DriverDocumentsScreen(),
+        'payouts' => const DriverEarningsScreen(),
+        'vehicles' => const LiveVehicleListScreen(),
+        'documents' => const DriverVerificationScreen(),
         'availability' => const DriverAvailabilityScreen(),
         'reviews' => const DriverReviewsScreen(),
         'support' => const SupportScreen(),
