@@ -44,8 +44,10 @@ builder.Services.AddScoped<DriverVerificationService>(serviceProvider =>
         connectionString,
         serviceProvider.GetRequiredService<AuthOptions>(),
         serviceProvider.GetRequiredService<LocalFileStorageService>()));
-builder.Services.AddScoped<AdminVerificationService>(_ =>
-    new AdminVerificationService(connectionString));
+builder.Services.AddScoped<AdminVerificationService>(serviceProvider =>
+    new AdminVerificationService(
+        connectionString,
+        serviceProvider.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<BookingService>(_ =>
     new BookingService(connectionString, authOptions));
 builder.Services.AddScoped<PackageMarketplaceService>(_ =>

@@ -79,6 +79,71 @@ public sealed class LocalFileStorageService
         return (candidate, DetectContentType(Path.GetExtension(candidate)), safeFile);
     }
 
+    public int DeleteProtectedFiles(IEnumerable<string> relativeUrls)
+    {
+        var deleted = 0;
+        foreach (var relativeUrl in relativeUrls.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (DeleteProtectedFile(relativeUrl))
+            {
+                deleted++;
+            }
+        }
+        return deleted;
+    }
+
+    public bool DeleteProtectedFile(string relativeUrl)
+    {
+        if (string.IsNullOrWhiteSpace(relativeUrl))
+        {
+            return false;
+        }
+
+        try
+        {
+            var path = relativeUrl;
+            if (Uri.TryCreate(relativeUrl, UriKind.Absolute, out var absoluteUri))
+            {
+                path = absoluteUri.AbsolutePath;
+            }
+
+            var segments = path
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.UnescapeDataString)
+                .ToArray();
+            var filesIndex = Array.FindIndex(
+                segments,
+                value => string.Equals(value, "files", StringComparison.OrdinalIgnoreCase));
+            if (filesIndex < 0 || segments.Length < filesIndex + 4)
+            {
+                return false;
+            }
+
+            var resolved = ResolveProtectedFile(
+                segments[filesIndex + 1],
+                segments[filesIndex + 2],
+                segments[filesIndex + 3]);
+            if (resolved is null)
+            {
+                return false;
+            }
+
+            File.Delete(resolved.Value.Path);
+            var ownerDirectory = Path.GetDirectoryName(resolved.Value.Path);
+            if (!string.IsNullOrWhiteSpace(ownerDirectory) &&
+                Directory.Exists(ownerDirectory) &&
+                !Directory.EnumerateFileSystemEntries(ownerDirectory).Any())
+            {
+                Directory.Delete(ownerDirectory);
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static string SanitizeSegment(string value)
     {
         var safe = new string(value.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();

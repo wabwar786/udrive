@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
   UserRound,
   X,
 } from 'lucide-react';
@@ -518,6 +519,7 @@ function VerificationDetail({
       return;
     }
 
+    const deleteAttachments = decision === 'Rejected';
     const label =
       decision === 'Approved'
         ? 'approve this Driver'
@@ -525,9 +527,13 @@ function VerificationDetail({
           ? 'request changes from this Driver'
           : decision === 'Suspended'
             ? 'suspend this Driver'
-            : 'reject this Driver';
+            : 'reject this Driver and permanently delete all Driver and vehicle attachments';
 
-    if (!window.confirm(`Are you sure you want to ${label}?`)) {
+    const confirmation = deleteAttachments
+      ? `Are you sure you want to ${label}? This cannot be undone.`
+      : `Are you sure you want to ${label}?`;
+
+    if (!window.confirm(confirmation)) {
       return;
     }
 
@@ -539,7 +545,7 @@ function VerificationDetail({
         `/api/v1/admin/verification/drivers/${selection.id}`,
         {
           method: 'PUT',
-          body: JSON.stringify({ decision, notes }),
+          body: JSON.stringify({ decision, notes, deleteAttachments }),
         },
       );
 
@@ -663,6 +669,11 @@ function VerificationDetail({
                     driverDocumentOrder,
                   )}
                   expected={driverDocumentOrder}
+                  ownerType="driver"
+                  ownerId={driverDetail.driver.driverProfileId}
+                  onChanged={async () => {
+                    await Promise.all([loadDetail(), onChanged()]);
+                  }}
                 />
               </DetailSection>
 
@@ -738,6 +749,10 @@ function VerificationDetail({
                 />
               </label>
 
+              <div className={styles.rejectNotice}>
+                Rejection permanently deletes all uploaded Driver and vehicle attachments.
+              </div>
+
               <div className={styles.decisionButtons}>
                 <button
                   className="primaryButton"
@@ -760,7 +775,8 @@ function VerificationDetail({
                   disabled={acting}
                   onClick={() => void decideDriver('Rejected')}
                 >
-                  Reject Driver
+                  <Trash2 size={16} />
+                  Reject & delete files
                 </button>
               </div>
             </footer>
@@ -867,9 +883,15 @@ function Info({
 function DocumentGrid({
   documents,
   expected,
+  ownerType,
+  ownerId,
+  onChanged,
 }: {
   documents: VerificationDocument[];
   expected: string[];
+  ownerType: 'driver' | 'vehicle';
+  ownerId: string;
+  onChanged: () => Promise<void>;
 }) {
   const byType = new Map(
     documents.map((document) => [document.documentType, document]),
@@ -888,10 +910,17 @@ function DocumentGrid({
         const document = byType.get(type);
 
         return document ? (
-          <ProtectedDocument key={document.id} document={document} />
+          <ProtectedDocument
+            key={document.id}
+            document={document}
+            deletePath={`/api/v1/admin/verification/${
+              ownerType === 'driver' ? 'drivers' : 'vehicles'
+            }/${ownerId}/documents/${document.id}`}
+            onChanged={onChanged}
+          />
         ) : (
           <div className={styles.missingDocument} key={type}>
-            <FileText size={30} />
+            <FileText size={25} />
             <strong>{pretty(type)}</strong>
             <span>Not uploaded</span>
           </div>
@@ -903,12 +932,17 @@ function DocumentGrid({
 
 function ProtectedDocument({
   document,
+  deletePath,
+  onChanged,
 }: {
   document: VerificationDocument;
+  deletePath: string;
+  onChanged: () => Promise<void>;
 }) {
   const [objectUrl, setObjectUrl] = useState('');
   const [contentType, setContentType] = useState('');
   const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -944,6 +978,32 @@ function ProtectedDocument({
   const isPdf =
     contentType.includes('pdf') ||
     document.fileUrl.toLowerCase().endsWith('.pdf');
+
+  async function deleteAttachment() {
+    if (
+      !window.confirm(
+        `Permanently delete ${pretty(document.documentType)}? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setDeleting(true);
+    setError('');
+
+    try {
+      await apiFetch(deletePath, { method: 'DELETE' });
+      await onChanged();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : 'Attachment could not be deleted.',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <article className={styles.documentCard}>
@@ -1014,9 +1074,18 @@ function ProtectedDocument({
               download={`${document.documentType.toLowerCase()}`}
               className="secondaryButton"
             >
-              <Download size={16} />
+              <Download size={15} />
               Download
             </a>
+            <button
+              type="button"
+              className={styles.deleteFileButton}
+              disabled={deleting}
+              onClick={() => void deleteAttachment()}
+            >
+              <Trash2 size={15} />
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
           </div>
         )}
       </div>
@@ -1123,6 +1192,9 @@ function VehicleReviewCard({
           vehicleDocumentOrder,
         )}
         expected={vehicleDocumentOrder.slice(0, 4)}
+        ownerType="vehicle"
+        ownerId={detail.vehicle.vehicleId}
+        onChanged={onChanged}
       />
 
       {error && <ErrorBox message={error} />}

@@ -1,0 +1,14 @@
+APPLY_UPDATE.md
+FEATURES.md
+IMPORTANT.md
+VALIDATION.md
+admin_portal/app/globals.css
+admin_portal/app/lib/admin-api.ts
+admin_portal/app/verification/page.tsx
+admin_portal/app/verification/verification.module.css
+udrive_api/Controllers/AdminVerificationController.cs
+udrive_api/Controllers/VerificationFilesController.cs
+udrive_api/Models/DriverDtos.cs
+udrive_api/Program.cs
+udrive_api/Services/AdminVerificationService.cs
+udrive_api/Services/LocalFileStorageService.cs

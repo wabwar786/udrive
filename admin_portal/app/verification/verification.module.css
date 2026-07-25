@@ -775,3 +775,68 @@
     padding: 12px;
   }
 }
+
+/* Compact, normal-size typography */
+.queuePanel,
+.detailPanel { font-size: 12px; }
+.queueCard { padding: 12px; border-radius: 14px; gap: 10px; }
+.avatar { width: 40px; height: 40px; border-radius: 12px; font-size: 12px; }
+.queueCardTitle strong { font-size: 13px; }
+.queueCardTitle > div > span,
+.queueMeta { font-size: 11px; }
+.detailPanel { width: min(980px, 96vw); }
+.detailHeader { min-height: 70px; padding: 11px 16px; }
+.detailHeader h2 { font-size: 18px; letter-spacing: -0.015em; }
+.detailHeader p { font-size: 11px; }
+.detailContent { padding: 15px 16px 125px; }
+.driverHero { padding: 14px; border-radius: 16px; gap: 12px; }
+.heroAvatar { width: 48px; height: 48px; border-radius: 14px; }
+.heroMain h3 { font-size: 17px; }
+.heroMain p { font-size: 11px; }
+.heroStats > div { min-width: 96px; padding: 9px; border-radius: 12px; }
+.heroStats strong { font-size: 16px; }
+.heroStats span { font-size: 9px; }
+.detailSection { margin-bottom: 13px; border-radius: 15px; }
+.detailSection > header { padding: 13px 15px; }
+.detailSection h3 { font-size: 14px; }
+.detailSection header p { font-size: 11px; }
+.infoGrid { gap: 9px; padding: 13px 15px; }
+.infoItem { min-height: 61px; padding: 10px; border-radius: 11px; }
+.infoItem span { font-size: 10px; }
+.infoItem strong { margin-top: 5px; font-size: 12px; font-weight: 650; }
+.documentGrid { gap: 10px; padding: 13px 15px; }
+.documentCard,
+.missingDocument { border-radius: 13px; }
+.documentPreview { height: 180px; }
+.documentBody { padding: 10px; }
+.documentTitle strong { font-size: 12px; }
+.documentTitle span,
+.documentNotes,
+.fileError { font-size: 10px; }
+.documentActions { gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+.documentActions a,
+.deleteFileButton { min-height: 31px; padding: 0 9px; border-radius: 9px; font-size: 10px; }
+.deleteFileButton { border: 0; display: inline-flex; align-items: center; justify-content: center; gap: 5px; background: #fff0f1; color: #a62032; font-weight: 750; cursor: pointer; }
+.deleteFileButton:hover { background: #ffdfe3; }
+.deleteFileButton:disabled { opacity: .55; cursor: not-allowed; }
+.vehicleHeader { padding: 12px 14px; }
+.vehicleHeader h4 { font-size: 13px; }
+.vehicleHeader p { font-size: 10px; }
+.vehicleIcon { width: 39px; height: 39px; border-radius: 11px; }
+.vehicleMetrics { padding: 11px 14px 0; gap: 8px; }
+.vehicleMetrics > div { padding: 9px; border-radius: 10px; }
+.vehicleMetrics strong { font-size: 12px; }
+.vehicleMetrics span { font-size: 9px; }
+.vehicleDecision { padding: 0 14px 14px; }
+.vehicleDecision textarea,
+.decisionFooter textarea { font-size: 11px; }
+.decisionFooter { padding: 10px 14px; gap: 9px; }
+.decisionFooter label span { font-size: 10px; }
+.decisionButtons button,
+.vehicleDecision button { min-height: 34px; padding: 0 10px; border-radius: 10px; font-size: 11px; }
+.rejectNotice { color: #9d2635; background: #fff1f2; border: 1px solid #ffd9de; border-radius: 9px; padding: 7px 9px; font-size: 10px; line-height: 1.35; }
+@media (max-width: 650px) {
+  .documentPreview { height: 165px; }
+  .detailHeader h2 { font-size: 16px; }
+}
+

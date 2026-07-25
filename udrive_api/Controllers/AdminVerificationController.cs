@@ -47,6 +47,17 @@ public sealed class AdminVerificationController(
             cancellationToken));
     }
 
+    [HttpDelete("drivers/{driverProfileId:guid}/documents/{documentId:guid}")]
+    public async Task<IActionResult> DeleteDriverDocument(
+        Guid driverProfileId,
+        Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        return ToActionResult(await adminService.DeleteDriverDocumentAsync(
+            User.GetRequiredUserId(), driverProfileId, documentId,
+            HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
+    }
+
     [HttpGet("vehicles")]
     public async Task<IActionResult> GetVehicles(
         [FromQuery] string? status,
@@ -79,6 +90,17 @@ public sealed class AdminVerificationController(
             request,
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             cancellationToken));
+    }
+
+    [HttpDelete("vehicles/{vehicleId:guid}/documents/{documentId:guid}")]
+    public async Task<IActionResult> DeleteVehicleDocument(
+        Guid vehicleId,
+        Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        return ToActionResult(await adminService.DeleteVehicleDocumentAsync(
+            User.GetRequiredUserId(), vehicleId, documentId,
+            HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
     }
 
     private IActionResult ToActionResult<T>(ServiceResult<T> result)

@@ -92,7 +92,8 @@ public sealed record VehicleDocumentDto(
 
 public sealed record VerificationReviewRequest(
     [Required, StringLength(32)] string Decision,
-    [StringLength(1000)] string? Notes);
+    [StringLength(1000)] string? Notes,
+    bool DeleteAttachments = false);
 
 public sealed record DriverReviewListItemDto(
     Guid DriverProfileId,

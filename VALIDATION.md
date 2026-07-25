@@ -1,15 +1,16 @@
-# Static Validation
+# Validation
 
 ```json
 {
-  "page_has_driver_detail_endpoint": true,
-  "page_loads_vehicle_details": true,
-  "page_has_protected_blob_loader": true,
-  "page_has_driver_approve": true,
-  "page_has_driver_reject": true,
-  "page_has_vehicle_verify": true,
-  "page_has_all_required_driver_docs": true,
-  "api_allows_verification_officer": true,
-  "file_api_allows_verification_officer": true
+  "compact_global_css": true,
+  "compact_verification_css": true,
+  "reject_delete_payload": true,
+  "individual_delete_button": true,
+  "driver_delete_endpoint": true,
+  "vehicle_delete_endpoint": true,
+  "purges_driver_and_vehicle_docs": true,
+  "physical_delete": true,
+  "program_injection": true,
+  "database_migration_required": false
 }
 ```

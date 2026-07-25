@@ -5,7 +5,9 @@ using UDrive.Api.Models;
 
 namespace UDrive.Api.Services;
 
-public sealed class AdminVerificationService(string connectionString)
+public sealed class AdminVerificationService(
+    string connectionString,
+    LocalFileStorageService fileStorage)
 {
     private static readonly HashSet<string> DriverDecisions =
         new(StringComparer.OrdinalIgnoreCase)
@@ -215,6 +217,32 @@ public sealed class AdminVerificationService(string connectionString)
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var attachmentUrls = new List<string>();
+        var deleteAttachments =
+            request.DeleteAttachments &&
+            string.Equals(request.Decision, "Rejected", StringComparison.OrdinalIgnoreCase);
+
+        if (deleteAttachments)
+        {
+            await using var attachmentCommand = new NpgsqlCommand("""
+                SELECT file_url
+                FROM udrive.driver_documents
+                WHERE driver_profile_id = @driverProfileId
+                UNION ALL
+                SELECT vd.file_url
+                FROM udrive.vehicle_documents vd
+                JOIN udrive.vehicles v ON v.id = vd.vehicle_id
+                WHERE v.driver_profile_id = @driverProfileId;
+                """, connection, transaction);
+            attachmentCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            await using var attachmentReader =
+                await attachmentCommand.ExecuteReaderAsync(cancellationToken);
+            while (await attachmentReader.ReadAsync(cancellationToken))
+            {
+                attachmentUrls.Add(attachmentReader.GetString(0));
+            }
+            await attachmentReader.CloseAsync();
+        }
 
         if (string.Equals(request.Decision, "Approved", StringComparison.OrdinalIgnoreCase))
         {
@@ -309,6 +337,24 @@ public sealed class AdminVerificationService(string connectionString)
             await versionCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        if (deleteAttachments)
+        {
+            await using var deleteCommand = new NpgsqlCommand("""
+                DELETE FROM udrive.vehicle_documents
+                WHERE vehicle_id IN (
+                    SELECT id FROM udrive.vehicles
+                    WHERE driver_profile_id = @driverProfileId
+                );
+                DELETE FROM udrive.driver_documents
+                WHERE driver_profile_id = @driverProfileId;
+                UPDATE udrive.vehicles
+                SET status = 'ChangesRequired', updated_at = now()
+                WHERE driver_profile_id = @driverProfileId;
+                """, connection, transaction);
+            deleteCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            await deleteCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await InsertAuditAsync(
             connection,
             transaction,
@@ -321,7 +367,73 @@ public sealed class AdminVerificationService(string connectionString)
             ipAddress,
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return ServiceResult<bool>.Ok(true, "Driver verification status updated.");
+        var deletedFiles = deleteAttachments
+            ? fileStorage.DeleteProtectedFiles(attachmentUrls)
+            : 0;
+        var message = deleteAttachments
+            ? $"Driver rejected. {deletedFiles} attachment(s) permanently deleted."
+            : "Driver verification status updated.";
+        return ServiceResult<bool>.Ok(true, message);
+    }
+
+    public async Task<ServiceResult<bool>> DeleteDriverDocumentAsync(
+        Guid adminUserId,
+        Guid driverProfileId,
+        Guid documentId,
+        string? ipAddress,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        string? fileUrl = null;
+        Guid? userId = null;
+        await using (var selectCommand = new NpgsqlCommand("""
+            SELECT dd.file_url, dp.user_id
+            FROM udrive.driver_documents dd
+            JOIN udrive.driver_profiles dp ON dp.id = dd.driver_profile_id
+            WHERE dd.id = @documentId AND dd.driver_profile_id = @driverProfileId
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            selectCommand.Parameters.AddWithValue("documentId", documentId);
+            selectCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            await using var reader = await selectCommand.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                fileUrl = reader.GetString(0);
+                userId = reader.GetGuid(1);
+            }
+        }
+        if (fileUrl is null || userId is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ServiceResult<bool>.Fail(StatusCodes.Status404NotFound, "driver_document_not_found", "Driver attachment not found.");
+        }
+        await using (var deleteCommand = new NpgsqlCommand("""
+            DELETE FROM udrive.driver_documents WHERE id = @documentId;
+            UPDATE udrive.driver_profiles
+            SET verification_status = 'ChangesRequired',
+                review_notes = 'An attachment was removed by an Administrator. Upload is required.',
+                reviewed_at = now(), reviewed_by_user_id = @adminUserId, updated_at = now()
+            WHERE id = @driverProfileId;
+            DELETE FROM udrive.user_roles WHERE user_id = @userId AND role = 'Driver';
+            UPDATE udrive.users
+            SET role = CASE WHEN role = 'Driver' THEN 'Customer' ELSE role END,
+                token_version = token_version + 1, updated_at = now()
+            WHERE id = @userId;
+            """, connection, transaction))
+        {
+            deleteCommand.Parameters.AddWithValue("documentId", documentId);
+            deleteCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            deleteCommand.Parameters.AddWithValue("adminUserId", adminUserId);
+            deleteCommand.Parameters.AddWithValue("userId", userId.Value);
+            await deleteCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await InsertAuditAsync(connection, transaction, adminUserId, "DeleteDriverAttachment", "DriverDocument", documentId, "Deleted", "Attachment permanently deleted by Administrator.", ipAddress, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        fileStorage.DeleteProtectedFile(fileUrl);
+        return ServiceResult<bool>.Ok(true, "Driver attachment permanently deleted.");
     }
 
     public async Task<ServiceResult<IReadOnlyList<VehicleReviewListItemDto>>> GetVehiclesAsync(
@@ -513,6 +625,48 @@ public sealed class AdminVerificationService(string connectionString)
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<bool>.Ok(true, "Vehicle verification status updated.");
+    }
+
+    public async Task<ServiceResult<bool>> DeleteVehicleDocumentAsync(
+        Guid adminUserId,
+        Guid vehicleId,
+        Guid documentId,
+        string? ipAddress,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        string? fileUrl = null;
+        await using (var selectCommand = new NpgsqlCommand("""
+            SELECT file_url FROM udrive.vehicle_documents
+            WHERE id = @documentId AND vehicle_id = @vehicleId
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            selectCommand.Parameters.AddWithValue("documentId", documentId);
+            selectCommand.Parameters.AddWithValue("vehicleId", vehicleId);
+            fileUrl = await selectCommand.ExecuteScalarAsync(cancellationToken) as string;
+        }
+        if (fileUrl is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ServiceResult<bool>.Fail(StatusCodes.Status404NotFound, "vehicle_document_not_found", "Vehicle attachment not found.");
+        }
+        await using (var deleteCommand = new NpgsqlCommand("""
+            DELETE FROM udrive.vehicle_documents WHERE id = @documentId;
+            UPDATE udrive.vehicles SET status = 'ChangesRequired', updated_at = now()
+            WHERE id = @vehicleId;
+            """, connection, transaction))
+        {
+            deleteCommand.Parameters.AddWithValue("documentId", documentId);
+            deleteCommand.Parameters.AddWithValue("vehicleId", vehicleId);
+            await deleteCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await InsertAuditAsync(connection, transaction, adminUserId, "DeleteVehicleAttachment", "VehicleDocument", documentId, "Deleted", "Attachment permanently deleted by Administrator.", ipAddress, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        fileStorage.DeleteProtectedFile(fileUrl);
+        return ServiceResult<bool>.Ok(true, "Vehicle attachment permanently deleted.");
     }
 
     private static string NormalizeDecision(string decision, HashSet<string> allowed)
