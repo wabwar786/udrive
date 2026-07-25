@@ -56,6 +56,12 @@ builder.Services.AddScoped<TourInterestService>(_ =>
     new TourInterestService(connectionString));
 builder.Services.AddScoped<AdminOperationsService>(_ =>
     new AdminOperationsService(connectionString));
+builder.Services.AddScoped<AdminUserManagementService>(_ =>
+    new AdminUserManagementService(connectionString));
+builder.Services.AddScoped<VerificationFileLookupService>(serviceProvider =>
+    new VerificationFileLookupService(
+        connectionString,
+        serviceProvider.GetRequiredService<LocalFileStorageService>()));
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

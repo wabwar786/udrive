@@ -1,6 +1,8 @@
 namespace UDrive.Api.Services;
 
 public sealed record StoredFile(string RelativeUrl, long Size, string ContentType);
+public sealed record ResolvedStoredFile(string Path, string ContentType, string DownloadName);
+public sealed record StorageDiagnostics(string UploadRoot, bool UploadRootExists, int FileCount, IReadOnlyList<string> SearchRoots);
 
 public sealed class LocalFileStorageService
 {
@@ -51,15 +53,11 @@ public sealed class LocalFileStorageService
         var absolutePath = Path.Combine(absoluteFolder, fileName);
         await File.WriteAllBytesAsync(absolutePath, bytes, cancellationToken);
 
-        // Files are intentionally served only through an authorized Admin endpoint.
         var protectedUrl = $"/api/v1/admin/verification/files/{safeCategory}/{owner}/{fileName}";
         return new StoredFile(protectedUrl, file.Length, DetectContentType(extension));
     }
 
-    public (string Path, string ContentType, string DownloadName)? ResolveProtectedFile(
-        string category,
-        string owner,
-        string fileName)
+    public ResolvedStoredFile? ResolveProtectedFile(string category, string owner, string fileName)
     {
         var safeCategory = SanitizeSegment(category);
         var safeOwner = SanitizeSegment(owner);
@@ -69,22 +67,72 @@ public sealed class LocalFileStorageService
             return null;
         }
 
-        var root = Path.GetFullPath(_uploadRoot);
-        var candidate = Path.GetFullPath(Path.Combine(root, safeCategory, safeOwner, safeFile));
-        if (!candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) || !File.Exists(candidate))
+        foreach (var root in GetSearchRoots())
+        {
+            var resolved = TryResolveExact(root, safeCategory, safeOwner, safeFile);
+            if (resolved is not null)
+            {
+                return resolved;
+            }
+        }
+
+        return FindLegacyFile(safeFile);
+    }
+
+    public ResolvedStoredFile? ResolveStoredUrl(string? storedUrl)
+    {
+        if (string.IsNullOrWhiteSpace(storedUrl))
         {
             return null;
         }
 
-        return (candidate, DetectContentType(Path.GetExtension(candidate)), safeFile);
+        var value = storedUrl.Trim();
+        var path = value;
+        if (Uri.TryCreate(value, UriKind.Absolute, out var absoluteUri))
+        {
+            path = absoluteUri.IsFile ? absoluteUri.LocalPath : absoluteUri.AbsolutePath;
+        }
+
+        var segments = path
+            .Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(Uri.UnescapeDataString)
+            .ToArray();
+        var filesIndex = Array.FindIndex(
+            segments,
+            segment => string.Equals(segment, "files", StringComparison.OrdinalIgnoreCase));
+
+        if (filesIndex >= 0 && segments.Length >= filesIndex + 4)
+        {
+            var byRoute = ResolveProtectedFile(
+                segments[filesIndex + 1],
+                segments[filesIndex + 2],
+                segments[filesIndex + 3]);
+            if (byRoute is not null)
+            {
+                return byRoute;
+            }
+        }
+
+        if (Path.IsPathRooted(path) && File.Exists(path) && IsAllowedFile(path))
+        {
+            return new ResolvedStoredFile(
+                Path.GetFullPath(path),
+                DetectContentType(Path.GetExtension(path)),
+                Path.GetFileName(path));
+        }
+
+        var fileName = Path.GetFileName(path);
+        return string.IsNullOrWhiteSpace(fileName) || !IsAllowedFile(fileName)
+            ? null
+            : FindLegacyFile(fileName);
     }
 
-    public int DeleteProtectedFiles(IEnumerable<string> relativeUrls)
+    public int DeleteProtectedFiles(IEnumerable<string> storedUrls)
     {
         var deleted = 0;
-        foreach (var relativeUrl in relativeUrls.Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var storedUrl in storedUrls.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (DeleteProtectedFile(relativeUrl))
+            if (DeleteProtectedFile(storedUrl))
             {
                 deleted++;
             }
@@ -92,44 +140,18 @@ public sealed class LocalFileStorageService
         return deleted;
     }
 
-    public bool DeleteProtectedFile(string relativeUrl)
+    public bool DeleteProtectedFile(string storedUrl)
     {
-        if (string.IsNullOrWhiteSpace(relativeUrl))
-        {
-            return false;
-        }
-
         try
         {
-            var path = relativeUrl;
-            if (Uri.TryCreate(relativeUrl, UriKind.Absolute, out var absoluteUri))
-            {
-                path = absoluteUri.AbsolutePath;
-            }
-
-            var segments = path
-                .Split('/', StringSplitOptions.RemoveEmptyEntries)
-                .Select(Uri.UnescapeDataString)
-                .ToArray();
-            var filesIndex = Array.FindIndex(
-                segments,
-                value => string.Equals(value, "files", StringComparison.OrdinalIgnoreCase));
-            if (filesIndex < 0 || segments.Length < filesIndex + 4)
-            {
-                return false;
-            }
-
-            var resolved = ResolveProtectedFile(
-                segments[filesIndex + 1],
-                segments[filesIndex + 2],
-                segments[filesIndex + 3]);
+            var resolved = ResolveStoredUrl(storedUrl);
             if (resolved is null)
             {
                 return false;
             }
 
-            File.Delete(resolved.Value.Path);
-            var ownerDirectory = Path.GetDirectoryName(resolved.Value.Path);
+            File.Delete(resolved.Path);
+            var ownerDirectory = Path.GetDirectoryName(resolved.Path);
             if (!string.IsNullOrWhiteSpace(ownerDirectory) &&
                 Directory.Exists(ownerDirectory) &&
                 !Directory.EnumerateFileSystemEntries(ownerDirectory).Any())
@@ -143,6 +165,99 @@ public sealed class LocalFileStorageService
             return false;
         }
     }
+
+    public StorageDiagnostics GetDiagnostics()
+    {
+        var roots = GetSearchRoots().ToArray();
+        var count = 0;
+        if (Directory.Exists(_uploadRoot))
+        {
+            try
+            {
+                count = Directory.EnumerateFiles(_uploadRoot, "*", SearchOption.AllDirectories).Count();
+            }
+            catch
+            {
+                count = -1;
+            }
+        }
+
+        return new StorageDiagnostics(_uploadRoot, Directory.Exists(_uploadRoot), count, roots);
+    }
+
+    private ResolvedStoredFile? FindLegacyFile(string fileName)
+    {
+        foreach (var root in GetSearchRoots())
+        {
+            if (!Directory.Exists(root))
+            {
+                continue;
+            }
+
+            try
+            {
+                var match = Directory
+                    .EnumerateFiles(root, fileName, SearchOption.AllDirectories)
+                    .FirstOrDefault(IsAllowedFile);
+                if (match is not null)
+                {
+                    return new ResolvedStoredFile(
+                        Path.GetFullPath(match),
+                        DetectContentType(Path.GetExtension(match)),
+                        Path.GetFileName(match));
+                }
+            }
+            catch
+            {
+                // Continue through legacy roots. The configured root remains authoritative.
+            }
+        }
+        return null;
+    }
+
+    private static ResolvedStoredFile? TryResolveExact(
+        string root,
+        string category,
+        string owner,
+        string fileName)
+    {
+        if (!Directory.Exists(root))
+        {
+            return null;
+        }
+
+        var fullRoot = Path.GetFullPath(root);
+        var candidate = Path.GetFullPath(Path.Combine(fullRoot, category, owner, fileName));
+        if (!candidate.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(candidate) ||
+            !IsAllowedFile(candidate))
+        {
+            return null;
+        }
+
+        return new ResolvedStoredFile(
+            candidate,
+            DetectContentType(Path.GetExtension(candidate)),
+            Path.GetFileName(candidate));
+    }
+
+    private IEnumerable<string> GetSearchRoots()
+    {
+        return new[]
+        {
+            _uploadRoot,
+            "/data/uploads",
+            Path.Combine(AppContext.BaseDirectory, "uploads"),
+            Path.Combine(Directory.GetCurrentDirectory(), "uploads"),
+            "/app/uploads"
+        }
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(Path.GetFullPath)
+        .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAllowedFile(string path) =>
+        AllowedExtensions.Contains(Path.GetExtension(path));
 
     private static string SanitizeSegment(string value)
     {

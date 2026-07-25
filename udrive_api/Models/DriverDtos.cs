@@ -95,6 +95,9 @@ public sealed record VerificationReviewRequest(
     [StringLength(1000)] string? Notes,
     bool DeleteAttachments = false);
 
+public sealed record DeleteVerificationEntityRequest(
+    [Required, StringLength(1000, MinimumLength = 3)] string Reason);
+
 public sealed record DriverReviewListItemDto(
     Guid DriverProfileId,
     Guid UserId,

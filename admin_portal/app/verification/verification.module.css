@@ -840,3 +840,6 @@
   .detailHeader h2 { font-size: 16px; }
 }
 
+
+
+.permanentDeleteButton{min-height:34px;padding:0 10px;border:1px solid #b51f35;border-radius:10px;background:#7e1020;color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:800;cursor:pointer}.permanentDeleteButton:hover{background:#650b18}.permanentDeleteButton:disabled{opacity:.55;cursor:not-allowed}

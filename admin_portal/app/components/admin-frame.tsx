@@ -1,4 +1,200 @@
 'use client';
-import Link from 'next/link';import {usePathname,useRouter} from 'next/navigation';import {useEffect,useMemo,useState} from 'react';import {Activity,AlertTriangle,BadgeCheck,BookOpenCheck,Car,ChevronLeft,ChevronRight,CircleDollarSign,ClipboardList,Compass,Headphones,LayoutDashboard,LogOut,MapPinned,Megaphone,Menu,PackageCheck,Route,Settings,ShieldAlert,Users,UsersRound,WalletCards,X} from 'lucide-react';import {readSession,saveSession,type AdminSession} from '../lib/admin-api';
-const groups=[{label:'OPERATIONS',items:[['/','Overview',LayoutDashboard],['/bookings','Bookings',BookOpenCheck],['/ride-requests','Ride requests',Activity],['/packages','Tour packages',PackageCheck]]},{label:'PEOPLE & FLEET',items:[['/verification','Verification',BadgeCheck],['/customers','Customers & roles',Users],['/drivers','Drivers',UsersRound],['/vehicles','Vehicles',Car]]},{label:'TOURISM',items:[['/destinations','Destinations',Compass],['/routes','Routes',Route],['/advisories','Road advisories',MapPinned]]},{label:'CONTROL CENTRE',items:[['/safety','Safety incidents',ShieldAlert],['/payments','Payments',CircleDollarSign],['/support','Support tickets',Headphones],['/notifications','Notifications',Megaphone],['/audit','Audit log',ClipboardList],['/settings','Settings',Settings]]}] as const;
-export function AdminFrame({children,title,subtitle,actions}:{children:React.ReactNode;title:string;subtitle?:string;actions?:React.ReactNode}){const path=usePathname();const router=useRouter();const[session,setSession]=useState<AdminSession|null>(null);const[open,setOpen]=useState(false);const[collapsed,setCollapsed]=useState(false);useEffect(()=>{const value=readSession();if(!value){router.replace('/login');return}setSession(value)},[router]);const initials=useMemo(()=>session?.user.fullName.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase()??'UD',[session]);if(!session)return <div className="boot">Securing operations workspace…</div>;return <div className={`adminShell ${collapsed?'collapsed':''}`}><aside className={`sidebar ${open?'sidebarOpen':''}`}><div className="brand"><div className="brandMark">↟</div><div><strong>uDrive</strong><span>Tourism Operations</span></div><button className="mobileClose" onClick={()=>setOpen(false)}><X/></button></div><nav>{groups.map(group=><section key={group.label}><p>{group.label}</p>{group.items.map(([href,label,Icon])=><Link key={href} href={href} onClick={()=>setOpen(false)} className={path===href?'active':''}><Icon size={19}/><span>{label}</span></Link>)}</section>)}</nav><button className="collapseButton" onClick={()=>setCollapsed(v=>!v)}>{collapsed?<ChevronRight/>:<ChevronLeft/>}<span>Collapse menu</span></button></aside><div className="workspace"><header className="topbar"><button className="menuButton" onClick={()=>setOpen(true)}><Menu/></button><div className="pageTitle"><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</div><div className="topActions">{actions}<div className="adminIdentity"><span>{initials}</span><div><strong>{session.user.fullName}</strong><small>{session.user.roles[0]}</small></div></div><button className="iconButton" title="Sign out" onClick={()=>{saveSession(null);router.replace('/login')}}><LogOut/></button></div></header><main className="content">{children}</main></div>{open&&<button className="drawerShade" onClick={()=>setOpen(false)}/>}</div>}
+
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Activity,
+  BadgeCheck,
+  BookOpenCheck,
+  Car,
+  ChevronLeft,
+  ChevronRight,
+  CircleDollarSign,
+  ClipboardList,
+  Compass,
+  Headphones,
+  LayoutDashboard,
+  LogOut,
+  MapPinned,
+  Megaphone,
+  Menu,
+  PackageCheck,
+  Route,
+  Settings,
+  ShieldAlert,
+  Users,
+  UsersRound,
+  X,
+} from 'lucide-react';
+import {
+  readSession,
+  saveSession,
+  type AdminSession,
+} from '../lib/admin-api';
+
+const groups = [
+  {
+    label: 'OPERATIONS',
+    items: [
+      ['/', 'Overview', LayoutDashboard],
+      ['/bookings', 'Bookings', BookOpenCheck],
+      ['/ride-requests', 'Ride requests', Activity],
+      ['/packages', 'Tour packages', PackageCheck],
+    ],
+  },
+  {
+    label: 'PEOPLE & FLEET',
+    items: [
+      ['/verification', 'Verification', BadgeCheck],
+      ['/customers', 'Users & access', Users],
+      ['/drivers', 'Drivers', UsersRound],
+      ['/vehicles', 'Vehicles', Car],
+    ],
+  },
+  {
+    label: 'TOURISM',
+    items: [
+      ['/destinations', 'Destinations', Compass],
+      ['/routes', 'Routes', Route],
+      ['/advisories', 'Road advisories', MapPinned],
+    ],
+  },
+  {
+    label: 'CONTROL CENTRE',
+    items: [
+      ['/safety', 'Safety incidents', ShieldAlert],
+      ['/payments', 'Payments', CircleDollarSign],
+      ['/support', 'Support tickets', Headphones],
+      ['/notifications', 'Notifications', Megaphone],
+      ['/audit', 'Audit log', ClipboardList],
+      ['/settings', 'Settings', Settings],
+    ],
+  },
+] as const;
+
+export function AdminFrame({
+  children,
+  title,
+  subtitle,
+  actions,
+}: {
+  children: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  actions?: React.ReactNode;
+}) {
+  const path = usePathname();
+  const router = useRouter();
+  const [session, setSession] = useState<AdminSession | null>(null);
+  const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    const value = readSession();
+    if (!value) {
+      router.replace('/login');
+      return;
+    }
+    setSession(value);
+  }, [router]);
+
+  const initials = useMemo(
+    () =>
+      session?.user.fullName
+        .split(' ')
+        .map((value) => value[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase() ?? 'UD',
+    [session],
+  );
+
+  const displayedRole = useMemo(() => {
+    if (!session) return '';
+    return (
+      ['SuperAdmin', 'Admin', 'Manager'].find((role) =>
+        session.user.roles.includes(role),
+      ) ?? session.user.roles[0] ?? 'User'
+    );
+  }, [session]);
+
+  if (!session) {
+    return <div className="boot">Securing operations workspace…</div>;
+  }
+
+  return (
+    <div className={`adminShell ${collapsed ? 'collapsed' : ''}`}>
+      <aside className={`sidebar ${open ? 'sidebarOpen' : ''}`}>
+        <div className="brand">
+          <div className="brandMark">↟</div>
+          <div>
+            <strong>uDrive</strong>
+            <span>Tourism Operations</span>
+          </div>
+          <button className="mobileClose" onClick={() => setOpen(false)}>
+            <X />
+          </button>
+        </div>
+        <nav>
+          {groups.map((group) => (
+            <section key={group.label}>
+              <p>{group.label}</p>
+              {group.items.map(([href, label, Icon]) => (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setOpen(false)}
+                  className={path === href ? 'active' : ''}
+                >
+                  <Icon size={17} />
+                  <span>{label}</span>
+                </Link>
+              ))}
+            </section>
+          ))}
+        </nav>
+        <button
+          className="collapseButton"
+          onClick={() => setCollapsed((value) => !value)}
+        >
+          {collapsed ? <ChevronRight /> : <ChevronLeft />}
+          <span>Collapse menu</span>
+        </button>
+      </aside>
+      <div className="workspace">
+        <header className="topbar">
+          <button className="menuButton" onClick={() => setOpen(true)}>
+            <Menu />
+          </button>
+          <div className="pageTitle">
+            <h1>{title}</h1>
+            {subtitle && <p>{subtitle}</p>}
+          </div>
+          <div className="topActions">
+            {actions}
+            <div className="adminIdentity">
+              <span>{initials}</span>
+              <div>
+                <strong>{session.user.fullName}</strong>
+                <small>{displayedRole}</small>
+              </div>
+            </div>
+            <button
+              className="iconButton"
+              title="Sign out"
+              onClick={() => {
+                saveSession(null);
+                router.replace('/login');
+              }}
+            >
+              <LogOut />
+            </button>
+          </div>
+        </header>
+        <main className="content">{children}</main>
+      </div>
+      {open && <button className="drawerShade" onClick={() => setOpen(false)} />}
+    </div>
+  );
+}

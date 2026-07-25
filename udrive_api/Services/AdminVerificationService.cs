@@ -41,7 +41,8 @@ public sealed class AdminVerificationService(
                    (SELECT count(*) FROM udrive.vehicles v WHERE v.driver_profile_id = dp.id)
             FROM udrive.driver_profiles dp
             JOIN udrive.users u ON u.id = dp.user_id
-            WHERE (@status IS NULL OR dp.verification_status = @status)
+            WHERE dp.verification_status <> 'Deleted'
+              AND (@status IS NULL OR dp.verification_status = @status)
             ORDER BY dp.submitted_at NULLS LAST, dp.created_at DESC;
             """;
 
@@ -85,7 +86,7 @@ public sealed class AdminVerificationService(
                    dp.languages, dp.service_areas, dp.reviewed_at, dp.review_notes
             FROM udrive.driver_profiles dp
             JOIN udrive.users u ON u.id = dp.user_id
-            WHERE dp.id = @id
+            WHERE dp.id = @id AND dp.verification_status <> 'Deleted'
             LIMIT 1;
             """;
 
@@ -164,7 +165,7 @@ public sealed class AdminVerificationService(
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
-            WHERE v.driver_profile_id = @id
+            WHERE v.driver_profile_id = @id AND v.status <> 'Deleted'
             ORDER BY v.created_at DESC;
             """, connection))
         {
@@ -448,7 +449,8 @@ public sealed class AdminVerificationService(
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
-            WHERE (@status IS NULL OR v.status = @status)
+            WHERE v.status <> 'Deleted'
+              AND (@status IS NULL OR v.status = @status)
             ORDER BY v.created_at DESC;
             """;
         var result = new List<VehicleReviewListItemDto>();
@@ -485,7 +487,7 @@ public sealed class AdminVerificationService(
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
-            WHERE v.id = @id
+            WHERE v.id = @id AND v.status <> 'Deleted'
             LIMIT 1;
             """;
         await using var connection = new NpgsqlConnection(connectionString);
@@ -667,6 +669,229 @@ public sealed class AdminVerificationService(
         await transaction.CommitAsync(cancellationToken);
         fileStorage.DeleteProtectedFile(fileUrl);
         return ServiceResult<bool>.Ok(true, "Vehicle attachment permanently deleted.");
+    }
+
+    public async Task<ServiceResult<bool>> DeleteDriverAsync(
+        Guid adminUserId,
+        Guid driverProfileId,
+        string reason,
+        string? ipAddress,
+        CancellationToken cancellationToken)
+    {
+        var cleanReason = reason.Trim();
+        if (cleanReason.Length < 3)
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status400BadRequest,
+                "deletion_reason_required",
+                "A deletion reason is required.");
+        }
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        Guid? userId = null;
+        var attachmentUrls = new List<string>();
+        await using (var profileCommand = new NpgsqlCommand("""
+            SELECT user_id
+            FROM udrive.driver_profiles
+            WHERE id = @driverProfileId
+              AND verification_status <> 'Deleted'
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            profileCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            var userIdValue = await profileCommand.ExecuteScalarAsync(cancellationToken);
+            userId = userIdValue is Guid value ? value : null;
+        }
+
+        if (userId is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status404NotFound,
+                "driver_not_found",
+                "Driver not found or already deleted.");
+        }
+
+        await using (var filesCommand = new NpgsqlCommand("""
+            SELECT file_url FROM udrive.driver_documents
+            WHERE driver_profile_id = @driverProfileId
+            UNION ALL
+            SELECT vd.file_url
+            FROM udrive.vehicle_documents vd
+            JOIN udrive.vehicles v ON v.id = vd.vehicle_id
+            WHERE v.driver_profile_id = @driverProfileId;
+            """, connection, transaction))
+        {
+            filesCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            await using var reader = await filesCommand.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                attachmentUrls.Add(reader.GetString(0));
+            }
+        }
+
+        await using (var command = new NpgsqlCommand("""
+            UPDATE udrive.driver_profiles
+            SET verification_status = 'Deleted',
+                is_online = false,
+                review_notes = @reason,
+                reviewed_at = now(),
+                reviewed_by_user_id = @adminUserId,
+                updated_at = now()
+            WHERE id = @driverProfileId;
+
+            UPDATE udrive.vehicles
+            SET status = 'Deleted', updated_at = now()
+            WHERE driver_profile_id = @driverProfileId;
+
+            UPDATE udrive.tour_packages
+            SET status = 'Archived',
+                review_notes = @reason,
+                updated_at = now()
+            WHERE driver_profile_id = @driverProfileId
+              AND status <> 'Archived';
+
+            UPDATE udrive.driver_offers
+            SET status = 'Expired', updated_at = now()
+            WHERE driver_profile_id = @driverProfileId
+              AND status IN ('Pending','Countered','Accepted');
+
+            DELETE FROM udrive.vehicle_documents
+            WHERE vehicle_id IN (
+                SELECT id FROM udrive.vehicles
+                WHERE driver_profile_id = @driverProfileId
+            );
+            DELETE FROM udrive.driver_documents
+            WHERE driver_profile_id = @driverProfileId;
+
+            DELETE FROM udrive.user_roles
+            WHERE user_id = @userId AND role = 'Driver';
+            UPDATE udrive.users
+            SET role = CASE WHEN role = 'Driver' THEN 'Customer' ELSE role END,
+                token_version = token_version + 1,
+                updated_at = now()
+            WHERE id = @userId;
+            UPDATE udrive.refresh_tokens
+            SET revoked_at = COALESCE(revoked_at, now())
+            WHERE user_id = @userId AND revoked_at IS NULL;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            command.Parameters.AddWithValue("adminUserId", adminUserId);
+            command.Parameters.AddWithValue("userId", userId.Value);
+            command.Parameters.AddWithValue("reason", cleanReason);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await InsertAuditAsync(
+            connection,
+            transaction,
+            adminUserId,
+            "DeleteDriver",
+            "DriverProfile",
+            driverProfileId,
+            "Deleted",
+            cleanReason,
+            ipAddress,
+            cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+        var deletedFiles = fileStorage.DeleteProtectedFiles(attachmentUrls);
+        return ServiceResult<bool>.Ok(
+            true,
+            $"Driver removed from operations. {deletedFiles} attachment(s) permanently deleted; booking history was retained.");
+    }
+
+    public async Task<ServiceResult<bool>> DeleteVehicleAsync(
+        Guid adminUserId,
+        Guid vehicleId,
+        string reason,
+        string? ipAddress,
+        CancellationToken cancellationToken)
+    {
+        var cleanReason = reason.Trim();
+        if (cleanReason.Length < 3)
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status400BadRequest,
+                "deletion_reason_required",
+                "A deletion reason is required.");
+        }
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var attachmentUrls = new List<string>();
+
+        await using (var filesCommand = new NpgsqlCommand("""
+            SELECT vd.file_url
+            FROM udrive.vehicle_documents vd
+            JOIN udrive.vehicles v ON v.id = vd.vehicle_id
+            WHERE v.id = @vehicleId AND v.status <> 'Deleted'
+            FOR UPDATE OF v;
+            """, connection, transaction))
+        {
+            filesCommand.Parameters.AddWithValue("vehicleId", vehicleId);
+            await using var reader = await filesCommand.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                attachmentUrls.Add(reader.GetString(0));
+            }
+        }
+
+        await using (var command = new NpgsqlCommand("""
+            UPDATE udrive.vehicles
+            SET status = 'Deleted', updated_at = now()
+            WHERE id = @vehicleId AND status <> 'Deleted';
+
+            UPDATE udrive.tour_packages
+            SET status = 'Archived',
+                review_notes = @reason,
+                updated_at = now()
+            WHERE vehicle_id = @vehicleId AND status <> 'Archived';
+
+            UPDATE udrive.driver_offers
+            SET status = 'Expired', updated_at = now()
+            WHERE vehicle_id = @vehicleId
+              AND status IN ('Pending','Countered','Accepted');
+
+            DELETE FROM udrive.vehicle_documents
+            WHERE vehicle_id = @vehicleId;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("vehicleId", vehicleId);
+            command.Parameters.AddWithValue("reason", cleanReason);
+            var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+            if (affected == 0)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return ServiceResult<bool>.Fail(
+                    StatusCodes.Status404NotFound,
+                    "vehicle_not_found",
+                    "Vehicle not found or already deleted.");
+            }
+        }
+
+        await InsertAuditAsync(
+            connection,
+            transaction,
+            adminUserId,
+            "DeleteVehicle",
+            "Vehicle",
+            vehicleId,
+            "Deleted",
+            cleanReason,
+            ipAddress,
+            cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+        var deletedFiles = fileStorage.DeleteProtectedFiles(attachmentUrls);
+        return ServiceResult<bool>.Ok(
+            true,
+            $"Vehicle removed from operations. {deletedFiles} attachment(s) permanently deleted; booking history was retained.");
     }
 
     private static string NormalizeDecision(string decision, HashSet<string> allowed)

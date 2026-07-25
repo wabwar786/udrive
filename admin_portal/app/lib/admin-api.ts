@@ -24,6 +24,22 @@ type Envelope<T> = {
 
 const KEY = 'udrive-admin-session-v10';
 
+export const PORTAL_ROLES = ['SuperAdmin', 'Admin', 'Manager'] as const;
+export type PortalRole = (typeof PORTAL_ROLES)[number];
+
+export function hasRole(role: string) {
+  return readSession()?.user.roles.includes(role) ?? false;
+}
+
+export function isSuperAdmin() {
+  return hasRole('SuperAdmin');
+}
+
+function resolveApiUrl(path: string) {
+  if (/^https?:\/\//i.test(path)) return path;
+  return new URL(path.startsWith('/') ? path : `/${path}`, API_BASE).toString();
+}
+
 export function readSession(): AdminSession | null {
   if (typeof window === 'undefined') return null;
 
@@ -74,8 +90,9 @@ async function runAuthorized(
   let session = readSession();
 
   const run = (token?: string) =>
-    fetch(`${API_BASE}${path}`, {
+    fetch(resolveApiUrl(path), {
       ...init,
+      cache: 'no-store',
       headers: {
         Accept: accept,
         ...(init.body && !(init.body instanceof FormData)
@@ -132,14 +149,23 @@ export async function apiProtectedFile(
     );
   }
 
+  const responseType = response.headers.get('content-type') ?? '';
+  if (responseType.includes('application/json')) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(
+      body.message ?? body.detail ?? 'The attachment response was invalid.',
+    );
+  }
+
   const blob = await response.blob();
+  if (blob.size === 0) {
+    throw new Error('The attachment file is empty or missing from storage.');
+  }
 
   return {
     objectUrl: URL.createObjectURL(blob),
     contentType:
-      blob.type ||
-      response.headers.get('content-type') ||
-      'application/octet-stream',
+      blob.type || responseType || 'application/octet-stream',
   };
 }
 
@@ -168,7 +194,9 @@ export async function login(phoneNumber: string, code: string) {
   if (
     !session.user.roles.some((role) =>
       [
+        'SuperAdmin',
         'Admin',
+        'Manager',
         'Operations',
         'VerificationOfficer',
         'SupportAgent',

@@ -2,15 +2,17 @@
 
 ```json
 {
-  "compact_global_css": true,
-  "compact_verification_css": true,
-  "reject_delete_payload": true,
-  "individual_delete_button": true,
-  "driver_delete_endpoint": true,
-  "vehicle_delete_endpoint": true,
-  "purges_driver_and_vehicle_docs": true,
-  "physical_delete": true,
-  "program_injection": true,
-  "database_migration_required": false
+  "superadmin_login_allowed": true,
+  "manager_login_allowed": true,
+  "canonical_document_preview": true,
+  "delete_ui_role_gated": true,
+  "driver_delete_endpoint_superadmin": true,
+  "vehicle_delete_endpoint_superadmin": true,
+  "attachment_delete_superadmin": true,
+  "user_creation_endpoint": true,
+  "roles_exact": true,
+  "storage_legacy_fallback": true,
+  "migration_promotes_demo_admin": true,
+  "mobile_files_included": false
 }
 ```

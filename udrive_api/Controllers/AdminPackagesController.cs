@@ -8,7 +8,7 @@ using UDrive.Api.Services;
 namespace UDrive.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = "Admin,Operations")]
+[Authorize(Roles = "SuperAdmin,Admin,Manager,Operations")]
 [Route("api/v1/admin/packages")]
 public sealed class AdminPackagesController(
     PackageMarketplaceService packageService) : ControllerBase

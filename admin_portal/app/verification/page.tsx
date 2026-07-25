@@ -27,6 +27,7 @@ import {
   apiFetch,
   apiProtectedFile,
   when,
+  readSession,
 } from '../lib/admin-api';
 import styles from './verification.module.css';
 
@@ -146,6 +147,7 @@ export default function VerificationPage() {
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const canDelete = readSession()?.user.roles.includes('SuperAdmin') ?? false;
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -438,6 +440,7 @@ export default function VerificationPage() {
           selection={selection}
           onClose={() => setSelection(null)}
           onChanged={load}
+          canDelete={canDelete}
         />
       )}
     </AdminFrame>
@@ -448,10 +451,12 @@ function VerificationDetail({
   selection,
   onClose,
   onChanged,
+  canDelete,
 }: {
   selection: Selection;
   onClose: () => void;
   onChanged: () => Promise<void>;
+  canDelete: boolean;
 }) {
   const [driverDetail, setDriverDetail] =
     useState<DriverDetail | null>(null);
@@ -519,7 +524,7 @@ function VerificationDetail({
       return;
     }
 
-    const deleteAttachments = decision === 'Rejected';
+    const deleteAttachments = decision === 'Rejected' && canDelete;
     const label =
       decision === 'Approved'
         ? 'approve this Driver'
@@ -527,7 +532,9 @@ function VerificationDetail({
           ? 'request changes from this Driver'
           : decision === 'Suspended'
             ? 'suspend this Driver'
-            : 'reject this Driver and permanently delete all Driver and vehicle attachments';
+            : canDelete
+              ? 'reject this Driver and permanently delete all Driver and vehicle attachments'
+              : 'reject this Driver';
 
     const confirmation = deleteAttachments
       ? `Are you sure you want to ${label}? This cannot be undone.`
@@ -556,6 +563,30 @@ function VerificationDetail({
           ? decisionError.message
           : 'The Driver decision could not be saved.',
       );
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function deleteDriver() {
+    if (!notes.trim()) {
+      setError('Add a deletion reason in the review notes.');
+      return;
+    }
+    if (!window.confirm('Delete this Driver from operations and permanently remove all uploaded files? Historical booking references will be retained.')) {
+      return;
+    }
+    setActing(true);
+    setError('');
+    try {
+      await apiFetch(`/api/v1/admin/verification/drivers/${selection.id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ reason: notes }),
+      });
+      onClose();
+      await onChanged();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Driver could not be deleted.');
     } finally {
       setActing(false);
     }
@@ -674,6 +705,7 @@ function VerificationDetail({
                   onChanged={async () => {
                     await Promise.all([loadDetail(), onChanged()]);
                   }}
+                  canDelete={canDelete}
                 />
               </DetailSection>
 
@@ -731,6 +763,10 @@ function VerificationDetail({
                         onChanged={async () => {
                           await Promise.all([loadDetail(), onChanged()]);
                         }}
+                        onDeleted={async () => {
+                          await Promise.all([loadDetail(), onChanged()]);
+                        }}
+                        canDelete={canDelete}
                       />
                     ))}
                   </div>
@@ -749,9 +785,11 @@ function VerificationDetail({
                 />
               </label>
 
-              <div className={styles.rejectNotice}>
-                Rejection permanently deletes all uploaded Driver and vehicle attachments.
-              </div>
+              {canDelete && (
+                <div className={styles.rejectNotice}>
+                  SuperAdmin rejection permanently deletes all uploaded Driver and vehicle attachments.
+                </div>
+              )}
 
               <div className={styles.decisionButtons}>
                 <button
@@ -775,9 +813,19 @@ function VerificationDetail({
                   disabled={acting}
                   onClick={() => void decideDriver('Rejected')}
                 >
-                  <Trash2 size={16} />
-                  Reject & delete files
+                  {canDelete && <Trash2 size={16} />}
+                  {canDelete ? 'Reject & delete files' : 'Reject Driver'}
                 </button>
+                {canDelete && (
+                  <button
+                    className={styles.permanentDeleteButton}
+                    disabled={acting}
+                    onClick={() => void deleteDriver()}
+                  >
+                    <Trash2 size={16} />
+                    Delete Driver
+                  </button>
+                )}
               </div>
             </footer>
           </>
@@ -789,6 +837,11 @@ function VerificationDetail({
               onChanged={async () => {
                 await Promise.all([loadDetail(), onChanged()]);
               }}
+              onDeleted={async () => {
+                onClose();
+                await onChanged();
+              }}
+              canDelete={canDelete}
               expanded
             />
           </div>
@@ -886,12 +939,14 @@ function DocumentGrid({
   ownerType,
   ownerId,
   onChanged,
+  canDelete,
 }: {
   documents: VerificationDocument[];
   expected: string[];
   ownerType: 'driver' | 'vehicle';
   ownerId: string;
   onChanged: () => Promise<void>;
+  canDelete: boolean;
 }) {
   const byType = new Map(
     documents.map((document) => [document.documentType, document]),
@@ -913,10 +968,14 @@ function DocumentGrid({
           <ProtectedDocument
             key={document.id}
             document={document}
+            previewPath={`/api/v1/admin/verification/${
+              ownerType === 'driver' ? 'driver-documents' : 'vehicle-documents'
+            }/${document.id}/file`}
             deletePath={`/api/v1/admin/verification/${
               ownerType === 'driver' ? 'drivers' : 'vehicles'
             }/${ownerId}/documents/${document.id}`}
             onChanged={onChanged}
+            canDelete={canDelete}
           />
         ) : (
           <div className={styles.missingDocument} key={type}>
@@ -932,12 +991,16 @@ function DocumentGrid({
 
 function ProtectedDocument({
   document,
+  previewPath,
   deletePath,
   onChanged,
+  canDelete,
 }: {
   document: VerificationDocument;
+  previewPath: string;
   deletePath: string;
   onChanged: () => Promise<void>;
+  canDelete: boolean;
 }) {
   const [objectUrl, setObjectUrl] = useState('');
   const [contentType, setContentType] = useState('');
@@ -948,7 +1011,7 @@ function ProtectedDocument({
     let active = true;
     let currentUrl = '';
 
-    void apiProtectedFile(document.fileUrl)
+    void apiProtectedFile(previewPath)
       .then((file) => {
         if (!active) {
           URL.revokeObjectURL(file.objectUrl);
@@ -973,7 +1036,7 @@ function ProtectedDocument({
       active = false;
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
-  }, [document.fileUrl]);
+  }, [previewPath]);
 
   const isPdf =
     contentType.includes('pdf') ||
@@ -1077,15 +1140,17 @@ function ProtectedDocument({
               <Download size={15} />
               Download
             </a>
-            <button
-              type="button"
-              className={styles.deleteFileButton}
-              disabled={deleting}
-              onClick={() => void deleteAttachment()}
-            >
-              <Trash2 size={15} />
-              {deleting ? 'Deleting…' : 'Delete'}
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                className={styles.deleteFileButton}
+                disabled={deleting}
+                onClick={() => void deleteAttachment()}
+              >
+                <Trash2 size={15} />
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1096,10 +1161,14 @@ function ProtectedDocument({
 function VehicleReviewCard({
   detail,
   onChanged,
+  onDeleted,
+  canDelete,
   expanded = false,
 }: {
   detail: VehicleDetail;
   onChanged: () => Promise<void>;
+  onDeleted: () => Promise<void>;
+  canDelete: boolean;
   expanded?: boolean;
 }) {
   const [notes, setNotes] = useState('');
@@ -1143,6 +1212,29 @@ function VehicleReviewCard({
           ? decisionError.message
           : 'Vehicle review could not be saved.',
       );
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function deleteVehicle() {
+    if (!notes.trim()) {
+      setError('Add a deletion reason before deleting this vehicle.');
+      return;
+    }
+    if (!window.confirm(`Delete vehicle ${detail.vehicle.registrationNumber} from operations and permanently remove its attachments?`)) {
+      return;
+    }
+    setActing(true);
+    setError('');
+    try {
+      await apiFetch(`/api/v1/admin/verification/vehicles/${detail.vehicle.vehicleId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ reason: notes }),
+      });
+      await onDeleted();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Vehicle could not be deleted.');
     } finally {
       setActing(false);
     }
@@ -1195,6 +1287,7 @@ function VehicleReviewCard({
         ownerType="vehicle"
         ownerId={detail.vehicle.vehicleId}
         onChanged={onChanged}
+        canDelete={canDelete}
       />
 
       {error && <ErrorBox message={error} />}
@@ -1229,6 +1322,16 @@ function VehicleReviewCard({
           >
             Suspend
           </button>
+          {canDelete && (
+            <button
+              className={styles.permanentDeleteButton}
+              disabled={acting}
+              onClick={() => void deleteVehicle()}
+            >
+              <Trash2 size={15} />
+              Delete vehicle
+            </button>
+          )}
         </div>
       </div>
     </article>
