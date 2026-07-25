@@ -19,6 +19,7 @@ dependencies:
   battery_plus: ^7.0.0
   connectivity_plus: ^7.0.0
   geolocator: ^14.0.2
+  google_maps_flutter: ^2.13.1
   url_launcher: ^6.3.2
 
 dev_dependencies:

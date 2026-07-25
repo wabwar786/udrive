@@ -1,16 +1,24 @@
-# uDrive Phase 13.5 — Customer Home Screen Update 1
+# Phase 13.5 — Responsive Vehicle Cards + Embedded Live Map
 
-Apply this ZIP over the latest deployed Phase 13.5 source tree.
+## Apply
+Overlay `udrive_unified_mobile` on the latest project and run:
 
-## Deployment order
+```bash
+flutter pub get
+flutter analyze
+flutter build web --release --no-wasm-dry-run
+```
 
-1. Replace the included API and Flutter files.
-2. Deploy `udrive_api` first.
-3. Confirm Swagger contains:
-   `GET /api/v1/packages/{packageId}/vehicle-location`
-4. Confirm `/health/live` and `/health/ready` return HTTP 200.
-5. Deploy `udrive_unified_mobile`.
-6. Flutter build runs `flutter pub get`; this update adds `url_launcher`.
-7. Clear the Flutter web service-worker/site cache after deployment.
+## Google Maps API key
+For Flutter Web, replace `YOUR_GOOGLE_MAPS_API_KEY` in `udrive_unified_mobile/web/index.html` with a Google Maps JavaScript API key restricted to your deployed domain.
 
-No database migration is required.
+For Android/iOS, configure the same key using the standard `google_maps_flutter` platform setup before APK/AAB builds. APK/AAB is not part of this update.
+
+## Behaviour
+- Vehicle cards remain readable at narrow widths.
+- The price never collapses into one character per line.
+- Tapping a vehicle opens the detail page with an embedded map immediately.
+- The app refreshes vehicle GPS every 15 seconds.
+- Customer, vehicle and destination markers are shown when coordinates exist.
+- Approximate distance and ETA to the customer are calculated from current coordinates. ETA is explicitly approximate and does not claim live traffic routing.
+- If the Driver has not shared GPS, the destination map is shown with a clear waiting status.
