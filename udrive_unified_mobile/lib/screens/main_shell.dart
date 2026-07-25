@@ -3,11 +3,9 @@ import '../core/localization/app_strings.dart';
 import '../core/state/app_controller.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/brand.dart';
-import '../core/widgets/driver_location_coordinator.dart';
 import '../data/models.dart';
 import 'common/common_pages.dart';
 import 'customer/customer_home_screen.dart';
-import 'customer/live_explore_screen.dart';
 import 'customer/customer_pages.dart';
 import 'customer/family_tour_planner_screen.dart';
 import 'customer/join_tour_screen.dart';
@@ -52,10 +50,9 @@ class _MainShellState extends State<MainShell> {
     final title = driverNeedsVerification
         ? (controller.locale.languageCode == 'ur' ? 'ڈرائیور کی تصدیق' : 'Driver verification')
         : _titleFor(pageKey, driver);
+    final customerHome = !driver && pageKey == 'home';
 
-    return DriverLocationCoordinator(
-      enabled: driver && !driverNeedsVerification,
-      child: Scaffold(
+    return Scaffold(
       drawer: _PremiumDrawer(
         mode: controller.mode,
         current: pageKey,
@@ -77,17 +74,60 @@ class _MainShellState extends State<MainShell> {
         },
       ),
       appBar: AppBar(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
+        titleSpacing: 4,
+        title: customerHome
+            ? Text(
+                '${_greeting()}, ${_firstName(controller.currentUserName)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 17,
+                ),
+              )
+            : Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                ),
+              ),
         actions: [
           IconButton(
             tooltip: context.tr('notifications'),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: Text(context.tr('notifications'))), body: const NotificationsScreen()))),
-            icon: Badge(
-              label: const Text('2'),
-              child: const Icon(Icons.notifications_none_rounded),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  appBar: AppBar(title: Text(context.tr('notifications'))),
+                  body: const NotificationsScreen(),
+                ),
+              ),
             ),
+            icon: const Icon(Icons.notifications_none_rounded),
           ),
-          const SizedBox(width: 8),
+          if (customerHome)
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: InkWell(
+                onTap: () => setState(() => _customerPage = 'profile'),
+                borderRadius: BorderRadius.circular(999),
+                child: CircleAvatar(
+                  radius: 17,
+                  backgroundColor: const Color(0xFFE2F7EF),
+                  child: Text(
+                    _initials(controller.currentUserName),
+                    style: const TextStyle(
+                      color: AppColors.primaryDark,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            const SizedBox(width: 8),
         ],
       ),
       body: AnimatedSwitcher(
@@ -95,8 +135,32 @@ class _MainShellState extends State<MainShell> {
         child: KeyedSubtree(key: ValueKey('${controller.mode.name}-$pageKey'), child: page),
       ),
       bottomNavigationBar: driverNeedsVerification ? null : _bottomNavigation(driver),
-      ),
     );
+  }
+
+  String _greeting() {
+    final pakistanNow =
+        DateTime.now().toUtc().add(const Duration(hours: 5));
+    if (pakistanNow.hour < 12) return 'Good morning';
+    if (pakistanNow.hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  String _firstName(String name) {
+    final clean = name.trim();
+    if (clean.isEmpty) return 'uDrive User';
+    return clean.split(RegExp(r'\s+')).first;
+  }
+
+  String _initials(String name) {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .take(2)
+        .toList();
+    if (parts.isEmpty) return 'U';
+    return parts.map((part) => part[0].toUpperCase()).join();
   }
 
   Widget _bottomNavigation(bool driver) {
@@ -181,7 +245,7 @@ class _MainShellState extends State<MainShell> {
         'bookRide' => const TourismBookingScreen(),
         'joinTour' => const LiveTourInterestScreen(),
         'familyPlanner' => const FamilyTourPlannerScreen(),
-        'explore' => const LiveExploreScreen(),
+        'explore' => const ExploreScreen(),
         'packages' => const LivePackagesScreen(),
         'trips' => const LiveBookingsScreen(),
         'wallet' => const WalletScreen(),

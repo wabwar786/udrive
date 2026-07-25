@@ -592,6 +592,28 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  Future<void> refreshHomeVehicles({bool force = false}) async {
+    if (_marketplaceBusy && !force) return;
+
+    _marketplaceBusy = true;
+    _marketplaceError = null;
+    notifyListeners();
+
+    try {
+      _liveMarketplacePackages = await _bookingRepository
+          .getPublicPackages()
+          .timeout(const Duration(seconds: 10));
+    } on TimeoutException {
+      _marketplaceError =
+          'Vehicles are taking longer than expected. Pull down to retry.';
+    } catch (error) {
+      _marketplaceError = _message(error);
+    } finally {
+      _marketplaceBusy = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> refreshPhase9Marketplace() async {
     await _loadPhase9State();
     notifyListeners();

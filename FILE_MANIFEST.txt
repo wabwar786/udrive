@@ -1,3 +1,5 @@
-udrive_unified_mobile/lib/core/state/app_controller.dart
 APPLY_UPDATE.md
 FILE_MANIFEST.txt
+udrive_unified_mobile/lib/core/state/app_controller.dart
+udrive_unified_mobile/lib/screens/main_shell.dart
+udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart

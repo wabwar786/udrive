@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -21,6 +22,7 @@ class CustomerHomeScreen extends StatefulWidget {
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final TextEditingController _vehicleSearch = TextEditingController();
   String _query = '';
+  _VehicleTypeFilter _vehicleType = _VehicleTypeFilter.fourWheel;
 
   @override
   void initState() {
@@ -29,7 +31,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final value = _vehicleSearch.text.trim().toLowerCase();
       if (value != _query) setState(() => _query = value);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadHome());
   }
 
   @override
@@ -38,8 +40,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     super.dispose();
   }
 
-  Future<void> _refresh() =>
-      AppControllerScope.of(context).refreshPhase9Marketplace();
+  Future<void> _loadHome() async {
+    final controller = AppControllerScope.of(context);
+    if (controller.liveMarketplacePackages.isEmpty) {
+      await controller.refreshHomeVehicles();
+    }
+    unawaited(controller.refreshPhase9Marketplace());
+  }
+
+  Future<void> _refresh() async {
+    final controller = AppControllerScope.of(context);
+    await controller.refreshHomeVehicles(force: true);
+    unawaited(controller.refreshPhase9Marketplace());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +82,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 builder: (_) => const TourismBookingScreen(),
               ),
             ),
+          ),
+          const SizedBox(height: 14),
+          _VehicleTypeSelector(
+            selected: _vehicleType,
+            onSelected: (value) => setState(() => _vehicleType = value),
           ),
           const SizedBox(height: 18),
           _VehiclesSectionHeader(
@@ -108,12 +126,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             _EmptyLiveData(
               message: _query.isEmpty
                   ? _t(
-                      'No scheduled vehicle is currently available.',
-                      'اس وقت کوئی شیڈول گاڑی دستیاب نہیں۔',
+                      'No ${_vehicleType.label.toLowerCase()} vehicle is currently available.',
+                      'اس وقت اس قسم کی کوئی گاڑی دستیاب نہیں۔',
                     )
                   : _t(
-                      'No vehicle is going to this destination right now.',
-                      'اس وقت اس منزل کی طرف کوئی گاڑی نہیں جا رہی۔',
+                      'No ${_vehicleType.label.toLowerCase()} vehicle is going to this destination right now.',
+                      'اس وقت اس منزل کی طرف اس قسم کی کوئی گاڑی نہیں جا رہی۔',
                     ),
             )
           else
@@ -231,12 +249,38 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   List<LiveTourPackage> _filteredVehicles(List<LiveTourPackage> source) {
     final sorted = [...source]
       ..sort((a, b) => a.departureAt.compareTo(b.departureAt));
-    final filtered = _query.isEmpty
-        ? sorted
-        : sorted.where(
-            (package) => package.destination.toLowerCase().contains(_query),
-          );
+    final filtered = sorted.where((package) {
+      final destinationMatches = _query.isEmpty ||
+          package.destination.toLowerCase().contains(_query);
+      return destinationMatches &&
+          _vehicleTypeOf(package) == _vehicleType;
+    });
     return filtered.take(10).toList();
+  }
+
+  _VehicleTypeFilter _vehicleTypeOf(LiveTourPackage package) {
+    final text =
+        '${package.vehicle} ${package.title} ${package.registrationNumber}'
+            .toLowerCase();
+
+    if (text.contains('rickshaw') ||
+        text.contains('qinqi') ||
+        text.contains('three wheel') ||
+        text.contains('3 wheel')) {
+      return _VehicleTypeFilter.threeWheel;
+    }
+
+    if (text.contains('motorcycle') ||
+        text.contains('motor bike') ||
+        text.contains('motorbike') ||
+        text.contains('scooter') ||
+        text.contains('bike') ||
+        text.contains('two wheel') ||
+        text.contains('2 wheel')) {
+      return _VehicleTypeFilter.twoWheel;
+    }
+
+    return _VehicleTypeFilter.fourWheel;
   }
 
   Future<void> _openVehicle(LiveTourPackage package) async {
@@ -325,6 +369,85 @@ class _BookingHero extends StatelessWidget {
       );
 }
 
+
+enum _VehicleTypeFilter {
+  fourWheel('4 Wheel', Icons.directions_car_filled_rounded),
+  twoWheel('2 Wheel', Icons.two_wheeler_rounded),
+  threeWheel('3 Wheel', Icons.electric_rickshaw_rounded);
+
+  const _VehicleTypeFilter(this.label, this.icon);
+
+  final String label;
+  final IconData icon;
+}
+
+class _VehicleTypeSelector extends StatelessWidget {
+  const _VehicleTypeSelector({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final _VehicleTypeFilter selected;
+  final ValueChanged<_VehicleTypeFilter> onSelected;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: _VehicleTypeFilter.values.map((type) {
+          final active = type == selected;
+          return Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(
+                right: type == _VehicleTypeFilter.threeWheel ? 0 : 8,
+              ),
+              child: InkWell(
+                onTap: () => onSelected(type),
+                borderRadius: BorderRadius.circular(16),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  decoration: BoxDecoration(
+                    color: active ? AppColors.primary : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: active ? AppColors.primary : AppColors.border,
+                    ),
+                    boxShadow: active
+                        ? [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: .18),
+                              blurRadius: 12,
+                              offset: const Offset(0, 5),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        type.icon,
+                        size: 23,
+                        color: active ? Colors.white : AppColors.primaryDark,
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        type.label,
+                        style: TextStyle(
+                          color: active ? Colors.white : AppColors.navy,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      );
+}
+
 class _VehiclesSectionHeader extends StatelessWidget {
   const _VehiclesSectionHeader({
     required this.title,
@@ -344,14 +467,13 @@ class _VehiclesSectionHeader extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF3568D4), Color(0xFF5A8AF0)],
-              ),
+              color: const Color(0xFFE7F7F1),
               borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFCAEBDD)),
             ),
             child: const Icon(
-              Icons.directions_bus_filled_rounded,
-              color: Colors.white,
+              Icons.route_rounded,
+              color: AppColors.primaryDark,
             ),
           ),
           const SizedBox(width: 11),
