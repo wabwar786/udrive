@@ -1,6 +1,7 @@
-# Driver Offer pickupAt Build Hotfix
+# LivePackageVehicleLocation model hotfix
 
 Replace:
-`udrive_api/Services/BookingService.cs`
 
-Fixes CS0103 by declaring `pickupAt` outside the lock-command scope so it remains available when setting the Driver offer expiry.
+`udrive_unified_mobile/lib/models/booking_models.dart`
+
+This restores the `LivePackageVehicleLocation` model accidentally removed by the Driver marketplace patch while preserving the new request-expiry fields.
