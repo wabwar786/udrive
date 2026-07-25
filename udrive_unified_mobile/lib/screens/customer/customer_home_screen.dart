@@ -510,51 +510,59 @@ class _ScheduledVehicleCard extends StatelessWidget {
                   ],
                 ),
                 const Divider(height: 24),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final compact = constraints.maxWidth < 310;
-                    final price = Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Per-seat fare',
-                          style: TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 10,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'PKR $money',
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F7F1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFBFE8D8)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Fare per seat',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                            color: AppColors.primaryDark,
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ],
-                    );
-                    final button = FilledButton.icon(
-                      onPressed: seats > 0 ? onTap : null,
-                      icon: const Icon(Icons.map_rounded, size: 18),
-                      label: Text(seats > 0 ? 'Live map & book' : 'Fully booked'),
-                    );
-                    if (compact) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [price, const SizedBox(height: 10), button],
-                      );
-                    }
-                    return Row(
-                      children: [
-                        Expanded(child: price),
-                        const SizedBox(width: 12),
-                        Flexible(flex: 2, child: button),
-                      ],
-                    );
-                  },
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'PKR $money',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.fade,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                          color: AppColors.primaryDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: seats > 0 ? onTap : null,
+                    icon: const Icon(Icons.map_rounded, size: 18),
+                    label: Text(
+                      seats > 0
+                          ? 'View live location & book seat'
+                          : 'Fully booked',
+                    ),
+                  ),
                 ),
               ],
             ),

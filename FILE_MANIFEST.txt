@@ -1,8 +1,8 @@
-/mnt/data/udrive_phase_13_5_vehicle_card_embedded_map/APPLY_UPDATE.md
-/mnt/data/udrive_phase_13_5_vehicle_card_embedded_map/FILE_MANIFEST.txt
-/mnt/data/udrive_phase_13_5_vehicle_card_embedded_map/TESTING_CHECKLIST.md
-/mnt/data/udrive_phase_13_5_vehicle_card_embedded_map/udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart
-/mnt/data/udrive_phase_13_5_vehicle_card_embedded_map/udrive_unified_mobile/lib/screens/customer/live_packages_screen.dart
-/mnt/data/udrive_phase_13_5_vehicle_card_embedded_map/udrive_unified_mobile/lib/screens/customer/vehicle_live_map.dart
-/mnt/data/udrive_phase_13_5_vehicle_card_embedded_map/udrive_unified_mobile/pubspec.yaml
-/mnt/data/udrive_phase_13_5_vehicle_card_embedded_map/udrive_unified_mobile/web/index.html
+./APPLY_UPDATE.md
+./FILE_MANIFEST.txt
+./TESTING_CHECKLIST.md
+./udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart
+./udrive_unified_mobile/lib/screens/customer/live_packages_screen.dart
+./udrive_unified_mobile/lib/screens/customer/vehicle_live_map.dart
+./udrive_unified_mobile/pubspec.yaml
+./udrive_unified_mobile/web/index.html
