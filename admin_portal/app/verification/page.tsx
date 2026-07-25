@@ -146,7 +146,7 @@ export default function VerificationPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [pageNumber, setPageNumber] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(50);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const canDelete = readSession()?.user.roles.includes('SuperAdmin') ?? false;
@@ -262,10 +262,13 @@ export default function VerificationPage() {
       <section className={`panel ${styles.queuePanel}`}>
         <header className={`panelHeader ${styles.queueHeader}`}>
           <div>
-            <h2>Verification workspace</h2>
+            <div className={styles.workspaceTitleRow}>
+              <h2>Verification workspace</h2>
+              <span className={styles.revisionBadge}>List v2</span>
+            </div>
             <p>
-              Review documents in one place before approving access
-              to Kashmir tourism services.
+              Compact, searchable Driver and vehicle review with protected
+              attachment retry.
             </p>
           </div>
 
@@ -1199,6 +1202,7 @@ function ProtectedDocument({
   const [contentType, setContentType] = useState('');
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -1208,10 +1212,17 @@ function ProtectedDocument({
     setContentType('');
     setError('');
 
-    const candidates = [document.fileUrl, previewPath].filter(
-      (value, index, values) =>
-        Boolean(value) && values.indexOf(value) === index,
-    );
+    const appendRetryKey = (value: string) => {
+      const separator = value.includes('?') ? '&' : '?';
+      return `${value}${separator}previewRetry=${retryKey}`;
+    };
+
+    const candidates = [document.fileUrl, previewPath]
+      .filter(
+        (value, index, values) =>
+          Boolean(value) && values.indexOf(value) === index,
+      )
+      .map(appendRetryKey);
 
     void (async () => {
       let lastError: unknown;
@@ -1248,7 +1259,7 @@ function ProtectedDocument({
       active = false;
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
-  }, [document.fileUrl, previewPath]);
+  }, [document.fileUrl, previewPath, retryKey]);
 
   const isPdf =
     contentType.includes('pdf') ||
@@ -1293,8 +1304,16 @@ function ProtectedDocument({
 
         {error && (
           <div className={styles.fileError}>
-            <AlertTriangle size={26} />
+            <AlertTriangle size={24} />
             <span>{error}</span>
+            <button
+              type="button"
+              className={styles.retryAttachmentButton}
+              onClick={() => setRetryKey((value) => value + 1)}
+            >
+              <RefreshCw size={14} />
+              Retry attachment
+            </button>
           </div>
         )}
 
