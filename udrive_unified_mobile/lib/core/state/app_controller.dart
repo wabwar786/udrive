@@ -475,57 +475,51 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _loadPhase9State() async {
-    Future<void> loadPart<T>(
-      Future<List<T>> request,
-      void Function(List<T> values) apply,
-    ) async {
-      try {
-        final values = await request;
-        apply(values);
-        notifyListeners();
-      } catch (error) {
-        _marketplaceError ??= _message(error);
-      }
-    }
-
-    await Future.wait([
-      loadPart<LiveTourPackage>(
-        _bookingRepository.getPublicPackages(),
-        (values) => _liveMarketplacePackages = values,
-      ),
-      loadPart<LiveRideRequest>(
+    try {
+      final results = await Future.wait([
         _bookingRepository.getMyRideRequests(),
-        (values) => _liveRideRequests = values,
-      ),
-      loadPart<LiveBooking>(
         _bookingRepository.getMyBookings(),
-        (values) => _liveBookings = values,
-      ),
-      loadPart<LivePackageOffer>(
+        _bookingRepository.getPublicPackages(),
         _bookingRepository.getCustomerPackageOffers(),
-        (values) => _liveCustomerPackageOffers = values,
-      ),
-      loadPart<LiveTourInterest>(
         _bookingRepository.getTourInterests(),
-        (values) => _liveTourInterests = values,
-      ),
-      loadPart<LiveTourMatch>(
         _bookingRepository.getTourMatches(),
-        (values) => _liveTourMatches = values,
-      ),
-      loadPart<LivePackageWaitlist>(
         _bookingRepository.getCustomerPackageWaitlist(),
-        (values) => _liveCustomerPackageWaitlist = values,
-      ),
-    ]);
-    if (driverApproved) await loadDriverMarketplace(notify: false);
+      ]);
+      _liveRideRequests = results[0] as List<LiveRideRequest>;
+      _liveBookings = results[1] as List<LiveBooking>;
+      _liveMarketplacePackages = results[2] as List<LiveTourPackage>;
+      _liveCustomerPackageOffers = results[3] as List<LivePackageOffer>;
+      _liveTourInterests = results[4] as List<LiveTourInterest>;
+      _liveTourMatches = results[5] as List<LiveTourMatch>;
+      _liveCustomerPackageWaitlist = results[6] as List<LivePackageWaitlist>;
+      if (driverApproved) await loadDriverMarketplace(notify: false);
+    } catch (_) {
+      // Keep the last successfully loaded live values and expose the API error on retry.
+    }
   }
 
   Future<LiveRideRequest> createLiveRideRequest(Map<String, dynamic> payload) async {
     return _runMarketplace(() async {
+      // Validate/refresh the JWT immediately before the write operation so a
+      // customer does not lose a completed form because the access token
+      // expired while they were filling the booking steps.
+      _currentUser = await _authRepository.me();
+      _loggedIn = true;
+
       final request = await _bookingRepository.createRideRequest(payload);
-      _liveRideRequests = [request, ..._liveRideRequests.where((e) => e.id != request.id)];
-      _liveDriverOffers = await _bookingRepository.getRideOffers(request.id);
+      _liveRideRequests = [
+        request,
+        ..._liveRideRequests.where((e) => e.id != request.id),
+      ];
+
+      // Offers may still be empty immediately after saving. Failure to load
+      // offers must not turn a successfully saved ride request into an error.
+      try {
+        _liveDriverOffers = await _bookingRepository.getRideOffers(request.id);
+      } catch (_) {
+        _liveDriverOffers = const [];
+      }
+      notifyListeners();
       return request;
     });
   }
@@ -720,10 +714,6 @@ class AppController extends ChangeNotifier {
       return booking;
     });
   }
-
-  Future<LivePackageVehicleLocation> loadPackageVehicleLocation(
-    String packageId,
-  ) => _bookingRepository.getPackageVehicleLocation(packageId);
 
   Future<LiveTourPackage> createLiveDriverPackage(Map<String, dynamic> payload) async {
     return _runMarketplace(() async {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -14,13 +16,28 @@ class LiveDriverRequestsScreen extends StatefulWidget {
 }
 
 class _LiveDriverRequestsScreenState extends State<LiveDriverRequestsScreen> {
+  Timer? _poller;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    _poller = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _refresh(silent: true),
+    );
   }
 
-  Future<void> _refresh() => AppControllerScope.of(context).loadDriverMarketplace();
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh({bool silent = false}) async {
+    if (!mounted) return;
+    await AppControllerScope.of(context).loadDriverMarketplace(notify: !silent);
+    if (mounted && silent) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -10,7 +10,7 @@ class ApiClient {
 
   final SessionStore sessionStore;
   final http.Client _client;
-  bool _refreshing = false;
+  Future<bool>? _refreshFuture;
 
   Future<Map<String, dynamic>> getJson(String path, {bool authenticated = true}) =>
       _jsonRequest('GET', path, authenticated: authenticated);
@@ -71,11 +71,21 @@ class ApiClient {
     required bool authenticated,
     bool allowRefresh = true,
   }) async {
+    if (authenticated && allowRefresh) {
+      final expiry = await sessionStore.readAccessExpiry();
+      if (expiry == null ||
+          expiry.isBefore(DateTime.now().add(const Duration(seconds: 45)))) {
+        await _tryRefresh();
+      }
+    }
+
     final headers = <String, String>{'Accept': 'application/json'};
     if (body != null) headers['Content-Type'] = 'application/json';
     if (authenticated) {
       final token = await sessionStore.readAccessToken();
-      if (token != null) headers['Authorization'] = 'Bearer $token';
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
     }
 
     final uri = ApiConfig.uri(path);
@@ -117,11 +127,23 @@ class ApiClient {
     return json;
   }
 
-  Future<bool> _tryRefresh() async {
-    if (_refreshing) return false;
+  Future<bool> _tryRefresh() {
+    final running = _refreshFuture;
+    if (running != null) return running;
+
+    final future = _performRefresh();
+    _refreshFuture = future;
+    return future.whenComplete(() {
+      if (identical(_refreshFuture, future)) {
+        _refreshFuture = null;
+      }
+    });
+  }
+
+  Future<bool> _performRefresh() async {
     final refreshToken = await sessionStore.readRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) return false;
-    _refreshing = true;
+
     try {
       final deviceId = await sessionStore.deviceId();
       final response = await _jsonRequest(
@@ -139,11 +161,17 @@ class ApiClient {
       if (data == null) return false;
       await sessionStore.saveTokens(AuthTokens.fromJson(data));
       return true;
-    } catch (_) {
-      await sessionStore.clear();
+    } on ApiException catch (error) {
+      // Clear the local session only when the server confirms that the refresh
+      // token is invalid. Temporary Railway/network failures must not log the
+      // customer out while submitting a booking.
+      if (error.statusCode == 400 || error.statusCode == 401) {
+        await sessionStore.clear();
+      }
       return false;
-    } finally {
-      _refreshing = false;
+    } catch (_) {
+      return false;
     }
   }
+
 }

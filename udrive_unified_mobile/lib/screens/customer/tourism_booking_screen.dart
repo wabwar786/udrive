@@ -703,10 +703,12 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
     } on ApiException catch (error) {
       if (mounted) {
         final message = error.statusCode == 401
-            ? 'Your session has expired. Please log in again.'
-            : error.statusCode != null && error.statusCode! >= 500
-                ? 'Booking service is temporarily unavailable. Please retry in a moment.'
-                : error.message;
+            ? 'Your login could not be refreshed. Please sign in once and submit the saved form again.'
+            : error.statusCode == 403
+                ? 'This account is not allowed to create a customer ride request.'
+                : error.statusCode != null && error.statusCode! >= 500
+                    ? 'Booking service is temporarily unavailable. Your form is still here; please retry in a moment.'
+                    : error.message;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );
