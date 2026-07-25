@@ -58,6 +58,8 @@ builder.Services.AddScoped<AdminOperationsService>(_ =>
     new AdminOperationsService(connectionString));
 builder.Services.AddScoped<AdminUserManagementService>(_ =>
     new AdminUserManagementService(connectionString));
+builder.Services.AddScoped<TripOperationsService>(_ => new TripOperationsService(connectionString));
+builder.Services.AddScoped<TrackingService>(_ => new TrackingService(connectionString));
 builder.Services.AddScoped<VerificationFileLookupService>(serviceProvider =>
     new VerificationFileLookupService(
         connectionString,
@@ -111,6 +113,20 @@ builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("location", limiter =>
+    {
+        limiter.PermitLimit = 40;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+        limiter.AutoReplenishment = true;
+    });
+    options.AddFixedWindowLimiter("public-tracking", limiter =>
+    {
+        limiter.PermitLimit = 60;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+        limiter.AutoReplenishment = true;
+    });
     options.AddFixedWindowLimiter("otp", limiter =>
     {
         limiter.PermitLimit = 8;

@@ -39,6 +39,8 @@ const groups = [
     items: [
       ['/', 'Overview', LayoutDashboard],
       ['/bookings', 'Bookings', BookOpenCheck],
+      ['/operations', 'Operations & dispatch', Activity],
+      ['/live-tracking', 'Live tracking', MapPinned],
       ['/ride-requests', 'Ride requests', Activity],
       ['/packages', 'Tour packages', PackageCheck],
     ],

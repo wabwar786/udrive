@@ -5,7 +5,7 @@ import 'driver_earnings_screen.dart';
 import 'driver_home_screen.dart';
 import 'driver_packages_screen.dart';
 import 'driver_profile_screen.dart';
-import 'driver_requests_screen.dart';
+import '../operations/driver_operations_hub_screen.dart';
 
 class DriverShell extends StatefulWidget {
   const DriverShell({super.key});
@@ -19,7 +19,7 @@ class _DriverShellState extends State<DriverShell> {
 
   final _screens = const [
     DriverHomeScreen(),
-    DriverRequestsScreen(),
+    DriverOperationsHubScreen(),
     DriverPackagesScreen(),
     DriverEarningsScreen(),
     DriverProfileScreen(),

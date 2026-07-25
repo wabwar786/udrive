@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/auth_repository.dart';
 import '../auth/session_store.dart';
 import '../booking/booking_repository.dart';
+import '../network/api_client.dart';
 import '../../models/auth_models.dart';
 import '../../models/booking_models.dart';
 import '../../data/dummy_data.dart';
@@ -152,6 +153,8 @@ class AppController extends ChangeNotifier {
       status: 'Verified by operations',
     ),
   ];
+
+  ApiClient get apiClient => _authRepository.client;
 
   bool get initialized => _initialized;
   bool get loggedIn => _loggedIn;

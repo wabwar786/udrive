@@ -4,7 +4,7 @@ import '../core/localization/app_language.dart';
 import 'explore/explore_screen.dart';
 import 'home/home_screen.dart';
 import 'profile/profile_screen.dart';
-import 'trips/trips_screen.dart';
+import 'operations/customer_operations_screen.dart';
 
 class CustomerShell extends StatefulWidget {
   const CustomerShell({super.key});
@@ -15,7 +15,7 @@ class CustomerShell extends StatefulWidget {
 
 class _CustomerShellState extends State<CustomerShell> {
   int _index = 0;
-  final _screens = const [HomeScreen(), ExploreScreen(), TripsScreen(), ProfileScreen()];
+  final _screens = const [HomeScreen(), ExploreScreen(), CustomerOperationsScreen(), ProfileScreen()];
 
   @override
   Widget build(BuildContext context) {
