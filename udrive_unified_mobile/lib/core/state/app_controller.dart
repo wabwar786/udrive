@@ -715,6 +715,10 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  Future<LivePackageVehicleLocation> loadPackageVehicleLocation(
+    String packageId,
+  ) => _bookingRepository.getPackageVehicleLocation(packageId);
+
   Future<LiveTourPackage> createLiveDriverPackage(Map<String, dynamic> payload) async {
     return _runMarketplace(() async {
       final package = await _bookingRepository.createDriverPackage(payload);
