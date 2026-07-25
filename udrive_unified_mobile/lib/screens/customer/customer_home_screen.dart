@@ -105,9 +105,20 @@ class _AccountHeader extends StatelessWidget {
   Widget build(BuildContext context) => Row(children: [
         CircleAvatar(radius: 24, backgroundColor: AppColors.primary.withValues(alpha: .12), child: Text(_initials(name), style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900))),
         const SizedBox(width: 11),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)), const SizedBox(height: 2), Text(phone.isEmpty ? '—' : phone, style: const TextStyle(color: AppColors.muted, fontSize: 12))])),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_greeting(context, name), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)), const SizedBox(height: 2), Text(phone.isEmpty ? '—' : phone, style: const TextStyle(color: AppColors.muted, fontSize: 12))])),
         const StatusPill(label: 'Live', color: AppColors.success),
       ]);
+
+
+  static String _greeting(BuildContext context, String name) {
+    final hour = DateTime.now().hour;
+    final isUrdu = AppControllerScope.of(context).locale.languageCode == 'ur';
+    final greeting = isUrdu
+        ? (hour < 12 ? 'صبح بخیر' : hour < 17 ? 'دوپہر بخیر' : 'شب بخیر')
+        : (hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening');
+    final safeName = name.trim().isEmpty ? (isUrdu ? 'صارف' : 'uDrive User') : name.trim();
+    return '$greeting, $safeName';
+  }
 
   static String _initials(String value) {
     final parts = value.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).take(2).toList();

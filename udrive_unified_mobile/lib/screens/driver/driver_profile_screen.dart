@@ -11,51 +11,46 @@ class DriverProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final language = AppLanguageScope.of(context);
+    final controller = AppControllerScope.of(context);
+    final name = controller.currentUserName;
+    final vehicle = controller.liveVehicles.isEmpty ? null : controller.liveVehicles.first;
+    final status = controller.driverVerificationStatus;
 
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          Text(
-            S.of(context, 'profile'),
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
-          ),
+          Text(S.of(context, 'profile'), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
           const SizedBox(height: 16),
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(18),
+              padding: const EdgeInsets.all(18),
               child: Row(
                 children: [
                   CircleAvatar(
                     radius: 34,
                     backgroundColor: AppColors.primary,
-                    child: Text(
-                      'SQ',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
+                    child: Text(_initials(name), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
                   ),
-                  SizedBox(width: 14),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                         Text(
-                          'Shahzad Ahmad Qureshi',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                          vehicle == null ? 'No registered vehicle' : '${vehicle.make} ${vehicle.model} · ${vehicle.registrationNumber}',
+                          style: const TextStyle(color: AppColors.muted),
                         ),
-                        Text(
-                          'Suzuki Alto · AJK-219',
-                          style: TextStyle(color: AppColors.muted),
-                        ),
-                        SizedBox(height: 5),
-                        Text('★ 4.9 · 834 trips'),
+                        const SizedBox(height: 5),
+                        Text('Verification: $status'),
                       ],
                     ),
                   ),
-                  Icon(Icons.verified_rounded, color: AppColors.secondary),
+                  Icon(
+                    controller.driverApproved ? Icons.verified_rounded : Icons.pending_rounded,
+                    color: controller.driverApproved ? AppColors.secondary : AppColors.warning,
+                  ),
                 ],
               ),
             ),
@@ -63,37 +58,17 @@ class DriverProfileScreen extends StatelessWidget {
           const SizedBox(height: 12),
           const ModeSwitchCard(targetMode: UserMode.customer),
           const SizedBox(height: 12),
-          ...const [
-            ('Documents', Icons.badge_outlined, 'All verified'),
-            ('Vehicle', Icons.directions_car_outlined, 'Suzuki Alto 2023'),
-            ('Service areas', Icons.map_outlined, 'Muzaffarabad, Neelum'),
-            ('Availability', Icons.calendar_month_outlined, 'Open schedule'),
-          ].map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: Card(
-                child: ListTile(
-                  leading: Icon(item.$2, color: AppColors.primary),
-                  title: Text(
-                    item.$1,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  subtitle: Text(item.$3),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                ),
-              ),
-            ),
-          ),
+          _item('Documents', Icons.badge_outlined, status),
+          _item('Vehicle', Icons.directions_car_outlined, vehicle == null ? 'No vehicle registered' : '${vehicle.make} ${vehicle.model}'),
+          _item('Capacity', Icons.event_seat_outlined, vehicle == null ? '—' : '${vehicle.passengerCapacity} passengers'),
+          _item('Phone', Icons.phone_outlined, controller.currentUserPhone.isEmpty ? '—' : controller.currentUserPhone),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    S.of(context, 'language'),
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
+                  Text(S.of(context, 'language'), style: const TextStyle(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 12),
                   SegmentedButton<String>(
                     segments: const [
@@ -111,4 +86,20 @@ class DriverProfileScreen extends StatelessWidget {
       ),
     );
   }
+
+  static String _initials(String value) {
+    final parts = value.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).take(2).toList();
+    return parts.isEmpty ? 'D' : parts.map((part) => part[0].toUpperCase()).join();
+  }
+
+  static Widget _item(String title, IconData icon, String subtitle) => Padding(
+        padding: const EdgeInsets.only(bottom: 9),
+        child: Card(
+          child: ListTile(
+            leading: Icon(icon, color: AppColors.primary),
+            title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text(subtitle),
+          ),
+        ),
+      );
 }

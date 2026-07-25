@@ -19,7 +19,7 @@ import 'driver/live_driver_requests_screen.dart';
 import 'customer/tourism_booking_screen.dart';
 import 'driver/driver_home_screen.dart';
 import 'driver/driver_earnings_screen.dart';
-import 'driver/driver_pages.dart';
+import 'driver/driver_pages.dart' hide DriverEarningsScreen;
 import 'driver/advanced_package_screen.dart';
 import 'driver/driver_tourism_tools.dart';
 import 'driver/vehicle_registration_screen.dart';

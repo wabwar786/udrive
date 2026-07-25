@@ -1,29 +1,18 @@
-# Phase 13 API runtime/migration hotfix
+# uDrive Live UI and Flutter Build Hotfix
 
-Replace these files in the current project:
+Apply these files over the latest Phase 13.5 source.
 
-- `udrive_api/Dockerfile`
-- `udrive_api/Infrastructure/Persistence/SqlMigrationRunner.cs`
-- `udrive_api/Infrastructure/Persistence/Migrations/009_phase13_finance_wallets.sql`
+Fixes:
+- Resolves malformed `driver_earnings_screen.dart` bracket/parenthesis syntax.
+- Resolves duplicate `DriverEarningsScreen` import by hiding the obsolete class from `driver_pages.dart`.
+- Customer greeting uses browser/device local hour: morning, afternoon, or evening.
+- Customer name and drawer name use the same `/auth/me`-backed `currentUserName` value.
+- Customer and Driver profile screens no longer show hardcoded Shahzad/name/phone/vehicle/rating data.
+- Missing database records show honest empty values instead of fabricated values.
 
-## Why the API crashed
-
-Migration 009 contained its own `BEGIN` and `COMMIT`, while `SqlMigrationRunner` already wraps each migration in an Npgsql transaction. The SQL `COMMIT` completed the outer transaction before the runner inserted the migration record and called `CommitAsync`. The catch block then attempted to roll back the already-completed transaction and masked the original error.
-
-The corrected migration removes transaction-control statements. The runner now logs the original migration exception and safely handles a rollback that is no longer possible. The runtime image also installs `libgssapi-krb5-2`.
-
-## Deployment
-
-1. Overlay the three files.
-2. Commit and deploy the API service.
-3. Confirm the deployment log contains `Applied database migration 009_phase13_finance_wallets` or starts normally if it was already recorded.
-4. Verify `/health/live`, `/health/ready`, and Swagger.
-5. Check the migration record:
-
-```sql
-SELECT migration_id, applied_at
-FROM public.schema_migrations
-WHERE migration_id = '009_phase13_finance_wallets';
-```
-
-The migration is idempotent, so a previous partially/fully applied attempt can be rerun safely after this hotfix.
+Deploy:
+1. Overlay files.
+2. Run `flutter pub get`.
+3. Run `flutter analyze`.
+4. Run `flutter build web --release --no-wasm-dry-run`.
+5. Deploy Flutter web and hard refresh/clear service-worker cache.

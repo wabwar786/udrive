@@ -10,56 +10,37 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lang = AppLanguageScope.of(context);
+    final language = AppLanguageScope.of(context);
+    final controller = AppControllerScope.of(context);
+    final name = controller.currentUserName;
+    final phone = controller.currentUserPhone;
 
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          Text(
-            S.of(context, 'profile'),
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
-          ),
+          Text(S.of(context, 'profile'), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
           const SizedBox(height: 18),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(18),
               child: Row(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 34,
                     backgroundColor: AppColors.primary,
-                    child: Text(
-                      'SQ',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
+                    child: Text(_initials(name), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
                   ),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Shahzad Ahmad Qureshi',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          '+92 300 1234567',
-                          style: TextStyle(color: AppColors.muted),
-                        ),
+                        Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 4),
+                        Text(phone.isEmpty ? '—' : phone, style: const TextStyle(color: AppColors.muted)),
                       ],
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.edit_outlined),
                   ),
                 ],
               ),
@@ -68,50 +49,25 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 14),
           const ModeSwitchCard(targetMode: UserMode.driver),
           const SizedBox(height: 14),
-          _tile(
-            Icons.account_balance_wallet_outlined,
-            S.of(context, 'wallet'),
-            'PKR 2,500',
-          ),
-          _tile(
-            Icons.bookmark_border_rounded,
-            S.of(context, 'savedPlaces'),
-            'Home, Office',
-          ),
-          _tile(
-            Icons.health_and_safety_outlined,
-            S.of(context, 'safety'),
-            '2 trusted contacts',
-          ),
-          _tile(
-            Icons.support_agent_rounded,
-            S.of(context, 'support'),
-            'Open help centre',
-          ),
+          _tile(Icons.account_balance_wallet_outlined, S.of(context, 'wallet'), 'Open wallet'),
+          _tile(Icons.bookmark_border_rounded, S.of(context, 'savedPlaces'), 'View saved places'),
+          _tile(Icons.health_and_safety_outlined, S.of(context, 'safety'), 'Open safety centre'),
+          _tile(Icons.support_agent_rounded, S.of(context, 'support'), 'Open help centre'),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    S.of(context, 'language'),
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
+                  Text(S.of(context, 'language'), style: const TextStyle(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 12),
                   SegmentedButton<String>(
                     segments: [
-                      ButtonSegment(
-                        value: 'en',
-                        label: Text(S.of(context, 'english')),
-                      ),
-                      ButtonSegment(
-                        value: 'ur',
-                        label: Text(S.of(context, 'urdu')),
-                      ),
+                      ButtonSegment(value: 'en', label: Text(S.of(context, 'english'))),
+                      ButtonSegment(value: 'ur', label: Text(S.of(context, 'urdu'))),
                     ],
-                    selected: {lang.locale.languageCode},
-                    onSelectionChanged: (value) => lang.setLanguage(value.first),
+                    selected: {language.locale.languageCode},
+                    onSelectionChanged: (value) => language.setLanguage(value.first),
                   ),
                 ],
               ),
@@ -122,17 +78,17 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _tile(IconData icon, String title, String subtitle) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Card(
+  static String _initials(String value) {
+    final parts = value.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).take(2).toList();
+    return parts.isEmpty ? 'U' : parts.map((part) => part[0].toUpperCase()).join();
+  }
+
+  static Widget _tile(IconData icon, String title, String subtitle) => Card(
         child: ListTile(
           leading: Icon(icon, color: AppColors.primary),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
           subtitle: Text(subtitle),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: const Icon(Icons.chevron_right_rounded),
         ),
-      ),
-    );
-  }
+      );
 }
