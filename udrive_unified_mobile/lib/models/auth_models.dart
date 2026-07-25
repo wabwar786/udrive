@@ -153,6 +153,7 @@ class LiveVehicle {
     required this.luggageCapacity,
     required this.mountainReadinessScore,
     required this.status,
+    this.imageUrl,
     required this.documents,
   });
 
@@ -167,6 +168,7 @@ class LiveVehicle {
   final int luggageCapacity;
   final int mountainReadinessScore;
   final String status;
+  final String? imageUrl;
   final List<Map<String, dynamic>> documents;
 
   factory LiveVehicle.fromJson(Map<String, dynamic> json) => LiveVehicle(
@@ -181,6 +183,7 @@ class LiveVehicle {
         luggageCapacity: (json['luggageCapacity'] as num?)?.toInt() ?? 0,
         mountainReadinessScore: (json['mountainReadinessScore'] as num?)?.toInt() ?? 0,
         status: json['status']?.toString() ?? 'Draft',
+        imageUrl: json['imageUrl']?.toString(),
         documents: (json['documents'] as List? ?? const [])
             .whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e))

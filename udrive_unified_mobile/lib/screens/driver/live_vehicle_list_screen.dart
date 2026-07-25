@@ -55,6 +55,13 @@ class _VehicleCard extends StatelessWidget {
     final verified = vehicle.status == 'Verified';
     return PremiumCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (vehicle.imageUrl != null && vehicle.imageUrl!.isNotEmpty) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.network(vehicle.imageUrl!, height: 150, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+          ),
+          const SizedBox(height: 12),
+        ],
         Row(children: [
           Container(width: 48, height: 48, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(15)), child: const Icon(Icons.directions_car_filled_rounded, color: AppColors.primaryDark)),
           const SizedBox(width: 11),

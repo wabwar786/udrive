@@ -657,7 +657,7 @@ public sealed class DriverVerificationService(
                    v.is_four_by_four, v.has_first_aid_kit,
                    v.has_fire_extinguisher, v.has_spare_tyre,
                    v.has_snow_chains, v.has_child_seat,
-                   v.mountain_readiness_score, v.status
+                   v.mountain_readiness_score, v.status, v.image_url
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             WHERE v.id = @vehicleId AND dp.user_id = @userId
@@ -675,7 +675,7 @@ public sealed class DriverVerificationService(
             return null;
         }
 
-        var values = new object[19];
+        var values = new object[20];
         reader.GetValues(values);
         await reader.CloseAsync();
         var documents = await GetVehicleDocumentsAsync(vehicleId, cancellationToken);
@@ -699,6 +699,7 @@ public sealed class DriverVerificationService(
             (bool)values[16],
             (int)values[17],
             (string)values[18],
+            values[19] is DBNull ? null : (string)values[19],
             documents);
     }
 

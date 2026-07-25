@@ -1,9 +1,10 @@
 APPLY_UPDATE.md
-PHASE_13_5_FEATURES.md
-TESTING_CHECKLIST.md
-FILE_MANIFEST.txt
-udrive_unified_mobile/lib/core/state/app_controller.dart
+udrive_api/Infrastructure/Persistence/Migrations/010_demo_fleet_kashmir_catalog.sql
+udrive_api/Models/DriverDtos.cs
+udrive_api/Services/DriverVerificationService.cs
+udrive_unified_mobile/lib/models/auth_models.dart
 udrive_unified_mobile/lib/screens/main_shell.dart
 udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart
-udrive_unified_mobile/lib/screens/driver/driver_home_screen.dart
+udrive_unified_mobile/lib/screens/customer/live_explore_screen.dart
+udrive_unified_mobile/lib/screens/customer/live_packages_screen.dart
 udrive_unified_mobile/lib/screens/driver/live_vehicle_list_screen.dart

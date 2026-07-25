@@ -129,18 +129,16 @@ class _PackageCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              height: 132,
-              decoration: const BoxDecoration(
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                gradient: LinearGradient(colors: [Color(0xFF0E6C52), Color(0xFF17B978)]),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(right: 12, top: 12, child: StatusPill(label: '${package.bookableSeats} seats left', color: Colors.white)),
-                  const Positioned(left: 18, bottom: 18, child: Icon(Icons.landscape_rounded, color: Colors.white, size: 54)),
-                ],
-              ),
+            SizedBox(
+              height: 150,
+              child: Stack(fit: StackFit.expand, children: [
+                if (package.coverImageUrl != null && package.coverImageUrl!.isNotEmpty)
+                  Image.network(package.coverImageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0E6C52), Color(0xFF17B978)]))))
+                else
+                  const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0E6C52), Color(0xFF17B978)]))),
+                const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black54]))),
+                Positioned(right: 12, top: 12, child: StatusPill(label: '${package.bookableSeats} seats left', color: Colors.white)),
+              ]),
             ),
             Padding(
               padding: const EdgeInsets.all(16),

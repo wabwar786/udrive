@@ -6,6 +6,7 @@ import '../core/widgets/brand.dart';
 import '../data/models.dart';
 import 'common/common_pages.dart';
 import 'customer/customer_home_screen.dart';
+import 'customer/live_explore_screen.dart';
 import 'customer/customer_pages.dart';
 import 'customer/family_tour_planner_screen.dart';
 import 'customer/join_tour_screen.dart';
@@ -176,7 +177,7 @@ class _MainShellState extends State<MainShell> {
         'bookRide' => const TourismBookingScreen(),
         'joinTour' => const LiveTourInterestScreen(),
         'familyPlanner' => const FamilyTourPlannerScreen(),
-        'explore' => const ExploreScreen(),
+        'explore' => const LiveExploreScreen(),
         'packages' => const LivePackagesScreen(),
         'trips' => const LiveBookingsScreen(),
         'wallet' => const WalletScreen(),

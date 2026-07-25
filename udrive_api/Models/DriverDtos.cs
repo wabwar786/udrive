@@ -80,6 +80,7 @@ public sealed record VehicleDto(
     bool HasChildSeat,
     int MountainReadinessScore,
     string Status,
+    string? ImageUrl,
     IReadOnlyList<VehicleDocumentDto> Documents);
 
 public sealed record VehicleDocumentDto(

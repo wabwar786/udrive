@@ -111,7 +111,7 @@ class _AccountHeader extends StatelessWidget {
 
 
   static String _greeting(BuildContext context, String name) {
-    final hour = DateTime.now().hour;
+    final hour = DateTime.now().toUtc().add(const Duration(hours: 5)).hour;
     final isUrdu = AppControllerScope.of(context).locale.languageCode == 'ur';
     final greeting = isUrdu
         ? (hour < 12 ? 'صبح بخیر' : hour < 17 ? 'دوپہر بخیر' : 'شب بخیر')
