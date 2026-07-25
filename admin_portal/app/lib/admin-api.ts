@@ -89,8 +89,13 @@ async function runAuthorized(
 ) {
   let session = readSession();
 
+  const targetUrl = resolveApiUrl(path);
+  const targetOrigin = new URL(targetUrl).origin;
+  const apiOrigin = new URL(API_BASE).origin;
+  const isApiRequest = targetOrigin === apiOrigin;
+
   const run = (token?: string) =>
-    fetch(resolveApiUrl(path), {
+    fetch(targetUrl, {
       ...init,
       cache: 'no-store',
       headers: {
@@ -98,14 +103,20 @@ async function runAuthorized(
         ...(init.body && !(init.body instanceof FormData)
           ? { 'Content-Type': 'application/json' }
           : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(token && isApiRequest
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
         ...init.headers,
       },
     });
 
   let response = await run(session?.accessToken);
 
-  if (response.status === 401 && session?.refreshToken) {
+  if (
+    isApiRequest &&
+    response.status === 401 &&
+    session?.refreshToken
+  ) {
     session = await refresh(session);
     response = await run(session.accessToken);
   }

@@ -1011,32 +1011,51 @@ function ProtectedDocument({
     let active = true;
     let currentUrl = '';
 
-    void apiProtectedFile(previewPath)
-      .then((file) => {
-        if (!active) {
-          URL.revokeObjectURL(file.objectUrl);
-          return;
-        }
+    setObjectUrl('');
+    setContentType('');
+    setError('');
 
-        currentUrl = file.objectUrl;
-        setObjectUrl(file.objectUrl);
-        setContentType(file.contentType);
-      })
-      .catch((loadError) => {
-        if (active) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : 'File unavailable.',
-          );
+    const candidates = [document.fileUrl, previewPath].filter(
+      (value, index, values) =>
+        Boolean(value) && values.indexOf(value) === index,
+    );
+
+    void (async () => {
+      let lastError: unknown;
+
+      for (const candidate of candidates) {
+        try {
+          const file = await apiProtectedFile(candidate);
+
+          if (!active) {
+            URL.revokeObjectURL(file.objectUrl);
+            return;
+          }
+
+          currentUrl = file.objectUrl;
+          setObjectUrl(file.objectUrl);
+          setContentType(file.contentType);
+          setError('');
+          return;
+        } catch (candidateError) {
+          lastError = candidateError;
         }
-      });
+      }
+
+      if (active) {
+        setError(
+          lastError instanceof Error
+            ? lastError.message
+            : 'Unable to load this attachment.',
+        );
+      }
+    })();
 
     return () => {
       active = false;
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
-  }, [previewPath]);
+  }, [document.fileUrl, previewPath]);
 
   const isPdf =
     contentType.includes('pdf') ||
