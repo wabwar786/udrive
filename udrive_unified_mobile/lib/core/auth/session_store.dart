@@ -13,47 +13,66 @@ class SessionStore {
   static const _userKey = 'phase8_current_user';
   static const _deviceIdKey = 'phase8_device_id';
 
+  // Browser fallback keys. FlutterSecureStorage on web can occasionally be
+  // unavailable after service-worker/browser-storage changes, while the user
+  // record in SharedPreferences still makes the UI appear logged in.
+  static const _fallbackPrefix = 'udrive_session_fallback_';
+
   static const Duration _readTimeout = Duration(seconds: 4);
   static const Duration _writeTimeout = Duration(seconds: 8);
 
   final FlutterSecureStorage _secure = const FlutterSecureStorage();
 
   Future<void> saveTokens(AuthTokens tokens) async {
-    await Future.wait<void>([
-      _secure.write(key: _accessKey, value: tokens.accessToken),
-      _secure.write(key: _refreshKey, value: tokens.refreshToken),
-      _secure.write(
-        key: _accessExpiryKey,
-        value: tokens.accessTokenExpiresAt.toIso8601String(),
-      ),
-      _secure.write(
-        key: _refreshExpiryKey,
-        value: tokens.refreshTokenExpiresAt.toIso8601String(),
-      ),
-    ]).timeout(_writeTimeout);
+    final values = <String, String>{
+      _accessKey: tokens.accessToken,
+      _refreshKey: tokens.refreshToken,
+      _accessExpiryKey: tokens.accessTokenExpiresAt.toIso8601String(),
+      _refreshExpiryKey: tokens.refreshTokenExpiresAt.toIso8601String(),
+    };
 
-    await saveUser(tokens.user);
+    // Secure storage remains the primary store, but failure there must not
+    // prevent a valid login from being persisted in the web app.
+    try {
+      await Future.wait<void>(
+        values.entries.map(
+          (entry) => _secure.write(key: entry.key, value: entry.value),
+        ),
+      ).timeout(_writeTimeout);
+    } catch (_) {
+      // The SharedPreferences mirror below is the recovery path.
+    }
+
+    final prefs = await SharedPreferences.getInstance().timeout(_writeTimeout);
+    for (final entry in values.entries) {
+      await prefs.setString('$_fallbackPrefix${entry.key}', entry.value);
+    }
+    await prefs.setString(_userKey, tokens.user.encode());
+    await prefs.setBool('loggedIn', true);
   }
 
-  Future<String?> readAccessToken() => _readSecureValue(_accessKey);
+  Future<String?> readAccessToken() => _readToken(_accessKey);
 
-  Future<String?> readRefreshToken() => _readSecureValue(_refreshKey);
+  Future<String?> readRefreshToken() => _readToken(_refreshKey);
 
   Future<DateTime?> readAccessExpiry() async {
-    final value = await _readSecureValue(_accessExpiryKey);
+    final value = await _readToken(_accessExpiryKey);
+    return value == null ? null : DateTime.tryParse(value);
+  }
+
+  Future<DateTime?> readRefreshExpiry() async {
+    final value = await _readToken(_refreshExpiryKey);
     return value == null ? null : DateTime.tryParse(value);
   }
 
   Future<void> saveUser(CurrentUser user) async {
-    final prefs =
-        await SharedPreferences.getInstance().timeout(_writeTimeout);
+    final prefs = await SharedPreferences.getInstance().timeout(_writeTimeout);
     await prefs.setString(_userKey, user.encode());
   }
 
   Future<CurrentUser?> readUser() async {
     try {
-      final prefs =
-          await SharedPreferences.getInstance().timeout(_readTimeout);
+      final prefs = await SharedPreferences.getInstance().timeout(_readTimeout);
       return CurrentUser.decode(prefs.getString(_userKey));
     } catch (_) {
       return null;
@@ -62,8 +81,7 @@ class SessionStore {
 
   Future<String> deviceId() async {
     try {
-      final prefs =
-          await SharedPreferences.getInstance().timeout(_readTimeout);
+      final prefs = await SharedPreferences.getInstance().timeout(_readTimeout);
       var value = prefs.getString(_deviceIdKey);
 
       if (value == null || value.isEmpty) {
@@ -78,27 +96,40 @@ class SessionStore {
   }
 
   Future<void> clear() async {
-    await Future.wait<void>([
-      _deleteSecureValue(_accessKey),
-      _deleteSecureValue(_refreshKey),
-      _deleteSecureValue(_accessExpiryKey),
-      _deleteSecureValue(_refreshExpiryKey),
-    ]);
+    final keys = <String>[
+      _accessKey,
+      _refreshKey,
+      _accessExpiryKey,
+      _refreshExpiryKey,
+    ];
+
+    await Future.wait<void>(keys.map(_deleteSecureValue));
 
     try {
-      final prefs =
-          await SharedPreferences.getInstance().timeout(_writeTimeout);
+      final prefs = await SharedPreferences.getInstance().timeout(_writeTimeout);
+      for (final key in keys) {
+        await prefs.remove('$_fallbackPrefix$key');
+      }
       await prefs.remove(_userKey);
       await prefs.setBool('loggedIn', false);
       await prefs.setString('mode', 'customer');
     } catch (_) {
-      // Storage cleanup must never block startup or logout.
+      // Storage cleanup must never block logout/startup.
     }
   }
 
-  Future<String?> _readSecureValue(String key) async {
+  Future<String?> _readToken(String key) async {
     try {
-      return await _secure.read(key: key).timeout(_readTimeout);
+      final secureValue = await _secure.read(key: key).timeout(_readTimeout);
+      if (secureValue != null && secureValue.isNotEmpty) return secureValue;
+    } catch (_) {
+      // Fall through to the browser-safe mirror.
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance().timeout(_readTimeout);
+      final fallback = prefs.getString('$_fallbackPrefix$key');
+      return fallback == null || fallback.isEmpty ? null : fallback;
     } catch (_) {
       return null;
     }
@@ -108,7 +139,7 @@ class SessionStore {
     try {
       await _secure.delete(key: key).timeout(_readTimeout);
     } catch (_) {
-      // Ignore unavailable or corrupt browser storage.
+      // Ignore unavailable or corrupt secure storage.
     }
   }
 }

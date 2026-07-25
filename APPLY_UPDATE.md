@@ -1,14 +1,25 @@
-# Phase 13.5 — Driver Open Requests & Fare Offers
+# Customer Booking Session Refresh Hotfix
 
-Apply this ZIP over the latest uDrive source tree. Preserve the folder paths exactly.
+Overlay the `udrive_unified_mobile` folder onto the latest source and redeploy Flutter web.
 
-## Deployment order
+## Why this is needed
 
-1. Overlay all files.
-2. Deploy `udrive_api` first.
-3. Confirm `/health/live` and `/health/ready` return HTTP 200.
-4. Confirm migration `011_driver_marketplace_expiry` is recorded in `udrive.schema_migrations`.
-5. Deploy `udrive_unified_mobile` Flutter web.
-6. Clear the Flutter service worker/site cache once after deployment.
+The UI can restore a cached user from SharedPreferences while browser secure storage fails to return the access/refresh tokens. Also, multiple repositories previously performed independent refresh-token rotations at the same time.
 
-No APK/AAB is included.
+## Fixes
+
+- Mirrors tokens to a persistent SharedPreferences recovery store.
+- Uses one app-wide refresh operation across all ApiClient instances.
+- Retries the original authenticated request after refresh.
+- Does not force refresh just because old sessions lack expiry metadata.
+- Clears the session only when the API definitively rejects the refresh token.
+
+## Deployment
+
+```bash
+flutter pub get
+flutter analyze
+flutter build web --release --no-wasm-dry-run
+```
+
+After the first deployment, sign out and sign in once so the current tokens are written to both stores. Future booking submissions will refresh automatically.
