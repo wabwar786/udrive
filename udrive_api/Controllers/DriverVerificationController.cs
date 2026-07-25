@@ -44,11 +44,12 @@ public sealed class DriverVerificationController(
     }
 
     [HttpPost("documents")]
+    [Consumes("multipart/form-data")]
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> UploadDocument(
         [FromForm] string documentType,
         [FromForm] DateOnly? expiryDate,
-        [FromForm] IFormFile file,
+        IFormFile file,
         CancellationToken cancellationToken)
     {
         return ToActionResult(await driverService.UploadDriverDocumentAsync(
@@ -82,12 +83,13 @@ public sealed class DriverVerificationController(
     }
 
     [HttpPost("vehicles/{vehicleId:guid}/documents")]
+    [Consumes("multipart/form-data")]
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> UploadVehicleDocument(
         Guid vehicleId,
         [FromForm] string documentType,
         [FromForm] DateOnly? expiryDate,
-        [FromForm] IFormFile file,
+        IFormFile file,
         CancellationToken cancellationToken)
     {
         return ToActionResult(await driverService.UploadVehicleDocumentAsync(

@@ -52,6 +52,8 @@ builder.Services.AddScoped<PackageMarketplaceService>(_ =>
     new PackageMarketplaceService(connectionString, authOptions));
 builder.Services.AddScoped<TourInterestService>(_ =>
     new TourInterestService(connectionString));
+builder.Services.AddScoped<AdminOperationsService>(_ =>
+    new AdminOperationsService(connectionString));
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -119,7 +121,11 @@ builder.Services
     });
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.CustomSchemaIds(type => (type.FullName ?? type.Name).Replace("+", ".", StringComparison.Ordinal));
+    options.SupportNonNullableReferenceTypes();
+});
 builder.Services.AddHealthChecks().AddDbContextCheck<UDriveDbContext>("postgresql");
 
 var allowedOrigins = (Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ?? string.Empty)

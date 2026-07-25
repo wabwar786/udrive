@@ -1,0 +1,3 @@
+'use client';
+import {AdminFrame} from '../components/admin-frame';import {ResourceTable} from '../components/resource-table';import {money,when} from '../lib/admin-api';
+export default function Page(){return <AdminFrame title="Drivers" subtitle="Performance, online status and verified tourism operators."><ResourceTable endpoint="/api/v1/admin/operations/drivers" title="Drivers" searchKeys={["fullName", "phoneNumber"]} columns={[{key:'fullName',label:'Driver'},{key:'phoneNumber',label:'Phone'},{key:'verificationStatus',label:'Verification'},{key:'averageRating',label:'Rating'},{key:'completedTrips',label:'Trips'},{key:'safetyScore',label:'Safety score'},{key:'vehicleCount',label:'Vehicles'}]}/></AdminFrame>}

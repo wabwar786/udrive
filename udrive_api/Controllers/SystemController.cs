@@ -16,7 +16,7 @@ public sealed class SystemController(UDriveDbContext db) : ControllerBase
         var data = new
         {
             service = "udrive-api",
-            phase = 7,
+            phase = 10,
             database = databaseAvailable ? "connected" : "unavailable",
             spatialDatabase = "PostgreSQL + PostGIS",
             utcTime = DateTimeOffset.UtcNow,
