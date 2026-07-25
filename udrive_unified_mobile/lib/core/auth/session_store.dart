@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -119,6 +120,16 @@ class SessionStore {
   }
 
   Future<String?> _readToken(String key) async {
+    // On Flutter web, SharedPreferences/localStorage is the authoritative
+    // session mirror. Some browsers can keep an old encrypted secure-storage
+    // value after a service-worker/storage migration even when writes fail.
+    // Reading that stale value first causes every authenticated request to use
+    // an invalid access/refresh token while the UI still shows the fresh user.
+    if (kIsWeb) {
+      final browserValue = await _readFallbackValue(key);
+      if (browserValue != null) return browserValue;
+    }
+
     try {
       final secureValue = await _secure.read(key: key).timeout(_readTimeout);
       if (secureValue != null && secureValue.isNotEmpty) return secureValue;
@@ -126,6 +137,10 @@ class SessionStore {
       // Fall through to the browser-safe mirror.
     }
 
+    return _readFallbackValue(key);
+  }
+
+  Future<String?> _readFallbackValue(String key) async {
     try {
       final prefs = await SharedPreferences.getInstance().timeout(_readTimeout);
       final fallback = prefs.getString('$_fallbackPrefix$key');

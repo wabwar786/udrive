@@ -1,25 +1,19 @@
-# Customer Booking Session Refresh Hotfix
+# uDrive Web Session Token Priority Hotfix
 
-Overlay the `udrive_unified_mobile` folder onto the latest source and redeploy Flutter web.
+Replace:
 
-## Why this is needed
+`udrive_unified_mobile/lib/core/auth/session_store.dart`
 
-The UI can restore a cached user from SharedPreferences while browser secure storage fails to return the access/refresh tokens. Also, multiple repositories previously performed independent refresh-token rotations at the same time.
+## Why this is required
 
-## Fixes
+On Flutter web, an old value in FlutterSecureStorage can remain readable after its writes/deletes stop working. The app then shows the newly logged-in user from SharedPreferences but sends the stale secure-storage access/refresh token to the API.
 
-- Mirrors tokens to a persistent SharedPreferences recovery store.
-- Uses one app-wide refresh operation across all ApiClient instances.
-- Retries the original authenticated request after refresh.
-- Does not force refresh just because old sessions lack expiry metadata.
-- Clears the session only when the API definitively rejects the refresh token.
+This hotfix makes the browser session mirror (SharedPreferences/localStorage) authoritative on web, while native Android/iOS continues to prefer secure storage.
 
-## Deployment
+## After deployment
 
-```bash
-flutter pub get
-flutter analyze
-flutter build web --release --no-wasm-dry-run
-```
-
-After the first deployment, sign out and sign in once so the current tokens are written to both stores. Future booking submissions will refresh automatically.
+1. Deploy Flutter web.
+2. Log out once.
+3. Log in again.
+4. Submit `Find verified drivers`.
+5. Confirm the request appears in Driver mode > Live requests.
