@@ -1,14 +1,12 @@
-# Driver Marketplace Features
+# Features
 
-- Driver dashboard shows pending Customer ride requests from the live database.
-- Open requests load before optional package data for a faster Driver dashboard.
-- Driver sees Customer fare, route, date/time, passenger count, luggage and requested vehicle category.
-- Driver selects one of their verified vehicles with sufficient passenger capacity.
-- Driver submits their own fare, pickup ETA and optional message.
-- Request response window is one hour from creation.
-- Driver cards show a live countdown.
-- Requests from a previous Pakistan calendar date are automatically expired and hidden.
-- If no Driver sends an offer within one hour, the request becomes `NoDriverAccepted`.
-- If one or more offers exist when the response window closes, the request becomes `OffersReceived` and is removed from the open Driver queue.
-- Driver offers remain selectable until the scheduled pickup time unless otherwise closed.
-- Customer offer screen shows a clear no-Driver outcome instead of waiting indefinitely.
+- Marketplace offer acceptance now creates `trip_operations` and `trip_assignments` records.
+- Existing selected-offer bookings are backfilled by migration 013.
+- Driver Home shows accepted/active rides in compact cards.
+- Driver Start action changes the trip to `DriverEnRoute`.
+- Driver in-app map shows vehicle, pickup, destination, distance, and approximate ETA.
+- Driver GPS is sent every 10 seconds for active tracking states.
+- Customer receives a `DriverOnTheWay` notification.
+- Customer full-screen map refreshes every 10 seconds.
+- Arrival, trip start, and completion notifications use customer-friendly text.
+- Tracking stops when the trip screen/service is closed or the trip finishes/cancels through existing lifecycle controls.

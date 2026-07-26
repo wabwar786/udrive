@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/booking/trip_operations_repository.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../models/booking_models.dart';
+import '../../models/trip_operations_models.dart';
+import '../operations/live_trip_navigation_screen.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({required this.onNavigate, super.key});
@@ -16,18 +21,85 @@ class DriverHomeScreen extends StatefulWidget {
 }
 
 class _DriverHomeScreenState extends State<DriverHomeScreen> {
+  TripOperationsRepository? _tripRepository;
+  List<MobileTrip> _acceptedTrips = const [];
+  Timer? _acceptedRefreshTimer;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _tripRepository ??= TripOperationsRepository(AppController.of(context).apiClient);
+  }
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refresh();
+      _loadAcceptedTrips();
+    });
+    _acceptedRefreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _loadAcceptedTrips(silent: true),
+    );
+  }
+
+  @override
+  void dispose() {
+    _acceptedRefreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
     final controller = AppControllerScope.of(context);
     await controller.refreshAccount();
     if (controller.driverApproved) {
-      await controller.loadDriverMarketplace();
+      await Future.wait([
+        controller.loadDriverMarketplace(),
+        _loadAcceptedTrips(silent: true),
+      ]);
     }
+  }
+
+  Future<void> _loadAcceptedTrips({bool silent = false}) async {
+    final repository = _tripRepository;
+    if (repository == null) return;
+    try {
+      final trips = await repository.driverTrips();
+      if (!mounted) return;
+      setState(() {
+        _acceptedTrips = trips
+            .where((trip) => const {
+                  'DriverAccepted',
+                  'DriverEnRoute',
+                  'DriverArrived',
+                  'TripStarted',
+                  'Emergency',
+                }.contains(trip.tripStatus))
+            .toList()
+          ..sort((a, b) => a.pickupAt.compareTo(b.pickupAt));
+      });
+    } catch (_) {
+      if (!silent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Accepted rides could not be refreshed.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openAcceptedRide(MobileTrip trip) async {
+    final repository = _tripRepository;
+    if (repository == null) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DriverLiveNavigationScreen(
+          trip: trip,
+          repository: repository,
+        ),
+      ),
+    );
+    await _loadAcceptedTrips(silent: true);
   }
 
   @override
@@ -49,6 +121,40 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
         children: [
+          if (_acceptedTrips.isNotEmpty) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _t('Accepted rides', 'قبول شدہ رائیڈز'),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.navy,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${_acceptedTrips.length}',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 7),
+            ..._acceptedTrips.take(4).map(
+              (trip) => Padding(
+                padding: const EdgeInsets.only(bottom: 9),
+                child: _AcceptedRideCard(
+                  trip: trip,
+                  onStart: () => _openAcceptedRide(trip),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (requests.isEmpty)
             _EmptyRequests(onRefresh: _refresh)
           else ...[
@@ -680,6 +786,92 @@ class _PackageCard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           StatusPill(label: package.status, color: color),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _AcceptedRideCard extends StatelessWidget {
+  const _AcceptedRideCard({required this.trip, required this.onStart});
+  final MobileTrip trip;
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = trip.customerName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .take(2)
+        .map((part) => part[0].toUpperCase())
+        .join();
+    final started = trip.tripStatus != 'DriverAccepted';
+    return PremiumCard(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: const Color(0xFFEAF8F2),
+            child: Text(
+              initials.isEmpty ? 'C' : initials,
+              style: const TextStyle(
+                color: AppColors.primaryDark,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        trip.customerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5),
+                      ),
+                    ),
+                    Text(
+                      'PKR ${trip.fare.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        color: AppColors.primaryDark,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${trip.pickupLabel} → ${trip.destinationLabel}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${DateFormat('dd MMM, h:mm a').format(trip.pickupAt.toLocal())} · ${trip.passengerCount} passenger(s)',
+                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 9),
+          FilledButton(
+            onPressed: onStart,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+              minimumSize: const Size(0, 38),
+            ),
+            child: Text(started ? 'Open map' : 'Start'),
+          ),
         ],
       ),
     );

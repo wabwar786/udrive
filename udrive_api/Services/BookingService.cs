@@ -592,7 +592,7 @@ public sealed class BookingService(
                  version, created_at, updated_at)
             VALUES
                 (@id, @customerUserId, @driverProfileId, @vehicleId,
-                 @rideRequestId, NULL, @bookingType, 'Confirmed',
+                 @rideRequestId, NULL, @bookingType, 'DriverAccepted',
                  @seats, @totalAmount, @advanceAmount, @remainingAmount,
                  @pickupAt, @returnAt, @tripOtpHash, @bookingReference,
                  @pickupLabel, @destinationLabel, @partyType, @offerId,
@@ -621,13 +621,89 @@ public sealed class BookingService(
             await bookingCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        await using (var operationCommand = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.trip_operations
+                (id, booking_id, operational_status, trip_status, pickup_at, return_at,
+                 driver_accepted_at, last_activity_at, version, created_at, updated_at)
+            VALUES
+                (gen_random_uuid(), @bookingId, 'DriverAccepted', 'DriverAccepted', @pickupAt, @returnAt,
+                 now(), now(), 0, now(), now())
+            ON CONFLICT (booking_id) DO UPDATE
+            SET operational_status='DriverAccepted', trip_status='DriverAccepted',
+                driver_accepted_at=COALESCE(udrive.trip_operations.driver_accepted_at, now()),
+                last_activity_at=now(), updated_at=now(), version=udrive.trip_operations.version+1;
+            """,
+            connection,
+            transaction))
+        {
+            operationCommand.Parameters.AddWithValue("bookingId", bookingId);
+            operationCommand.Parameters.AddWithValue("pickupAt", pickupAt);
+            operationCommand.Parameters.Add(new NpgsqlParameter("returnAt", NpgsqlDbType.TimestampTz) { Value = (object?)returnAt ?? DBNull.Value });
+            await operationCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var assignmentCommand = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.trip_assignments
+                (id, booking_id, driver_profile_id, vehicle_id, assignment_type, status,
+                 assigned_by_user_id, assignment_notes, accepted_at, version, created_at, updated_at)
+            VALUES
+                (gen_random_uuid(), @bookingId, @driverProfileId, @vehicleId, 'Marketplace', 'Active',
+                 @customerUserId, 'Customer accepted the Driver fare offer.', now(), 0, now(), now())
+            ON CONFLICT (booking_id) WHERE status='Active' DO NOTHING;
+            """,
+            connection,
+            transaction))
+        {
+            assignmentCommand.Parameters.AddWithValue("bookingId", bookingId);
+            assignmentCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            assignmentCommand.Parameters.AddWithValue("vehicleId", vehicleId);
+            assignmentCommand.Parameters.AddWithValue("customerUserId", customerUserId);
+            await assignmentCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var tripHistoryCommand = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.trip_status_history
+                (id, booking_id, from_status, to_status, changed_by_user_id, source, reason, metadata_json, created_at)
+            VALUES
+                (gen_random_uuid(), @bookingId, 'Confirmed', 'DriverAccepted', @customerUserId,
+                 'Customer', 'Customer accepted the Driver fare offer.', '{}'::jsonb, now());
+            """,
+            connection,
+            transaction))
+        {
+            tripHistoryCommand.Parameters.AddWithValue("bookingId", bookingId);
+            tripHistoryCommand.Parameters.AddWithValue("customerUserId", customerUserId);
+            await tripHistoryCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var notificationCommand = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.notifications
+                (id, user_id, type, title, body, data_json, created_at, updated_at)
+            SELECT gen_random_uuid(), dp.user_id, 'OfferAccepted', 'Your offer was accepted',
+                   'The Customer accepted your fare offer. The ride is ready to start.',
+                   jsonb_build_object('bookingId', @bookingId), now(), now()
+            FROM udrive.driver_profiles dp
+            WHERE dp.id=@driverProfileId;
+            """,
+            connection,
+            transaction))
+        {
+            notificationCommand.Parameters.AddWithValue("bookingId", bookingId);
+            notificationCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            await notificationCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await using (var decisionCommand = new NpgsqlCommand(
             """
             INSERT INTO udrive.driver_ride_request_decisions
                 (ride_request_id, driver_profile_id, decision, reason, created_at, updated_at)
-            VALUES (@rideRequestId, @driverProfileId, 'Offered', NULL, now(), now())
+            VALUES (@rideRequestId, @driverProfileId, 'Accepted', NULL, now(), now())
             ON CONFLICT (ride_request_id, driver_profile_id) DO UPDATE
-            SET decision = 'Offered', reason = NULL, updated_at = now();
+            SET decision = 'Accepted', reason = NULL, updated_at = now();
             """,
             connection,
             transaction))
@@ -664,7 +740,7 @@ public sealed class BookingService(
             bookingId,
             bookingReference,
             null,
-            "Confirmed",
+            "DriverAccepted",
             customerUserId,
             "Customer selected a verified Driver offer.",
             $"{{\"rideRequestId\":\"{rideRequestId}\",\"offerId\":\"{offerId}\"}}",
