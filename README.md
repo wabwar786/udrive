@@ -1,7 +1,6 @@
-# API Build Hotfix
+# BookingService complete driver-scope hotfix
 
-Replace:
-
+Replace exactly:
 `udrive_api/Services/BookingService.cs`
 
-Fixes CS0103 at the selected-offer decision insert by using the in-scope `driverProfileId` variable.
+This package is based on the latest Driver Home premium BookingService and corrects the out-of-scope `driver.DriverProfileId` reference in the selected-offer transaction to the in-scope `driverProfileId` variable.
