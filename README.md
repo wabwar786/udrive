@@ -1,8 +1,7 @@
-# uDrive dual build hotfix
+# API Build Hotfix
 
-This patch restores two live vehicle-location contracts that were accidentally removed by the latest Driver Home overlay:
+Replace:
 
-- Flutter `BookingRepository.getPackageVehicleLocation(...)`
-- API `PackageVehicleLocationDto`
+`udrive_api/Services/BookingService.cs`
 
-Apply these files over the latest source, then redeploy API first and Flutter web second.
+Fixes CS0103 at the selected-offer decision insert by using the in-scope `driverProfileId` variable.

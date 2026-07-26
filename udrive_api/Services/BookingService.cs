@@ -420,7 +420,7 @@ public sealed class BookingService(
             transaction))
         {
             decisionCommand.Parameters.AddWithValue("rideRequestId", rideRequestId);
-            decisionCommand.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
+            decisionCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
             await decisionCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -633,7 +633,7 @@ public sealed class BookingService(
             transaction))
         {
             decisionCommand.Parameters.AddWithValue("rideRequestId", rideRequestId);
-            decisionCommand.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
+            decisionCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
             await decisionCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
