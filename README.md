@@ -1,6 +1,6 @@
-# BookingService complete driver-scope hotfix
+# Driver Home API Scope Hotfix
 
-Replace exactly:
-`udrive_api/Services/BookingService.cs`
+Replace `udrive_unified_mobile/lib/screens/driver/driver_home_screen.dart`.
 
-This package is based on the latest Driver Home premium BookingService and corrects the out-of-scope `driver.DriverProfileId` reference in the selected-offer transaction to the in-scope `driverProfileId` variable.
+Fixes Flutter build error caused by calling nonexistent `AppController.of(context)`.
+The project exposes the controller through `AppControllerScope.of(context)`.

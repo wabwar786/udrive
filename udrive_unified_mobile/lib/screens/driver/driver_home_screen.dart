@@ -28,7 +28,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _tripRepository ??= TripOperationsRepository(AppController.of(context).apiClient);
+    _tripRepository ??= TripOperationsRepository(AppControllerScope.of(context).apiClient);
   }
   @override
   void initState() {
