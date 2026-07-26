@@ -1,26 +1,23 @@
-# uDrive Phase 13.5 — Accepted Rides & Live Navigation
+# Driver pickup-first navigation + Customer Home live trip card
 
-## Apply
-Overlay the included `udrive_api` and `udrive_unified_mobile` folders on the latest source tree.
+Overlay the `udrive_unified_mobile` folder on the latest project.
 
-## Deployment order
-1. Deploy API first.
-2. Confirm migration `013_marketplace_bookings_trip_operations` is applied.
-3. Verify `/health/live` and `/health/ready`.
-4. Deploy Flutter web.
-5. Log out/in once as Customer and Driver.
+## What changes
 
-## Driver test
-1. Customer accepts the Driver fare offer.
-2. Login as Driver `03109000001`.
-3. Driver Home shows the ride under **Accepted rides**.
-4. Tap **Start**.
-5. Status becomes `DriverEnRoute`, in-app OpenStreetMap opens, and GPS uploads every 10 seconds.
-6. Tap **I have arrived** to notify the Customer.
+- Driver map targets pickup while status is `DriverAccepted`, `DriverEnRoute`, `DriverArrived`, or `Emergency`.
+- After the Driver confirms `Customer boarded · Start trip`, status becomes `TripStarted` and the map targets the destination.
+- Driver action sequence is now: Start/En Route -> I have arrived -> Customer boarded / Start trip -> Complete trip.
+- Customer Home shows a compact live trip card directly below the booking hero while the trip is en route, arrived, started, or emergency.
+- Tapping the Home live card opens full-screen live tracking.
+- Customer and Driver maps refresh every 10 seconds.
+- The Home live trip card disappears automatically after completion or cancellation.
 
-## Customer test
-1. Open My Trips after the Driver starts.
-2. The full-screen live tracking map opens automatically while the screen is active.
-3. Driver location refreshes every 10 seconds.
+## Deploy
 
-No Google Maps API key is required. OpenStreetMap tiles are used with attribution.
+```bash
+flutter pub get
+flutter analyze
+flutter build web --release --no-wasm-dry-run
+```
+
+No API migration is required. Existing trip status notifications are reused.

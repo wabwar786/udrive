@@ -4,11 +4,14 @@ import 'package:intl/intl.dart';
 
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
+import '../../core/booking/trip_operations_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../models/booking_models.dart';
+import '../../models/trip_operations_models.dart';
 import 'live_packages_screen.dart';
 import 'tourism_booking_screen.dart';
+import '../operations/live_trip_navigation_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({required this.onNavigate, super.key});
@@ -23,6 +26,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final TextEditingController _vehicleSearch = TextEditingController();
   String _query = '';
   _VehicleTypeFilter _vehicleType = _VehicleTypeFilter.fourWheel;
+  TripOperationsRepository? _tripRepository;
+  Timer? _tripRefreshTimer;
+  MobileTrip? _incomingTrip;
 
   @override
   void initState() {
@@ -35,7 +41,60 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _tripRepository ??= TripOperationsRepository(
+      AppControllerScope.of(context).apiClient,
+    );
+    _loadIncomingTrip(silent: true);
+    _tripRefreshTimer ??= Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _loadIncomingTrip(silent: true),
+    );
+  }
+
+  Future<void> _loadIncomingTrip({bool silent = false}) async {
+    final repository = _tripRepository;
+    if (repository == null) return;
+    try {
+      final trips = await repository.customerTrips();
+      final active = trips.where((trip) => const {
+            'DriverEnRoute',
+            'DriverArrived',
+            'TripStarted',
+            'Emergency',
+          }.contains(trip.tripStatus)).toList()
+        ..sort((a, b) => a.pickupAt.compareTo(b.pickupAt));
+      if (!mounted) return;
+      setState(() => _incomingTrip = active.isEmpty ? null : active.first);
+    } catch (_) {
+      if (!silent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Live trip could not be refreshed.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openIncomingTrip() async {
+    final trip = _incomingTrip;
+    final repository = _tripRepository;
+    if (trip == null || repository == null) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CustomerFullScreenTrackingScreen(
+          trip: trip,
+          repository: repository,
+        ),
+      ),
+    );
+    await _loadIncomingTrip(silent: true);
+  }
+
+  @override
   void dispose() {
+    _tripRefreshTimer?.cancel();
     _vehicleSearch.dispose();
     super.dispose();
   }
@@ -50,7 +109,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   Future<void> _refresh() async {
     final controller = AppControllerScope.of(context);
-    await controller.refreshHomeVehicles(force: true);
+    await Future.wait([
+      controller.refreshHomeVehicles(force: true),
+      _loadIncomingTrip(silent: true),
+    ]);
     unawaited(controller.refreshPhase9Marketplace());
   }
 
@@ -83,6 +145,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ),
           ),
+          if (_incomingTrip != null) ...[
+            const SizedBox(height: 10),
+            _IncomingDriverCard(
+              trip: _incomingTrip!,
+              onTap: _openIncomingTrip,
+            ),
+          ],
           const SizedBox(height: 14),
           _VehicleTypeSelector(
             selected: _vehicleType,
@@ -313,6 +382,83 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
 
   static const _closed = {'Completed', 'Cancelled', 'NoShow'};
+}
+
+class _IncomingDriverCard extends StatelessWidget {
+  const _IncomingDriverCard({required this.trip, required this.onTap});
+  final MobileTrip trip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = trip.tripStatus == 'DriverEnRoute'
+        ? 'Driver is on the way'
+        : trip.tripStatus == 'DriverArrived'
+            ? 'Driver has arrived'
+            : trip.tripStatus == 'TripStarted'
+                ? 'Trip in progress'
+                : 'Live trip update';
+    final subtitle = trip.tripStatus == 'TripStarted'
+        ? '${trip.pickupLabel} → ${trip.destinationLabel}'
+        : 'Track ${trip.driverName ?? 'your Driver'} coming to ${trip.pickupLabel}';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF0B6B50), Color(0xFF12A475)],
+            ),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.17),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.directions_car_filled_rounded, color: Colors.white),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14)),
+                    const SizedBox(height: 3),
+                    Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFE8FFF6), fontSize: 11)),
+                    if (trip.vehicle != null) ...[
+                      const SizedBox(height: 3),
+                      Text('${trip.vehicle} · ${trip.registrationNumber ?? ''}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(11)),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.map_rounded, size: 16, color: Color(0xFF087654)),
+                    SizedBox(width: 4),
+                    Text('Track', style: TextStyle(color: Color(0xFF087654), fontWeight: FontWeight.w900, fontSize: 11)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _BookingHero extends StatelessWidget {

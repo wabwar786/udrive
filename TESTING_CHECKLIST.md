@@ -1,15 +1,13 @@
 # Testing checklist
 
-- [ ] API builds successfully.
-- [ ] Migration 013 appears in schema migrations.
-- [ ] Customer acceptance creates booking with `DriverAccepted` status.
-- [ ] `trip_operations` row exists.
-- [ ] Active `trip_assignments` row exists.
-- [ ] Driver sees accepted ride.
-- [ ] Start changes status to `DriverEnRoute`.
-- [ ] Customer notification is created.
-- [ ] Driver map opens in app.
-- [ ] Driver location history receives points about every 10 seconds.
-- [ ] Customer map refreshes about every 10 seconds.
-- [ ] Driver can mark arrived.
-- [ ] Unauthorized users cannot track the booking.
+1. Customer accepts a Driver offer.
+2. Driver Home shows the accepted ride.
+3. Driver taps Start.
+4. Driver map shows current Driver position and Customer pickup only.
+5. Customer Home shows `Driver is on the way` card under the hero.
+6. Customer taps the card and sees the live map update every 10 seconds.
+7. Driver taps `I have arrived`.
+8. Driver taps `Customer boarded · Start trip`.
+9. Driver and Customer maps now target the destination.
+10. Driver taps `Complete trip`.
+11. Customer Home live card disappears on the next 10-second refresh.

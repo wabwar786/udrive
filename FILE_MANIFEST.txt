@@ -1,11 +1,7 @@
-APPLY_UPDATE.md
-FEATURES.md
-FILE_MANIFEST.txt
-TESTING_CHECKLIST.md
-udrive_api/Infrastructure/Persistence/Migrations/013_marketplace_bookings_trip_operations.sql
-udrive_api/Services/BookingService.cs
-udrive_api/Services/TripOperationsService.cs
-udrive_unified_mobile/lib/core/services/trip_location_service.dart
 udrive_unified_mobile/lib/screens/driver/driver_home_screen.dart
+udrive_unified_mobile/lib/screens/customer/customer_home_screen.dart
 udrive_unified_mobile/lib/screens/operations/customer_operations_screen.dart
 udrive_unified_mobile/lib/screens/operations/live_trip_navigation_screen.dart
+APPLY_UPDATE.md
+TESTING_CHECKLIST.md
+FILE_MANIFEST.txt

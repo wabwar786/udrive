@@ -35,24 +35,27 @@ class _DriverLiveNavigationScreenState
   String? _error;
   bool _starting = true;
   bool _actionBusy = false;
+  late String _currentStatus;
 
   @override
   void initState() {
     super.initState();
     _locationService = TripLocationService(widget.repository);
+    _currentStatus = widget.trip.tripStatus;
     _begin();
   }
 
   Future<void> _begin() async {
     try {
-      if (widget.trip.tripStatus == 'DriverAccepted') {
+      if (_currentStatus == 'DriverAccepted') {
         await widget.repository.driverStatus(
           widget.trip.bookingId,
           'DriverEnRoute',
           reason: 'Driver started travelling to the pickup location.',
         );
+        _currentStatus = 'DriverEnRoute';
       }
-      await _locationService.start(widget.trip.bookingId, 'DriverEnRoute');
+      await _locationService.start(widget.trip.bookingId, _currentStatus);
       await _refresh();
       _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
     } catch (error) {
@@ -78,6 +81,7 @@ class _DriverLiveNavigationScreenState
       setState(() {
         _position = position ?? _position;
         _tracking = tracking;
+        _currentStatus = tracking.tripStatus;
         _error = null;
       });
       _fitMap();
@@ -91,12 +95,16 @@ class _DriverLiveNavigationScreenState
     setState(() => _actionBusy = true);
     try {
       await widget.repository.driverStatus(widget.trip.bookingId, status);
+      _currentStatus = status;
       _locationService.updateStatus(status);
       await _refresh();
       if (status == 'DriverArrived' && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Customer notified that you have arrived.')),
         );
+      }
+      if (status == 'TripCompleted' && mounted) {
+        Navigator.pop(context);
       }
     } catch (error) {
       if (mounted) {
@@ -112,10 +120,8 @@ class _DriverLiveNavigationScreenState
     final points = <LatLng>[];
     final current = _currentPoint;
     if (current != null) points.add(current);
-    final pickup = _pickupPoint;
-    if (pickup != null) points.add(pickup);
-    final destination = _destinationPoint;
-    if (destination != null) points.add(destination);
+    final target = _targetPoint;
+    if (target != null) points.add(target);
     if (points.isEmpty) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -154,11 +160,23 @@ class _DriverLiveNavigationScreenState
     return LatLng(t!.destinationLatitude!, t.destinationLongitude!);
   }
 
+  bool get _headingToPickup =>
+      _currentStatus == 'DriverAccepted' ||
+      _currentStatus == 'DriverEnRoute' ||
+      _currentStatus == 'DriverArrived' ||
+      _currentStatus == 'Emergency';
+
+  LatLng? get _targetPoint =>
+      _headingToPickup ? _pickupPoint : _destinationPoint;
+
+  String get _targetLabel =>
+      _headingToPickup ? widget.trip.pickupLabel : widget.trip.destinationLabel;
+
   double? get _distanceKm {
     final from = _currentPoint;
-    final pickup = _pickupPoint;
-    if (from == null || pickup == null) return null;
-    return Distance().as(LengthUnit.Kilometer, from, pickup);
+    final target = _targetPoint;
+    if (from == null || target == null) return null;
+    return Distance().as(LengthUnit.Kilometer, from, target);
   }
 
   int? get _etaMinutes {
@@ -167,6 +185,7 @@ class _DriverLiveNavigationScreenState
     final speed = math.max(20.0, _tracking?.driverLocation?.speedKph ?? 28.0);
     return math.max(1, (distance / speed * 60).ceil());
   }
+
 
   @override
   void dispose() {
@@ -180,11 +199,11 @@ class _DriverLiveNavigationScreenState
     final current = _currentPoint;
     final pickup = _pickupPoint;
     final destination = _destinationPoint;
-    final center = current ?? pickup ?? destination ?? const LatLng(33.6844, 73.0479);
+    final target = _targetPoint;
+    final center = current ?? target ?? const LatLng(33.6844, 73.0479);
     final routePoints = [
       if (current != null) current,
-      if (pickup != null) pickup,
-      if (destination != null) destination,
+      if (target != null) target,
     ];
 
     return Scaffold(
@@ -220,7 +239,7 @@ class _DriverLiveNavigationScreenState
                         color: Color(0xFF0B3B2E),
                       ),
                     ),
-                  if (pickup != null)
+                  if (_headingToPickup && pickup != null)
                     Marker(
                       point: pickup,
                       width: 48,
@@ -230,7 +249,7 @@ class _DriverLiveNavigationScreenState
                         color: Color(0xFF165DFF),
                       ),
                     ),
-                  if (destination != null)
+                  if (!_headingToPickup && destination != null)
                     Marker(
                       point: destination,
                       width: 48,
@@ -319,7 +338,7 @@ class _DriverLiveNavigationScreenState
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                widget.trip.pickupLabel,
+                                _targetLabel,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: Colors.black54),
@@ -346,7 +365,7 @@ class _DriverLiveNavigationScreenState
                     ),
                     const SizedBox(height: 11),
                     Text(
-                      '${_distanceKm?.toStringAsFixed(1) ?? '—'} km to pickup · ${widget.trip.passengerCount} passenger(s)',
+                      '${_distanceKm?.toStringAsFixed(1) ?? '—'} km to ${_headingToPickup ? 'pickup' : 'destination'} · ${widget.trip.passengerCount} passenger(s)',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                     if (_error != null) ...[
@@ -369,14 +388,32 @@ class _DriverLiveNavigationScreenState
                           child: FilledButton.icon(
                             onPressed: _starting || _actionBusy
                                 ? null
-                                : () => _changeStatus('DriverArrived'),
+                                : _currentStatus == 'DriverEnRoute'
+                                    ? () => _changeStatus('DriverArrived')
+                                    : _currentStatus == 'DriverArrived'
+                                        ? () => _changeStatus('TripStarted')
+                                        : _currentStatus == 'TripStarted'
+                                            ? () => _changeStatus('TripCompleted')
+                                            : null,
                             icon: _actionBusy
                                 ? const SizedBox.square(
                                     dimension: 17,
                                     child: CircularProgressIndicator(strokeWidth: 2),
                                   )
-                                : const Icon(Icons.location_on_rounded),
-                            label: const Text('I have arrived'),
+                                : Icon(
+                                    _currentStatus == 'DriverArrived'
+                                        ? Icons.play_arrow_rounded
+                                        : _currentStatus == 'TripStarted'
+                                            ? Icons.check_circle_outline_rounded
+                                            : Icons.location_on_rounded,
+                                  ),
+                            label: Text(
+                              _currentStatus == 'DriverArrived'
+                                  ? 'Customer boarded · Start trip'
+                                  : _currentStatus == 'TripStarted'
+                                      ? 'Complete trip'
+                                      : 'I have arrived',
+                            ),
                           ),
                         ),
                       ],
@@ -414,6 +451,7 @@ class CustomerFullScreenTrackingScreen extends StatefulWidget {
 
 class _CustomerFullScreenTrackingScreenState
     extends State<CustomerFullScreenTrackingScreen> {
+  final MapController _mapController = MapController();
   Timer? _timer;
   TripTracking? _tracking;
   String? _error;
@@ -428,7 +466,19 @@ class _CustomerFullScreenTrackingScreenState
   Future<void> _load() async {
     try {
       final tracking = await widget.repository.tracking(widget.trip.bookingId);
-      if (mounted) setState(() { _tracking = tracking; _error = null; });
+      if (!mounted) return;
+      setState(() { _tracking = tracking; _error = null; });
+      final location = tracking.driverLocation;
+      if (location != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _mapController.move(
+              LatLng(location.latitude, location.longitude),
+              14,
+            );
+          }
+        });
+      }
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     }
@@ -452,9 +502,14 @@ class _CustomerFullScreenTrackingScreenState
     final destination = t?.destinationLatitude == null || t?.destinationLongitude == null
         ? null
         : LatLng(t!.destinationLatitude!, t.destinationLongitude!);
-    final center = driver ?? pickup ?? destination ?? const LatLng(33.6844, 73.0479);
-    final distanceKm = driver != null && pickup != null
-        ? Distance().as(LengthUnit.Kilometer, driver, pickup)
+    final headingToPickup = t?.tripStatus == 'DriverEnRoute' ||
+        t?.tripStatus == 'DriverArrived' ||
+        t?.tripStatus == 'DriverAccepted' ||
+        t?.tripStatus == 'Emergency';
+    final target = headingToPickup ? pickup : destination;
+    final center = driver ?? target ?? const LatLng(33.6844, 73.0479);
+    final distanceKm = driver != null && target != null
+        ? Distance().as(LengthUnit.Kilometer, driver, target)
         : null;
     final speed = math.max(20.0, t?.driverLocation?.speedKph ?? 28.0);
     final eta = distanceKm == null ? null : math.max(1, (distanceKm / speed * 60).ceil());
@@ -463,17 +518,18 @@ class _CustomerFullScreenTrackingScreenState
       body: Stack(
         children: [
           FlutterMap(
+            mapController: _mapController,
             options: MapOptions(initialCenter: center, initialZoom: 13),
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.udrive.mobile',
               ),
-              if ([driver, pickup, destination].whereType<LatLng>().length > 1)
+              if ([driver, target].whereType<LatLng>().length > 1)
                 PolylineLayer(
                   polylines: [
                     Polyline(
-                      points: [driver, pickup, destination].whereType<LatLng>().toList(),
+                      points: [driver, target].whereType<LatLng>().toList(),
                       strokeWidth: 5,
                       color: const Color(0xFF0A8A62),
                     ),
@@ -488,14 +544,14 @@ class _CustomerFullScreenTrackingScreenState
                       height: 56,
                       child: const _MapMarker(icon: Icons.directions_car, color: Color(0xFF0B3B2E)),
                     ),
-                  if (pickup != null)
+                  if (headingToPickup && pickup != null)
                     Marker(
                       point: pickup,
                       width: 48,
                       height: 48,
                       child: const _MapMarker(icon: Icons.person_pin_circle, color: Color(0xFF165DFF)),
                     ),
-                  if (destination != null)
+                  if (!headingToPickup && destination != null)
                     Marker(
                       point: destination,
                       width: 48,
@@ -528,9 +584,12 @@ class _CustomerFullScreenTrackingScreenState
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
                     elevation: 3,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Text('Driver is on the way · LIVE', style: TextStyle(fontWeight: FontWeight.w900)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      child: Text(
+                        headingToPickup ? 'Driver is on the way · LIVE' : 'Trip in progress · LIVE',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
                     ),
                   ),
                 ],
@@ -573,7 +632,7 @@ class _CustomerFullScreenTrackingScreenState
                     Text(
                       driver == null
                           ? 'Waiting for the Driver’s next GPS update.'
-                          : '${distanceKm?.toStringAsFixed(1)} km away · updated every 10 seconds',
+                          : '${distanceKm?.toStringAsFixed(1)} km to ${headingToPickup ? 'pickup' : 'destination'} · updated every 10 seconds',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                     if (t?.driverLocation != null)
