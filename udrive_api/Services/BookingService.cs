@@ -265,7 +265,6 @@ public sealed class BookingService(
             WHERE id = @rideRequestId
             FOR UPDATE;
             """;
-        DateTimeOffset pickupAt;
         await using (var lockCommand = new NpgsqlCommand(lockSql, connection, transaction))
         {
             lockCommand.Parameters.AddWithValue("rideRequestId", rideRequestId);
@@ -279,7 +278,7 @@ public sealed class BookingService(
             }
 
             var status = reader.GetString(0);
-            pickupAt = reader.GetFieldValue<DateTimeOffset>(1);
+            var pickupAt = reader.GetFieldValue<DateTimeOffset>(1);
             var expiresAt = reader.IsDBNull(2) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(2);
             if (status is not ("Open" or "ReceivingOffers") || pickupAt <= DateTimeOffset.UtcNow || expiresAt <= DateTimeOffset.UtcNow)
             {
@@ -870,9 +869,12 @@ public sealed class BookingService(
     {
         const string sql = """
             SELECT o.id, o.ride_request_id, o.driver_profile_id, o.vehicle_id,
-                   u.full_name, dp.average_rating, dp.completed_trips,
-                   dp.safety_score, concat_ws(' ', v.make, v.model, v.year::text),
-                   v.registration_number, v.category, o.amount, o.counter_amount,
+                   COALESCE(NULLIF(u.full_name, ''), 'Verified Driver'),
+                   COALESCE(dp.average_rating, 0), COALESCE(dp.completed_trips, 0),
+                   COALESCE(dp.safety_score, 80),
+                   COALESCE(NULLIF(concat_ws(' ', v.make, v.model, v.year::text), ''), 'Verified vehicle'),
+                   COALESCE(NULLIF(v.registration_number, ''), 'Registration pending'),
+                   COALESCE(NULLIF(v.category, ''), 'Vehicle'), o.amount, o.counter_amount,
                    o.estimated_arrival_minutes, o.message, o.status,
                    o.expires_at, o.created_at
             FROM udrive.driver_offers o
@@ -903,9 +905,12 @@ public sealed class BookingService(
     {
         const string sql = """
             SELECT o.id, o.ride_request_id, o.driver_profile_id, o.vehicle_id,
-                   u.full_name, dp.average_rating, dp.completed_trips,
-                   dp.safety_score, concat_ws(' ', v.make, v.model, v.year::text),
-                   v.registration_number, v.category, o.amount, o.counter_amount,
+                   COALESCE(NULLIF(u.full_name, ''), 'Verified Driver'),
+                   COALESCE(dp.average_rating, 0), COALESCE(dp.completed_trips, 0),
+                   COALESCE(dp.safety_score, 80),
+                   COALESCE(NULLIF(concat_ws(' ', v.make, v.model, v.year::text), ''), 'Verified vehicle'),
+                   COALESCE(NULLIF(v.registration_number, ''), 'Registration pending'),
+                   COALESCE(NULLIF(v.category, ''), 'Vehicle'), o.amount, o.counter_amount,
                    o.estimated_arrival_minutes, o.message, o.status,
                    o.expires_at, o.created_at
             FROM udrive.driver_offers o

@@ -525,14 +525,20 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> loadRideOffers(String rideRequestId) async {
+    _marketplaceError = null;
     try {
-      final results = await Future.wait([
-        _bookingRepository.getRideOffers(rideRequestId),
-        _bookingRepository.getMyRideRequests(),
-      ]);
-      _liveDriverOffers = results[0] as List<LiveDriverOffer>;
-      _liveRideRequests = results[1] as List<LiveRideRequest>;
+      // Offers are the primary data for this screen. Do not make the screen
+      // fail because the optional customer request-list refresh has an issue.
+      _liveDriverOffers = await _bookingRepository.getRideOffers(rideRequestId);
       notifyListeners();
+
+      try {
+        _liveRideRequests = await _bookingRepository.getMyRideRequests();
+        notifyListeners();
+      } catch (_) {
+        // Keep the request created in local state. A secondary refresh failure
+        // must not block an otherwise valid offers screen.
+      }
     } catch (error) {
       _marketplaceError = _message(error);
       notifyListeners();

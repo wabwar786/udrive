@@ -1,10 +1,8 @@
-# Test
+# Testing
 
-1. Sign out and sign in once after deploying this hotfix.
-2. Fill the complete Customer advance-booking form.
-3. Wait several minutes if desired, then press **Find verified Drivers**.
-4. Confirm POST `/api/v1/bookings/ride-requests` returns 200/201.
-5. Confirm the request appears in Customer requests.
-6. Login with a verified Driver and confirm it appears in Driver Live Requests.
-7. Let the access token expire and repeat; the request should refresh/retry automatically.
-8. Open two app tabs and trigger authenticated calls simultaneously; only one refresh should rotate the token.
+1. Customer creates a ride request.
+2. Confirm the app opens Live Driver Offers.
+3. With zero offers, confirm `Finding drivers` appears without a TraceId error.
+4. Login as verified Driver and confirm the request appears in Live Requests.
+5. Send a fare offer.
+6. Return to Customer and confirm the offer appears during polling/refresh.
