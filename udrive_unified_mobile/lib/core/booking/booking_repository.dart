@@ -26,6 +26,16 @@ class BookingRepository {
     return _list(response, LiveDriverOffer.fromJson);
   }
 
+  Future<void> rejectDriverRideRequest({
+    required String rideRequestId,
+    String? reason,
+  }) async {
+    await client.postJson(
+      '/api/v1/driver/marketplace/ride-requests/$rideRequestId/reject',
+      {'reason': reason},
+    );
+  }
+
   Future<LiveDriverOffer> submitDriverOffer({
     required String rideRequestId,
     required String vehicleId,
@@ -97,17 +107,6 @@ class BookingRepository {
     final suffix = minimumSeats == null ? '' : '?minimumSeats=$minimumSeats';
     final response = await client.getJson('/api/v1/packages$suffix', authenticated: false);
     return _list(response, LiveTourPackage.fromJson);
-  }
-
-  Future<LivePackageVehicleLocation> getPackageVehicleLocation(
-    String packageId,
-  ) async {
-    final response = await client.getJson(
-      '/api/v1/packages/$packageId/vehicle-location',
-    );
-    return LivePackageVehicleLocation.fromJson(
-      Map<String, dynamic>.from(response['data'] as Map),
-    );
   }
 
   Future<List<LiveTourPackage>> getDriverPackages() async {

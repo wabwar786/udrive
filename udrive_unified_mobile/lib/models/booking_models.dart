@@ -16,6 +16,7 @@ class LiveRideRequest {
     required this.womenOnly,
     required this.status,
     required this.offersCount,
+    required this.customerName,
     this.returnAt,
     this.selectedOfferId,
     this.expiresAt,
@@ -39,6 +40,7 @@ class LiveRideRequest {
   final bool womenOnly;
   final String status;
   final int offersCount;
+  final String customerName;
   final String? selectedOfferId;
   final DateTime? expiresAt;
   final DateTime? createdAt;
@@ -61,6 +63,9 @@ class LiveRideRequest {
         womenOnly: json['womenOnly'] == true,
         status: json['status']?.toString() ?? 'ReceivingOffers',
         offersCount: _int(json['offersCount']),
+        customerName: json['customerName']?.toString().trim().isNotEmpty == true
+            ? json['customerName'].toString().trim()
+            : 'Customer',
         selectedOfferId: json['selectedOfferId']?.toString(),
         expiresAt: _date(json['expiresAt']),
         createdAt: _date(json['createdAt']),

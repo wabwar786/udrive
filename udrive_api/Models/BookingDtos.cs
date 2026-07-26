@@ -48,6 +48,15 @@ public sealed record RideRequestDto(
     int OffersCount,
     Guid? SelectedOfferId,
     DateTimeOffset? ExpiresAt,
+    DateTimeOffset CreatedAt,
+    string CustomerName);
+
+public sealed record RejectRideRequestRequest(
+    [StringLength(500)] string? Reason);
+
+public sealed record DriverRideRequestDecisionDto(
+    Guid RideRequestId,
+    string Decision,
     DateTimeOffset CreatedAt);
 
 public sealed record SubmitDriverOfferRequest(
@@ -323,19 +332,3 @@ public sealed record PassengerManifestDto(
     string BookingReference,
     int SeatsBooked,
     IReadOnlyList<PassengerManifestItemDto> Passengers);
-
-public sealed record PackageVehicleLocationDto(
-    Guid TourPackageId,
-    Guid VehicleId,
-    string Vehicle,
-    string RegistrationNumber,
-    string StartingCity,
-    string PickupPoint,
-    string Destination,
-    double? Latitude,
-    double? Longitude,
-    DateTimeOffset? LastUpdatedAt,
-    bool IsLive,
-    bool IsStale,
-    double? DestinationLatitude,
-    double? DestinationLongitude);

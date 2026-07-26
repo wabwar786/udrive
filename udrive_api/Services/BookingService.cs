@@ -104,6 +104,7 @@ public sealed class BookingService(
 
         await transaction.CommitAsync(cancellationToken);
 
+        var customerName = await GetUserDisplayNameAsync(userId, cancellationToken);
         var dto = new RideRequestDto(
             id,
             request.PickupLabel.Trim(),
@@ -128,7 +129,8 @@ public sealed class BookingService(
             DemoMarketplaceEnabled() ? 1 : 0,
             null,
             expiresAt,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            customerName);
 
         return ServiceResult<RideRequestDto>.Created(
             dto,
@@ -153,8 +155,10 @@ public sealed class BookingService(
                     WHERE o.ride_request_id = rr.id
                       AND o.status IN ('Pending', 'Countered', 'Accepted', 'Selected')
                       AND o.expires_at > now()) AS offers_count,
-                   rr.selected_offer_id, rr.expires_at, rr.created_at
+                   rr.selected_offer_id, rr.expires_at, rr.created_at,
+                   COALESCE(NULLIF(u.full_name, ''), 'Customer') AS customer_name
             FROM udrive.ride_requests rr
+            JOIN udrive.users u ON u.id = rr.customer_user_id
             WHERE rr.customer_user_id = @userId
             ORDER BY rr.created_at DESC;
             """;
@@ -200,12 +204,21 @@ public sealed class BookingService(
                     WHERE o.ride_request_id = rr.id
                       AND o.status IN ('Pending', 'Countered', 'Accepted', 'Selected')
                       AND o.expires_at > now()) AS offers_count,
-                   rr.selected_offer_id, rr.expires_at, rr.created_at
+                   rr.selected_offer_id, rr.expires_at, rr.created_at,
+                   COALESCE(NULLIF(u.full_name, ''), 'Customer') AS customer_name
             FROM udrive.ride_requests rr
+            JOIN udrive.users u ON u.id = rr.customer_user_id
             WHERE rr.status IN ('Open', 'ReceivingOffers')
               AND rr.pickup_at > now()
               AND (rr.expires_at IS NULL OR rr.expires_at > now())
               AND rr.customer_user_id <> @driverUserId
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM udrive.driver_ride_request_decisions d
+                  WHERE d.ride_request_id = rr.id
+                    AND d.driver_profile_id = @driverProfileId
+                    AND d.decision IN ('Rejected', 'Offered')
+              )
             ORDER BY rr.pickup_at, rr.created_at DESC
             LIMIT 100;
             """;
@@ -215,6 +228,7 @@ public sealed class BookingService(
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("driverUserId", driverUserId);
+        command.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -222,6 +236,68 @@ public sealed class BookingService(
         }
 
         return ServiceResult<IReadOnlyList<RideRequestDto>>.Ok(result);
+    }
+
+    public async Task<ServiceResult<DriverRideRequestDecisionDto>> RejectRideRequestAsync(
+        Guid driverUserId,
+        Guid rideRequestId,
+        RejectRideRequestRequest request,
+        CancellationToken cancellationToken)
+    {
+        var driver = await GetApprovedDriverAsync(driverUserId, cancellationToken);
+        if (driver is null)
+        {
+            return ServiceResult<DriverRideRequestDecisionDto>.Fail(
+                StatusCodes.Status403Forbidden,
+                "driver_not_approved",
+                "Only approved Drivers can review live ride requests.");
+        }
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        const string requestSql = """
+            SELECT 1
+            FROM udrive.ride_requests
+            WHERE id = @rideRequestId
+              AND status IN ('Open', 'ReceivingOffers')
+              AND pickup_at > now()
+              AND (expires_at IS NULL OR expires_at > now());
+            """;
+        await using (var check = new NpgsqlCommand(requestSql, connection))
+        {
+            check.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            if (await check.ExecuteScalarAsync(cancellationToken) is null)
+            {
+                return ServiceResult<DriverRideRequestDecisionDto>.Fail(
+                    StatusCodes.Status409Conflict,
+                    "ride_request_closed",
+                    "This Customer request is no longer available.");
+            }
+        }
+
+        const string sql = """
+            INSERT INTO udrive.driver_ride_request_decisions
+                (ride_request_id, driver_profile_id, decision, reason, created_at, updated_at)
+            VALUES
+                (@rideRequestId, @driverProfileId, 'Rejected', @reason, now(), now())
+            ON CONFLICT (ride_request_id, driver_profile_id) DO UPDATE
+            SET decision = 'Rejected', reason = EXCLUDED.reason, updated_at = now()
+            RETURNING created_at;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("rideRequestId", rideRequestId);
+        command.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
+        command.Parameters.Add(new NpgsqlParameter("reason", NpgsqlDbType.Varchar)
+        {
+            Value = (object?)request.Reason?.Trim() ?? DBNull.Value
+        });
+        var createdAt = (DateTimeOffset)(await command.ExecuteScalarAsync(cancellationToken)
+            ?? DateTimeOffset.UtcNow);
+
+        return ServiceResult<DriverRideRequestDecisionDto>.Ok(
+            new DriverRideRequestDecisionDto(rideRequestId, "Rejected", createdAt),
+            "The request was removed from your Driver queue.");
     }
 
     public async Task<ServiceResult<DriverOfferDto>> SubmitDriverOfferAsync(
@@ -330,6 +406,22 @@ public sealed class BookingService(
             command.Parameters.AddWithValue("expiresAt", offerExpiresAt);
             offerId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
                 ?? throw new InvalidOperationException("The Driver offer could not be saved."));
+        }
+
+        await using (var decisionCommand = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.driver_ride_request_decisions
+                (ride_request_id, driver_profile_id, decision, reason, created_at, updated_at)
+            VALUES (@rideRequestId, @driverProfileId, 'Offered', NULL, now(), now())
+            ON CONFLICT (ride_request_id, driver_profile_id) DO UPDATE
+            SET decision = 'Offered', reason = NULL, updated_at = now();
+            """,
+            connection,
+            transaction))
+        {
+            decisionCommand.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            decisionCommand.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
+            await decisionCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await using (var updateRide = new NpgsqlCommand(
@@ -527,6 +619,22 @@ public sealed class BookingService(
             bookingCommand.Parameters.AddWithValue("partyType", partyType);
             bookingCommand.Parameters.AddWithValue("offerId", offerId);
             await bookingCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var decisionCommand = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.driver_ride_request_decisions
+                (ride_request_id, driver_profile_id, decision, reason, created_at, updated_at)
+            VALUES (@rideRequestId, @driverProfileId, 'Offered', NULL, now(), now())
+            ON CONFLICT (ride_request_id, driver_profile_id) DO UPDATE
+            SET decision = 'Offered', reason = NULL, updated_at = now();
+            """,
+            connection,
+            transaction))
+        {
+            decisionCommand.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            decisionCommand.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
+            await decisionCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await using (var updateRide = new NpgsqlCommand(
@@ -1067,6 +1175,17 @@ public sealed class BookingService(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private async Task<string> GetUserDisplayNameAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT COALESCE(NULLIF(full_name, ''), 'Customer') FROM udrive.users WHERE id = @id;",
+            connection);
+        command.Parameters.AddWithValue("id", userId);
+        return (await command.ExecuteScalarAsync(cancellationToken))?.ToString() ?? "Customer";
+    }
+
     private static RideRequestDto ReadRideRequest(NpgsqlDataReader reader) => new(
         reader.GetGuid(0),
         reader.GetString(1),
@@ -1091,7 +1210,8 @@ public sealed class BookingService(
         reader.GetInt32(20),
         reader.IsDBNull(21) ? null : reader.GetGuid(21),
         reader.IsDBNull(22) ? null : reader.GetFieldValue<DateTimeOffset>(22),
-        reader.GetFieldValue<DateTimeOffset>(23));
+        reader.GetFieldValue<DateTimeOffset>(23),
+        reader.IsDBNull(24) ? "Customer" : reader.GetString(24));
 
     private static DriverOfferDto ReadOffer(NpgsqlDataReader reader) => new(
         reader.GetGuid(0),

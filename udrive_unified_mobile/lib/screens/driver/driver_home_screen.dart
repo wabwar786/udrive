@@ -23,140 +23,688 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   Future<void> _refresh() async {
-    final c = AppControllerScope.of(context);
-    await c.refreshAccount();
-    if (c.driverApproved) await c.loadDriverMarketplace();
+    final controller = AppControllerScope.of(context);
+    await controller.refreshAccount();
+    if (controller.driverApproved) {
+      await controller.loadDriverMarketplace();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = AppControllerScope.of(context);
-    final verifiedVehicles = c.liveVehicles.where((v) {
-      final status = v.status.trim().toLowerCase();
+    final controller = AppControllerScope.of(context);
+    final verifiedVehicles = controller.liveVehicles.where((vehicle) {
+      final status = vehicle.status.trim().toLowerCase();
       return status == 'verified' || status == 'approved';
-    }).toList();
-    final packageBookings = c.liveDriverPackageBookings;
-    final active = packageBookings.where((b) => !_closed.contains(b.status)).toList()
+    }).toList(growable: false);
+    final activeBookings = controller.liveDriverPackageBookings
+        .where((booking) => !_closedStatuses.contains(booking.status))
+        .toList()
       ..sort((a, b) => a.pickupAt.compareTo(b.pickupAt));
-    final completed = packageBookings.where((b) => b.status == 'Completed').length;
+    final requests = controller.liveDriverRideRequests.take(5).toList();
+    final packages = controller.liveDriverPackages.take(4).toList();
 
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 6, 18, 32),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
         children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), gradient: const LinearGradient(colors: [Color(0xFF0A493A), AppColors.primary])),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                const CircleAvatar(radius: 25, backgroundColor: Colors.white, child: Icon(Icons.person_rounded, color: AppColors.primaryDark, size: 28)),
-                const SizedBox(width: 11),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(c.currentUserName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 3), Text(c.driverVerificationStatus, style: const TextStyle(color: Colors.white70, fontSize: 11))])),
-                Switch(value: c.driverOnline, onChanged: c.toggleDriverOnline, activeThumbColor: AppColors.accent),
-              ]),
-              const SizedBox(height: 14),
-              Row(children: [Icon(c.driverOnline ? Icons.wifi_tethering_rounded : Icons.wifi_off_rounded, color: Colors.white, size: 19), const SizedBox(width: 7), Expanded(child: Text(c.driverOnline ? _t('Online for new requests', 'نئی درخواستوں کے لیے آن لائن') : _t('Currently offline', 'اس وقت آف لائن'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)))]),
-            ]),
-          ),
-          const SizedBox(height: 14),
-          PremiumCard(
-            onTap: () => widget.onNavigate('requests'),
-            color: const Color(0xFFFFF6E7),
-            child: Row(
+          if (requests.isEmpty)
+            _EmptyRequests(onRefresh: _refresh)
+          else ...[
+            Row(
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(color: AppColors.warning.withValues(alpha: .14), borderRadius: BorderRadius.circular(15)),
-                  child: const Icon(Icons.people_alt_rounded, color: AppColors.warning),
-                ),
-                const SizedBox(width: 12),
                 Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(_t('Open customer requests', 'کھلی کسٹمر درخواستیں'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
-                    const SizedBox(height: 3),
-                    Text(
-                      c.liveDriverRideRequests.isEmpty
-                          ? _t('No pending customer request right now', 'اس وقت کوئی زیر التوا کسٹمر درخواست نہیں')
-                          : _t('${c.liveDriverRideRequests.length} request(s) waiting for your fare offer', '${c.liveDriverRideRequests.length} درخواستیں آپ کی کرایہ آفر کی منتظر ہیں'),
-                      style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                  child: Text(
+                    _t('Customer requests', 'کسٹمر درخواستیں'),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.navy,
                     ),
-                  ]),
+                  ),
                 ),
-                const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.muted),
+                TextButton(
+                  onPressed: () => widget.onNavigate('requests'),
+                  child: Text(_t('View all', 'سب دیکھیں')),
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 14),
-          Row(children: [
-            Expanded(child: _Metric(label: _t('Ride requests', 'رائیڈ درخواستیں'), value: '${c.liveDriverRideRequests.length}', icon: Icons.notifications_active_rounded, color: AppColors.warning)),
-            const SizedBox(width: 9),
-            Expanded(child: _Metric(label: _t('Verified vehicles', 'تصدیق شدہ گاڑیاں'), value: '${verifiedVehicles.length}', icon: Icons.directions_car_rounded, color: AppColors.primary)),
-          ]),
-          const SizedBox(height: 9),
-          Row(children: [
-            Expanded(child: _Metric(label: _t('Active bookings', 'فعال بکنگز'), value: '${active.length}', icon: Icons.route_rounded, color: AppColors.info)),
-            const SizedBox(width: 9),
-            Expanded(child: _Metric(label: _t('Completed', 'مکمل'), value: '$completed', icon: Icons.task_alt_rounded, color: AppColors.success)),
-          ]),
-          const SizedBox(height: 20),
+            const SizedBox(height: 6),
+            ...requests.map(
+              (request) => Padding(
+                padding: const EdgeInsets.only(bottom: 9),
+                child: _DashboardRequestCard(
+                  request: request,
+                  enabled: verifiedVehicles.isNotEmpty && !controller.marketplaceBusy,
+                  onAccept: () => _showOffer(request, verifiedVehicles),
+                  onReject: () => _rejectRequest(request),
+                ),
+              ),
+            ),
+          ],
+          if (activeBookings.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            SectionHeader(
+              title: _t('Latest assignment', 'تازہ ترین اسائنمنٹ'),
+              action: _t('Open', 'کھولیں'),
+              onAction: () => widget.onNavigate('activeTrip'),
+            ),
+            const SizedBox(height: 8),
+            _LatestAssignment(
+              booking: activeBookings.first,
+              onTap: () => widget.onNavigate('activeTrip'),
+            ),
+          ],
+          const SizedBox(height: 18),
           SectionHeader(title: _t('Driver tools', 'ڈرائیور ٹولز')),
-          const SizedBox(height: 10),
+          const SizedBox(height: 9),
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: 2,
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
-            childAspectRatio: 1.55,
+            childAspectRatio: 1.52,
             children: [
-              _Tool(icon: Icons.notifications_active_rounded, label: context.tr('rideRequests'), onTap: () => widget.onNavigate('requests')),
-              _Tool(icon: Icons.directions_car_filled_rounded, label: context.tr('vehicles'), onTap: () => widget.onNavigate('vehicles')),
-              _Tool(icon: Icons.luggage_rounded, label: context.tr('myPackages'), onTap: () => widget.onNavigate('driverPackages')),
-              _Tool(icon: Icons.account_balance_wallet_rounded, label: context.tr('earnings'), onTap: () => widget.onNavigate('earnings')),
+              _ToolCard(
+                icon: Icons.notifications_active_rounded,
+                title: _t('Customer requests', 'کسٹمر درخواستیں'),
+                subtitle: _t('Send your fare', 'اپنا کرایہ دیں'),
+                colors: const [Color(0xFF165DFF), Color(0xFF4A86FF)],
+                onTap: () => widget.onNavigate('requests'),
+              ),
+              _ToolCard(
+                icon: Icons.add_road_rounded,
+                title: _t('Create package', 'پیکیج بنائیں'),
+                subtitle: _t('Add a new tour', 'نیا ٹور شامل کریں'),
+                colors: const [Color(0xFF7B3FE4), Color(0xFFA76CF2)],
+                onTap: () => widget.onNavigate('createPackage'),
+              ),
+              _ToolCard(
+                icon: Icons.directions_car_filled_rounded,
+                title: context.tr('vehicles'),
+                subtitle: _t('Manage vehicles', 'گاڑیاں منظم کریں'),
+                colors: const [Color(0xFF0B8F68), Color(0xFF20B88A)],
+                onTap: () => widget.onNavigate('vehicles'),
+              ),
+              _ToolCard(
+                icon: Icons.account_balance_wallet_rounded,
+                title: context.tr('earnings'),
+                subtitle: _t('Wallet & payouts', 'والیٹ اور ادائیگیاں'),
+                colors: const [Color(0xFFE46A25), Color(0xFFF79B4D)],
+                onTap: () => widget.onNavigate('earnings'),
+              ),
             ],
           ),
-          const SizedBox(height: 20),
-          SectionHeader(title: _t('Latest assignment', 'تازہ ترین اسائنمنٹ'), action: active.isEmpty ? null : _t('Open', 'کھولیں'), onAction: active.isEmpty ? null : () => widget.onNavigate('activeTrip')),
-          const SizedBox(height: 10),
-          if (active.isEmpty)
-            _Empty(message: _t('No active Driver assignment is available from the database.', 'ڈیٹابیس میں کوئی فعال ڈرائیور اسائنمنٹ موجود نہیں۔'))
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _t('My tour packages', 'میرے ٹور پیکیجز'),
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.navy,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => widget.onNavigate('createPackage'),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: Text(_t('Add package', 'پیکیج شامل کریں')),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          if (packages.isEmpty)
+            PremiumCard(
+              onTap: () => widget.onNavigate('createPackage'),
+              child: Row(
+                children: [
+                  const Icon(Icons.luggage_rounded, color: AppColors.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _t(
+                        'No package created yet. Add your first tourism package.',
+                        'ابھی کوئی پیکیج نہیں بنایا۔ اپنا پہلا ٹورزم پیکیج شامل کریں۔',
+                      ),
+                      style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                ],
+              ),
+            )
           else
-            _Booking(booking: active.first, onTap: () => widget.onNavigate('activeTrip')),
-          const SizedBox(height: 20),
-          SectionHeader(title: _t('Vehicle readiness', 'گاڑی کی تیاری')),
-          const SizedBox(height: 10),
-          if (c.liveVehicles.isEmpty)
-            _Empty(message: _t('No vehicle is registered. Add and submit a vehicle for verification.', 'کوئی گاڑی رجسٹرڈ نہیں۔ گاڑی شامل کر کے تصدیق کے لیے جمع کریں۔'))
-          else
-            ...c.liveVehicles.take(2).map((v) => Padding(padding: const EdgeInsets.only(bottom: 9), child: PremiumCard(onTap: () => widget.onNavigate('vehicles'), child: Row(children: [const Icon(Icons.directions_car_filled_rounded, color: AppColors.primaryDark), const SizedBox(width: 11), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${v.make} ${v.model}', style: const TextStyle(fontWeight: FontWeight.w900)), Text('${v.registrationNumber} · ${v.passengerCapacity} seats', style: const TextStyle(color: AppColors.muted, fontSize: 11))])), StatusPill(label: v.status, color: {'verified', 'approved'}.contains(v.status.toLowerCase()) ? AppColors.success : AppColors.warning)])))),
-          if (c.marketplaceError != null) ...[const SizedBox(height: 8), _Error(message: c.marketplaceError!, onRetry: _refresh)],
+            ...packages.map(
+              (package) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _PackageCard(
+                  package: package,
+                  onTap: () => widget.onNavigate('driverPackages'),
+                ),
+              ),
+            ),
+          if (controller.marketplaceError != null && requests.isEmpty) ...[
+            const SizedBox(height: 10),
+            PremiumCard(
+              color: const Color(0xFFFFF3F2),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: AppColors.danger),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      controller.marketplaceError!,
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ),
+                  TextButton(onPressed: _refresh, child: const Text('Retry')),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  String _t(String en, String ur) => AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
-  static const _closed = {'Completed', 'Cancelled', 'NoShow'};
+  Future<void> _showOffer(
+    LiveRideRequest request,
+    List<dynamic> vehicles,
+  ) async {
+    if (vehicles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_t('Verify a vehicle before accepting requests.', 'درخواست قبول کرنے سے پہلے گاڑی کی تصدیق کروائیں۔'))),
+      );
+      return;
+    }
+
+    dynamic selectedVehicle = vehicles.first;
+    final amount = TextEditingController(
+      text: request.customerOffer.round().toString(),
+    );
+    final eta = TextEditingController(text: '20');
+    final message = TextEditingController();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            18,
+            4,
+            18,
+            MediaQuery.viewInsetsOf(sheetContext).bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _t('Accept & send fare', 'قبول کریں اور کرایہ بھیجیں'),
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${request.pickupLabel} → ${request.destinationLabel}',
+                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<dynamic>(
+                initialValue: selectedVehicle,
+                decoration: const InputDecoration(
+                  labelText: 'Verified vehicle',
+                  prefixIcon: Icon(Icons.directions_car_rounded),
+                ),
+                items: vehicles
+                    .where((vehicle) => vehicle.passengerCapacity >= request.seatsRequested)
+                    .map<DropdownMenuItem<dynamic>>(
+                      (vehicle) => DropdownMenuItem<dynamic>(
+                        value: vehicle,
+                        child: Text('${vehicle.make} ${vehicle.model} · ${vehicle.registrationNumber}'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => setSheetState(() => selectedVehicle = value),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: amount,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: _t('Your fare (PKR)', 'آپ کا کرایہ (PKR)'),
+                  prefixIcon: const Icon(Icons.payments_rounded),
+                  helperText: 'Customer offered PKR ${NumberFormat('#,###').format(request.customerOffer)}',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: eta,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Pickup ETA (minutes)',
+                  prefixIcon: Icon(Icons.schedule_rounded),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: message,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Optional message',
+                  prefixIcon: Icon(Icons.message_rounded),
+                ),
+              ),
+              const SizedBox(height: 15),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final parsedAmount = double.tryParse(amount.text.trim());
+                    if (selectedVehicle == null || parsedAmount == null || parsedAmount <= 0) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Select a vehicle and enter a valid fare.')),
+                      );
+                      return;
+                    }
+                    try {
+                      await AppControllerScope.of(context).submitLiveDriverOffer(
+                        rideRequestId: request.id,
+                        vehicleId: selectedVehicle.id as String,
+                        amount: parsedAmount,
+                        etaMinutes: int.tryParse(eta.text.trim()) ?? 20,
+                        message: message.text.trim(),
+                      );
+                      if (!mounted) return;
+                      Navigator.pop(sheetContext);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Fare offer sent to Customer.')),
+                      );
+                    } catch (error) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('$error')),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.check_circle_rounded),
+                  label: Text(_t('Accept & send offer', 'قبول کریں اور آفر بھیجیں')),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _rejectRequest(LiveRideRequest request) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_t('Reject request?', 'درخواست مسترد کریں؟')),
+        content: Text(_t(
+          'This request will be removed only from your queue. Other eligible Drivers can still respond.',
+          'یہ درخواست صرف آپ کی فہرست سے ہٹے گی۔ دوسرے اہل ڈرائیور جواب دے سکیں گے۔',
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+    if (result != true || !mounted) return;
+    try {
+      await AppControllerScope.of(context).rejectLiveDriverRequest(
+        rideRequestId: request.id,
+        reason: 'Driver declined from dashboard.',
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
+  }
+
+  String _t(String en, String ur) =>
+      AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
+
+  static const _closedStatuses = {'Completed', 'Cancelled', 'NoShow'};
 }
 
-class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value, required this.icon, required this.color});
-  final String label; final String value; final IconData icon; final Color color;
-  @override Widget build(BuildContext context) => PremiumCard(padding: const EdgeInsets.all(13), child: Row(children: [Container(width: 39, height: 39, decoration: BoxDecoration(color: color.withValues(alpha: .11), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 20)), const SizedBox(width: 9), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)), Text(label, maxLines: 2, style: const TextStyle(color: AppColors.muted, fontSize: 10))]))]));
+class _DashboardRequestCard extends StatelessWidget {
+  const _DashboardRequestCard({
+    required this.request,
+    required this.enabled,
+    required this.onAccept,
+    required this.onReject,
+  });
+
+  final LiveRideRequest request;
+  final bool enabled;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = _initials(request.customerName);
+    return PremiumCard(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: const Color(0xFFE8F5F0),
+            child: Text(
+              initials,
+              style: const TextStyle(
+                color: AppColors.primaryDark,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        request.customerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    Text(
+                      DateFormat('dd MMM · h:mm a').format(request.pickupAt),
+                      style: const TextStyle(color: AppColors.muted, fontSize: 9.5),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                _RouteLine(icon: Icons.trip_origin_rounded, text: request.pickupLabel, color: AppColors.primary),
+                const SizedBox(height: 3),
+                _RouteLine(icon: Icons.location_on_rounded, text: request.destinationLabel, color: AppColors.danger),
+                const SizedBox(height: 7),
+                Text(
+                  '${request.seatsRequested} passenger${request.seatsRequested == 1 ? '' : 's'} · ${request.bookingType}',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 10.5, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 9),
+          SizedBox(
+            width: 96,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  'PKR ${NumberFormat('#,###').format(request.customerOffer)}',
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: AppColors.primaryDark,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    _SmallAction(
+                      icon: Icons.close_rounded,
+                      color: AppColors.danger,
+                      onTap: enabled ? onReject : null,
+                    ),
+                    const SizedBox(width: 6),
+                    _SmallAction(
+                      icon: Icons.check_rounded,
+                      color: AppColors.success,
+                      onTap: enabled ? onAccept : null,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).take(2);
+    final value = parts.map((part) => part[0].toUpperCase()).join();
+    return value.isEmpty ? 'CU' : value;
+  }
 }
 
-class _Tool extends StatelessWidget {
-  const _Tool({required this.icon, required this.label, required this.onTap});
-  final IconData icon; final String label; final VoidCallback onTap;
-  @override Widget build(BuildContext context) => PremiumCard(onTap: onTap, padding: const EdgeInsets.all(13), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: AppColors.primaryDark)), const SizedBox(width: 10), Expanded(child: Text(label, maxLines: 2, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)))]));
+class _RouteLine extends StatelessWidget {
+  const _RouteLine({required this.icon, required this.text, required this.color});
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      );
 }
 
-class _Booking extends StatelessWidget {
-  const _Booking({required this.booking, required this.onTap}); final LiveBooking booking; final VoidCallback onTap;
-  @override Widget build(BuildContext context) => PremiumCard(onTap: onTap, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text(booking.bookingReference, style: const TextStyle(fontWeight: FontWeight.w900))), StatusPill(label: booking.status)]), const SizedBox(height: 10), Text('${booking.pickupLabel} → ${booking.destinationLabel}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)), const SizedBox(height: 6), Text(DateFormat('dd MMM yyyy · hh:mm a').format(booking.pickupAt), style: const TextStyle(color: AppColors.muted, fontSize: 11)), const Divider(height: 22), Row(children: [Text('${booking.seatsBooked} passenger(s)', style: const TextStyle(color: AppColors.muted, fontSize: 11)), const Spacer(), Text('PKR ${NumberFormat('#,##0').format(booking.totalAmount)}', style: const TextStyle(fontWeight: FontWeight.w900))]) ]));
+class _SmallAction extends StatelessWidget {
+  const _SmallAction({required this.icon, required this.color, this.onTap});
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: onTap == null ? const Color(0xFFF1F3F5) : color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            width: 35,
+            height: 32,
+            child: Icon(icon, size: 18, color: onTap == null ? AppColors.muted : color),
+          ),
+        ),
+      );
 }
 
-class _Empty extends StatelessWidget { const _Empty({required this.message}); final String message; @override Widget build(BuildContext context) => PremiumCard(child: Row(children: [const Icon(Icons.inbox_outlined, color: AppColors.muted), const SizedBox(width: 10), Expanded(child: Text(message, style: const TextStyle(color: AppColors.muted, fontSize: 12)))])); }
-class _Error extends StatelessWidget { const _Error({required this.message, required this.onRetry}); final String message; final VoidCallback onRetry; @override Widget build(BuildContext context) => PremiumCard(color: const Color(0xFFFFF3F2), child: Row(children: [const Icon(Icons.error_outline, color: AppColors.danger), const SizedBox(width: 10), Expanded(child: Text(message, style: const TextStyle(fontSize: 11))), TextButton(onPressed: onRetry, child: const Text('Retry'))])); }
+class _LatestAssignment extends StatelessWidget {
+  const _LatestAssignment({required this.booking, required this.onTap});
+  final LiveBooking booking;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => PremiumCard(
+        onTap: onTap,
+        padding: const EdgeInsets.all(13),
+        color: const Color(0xFFF3F8FF),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFFDCEAFF),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.route_rounded, color: Color(0xFF275FC6)),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${booking.pickupLabel} → ${booking.destinationLabel}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${DateFormat('dd MMM · h:mm a').format(booking.pickupAt)} · ${booking.bookingReference}',
+                    style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
+                  ),
+                ],
+              ),
+            ),
+            StatusPill(label: booking.status, color: AppColors.info),
+          ],
+        ),
+      );
+}
+
+class _ToolCard extends StatelessWidget {
+  const _ToolCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.colors,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<Color> colors;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+              boxShadow: [
+                BoxShadow(color: colors.first.withValues(alpha: .18), blurRadius: 12, offset: const Offset(0, 5)),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .18), borderRadius: BorderRadius.circular(12)),
+                  child: Icon(icon, color: Colors.white, size: 21),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12.5)),
+                      const SizedBox(height: 2),
+                      Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 9.5)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _PackageCard extends StatelessWidget {
+  const _PackageCard({required this.package, required this.onTap});
+  final LiveTourPackage package;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = package.status.trim().toLowerCase();
+    final color = status == 'active' || status == 'approved'
+        ? AppColors.success
+        : status == 'rejected'
+            ? AppColors.danger
+            : AppColors.warning;
+    return PremiumCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Container(
+            width: 45,
+            height: 45,
+            decoration: BoxDecoration(color: color.withValues(alpha: .1), borderRadius: BorderRadius.circular(13)),
+            child: Icon(Icons.landscape_rounded, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(package.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5)),
+                const SizedBox(height: 3),
+                Text('${package.startingCity} → ${package.destination}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted, fontSize: 10.5)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          StatusPill(label: package.status, color: color),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyRequests extends StatelessWidget {
+  const _EmptyRequests({required this.onRefresh});
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) => PremiumCard(
+        color: const Color(0xFFF7FAF9),
+        child: Row(
+          children: [
+            const Icon(Icons.inbox_outlined, color: AppColors.muted),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'No pending Customer request right now.',
+                style: TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+            ),
+            IconButton(onPressed: onRefresh, icon: const Icon(Icons.refresh_rounded)),
+          ],
+        ),
+      );
+}

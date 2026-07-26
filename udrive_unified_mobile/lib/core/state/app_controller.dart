@@ -589,6 +589,21 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  Future<void> rejectLiveDriverRequest({
+    required String rideRequestId,
+    String? reason,
+  }) async {
+    await _runMarketplace(() async {
+      await _bookingRepository.rejectDriverRideRequest(
+        rideRequestId: rideRequestId,
+        reason: reason,
+      );
+      _liveDriverRideRequests = _liveDriverRideRequests
+          .where((request) => request.id != rideRequestId)
+          .toList(growable: false);
+    });
+  }
+
   Future<void> refreshHomeVehicles({bool force = false}) async {
     if (_marketplaceBusy && !force) return;
 

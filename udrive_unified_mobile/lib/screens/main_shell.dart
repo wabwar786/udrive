@@ -51,6 +51,7 @@ class _MainShellState extends State<MainShell> {
         ? (controller.locale.languageCode == 'ur' ? 'ڈرائیور کی تصدیق' : 'Driver verification')
         : _titleFor(pageKey, driver);
     final customerHome = !driver && pageKey == 'home';
+    final driverHome = driver && pageKey == 'dashboard';
 
     return Scaffold(
       drawer: _PremiumDrawer(
@@ -75,7 +76,7 @@ class _MainShellState extends State<MainShell> {
       ),
       appBar: AppBar(
         titleSpacing: 4,
-        title: customerHome
+        title: (customerHome || driverHome)
             ? Text(
                 '${_greeting()}, ${_firstName(controller.currentUserName)}',
                 maxLines: 1,
@@ -93,6 +94,29 @@ class _MainShellState extends State<MainShell> {
                 ),
               ),
         actions: [
+          if (driverHome)
+            Padding(
+              padding: const EdgeInsets.only(right: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    controller.driverOnline
+                        ? Icons.wifi_tethering_rounded
+                        : Icons.wifi_off_rounded,
+                    size: 17,
+                    color: controller.driverOnline
+                        ? AppColors.success
+                        : AppColors.muted,
+                  ),
+                  Switch.adaptive(
+                    value: controller.driverOnline,
+                    onChanged: controller.toggleDriverOnline,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ],
+              ),
+            ),
           IconButton(
             tooltip: context.tr('notifications'),
             onPressed: () => Navigator.push(
@@ -106,11 +130,17 @@ class _MainShellState extends State<MainShell> {
             ),
             icon: const Icon(Icons.notifications_none_rounded),
           ),
-          if (customerHome)
+          if (customerHome || driverHome)
             Padding(
               padding: const EdgeInsets.only(right: 10),
               child: InkWell(
-                onTap: () => setState(() => _customerPage = 'profile'),
+                onTap: () => setState(() {
+                  if (driverHome) {
+                    _driverPage = 'driverProfile';
+                  } else {
+                    _customerPage = 'profile';
+                  }
+                }),
                 borderRadius: BorderRadius.circular(999),
                 child: CircleAvatar(
                   radius: 17,
