@@ -139,8 +139,6 @@ public sealed class BookingService(
         Guid userId,
         CancellationToken cancellationToken)
     {
-        await ExpireRideRequestsAsync(cancellationToken);
-
         const string sql = """
             SELECT rr.id, rr.pickup_label, rr.destination_label,
                    ST_Y(rr.pickup_location::geometry) AS pickup_latitude,
@@ -179,8 +177,6 @@ public sealed class BookingService(
         Guid driverUserId,
         CancellationToken cancellationToken)
     {
-        await ExpireRideRequestsAsync(cancellationToken);
-
         var driver = await GetApprovedDriverAsync(driverUserId, cancellationToken);
         if (driver is null)
         {
@@ -234,8 +230,6 @@ public sealed class BookingService(
         SubmitDriverOfferRequest request,
         CancellationToken cancellationToken)
     {
-        await ExpireRideRequestsAsync(cancellationToken);
-
         var driver = await GetApprovedDriverAsync(driverUserId, cancellationToken);
         if (driver is null)
         {
@@ -260,6 +254,7 @@ public sealed class BookingService(
             cancellationToken);
 
         DateTimeOffset pickupAt;
+        DateTimeOffset? requestExpiresAt;
 
         const string lockSql = """
             SELECT status, pickup_at, expires_at
@@ -281,8 +276,8 @@ public sealed class BookingService(
 
             var status = reader.GetString(0);
             pickupAt = reader.GetFieldValue<DateTimeOffset>(1);
-            var expiresAt = reader.IsDBNull(2) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(2);
-            if (status is not ("Open" or "ReceivingOffers") || pickupAt <= DateTimeOffset.UtcNow || expiresAt <= DateTimeOffset.UtcNow)
+            requestExpiresAt = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2);
+            if (status is not ("Open" or "ReceivingOffers") || pickupAt <= DateTimeOffset.UtcNow || (requestExpiresAt is not null && requestExpiresAt <= DateTimeOffset.UtcNow))
             {
                 return ServiceResult<DriverOfferDto>.Fail(
                     StatusCodes.Status409Conflict,
@@ -292,7 +287,12 @@ public sealed class BookingService(
         }
 
         var offerId = Guid.NewGuid();
-        var offerExpiresAt = pickupAt;
+        var offerExpiresAt = new[]
+        {
+            DateTimeOffset.UtcNow.AddMinutes(15),
+            pickupAt,
+            requestExpiresAt ?? pickupAt
+        }.Min();
         const string offerSql = """
             INSERT INTO udrive.driver_offers
                 (id, ride_request_id, driver_profile_id, vehicle_id, amount,
@@ -350,8 +350,6 @@ public sealed class BookingService(
         Guid rideRequestId,
         CancellationToken cancellationToken)
     {
-        await ExpireRideRequestsAsync(cancellationToken);
-
         const string ownerSql = "SELECT 1 FROM udrive.ride_requests WHERE id = @id AND customer_user_id = @userId;";
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -435,7 +433,7 @@ public sealed class BookingService(
                 "You cannot select a Driver for another Customer's request.");
         }
 
-        if (rideStatus is not ("Open" or "ReceivingOffers" or "OffersReceived"))
+        if (rideStatus is not ("Open" or "ReceivingOffers"))
         {
             return ServiceResult<BookingDto>.Fail(
                 StatusCodes.Status409Conflict,
@@ -875,14 +873,14 @@ public sealed class BookingService(
                    COALESCE(dp.average_rating, 0), COALESCE(dp.completed_trips, 0),
                    COALESCE(dp.safety_score, 80),
                    COALESCE(NULLIF(concat_ws(' ', v.make, v.model, v.year::text), ''), 'Verified vehicle'),
-                   COALESCE(NULLIF(v.registration_number, ''), 'Registration pending'),
-                   COALESCE(NULLIF(v.category, ''), 'Vehicle'), o.amount, o.counter_amount,
+                   COALESCE(v.registration_number, ''), COALESCE(v.category, 'Vehicle'),
+                   o.amount, o.counter_amount,
                    o.estimated_arrival_minutes, o.message, o.status,
                    o.expires_at, o.created_at
             FROM udrive.driver_offers o
-            JOIN udrive.driver_profiles dp ON dp.id=o.driver_profile_id
-            JOIN udrive.users u ON u.id=dp.user_id
-            JOIN udrive.vehicles v ON v.id=o.vehicle_id
+            LEFT JOIN udrive.driver_profiles dp ON dp.id=o.driver_profile_id
+            LEFT JOIN udrive.users u ON u.id=dp.user_id
+            LEFT JOIN udrive.vehicles v ON v.id=o.vehicle_id
             WHERE o.id=@offerId;
             """;
         await using var connection = new NpgsqlConnection(connectionString);
@@ -911,14 +909,14 @@ public sealed class BookingService(
                    COALESCE(dp.average_rating, 0), COALESCE(dp.completed_trips, 0),
                    COALESCE(dp.safety_score, 80),
                    COALESCE(NULLIF(concat_ws(' ', v.make, v.model, v.year::text), ''), 'Verified vehicle'),
-                   COALESCE(NULLIF(v.registration_number, ''), 'Registration pending'),
-                   COALESCE(NULLIF(v.category, ''), 'Vehicle'), o.amount, o.counter_amount,
+                   COALESCE(v.registration_number, ''), COALESCE(v.category, 'Vehicle'),
+                   o.amount, o.counter_amount,
                    o.estimated_arrival_minutes, o.message, o.status,
                    o.expires_at, o.created_at
             FROM udrive.driver_offers o
-            JOIN udrive.driver_profiles dp ON dp.id=o.driver_profile_id
-            JOIN udrive.users u ON u.id=dp.user_id
-            JOIN udrive.vehicles v ON v.id=o.vehicle_id
+            LEFT JOIN udrive.driver_profiles dp ON dp.id=o.driver_profile_id
+            LEFT JOIN udrive.users u ON u.id=dp.user_id
+            LEFT JOIN udrive.vehicles v ON v.id=o.vehicle_id
             WHERE o.ride_request_id=@rideRequestId
               AND o.status IN ('Pending','Countered','Accepted','Selected')
             ORDER BY COALESCE(o.counter_amount, o.amount),
@@ -982,55 +980,16 @@ public sealed class BookingService(
         return ServiceResult<BookingDto>.Ok(ReadBooking(reader, tripOtp));
     }
 
-    private async Task ExpireRideRequestsAsync(CancellationToken cancellationToken)
-    {
-        const string sql = """
-            UPDATE udrive.ride_requests rr
-            SET status = CASE
-                    WHEN (rr.pickup_at AT TIME ZONE 'Asia/Karachi')::date
-                         < (now() AT TIME ZONE 'Asia/Karachi')::date
-                        THEN 'Expired'
-                    WHEN rr.expires_at IS NOT NULL AND rr.expires_at <= now()
-                         AND EXISTS (
-                             SELECT 1 FROM udrive.driver_offers o
-                             WHERE o.ride_request_id = rr.id
-                         )
-                        THEN 'OffersReceived'
-                    ELSE 'NoDriverAccepted'
-                END,
-                version = version + 1,
-                updated_at = now()
-            WHERE rr.status IN ('Open', 'ReceivingOffers')
-              AND (
-                    (rr.pickup_at AT TIME ZONE 'Asia/Karachi')::date
-                        < (now() AT TIME ZONE 'Asia/Karachi')::date
-                    OR (rr.expires_at IS NOT NULL AND rr.expires_at <= now())
-                  );
-
-            UPDATE udrive.driver_offers o
-            SET status = 'Expired', version = version + 1, updated_at = now()
-            FROM udrive.ride_requests rr
-            WHERE o.ride_request_id = rr.id
-              AND o.status IN ('Pending', 'Countered', 'Accepted')
-              AND (o.expires_at <= now() OR rr.status IN ('Expired', 'NoDriverAccepted', 'Cancelled', 'Confirmed'));
-            """;
-
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
     private async Task<ApprovedDriverContext?> GetApprovedDriverAsync(
         Guid userId,
         CancellationToken cancellationToken)
     {
         const string sql = """
             SELECT dp.id,
-                   COALESCE(array_agg(v.id) FILTER (WHERE lower(v.status) IN ('verified','approved') AND COALESCE(v.is_active, true)), '{}'::uuid[])
+                   COALESCE(array_agg(v.id) FILTER (WHERE lower(v.status) IN ('verified','approved')), '{}'::uuid[])
             FROM udrive.driver_profiles dp
             LEFT JOIN udrive.vehicles v ON v.driver_profile_id=dp.id
-            WHERE dp.user_id=@userId AND lower(dp.verification_status) IN ('approved','verified') AND COALESCE(dp.is_active, true)
+            WHERE dp.user_id=@userId AND lower(dp.verification_status) IN ('approved','verified')
             GROUP BY dp.id;
             """;
         await using var connection = new NpgsqlConnection(connectionString);

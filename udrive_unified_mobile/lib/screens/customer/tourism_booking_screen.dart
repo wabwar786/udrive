@@ -26,6 +26,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
   final _pickup = TextEditingController();
   late final TextEditingController _destination;
   final _notes = TextEditingController();
+  late final TextEditingController _customerOffer;
   int _step = 0;
   late BookingType _bookingType;
   TripPartyType _partyType = TripPartyType.family;
@@ -49,6 +50,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
     super.initState();
     _bookingType = widget.initialType ?? BookingType.perSeat;
     _destination = TextEditingController(text: widget.initialDestination ?? '');
+    _customerOffer = TextEditingController(text: _estimate.toString());
     _destination.addListener(_refreshSearchResults);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -75,6 +77,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
       ..removeListener(_refreshSearchResults)
       ..dispose();
     _notes.dispose();
+    _customerOffer.dispose();
     super.dispose();
   }
 
@@ -82,6 +85,11 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
   int get _estimate => _bookingType == BookingType.perSeat
       ? (_vehicle.baseFare * .55 * _travellers).round()
       : (_vehicle.baseFare * 2.8).round();
+
+  int get _effectiveCustomerOffer {
+    final parsed = int.tryParse(_customerOffer.text.trim().replaceAll(',', ''));
+    return parsed != null && parsed > 0 ? parsed : _estimate;
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -558,11 +566,30 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(context.tr('transparentPrice'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+                const Text('Your fare offer', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+                const SizedBox(height: 6),
+                const Text(
+                  'Enter the total amount you want to offer verified Drivers. Drivers can accept it or send a counteroffer.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.4),
+                ),
                 const SizedBox(height: 12),
-                _PriceLine(label: _bookingType == BookingType.perSeat ? context.tr('seatFare') : context.tr('vehicleFare'), value: _estimate),
-                const Divider(height: 24),
-                _PriceLine(label: context.tr('estimatedTotal'), value: _estimate, bold: true),
+                TextFormField(
+                  controller: _customerOffer,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Customer offered fare (PKR)',
+                    prefixIcon: const Icon(Icons.payments_rounded),
+                    helperText: 'Suggested fare: PKR ${NumberFormat('#,###').format(_estimate)}',
+                  ),
+                  validator: (value) {
+                    final amount = int.tryParse((value ?? '').trim().replaceAll(',', ''));
+                    if (amount == null || amount <= 0) return 'Enter a valid fare offer.';
+                    return null;
+                  },
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+                _PriceLine(label: 'Your total offer', value: _effectiveCustomerOffer, bold: true),
                 const SizedBox(height: 8),
                 Text(
                   _bookingType == BookingType.perSeat
@@ -638,7 +665,8 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
           ? (_pickupLatitude!, _pickupLongitude!)
           : _coordinatesFor(_pickup.text, pickup: true);
       final destinationCoordinates = _coordinatesFor(_destination.text);
-      final total = _estimate;
+      if (!_formKey.currentState!.validate()) return;
+      final total = _effectiveCustomerOffer;
       final controller = AppControllerScope.of(context);
       final request = await controller.createLiveRideRequest({
         'pickupLabel': _pickup.text.trim(),
@@ -703,12 +731,10 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
     } on ApiException catch (error) {
       if (mounted) {
         final message = error.statusCode == 401
-            ? 'Your login could not be refreshed. Please sign in once and submit the saved form again.'
-            : error.statusCode == 403
-                ? 'This account is not allowed to create a customer ride request.'
-                : error.statusCode != null && error.statusCode! >= 500
-                    ? 'Booking service is temporarily unavailable. Your form is still here; please retry in a moment.'
-                    : error.message;
+            ? 'Your session has expired. Please log in again.'
+            : error.statusCode != null && error.statusCode! >= 500
+                ? 'Booking service is temporarily unavailable. Please retry in a moment.'
+                : error.message;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );

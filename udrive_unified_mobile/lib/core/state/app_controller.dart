@@ -525,20 +525,9 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> loadRideOffers(String rideRequestId) async {
-    _marketplaceError = null;
     try {
-      // Offers are the primary data for this screen. Do not make the screen
-      // fail because the optional customer request-list refresh has an issue.
       _liveDriverOffers = await _bookingRepository.getRideOffers(rideRequestId);
       notifyListeners();
-
-      try {
-        _liveRideRequests = await _bookingRepository.getMyRideRequests();
-        notifyListeners();
-      } catch (_) {
-        // Keep the request created in local state. A secondary refresh failure
-        // must not block an otherwise valid offers screen.
-      }
     } catch (error) {
       _marketplaceError = _message(error);
       notifyListeners();
@@ -565,20 +554,19 @@ class AppController extends ChangeNotifier {
   Future<void> loadDriverMarketplace({bool notify = true}) async {
     _marketplaceError = null;
     try {
-      // Open customer requests are the Driver dashboard's primary data. Load
-      // them first so optional package endpoints cannot delay or hide them.
       _liveDriverRideRequests = await _bookingRepository.getDriverRideRequests();
-      if (notify) notifyListeners();
-
-      try { _liveDriverPackages = await _bookingRepository.getDriverPackages(); } catch (_) {}
-      try { _liveDriverPackageOffers = await _bookingRepository.getDriverPackageOffers(); } catch (_) {}
-      try { _liveDriverPackageBookings = await _bookingRepository.getDriverPackageBookings(); } catch (_) {}
-      try { _liveDriverPackageWaitlist = await _bookingRepository.getDriverPackageWaitlist(); } catch (_) {}
-      if (notify) notifyListeners();
     } catch (error) {
       _marketplaceError = _message(error);
       if (notify) notifyListeners();
+      return;
     }
+    if (notify) notifyListeners();
+
+    try { _liveDriverPackages = await _bookingRepository.getDriverPackages(); } catch (_) {}
+    try { _liveDriverPackageOffers = await _bookingRepository.getDriverPackageOffers(); } catch (_) {}
+    try { _liveDriverPackageBookings = await _bookingRepository.getDriverPackageBookings(); } catch (_) {}
+    try { _liveDriverPackageWaitlist = await _bookingRepository.getDriverPackageWaitlist(); } catch (_) {}
+    if (notify) notifyListeners();
   }
 
   Future<LiveDriverOffer> submitLiveDriverOffer({
