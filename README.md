@@ -1,7 +1,8 @@
-# LivePackageVehicleLocation model hotfix
+# uDrive dual build hotfix
 
-Replace:
+This patch restores two live vehicle-location contracts that were accidentally removed by the latest Driver Home overlay:
 
-`udrive_unified_mobile/lib/models/booking_models.dart`
+- Flutter `BookingRepository.getPackageVehicleLocation(...)`
+- API `PackageVehicleLocationDto`
 
-This restores the `LivePackageVehicleLocation` model accidentally removed by the Driver marketplace patch while preserving the new request-expiry fields.
+Apply these files over the latest source, then redeploy API first and Flutter web second.
