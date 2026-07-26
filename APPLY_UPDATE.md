@@ -1,11 +1,10 @@
-# Customer Offers Screen TraceId Hotfix
+# Driver Marketplace merged hotfix
 
-Overlay the included files on the latest codebase.
+Replace these files in the latest project:
 
-## Deployment order
-1. Deploy API.
-2. Confirm `/health/live` and `/health/ready`.
-3. Deploy Flutter web.
-4. Log out/in once, create a new ride request, and open the offers screen.
+- `udrive_api/Services/BookingService.cs`
+- `udrive_unified_mobile/lib/screens/driver/live_driver_requests_screen.dart`
 
-No database migration is required.
+Deploy API first, then Flutter web.
+
+This package preserves the customer-offers TraceId safety changes and restores the prior `pickupAt` compile fix. It also accepts both `Approved` and `Verified` driver/vehicle verification values so seeded and legacy verified fleet records appear in Driver mode.

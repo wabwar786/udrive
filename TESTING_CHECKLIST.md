@@ -1,8 +1,11 @@
-# Testing
+# Testing checklist
 
-1. Customer creates a ride request.
-2. Confirm the app opens Live Driver Offers.
-3. With zero offers, confirm `Finding drivers` appears without a TraceId error.
-4. Login as verified Driver and confirm the request appears in Live Requests.
-5. Send a fare offer.
-6. Return to Customer and confirm the offer appears during polling/refresh.
+1. API `dotnet publish` succeeds without CS0103.
+2. Customer submits a new request.
+3. Request is stored in `udrive.ride_requests` with `ReceivingOffers`.
+4. Login as demo Driver `03109000001`.
+5. Open Driver mode > Live Requests.
+6. Customer request appears.
+7. Verified/Approved demo vehicle is selectable.
+8. Driver sends fare offer.
+9. Customer offers screen shows the Driver offer.

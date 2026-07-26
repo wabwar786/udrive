@@ -259,6 +259,8 @@ public sealed class BookingService(
             IsolationLevel.ReadCommitted,
             cancellationToken);
 
+        DateTimeOffset pickupAt;
+
         const string lockSql = """
             SELECT status, pickup_at, expires_at
             FROM udrive.ride_requests
@@ -278,7 +280,7 @@ public sealed class BookingService(
             }
 
             var status = reader.GetString(0);
-            var pickupAt = reader.GetFieldValue<DateTimeOffset>(1);
+            pickupAt = reader.GetFieldValue<DateTimeOffset>(1);
             var expiresAt = reader.IsDBNull(2) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(2);
             if (status is not ("Open" or "ReceivingOffers") || pickupAt <= DateTimeOffset.UtcNow || expiresAt <= DateTimeOffset.UtcNow)
             {
@@ -1025,10 +1027,10 @@ public sealed class BookingService(
     {
         const string sql = """
             SELECT dp.id,
-                   COALESCE(array_agg(v.id) FILTER (WHERE v.status='Verified'), '{}'::uuid[])
+                   COALESCE(array_agg(v.id) FILTER (WHERE lower(v.status) IN ('verified','approved') AND COALESCE(v.is_active, true)), '{}'::uuid[])
             FROM udrive.driver_profiles dp
             LEFT JOIN udrive.vehicles v ON v.driver_profile_id=dp.id
-            WHERE dp.user_id=@userId AND dp.verification_status='Approved'
+            WHERE dp.user_id=@userId AND lower(dp.verification_status) IN ('approved','verified') AND COALESCE(dp.is_active, true)
             GROUP BY dp.id;
             """;
         await using var connection = new NpgsqlConnection(connectionString);

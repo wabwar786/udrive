@@ -53,7 +53,10 @@ class _LiveDriverRequestsScreenState extends State<LiveDriverRequestsScreen> {
         .toList()
       ..sort((a, b) => a.pickupAt.compareTo(b.pickupAt));
     final verifiedVehicles = controller.liveVehicles
-        .where((v) => v.status == 'Verified')
+        .where((v) {
+          final status = v.status.trim().toLowerCase();
+          return status == 'verified' || status == 'approved';
+        })
         .toList();
 
     return RefreshIndicator(
