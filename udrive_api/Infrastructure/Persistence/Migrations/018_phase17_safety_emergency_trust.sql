@@ -4,6 +4,18 @@ CREATE TABLE IF NOT EXISTS udrive.trusted_contacts (
  is_primary boolean NOT NULL DEFAULT false, is_active boolean NOT NULL DEFAULT true,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- The trusted_contacts table already exists in early installations.
+-- CREATE TABLE IF NOT EXISTS does not add Phase 17 columns, so upgrade it explicitly.
+ALTER TABLE udrive.trusted_contacts
+    ADD COLUMN IF NOT EXISTS is_primary boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+
+ALTER TABLE udrive.trusted_contacts
+    ALTER COLUMN id SET DEFAULT gen_random_uuid(),
+    ALTER COLUMN created_at SET DEFAULT now(),
+    ALTER COLUMN updated_at SET DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS ix_trusted_contacts_user ON udrive.trusted_contacts(user_id,is_active);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_trusted_contacts_primary ON udrive.trusted_contacts(user_id) WHERE is_primary AND is_active;
 
