@@ -18,6 +18,7 @@ import {
   LogOut,
   MapPinned,
   Megaphone,
+  MessageSquareWarning,
   Menu,
   PackageCheck,
   Route,
@@ -66,6 +67,7 @@ const groups = [
     label: 'CONTROL CENTRE',
     items: [
       ['/safety', 'Safety incidents', ShieldAlert],
+      ['/disputes', 'Complaints & disputes', MessageSquareWarning],
       ['/finance', 'Finance & settlements', CircleDollarSign],
       ['/payments', 'Legacy payments', CircleDollarSign],
       ['/support', 'Support tickets', Headphones],

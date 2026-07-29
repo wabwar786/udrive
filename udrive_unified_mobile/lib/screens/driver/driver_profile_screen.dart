@@ -4,6 +4,7 @@ import '../../core/localization/app_language.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/mode_switch_card.dart';
+import '../feedback/feedback_center_screen.dart';
 
 class DriverProfileScreen extends StatelessWidget {
   const DriverProfileScreen({super.key});
@@ -62,6 +63,7 @@ class DriverProfileScreen extends StatelessWidget {
           _item('Vehicle', Icons.directions_car_outlined, vehicle == null ? 'No vehicle registered' : '${vehicle.make} ${vehicle.model}'),
           _item('Capacity', Icons.event_seat_outlined, vehicle == null ? '—' : '${vehicle.passengerCapacity} passengers'),
           _item('Phone', Icons.phone_outlined, controller.currentUserPhone.isEmpty ? '—' : controller.currentUserPhone),
+          _item('Ratings & complaints', Icons.star_outline_rounded, 'Rate customers or open a case', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FeedbackCenterScreen()))),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -92,13 +94,14 @@ class DriverProfileScreen extends StatelessWidget {
     return parts.isEmpty ? 'D' : parts.map((part) => part[0].toUpperCase()).join();
   }
 
-  static Widget _item(String title, IconData icon, String subtitle) => Padding(
+  static Widget _item(String title, IconData icon, String subtitle, {VoidCallback? onTap}) => Padding(
         padding: const EdgeInsets.only(bottom: 9),
         child: Card(
           child: ListTile(
             leading: Icon(icon, color: AppColors.primary),
             title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
             subtitle: Text(subtitle),
+            onTap: onTap,
           ),
         ),
       );

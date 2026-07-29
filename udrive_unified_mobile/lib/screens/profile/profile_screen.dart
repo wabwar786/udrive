@@ -4,6 +4,7 @@ import '../../core/localization/app_language.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/mode_switch_card.dart';
+import '../feedback/feedback_center_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -52,6 +53,7 @@ class ProfileScreen extends StatelessWidget {
           _tile(Icons.account_balance_wallet_outlined, S.of(context, 'wallet'), 'Open wallet'),
           _tile(Icons.bookmark_border_rounded, S.of(context, 'savedPlaces'), 'View saved places'),
           _tile(Icons.health_and_safety_outlined, S.of(context, 'safety'), 'Open safety centre'),
+          _tile(Icons.star_outline_rounded, 'Ratings & complaints', 'Rate trips or open a support case', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FeedbackCenterScreen()))),
           _tile(Icons.support_agent_rounded, S.of(context, 'support'), 'Open help centre'),
           Card(
             child: Padding(
@@ -83,12 +85,13 @@ class ProfileScreen extends StatelessWidget {
     return parts.isEmpty ? 'U' : parts.map((part) => part[0].toUpperCase()).join();
   }
 
-  static Widget _tile(IconData icon, String title, String subtitle) => Card(
+  static Widget _tile(IconData icon, String title, String subtitle, {VoidCallback? onTap}) => Card(
         child: ListTile(
           leading: Icon(icon, color: AppColors.primary),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
           subtitle: Text(subtitle),
           trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: onTap,
         ),
       );
 }
