@@ -5,6 +5,7 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../models/booking_models.dart';
+import 'booking_payment_screen.dart';
 
 class LiveBookingsScreen extends StatefulWidget {
   const LiveBookingsScreen({super.key});
@@ -209,6 +210,25 @@ class _BookingCard extends StatelessWidget {
                 ),
             ],
           ),
+          if (booking.remainingAmount > 0) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BookingPaymentScreen(
+                      bookingId: booking.id,
+                      bookingReference: booking.bookingReference,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.payments_rounded),
+                label: const Text('Pay balance'),
+              ),
+            ),
+          ],
           if (canChange) ...[
             const SizedBox(height: 14),
             Row(

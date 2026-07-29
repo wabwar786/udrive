@@ -61,6 +61,7 @@ builder.Services.AddScoped<AdminUserManagementService>(_ =>
 builder.Services.AddScoped<TripOperationsService>(_ => new TripOperationsService(connectionString));
 builder.Services.AddScoped<TrackingService>(_ => new TrackingService(connectionString));
 builder.Services.AddScoped<FinanceService>(_ => new FinanceService(connectionString));
+builder.Services.AddScoped<PaymentService>(_ => new PaymentService(connectionString));
 builder.Services.AddScoped<FeedbackService>(sp => new FeedbackService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<CommunicationService>(_ => new CommunicationService(connectionString));
 builder.Services.AddScoped<VerificationFileLookupService>(serviceProvider =>
