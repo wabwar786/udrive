@@ -956,6 +956,9 @@ class _SearchVehicleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final image = package.coverImageUrl?.trim();
+    final seats = package.bookableSeats;
+    final seatColor = seats <= 2 ? const Color(0xFFFFE9C7) : const Color(0xFFD9F8E9);
+    final seatText = seats <= 2 ? const Color(0xFF9A5A00) : const Color(0xFF087A4B);
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -963,73 +966,59 @@ class _SearchVehicleCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(17),
         border: Border.all(color: AppColors.border),
       ),
-      child: Row(
+      child: Column(
         children: [
           Container(
-            width: 58,
-            height: 58,
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
+              color: const Color(0xFFEAF7F2),
+              borderRadius: BorderRadius.circular(11),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: image != null && image.isNotEmpty
-                ? Image.network(
-                    image,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.directions_bus_rounded,
-                      color: AppColors.primaryDark,
-                    ),
-                  )
-                : const Icon(
-                    Icons.directions_bus_rounded,
-                    color: AppColors.primaryDark,
-                  ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  package.vehicle.isEmpty ? package.title : package.vehicle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${package.startingCity} → ${package.destination}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${DateFormat('hh:mm a').format(package.departureAt)} · ${package.bookableSeats} seats free',
-                  style: const TextStyle(
-                    color: AppColors.primaryDark,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 10.5,
-                  ),
-                ),
+                const Icon(Icons.trip_origin_rounded, size: 15, color: AppColors.primary),
+                const SizedBox(width: 5),
+                Expanded(child: Text(package.startingCity, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5))),
+                const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.primaryDark)),
+                Expanded(child: Text(package.destination, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900, fontSize: 12.5))),
+                const SizedBox(width: 4),
+                const Icon(Icons.location_on_rounded, size: 15, color: AppColors.primary),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          const SizedBox(height: 8),
+          Row(
             children: [
-              Text(
-                'PKR ${NumberFormat('#,###').format(package.pricePerSeat)}',
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+              Container(
+                width: 44,
+                height: 44,
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
+                clipBehavior: Clip.antiAlias,
+                child: image != null && image.isNotEmpty
+                    ? Image.network(image, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark))
+                    : const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark),
               ),
-              const Text('per seat', style: TextStyle(color: AppColors.muted, fontSize: 9)),
-              const SizedBox(height: 8),
-              const Icon(Icons.lock_outline_rounded, color: AppColors.muted, size: 18),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(package.vehicle.isEmpty ? package.title : package.vehicle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
+                  const SizedBox(height: 2),
+                  Text(package.registrationNumber, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted, fontSize: 9.5)),
+                  const SizedBox(height: 4),
+                  Text(DateFormat('dd MMM · hh:mm a').format(package.departureAt), style: const TextStyle(color: AppColors.muted, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text('PKR ${NumberFormat('#,###').format(package.pricePerSeat)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.primaryDark)),
+                const Text('per seat', style: TextStyle(color: AppColors.muted, fontSize: 9)),
+                const SizedBox(height: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: seatColor, borderRadius: BorderRadius.circular(999)),
+                  child: Text('$seats seats free', style: TextStyle(color: seatText, fontWeight: FontWeight.w900, fontSize: 9.5)),
+                ),
+              ]),
             ],
           ),
         ],

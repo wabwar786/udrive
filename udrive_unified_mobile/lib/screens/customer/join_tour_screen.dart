@@ -116,10 +116,23 @@ class SharedTourCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(tour.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: AppColors.navy)),
-                  const SizedBox(height: 8),
-                  _TourInfo(icon: Icons.trip_origin_rounded, text: tour.pickup),
-                  _TourInfo(icon: Icons.location_on_rounded, text: tour.destination),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+                    decoration: BoxDecoration(color: const Color(0xFFEAF7F2), borderRadius: BorderRadius.circular(12)),
+                    child: Row(children: [
+                      const Icon(Icons.trip_origin_rounded, size: 16, color: AppColors.primary),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(tour.pickup, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13))),
+                      const Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Icon(Icons.arrow_forward_rounded, size: 17, color: AppColors.primaryDark)),
+                      Expanded(child: Text(tour.destination, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900, fontSize: 13.5))),
+                      const SizedBox(width: 5),
+                      const Icon(Icons.location_on_rounded, size: 16, color: AppColors.primary),
+                    ]),
+                  ),
+                  const SizedBox(height: 9),
+                  Text(tour.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                  const SizedBox(height: 6),
                   _TourInfo(icon: Icons.schedule_rounded, text: '${tour.departureDate} · ${tour.departureTime}'),
                   const Divider(height: 24),
                   Row(
@@ -127,7 +140,15 @@ class SharedTourCard extends StatelessWidget {
                       CircleAvatar(radius: 21, backgroundColor: AppColors.primary.withValues(alpha: .12), child: const Icon(Icons.person_rounded, color: AppColors.primaryDark)),
                       const SizedBox(width: 10),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Flexible(child: Text(tour.driver, style: const TextStyle(fontWeight: FontWeight.w900))), if (tour.verifiedDriver) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.verified_rounded, size: 16, color: AppColors.info))]), Text('${tour.vehicle} · ${tour.rating} ★', style: const TextStyle(color: AppColors.muted, fontSize: 11))])),
-                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text('${tour.availableSeats} ${context.tr('seatsLeft')}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark)), Text('${tour.totalSeats} total', style: const TextStyle(color: AppColors.muted, fontSize: 10))]),
+                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                          decoration: BoxDecoration(color: tour.availableSeats <= 2 ? const Color(0xFFFFE9C7) : const Color(0xFFD9F8E9), borderRadius: BorderRadius.circular(999)),
+                          child: Text('${tour.availableSeats} ${context.tr('seatsLeft')}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: tour.availableSeats <= 2 ? const Color(0xFF9A5A00) : const Color(0xFF087A4B))),
+                        ),
+                        const SizedBox(height: 3),
+                        Text('${tour.totalSeats} total', style: const TextStyle(color: AppColors.muted, fontSize: 9.5)),
+                      ]),
                     ],
                   ),
                   const SizedBox(height: 15),

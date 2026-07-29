@@ -903,6 +903,16 @@ class _ScheduledVehicleCard extends StatelessWidget {
     final seats = package.bookableSeats;
     final money = NumberFormat('#,###').format(package.pricePerSeat);
     final image = package.coverImageUrl?.trim();
+    final seatBackground = seats <= 0
+        ? const Color(0xFFFFE6E6)
+        : seats <= 2
+            ? const Color(0xFFFFE9C7)
+            : const Color(0xFFD9F8E9);
+    final seatForeground = seats <= 0
+        ? AppColors.danger
+        : seats <= 2
+            ? const Color(0xFF9A5A00)
+            : const Color(0xFF087A4B);
 
     return PremiumCard(
       onTap: seats > 0 ? onTap : null,
@@ -910,29 +920,69 @@ class _ScheduledVehicleCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF7F2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFCDEADF)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.trip_origin_rounded, size: 16, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      package.startingCity,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 7),
+                    child: Icon(Icons.arrow_forward_rounded, size: 17, color: AppColors.primaryDark),
+                  ),
+                  Expanded(
+                    child: Text(
+                      package.destination,
+                      textAlign: TextAlign.end,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.primaryDark,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  const Icon(Icons.location_on_rounded, size: 16, color: AppColors.primary),
+                ],
+              ),
+            ),
+            const SizedBox(height: 9),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Container(
-                  width: 58,
-                  height: 58,
+                  width: 46,
+                  height: 46,
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(13),
+                    borderRadius: BorderRadius.circular(11),
                     border: Border.all(color: AppColors.border),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: image != null && image.isNotEmpty
-                        ? Image.network(
-                            image,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => _vehicleFallback(),
-                          )
-                        : _vehicleFallback(),
+                      ? Image.network(image, fit: BoxFit.contain, errorBuilder: (_, __, ___) => _vehicleFallback())
+                      : _vehicleFallback(),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 9),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -941,38 +991,28 @@ class _ScheduledVehicleCard extends StatelessWidget {
                         package.vehicle.isEmpty ? package.title : package.vehicle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 14.5,
-                        ),
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2),
                       Text(
                         package.registrationNumber.isEmpty
                             ? package.title
                             : '${package.registrationNumber} · ${package.title}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 10,
-                        ),
+                        style: const TextStyle(color: AppColors.muted, fontSize: 9.5),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.schedule_rounded, size: 14, color: AppColors.muted),
-                          const SizedBox(width: 4),
+                          const Icon(Icons.schedule_rounded, size: 12, color: AppColors.muted),
+                          const SizedBox(width: 3),
                           Expanded(
                             child: Text(
                               DateFormat('dd MMM · hh:mm a').format(package.departureAt),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.muted,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                              ),
+                              style: const TextStyle(color: AppColors.muted, fontSize: 9.5, fontWeight: FontWeight.w700),
                             ),
                           ),
                         ],
@@ -984,82 +1024,24 @@ class _ScheduledVehicleCard extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text(
-                      'Fare per seat',
-                      style: TextStyle(color: AppColors.muted, fontSize: 9.5),
-                    ),
-                    Text(
-                      'PKR $money',
-                      maxLines: 1,
-                      softWrap: false,
-                      style: const TextStyle(
-                        color: AppColors.primaryDark,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14,
-                      ),
-                    ),
+                    const Text('Fare per seat', style: TextStyle(color: AppColors.muted, fontSize: 9)),
+                    Text('PKR $money', style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900, fontSize: 13.5)),
                     const SizedBox(height: 5),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                       decoration: BoxDecoration(
-                        color: seats > 0
-                            ? const Color(0xFFE2F7EF)
-                            : const Color(0xFFFFE8E8),
+                        color: seatBackground,
                         borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: seatForeground.withValues(alpha: .22)),
                       ),
                       child: Text(
                         seats > 0 ? '$seats seats free' : 'Full',
-                        style: TextStyle(
-                          color: seats > 0 ? AppColors.primaryDark : AppColors.danger,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 9.5,
-                        ),
+                        style: TextStyle(color: seatForeground, fontWeight: FontWeight.w900, fontSize: 10),
                       ),
                     ),
                   ],
                 ),
               ],
-            ),
-            const SizedBox(height: 9),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF2F8F6),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.trip_origin_rounded, size: 14, color: AppColors.primary),
-                  const SizedBox(width: 5),
-                  Expanded(
-                    child: Text(
-                      package.startingCity,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6),
-                    child: Icon(Icons.arrow_forward_rounded, size: 15, color: AppColors.muted),
-                  ),
-                  Expanded(
-                    child: Text(
-                      package.destination,
-                      textAlign: TextAlign.end,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.primaryDark,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  const Icon(Icons.location_on_rounded, size: 14, color: AppColors.primary),
-                ],
-              ),
             ),
           ],
         ),
@@ -1069,11 +1051,7 @@ class _ScheduledVehicleCard extends StatelessWidget {
 
   static Widget _vehicleFallback() => const DecoratedBox(
         decoration: BoxDecoration(color: Colors.white),
-        child: Icon(
-          Icons.directions_car_filled_rounded,
-          color: AppColors.primaryDark,
-          size: 28,
-        ),
+        child: Icon(Icons.directions_car_filled_rounded, color: AppColors.primaryDark, size: 24),
       );
 }
 

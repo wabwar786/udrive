@@ -138,7 +138,25 @@ class _PackageCard extends StatelessWidget {
                 else
                   const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0E6C52), Color(0xFF17B978)]))),
                 const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black54]))),
-                Positioned(right: 12, top: 12, child: StatusPill(label: '${package.bookableSeats} seats left', color: Colors.white)),
+                Positioned(
+                  right: 12,
+                  top: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: package.bookableSeats <= 2 ? const Color(0xFFFFE9C7) : const Color(0xFFD9F8E9),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '${package.bookableSeats} seats free',
+                      style: TextStyle(
+                        color: package.bookableSeats <= 2 ? const Color(0xFF9A5A00) : const Color(0xFF087A4B),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ),
               ]),
             ),
             Padding(
@@ -146,9 +164,29 @@ class _PackageCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(package.title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-                  const SizedBox(height: 5),
-                  Text('${package.startingCity} → ${package.destination}', style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700)),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+                    decoration: BoxDecoration(color: const Color(0xFFEAF7F2), borderRadius: BorderRadius.circular(12)),
+                    child: Row(children: [
+                      const Icon(Icons.trip_origin_rounded, size: 16, color: AppColors.primary),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(package.startingCity, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13))),
+                      const Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Icon(Icons.arrow_forward_rounded, size: 17, color: AppColors.primaryDark)),
+                      Expanded(child: Text(package.destination, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900, fontSize: 13.5))),
+                      const SizedBox(width: 5),
+                      const Icon(Icons.location_on_rounded, size: 16, color: AppColors.primary),
+                    ]),
+                  ),
+                  const SizedBox(height: 9),
+                  Text(package.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                  if (package.vehicle.isNotEmpty || package.registrationNumber.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      [package.vehicle, package.registrationNumber].where((value) => value.trim().isNotEmpty).join(' · '),
+                      style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 10,
