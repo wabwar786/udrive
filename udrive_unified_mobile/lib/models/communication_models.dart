@@ -1,0 +1,7 @@
+class UserNotification {
+  const UserNotification({required this.id,required this.type,required this.title,required this.body,required this.isRead,required this.createdAt,this.actionPath});
+  final String id,type,title,body;final bool isRead;final DateTime createdAt;final String? actionPath;
+  factory UserNotification.fromJson(Map<String,dynamic> j)=>UserNotification(id:'${j['id']}',type:'${j['type']}',title:'${j['title']}',body:'${j['body']}',isRead:j['isRead']==true,createdAt:DateTime.tryParse('${j['createdAt']}')??DateTime.now(),actionPath:j['actionPath']?.toString());
+}
+class NotificationPage {const NotificationPage(this.items,this.unreadCount);final List<UserNotification> items;final int unreadCount;factory NotificationPage.fromJson(Map<String,dynamic> j)=>NotificationPage((j['items'] as List? ?? const []).map((e)=>UserNotification.fromJson(Map<String,dynamic>.from(e as Map))).toList(),(j['unreadCount'] as num?)?.toInt()??0);}
+class BookingMessage {const BookingMessage({required this.id,required this.senderName,required this.body,required this.isMine,required this.isRead,required this.sentAt});final String id,senderName,body;final bool isMine,isRead;final DateTime sentAt;factory BookingMessage.fromJson(Map<String,dynamic> j)=>BookingMessage(id:'${j['id']}',senderName:'${j['senderName']}',body:'${j['body']}',isMine:j['isMine']==true,isRead:j['isRead']==true,sentAt:DateTime.tryParse('${j['sentAt']}')??DateTime.now());}

@@ -3,29 +3,22 @@ import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
-import '../../data/dummy_data.dart';
+import '../../core/auth/session_store.dart';
+import '../../core/network/api_client.dart';
+import '../../core/communication/communication_repository.dart';
+import '../../models/communication_models.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
-  @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.all(18),
-        children: notifications
-            .map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 11),
-                  child: PremiumCard(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(width: 46, height: 46, decoration: BoxDecoration(color: item.color.withValues(alpha: .12), borderRadius: BorderRadius.circular(14)), child: Icon(item.icon, color: item.color)),
-                        const SizedBox(width: 12),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w900))), if (item.unread) const Icon(Icons.circle, size: 8, color: AppColors.primary)]), const SizedBox(height: 4), Text(item.body, style: const TextStyle(color: AppColors.muted, height: 1.35, fontSize: 12)), const SizedBox(height: 6), Text(item.time, style: const TextStyle(color: AppColors.muted, fontSize: 10, fontWeight: FontWeight.w700))])),
-                      ],
-                    ),
-                  ),
-                ))
-            .toList(),
-      );
+  @override State<NotificationsScreen> createState()=>_NotificationsScreenState();
+}
+class _NotificationsScreenState extends State<NotificationsScreen>{
+ late final CommunicationRepository repo;bool loading=true;String? error;NotificationPage page=const NotificationPage([],0);
+ @override void initState(){super.initState();repo=CommunicationRepository(ApiClient(SessionStore()));load();}
+ Future<void> load()async{setState((){loading=true;error=null;});try{final x=await repo.notifications();if(mounted)setState(()=>page=x);}catch(e){if(mounted)setState(()=>error='Notifications could not be loaded. Pull down to retry.');}finally{if(mounted)setState(()=>loading=false);}}
+ IconData icon(String type){final t=type.toLowerCase();if(t.contains('message'))return Icons.chat_bubble_rounded;if(t.contains('offer'))return Icons.local_offer_rounded;if(t.contains('driver'))return Icons.directions_car_rounded;if(t.contains('complaint')||t.contains('dispute'))return Icons.support_agent_rounded;if(t.contains('payment')||t.contains('payout'))return Icons.account_balance_wallet_rounded;return Icons.notifications_rounded;}
+ String time(DateTime x){final d=DateTime.now().difference(x.toLocal());if(d.inMinutes<1)return 'Now';if(d.inHours<1)return '${d.inMinutes} min ago';if(d.inDays<1)return '${d.inHours} hr ago';return '${d.inDays} day${d.inDays==1?'':'s'} ago';}
+ @override Widget build(BuildContext context)=>RefreshIndicator(onRefresh:load,child:loading?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(16),children:[Row(children:[Expanded(child:Text('${page.unreadCount} unread',style:const TextStyle(fontWeight:FontWeight.w800,color:AppColors.muted))),if(page.unreadCount>0)TextButton(onPressed:()async{await repo.markAllRead();await load();},child:const Text('Mark all read'))]),if(error!=null)Card(color:Colors.red.shade50,child:Padding(padding:const EdgeInsets.all(12),child:Text(error!))),if(page.items.isEmpty)const Padding(padding:EdgeInsets.only(top:80),child:Column(children:[Icon(Icons.notifications_none_rounded,size:56,color:AppColors.muted),SizedBox(height:12),Text('No notifications yet',style:TextStyle(fontWeight:FontWeight.w900,fontSize:17)),SizedBox(height:5),Text('Trip, offer and account updates will appear here.',style:TextStyle(color:AppColors.muted))])),...page.items.map((item)=>Padding(padding:const EdgeInsets.only(bottom:10),child:PremiumCard(onTap:()async{if(!item.isRead){await repo.markRead(item.id);await load();}},color:item.isRead?Colors.white:const Color(0xFFF1FAF6),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Container(width:43,height:43,decoration:BoxDecoration(color:AppColors.primary.withValues(alpha:.11),borderRadius:BorderRadius.circular(13)),child:Icon(icon(item.type),color:AppColors.primaryDark,size:21)),const SizedBox(width:11),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Row(children:[Expanded(child:Text(item.title,style:const TextStyle(fontWeight:FontWeight.w900,fontSize:13.5))),if(!item.isRead)const Icon(Icons.circle,size:8,color:AppColors.primary)]),const SizedBox(height:4),Text(item.body,style:const TextStyle(color:AppColors.muted,height:1.35,fontSize:12)),const SizedBox(height:6),Text(time(item.createdAt),style:const TextStyle(color:AppColors.muted,fontSize:10,fontWeight:FontWeight.w700))]))]))))]));
 }
 
 class SupportScreen extends StatefulWidget {
