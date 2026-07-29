@@ -15,6 +15,7 @@ import 'customer/live_tour_interest_screen.dart';
 import 'driver/live_create_package_screen.dart';
 import 'driver/live_driver_packages_screen.dart';
 import 'driver/live_driver_package_bookings_screen.dart';
+import 'driver/tour_operations_screen.dart';
 import 'driver/live_driver_requests_screen.dart';
 import 'customer/tourism_booking_screen.dart';
 import 'driver/driver_home_screen.dart';
@@ -299,7 +300,7 @@ class _MainShellState extends State<MainShell> {
         'activeTrip' => const ActiveDriverTripScreen(),
         'driverPackages' => const LiveDriverPackagesScreen(),
         'createPackage' => const LiveCreatePackageScreen(),
-        'packageBookings' => const LiveDriverPackageBookingsScreen(),
+        'packageBookings' => const TourOperationsScreen(),
         'vehicleSuitability' => const VehicleSuitabilityScreen(),
         'roadReports' => const DriverRoadReportsScreen(),
         'driverSafety' => const SafetyHubScreen(),
