@@ -141,6 +141,7 @@ public sealed class BookingService(
         Guid userId,
         CancellationToken cancellationToken)
     {
+        await ExpireRideRequestsAsync(cancellationToken);
         const string sql = """
             SELECT rr.id, rr.pickup_label, rr.destination_label,
                    ST_Y(rr.pickup_location::geometry) AS pickup_latitude,
@@ -181,6 +182,7 @@ public sealed class BookingService(
         Guid driverUserId,
         CancellationToken cancellationToken)
     {
+        await ExpireRideRequestsAsync(cancellationToken);
         var driver = await GetApprovedDriverAsync(driverUserId, cancellationToken);
         if (driver is null)
         {
@@ -442,6 +444,7 @@ public sealed class BookingService(
         Guid rideRequestId,
         CancellationToken cancellationToken)
     {
+        await ExpireRideRequestsAsync(cancellationToken);
         const string ownerSql = "SELECT 1 FROM udrive.ride_requests WHERE id = @id AND customer_user_id = @userId;";
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -469,6 +472,7 @@ public sealed class BookingService(
         SelectDriverOfferRequest request,
         CancellationToken cancellationToken)
     {
+        await ExpireRideRequestsAsync(cancellationToken);
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(
@@ -1164,6 +1168,43 @@ public sealed class BookingService(
         return ServiceResult<BookingDto>.Ok(ReadBooking(reader, tripOtp));
     }
 
+    private async Task ExpireRideRequestsAsync(CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE udrive.ride_requests
+            SET status='Expired', version=version+1, updated_at=now()
+            WHERE status IN ('Open','SearchingDrivers','ReceivingOffers')
+              AND pickup_at <= now();
+
+            UPDATE udrive.ride_requests rr
+            SET status='NoDriverAccepted', version=version+1, updated_at=now()
+            WHERE rr.status IN ('Open','SearchingDrivers','ReceivingOffers')
+              AND rr.pickup_at > now()
+              AND rr.expires_at IS NOT NULL
+              AND rr.expires_at <= now()
+              AND NOT EXISTS (
+                  SELECT 1 FROM udrive.driver_offers o
+                  WHERE o.ride_request_id=rr.id
+              );
+
+            UPDATE udrive.ride_requests rr
+            SET status='Expired', version=version+1, updated_at=now()
+            WHERE rr.status IN ('Open','SearchingDrivers','ReceivingOffers')
+              AND rr.pickup_at > now()
+              AND rr.expires_at IS NOT NULL
+              AND rr.expires_at <= now()
+              AND EXISTS (
+                  SELECT 1 FROM udrive.driver_offers o
+                  WHERE o.ride_request_id=rr.id
+              );
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private async Task<ApprovedDriverContext?> GetApprovedDriverAsync(
         Guid userId,
         CancellationToken cancellationToken)
@@ -1207,7 +1248,7 @@ public sealed class BookingService(
                    now(), 0, now(), now()
             FROM udrive.driver_profiles dp
             JOIN udrive.vehicles v ON v.driver_profile_id=dp.id AND v.status='Verified'
-            WHERE dp.verification_status='Approved'
+            WHERE lower(dp.verification_status) IN ('approved','verified')
             ORDER BY dp.safety_score DESC, dp.average_rating DESC
             LIMIT 1;
             """;

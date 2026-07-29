@@ -202,7 +202,7 @@ public sealed class PackageMarketplaceService(
             WHERE tp.id=@packageId
               AND tp.driver_profile_id=dp.id
               AND dp.user_id=@userId
-              AND dp.verification_status='Approved'
+              AND lower(dp.verification_status) IN ('approved','verified')
               AND tp.status IN ('Draft','ChangesRequired','Rejected')
               AND tp.departure_at > now() + interval '6 hours'
             RETURNING tp.id;
@@ -1508,8 +1508,8 @@ public sealed class PackageMarketplaceService(
                    v.mountain_readiness_score
             FROM udrive.driver_profiles dp
             JOIN udrive.vehicles v ON v.driver_profile_id=dp.id
-            WHERE dp.user_id=@userId AND dp.verification_status='Approved'
-              AND v.id=@vehicleId AND v.status='Verified';
+            WHERE dp.user_id=@userId AND lower(dp.verification_status) IN ('approved','verified')
+              AND v.id=@vehicleId AND lower(v.status) IN ('verified','approved');
             """;
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);

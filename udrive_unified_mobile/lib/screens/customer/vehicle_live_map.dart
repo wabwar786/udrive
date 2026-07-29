@@ -33,7 +33,7 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
     _refreshTimer = Timer.periodic(
-      const Duration(minutes: 1),
+      const Duration(seconds: 10),
       (_) => _load(silent: true),
     );
   }
@@ -62,7 +62,7 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
       if (!mounted) return;
       setState(() {
         _customer = customer;
-        _error = 'Live vehicle location is not available yet. The map will update automatically every minute.';
+        _error = 'Live vehicle location is not available yet. The map will update automatically every 10 seconds.';
       });
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -330,7 +330,7 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
                 ],
                 const SizedBox(height: 6),
                 const Text(
-                  'Location refreshes automatically every 1 minute.',
+                  'Location refreshes automatically every 10 seconds.',
                   style: TextStyle(
                     color: AppColors.muted,
                     fontSize: 10,

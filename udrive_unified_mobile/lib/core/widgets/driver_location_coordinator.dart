@@ -9,7 +9,7 @@ import '../state/app_controller.dart';
 /// Keeps authenticated Driver GPS sharing active while the app is open.
 ///
 /// The backend still verifies the assigned Driver and active trip from JWT.
-/// GPS is sent once per minute only for an eligible active assignment.
+/// GPS is sent every 10 seconds only after the Driver starts an eligible trip stage.
 class DriverLocationCoordinator extends StatefulWidget {
   const DriverLocationCoordinator({
     required this.enabled,
@@ -35,7 +35,6 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
   bool _syncing = false;
 
   static const _trackableStatuses = <String>{
-    'DriverAccepted',
     'DriverEnRoute',
     'DriverArrived',
     'TripStarted',
@@ -65,7 +64,7 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
     }
     _syncActiveTrip();
     _syncTimer = Timer.periodic(
-      const Duration(minutes: 1),
+      const Duration(seconds: 10),
       (_) => _syncActiveTrip(),
     );
   }
