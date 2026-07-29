@@ -1,0 +1,11 @@
+namespace UDrive.Api.Models;
+public sealed record TrustedContactRequest(string Name,string PhoneNumber,string Relationship,bool IsPrimary);
+public sealed record TrustedContactDto(Guid Id,string Name,string PhoneNumber,string Relationship,bool IsPrimary,DateTimeOffset CreatedAt);
+public sealed record RaiseSosRequest(Guid? BookingId,string EmergencyType,string Description,double? Latitude,double? Longitude,double? AccuracyMeters);
+public sealed record CreateSafetyReportRequest(Guid BookingId,string ReportType,string Severity,string Description,double? Latitude,double? Longitude);
+public sealed record SafetyCaseDto(Guid Id,string CaseReference,Guid? BookingId,string? BookingReference,string RaisedBy,string EmergencyType,string Severity,string Status,string Description,double? Latitude,double? Longitude,string? AssignedAdmin,string? ResolutionNotes,int Version,DateTimeOffset CreatedAt,DateTimeOffset? AcknowledgedAt,DateTimeOffset? ResolvedAt);
+public sealed record SafetyDashboardDto(int Open,int Unacknowledged,int Critical,int InProgress,int ResolvedToday,int StaleGpsTrips,int ExpiringDocuments);
+public sealed record UpdateEmergencyRequest(string Status,Guid? AssignedAdminUserId,string? ResolutionNotes,int ExpectedVersion);
+public sealed record VerifyTripPinRequest(string Pin);
+public sealed record TripPinDto(Guid BookingId,string Pin,DateTimeOffset ExpiresAt);
+public sealed record SafetyReportDto(Guid Id,Guid BookingId,string BookingReference,string ReportType,string Severity,string Description,string Status,DateTimeOffset CreatedAt);
