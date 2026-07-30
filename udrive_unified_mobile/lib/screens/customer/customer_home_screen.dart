@@ -158,38 +158,43 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             onSelected: (value) => setState(() => _vehicleType = value),
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _vehicleSearch,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: _t(
-                      'Search destination, e.g. Neelum Valley',
-                      'منزل تلاش کریں، مثلاً نیلم ویلی',
+          TextField(
+            controller: _vehicleSearch,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: _t(
+                'Search destination, e.g. Neelum Valley',
+                'منزل تلاش کریں، مثلاً نیلم ویلی',
+              ),
+              prefixIcon: const Icon(Icons.location_searching_rounded),
+              suffixIconConstraints: const BoxConstraints(minHeight: 46),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_query.isNotEmpty)
+                    IconButton(
+                      tooltip: _t('Clear search', 'تلاش صاف کریں'),
+                      onPressed: _vehicleSearch.clear,
+                      icon: const Icon(Icons.close_rounded, size: 19),
                     ),
-                    prefixIcon: const Icon(Icons.location_searching_rounded),
-                    suffixIcon: _query.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: _t('Clear search', 'تلاش صاف کریں'),
-                            onPressed: _vehicleSearch.clear,
-                            icon: const Icon(Icons.close_rounded),
-                          ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: TextButton(
+                      onPressed: _openAllVehicles,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: Text(
+                        _t('View all', 'سب دیکھیں'),
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: _openAllVehicles,
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
-                  minimumSize: const Size(0, 48),
-                ),
-                child: Text(_t('View all', 'سب دیکھیں')),
-              ),
-            ],
+            ),
           ),
           const SizedBox(height: 12),
           if (controller.marketplaceBusy && vehicles.isEmpty)
@@ -563,13 +568,14 @@ class _VehicleTypeSelector extends StatelessWidget {
               ),
               child: InkWell(
                 onTap: () => onSelected(type),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(13),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  height: 52,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
                   decoration: BoxDecoration(
                     color: active ? AppColors.primary : Colors.white,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(13),
                     border: Border.all(
                       color: active ? AppColors.primary : AppColors.border,
                     ),
@@ -577,8 +583,8 @@ class _VehicleTypeSelector extends StatelessWidget {
                         ? [
                             BoxShadow(
                               color: AppColors.primary.withValues(alpha: .18),
-                              blurRadius: 12,
-                              offset: const Offset(0, 5),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
                             ),
                           ]
                         : null,
@@ -588,16 +594,16 @@ class _VehicleTypeSelector extends StatelessWidget {
                     children: [
                       Icon(
                         type.icon,
-                        size: 23,
+                        size: 20,
                         color: active ? Colors.white : AppColors.primaryDark,
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 2),
                       Text(
                         type.label,
                         style: TextStyle(
                           color: active ? Colors.white : AppColors.navy,
                           fontWeight: FontWeight.w900,
-                          fontSize: 11,
+                          fontSize: 10.5,
                         ),
                       ),
                     ],

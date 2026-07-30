@@ -41,6 +41,43 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
     ('VEHICLE_INTERIOR', 'Vehicle interior photograph'),
   ];
 
+  bool get _isTwoWheel => _category == 'Motorcycle' || _category == 'Scooter';
+  bool get _isThreeWheel => _category == 'Auto Rickshaw' || _category == 'Tuk Tuk';
+  String get _wheelLabel => _isTwoWheel ? '2-wheel' : (_isThreeWheel ? '3-wheel' : '4-wheel');
+  IconData get _wheelIcon => _isTwoWheel
+      ? Icons.two_wheeler_rounded
+      : (_isThreeWheel ? Icons.electric_rickshaw_rounded : Icons.directions_car_filled_rounded);
+
+  void _applyCategory(String value) {
+    setState(() {
+      _category = value;
+      if (_isTwoWheel) {
+        _seats = 1;
+        _luggage = 0;
+        _ac = false;
+        _heating = false;
+        _fourByFour = false;
+        _fireExtinguisher = false;
+        _spareTyre = true;
+        _snowChains = false;
+        _childSeat = false;
+      } else if (_isThreeWheel) {
+        _seats = 3;
+        _luggage = 1;
+        _ac = false;
+        _heating = false;
+        _fourByFour = false;
+        _fireExtinguisher = false;
+        _spareTyre = true;
+        _snowChains = false;
+        _childSeat = false;
+      } else {
+        if (_seats < 4) _seats = 4;
+        if (_luggage < 2) _luggage = 2;
+      }
+    });
+  }
+
   @override
   void dispose() {
     for (final c in [_make, _model, _year, _registration, _colour]) {
@@ -79,9 +116,52 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
               initialValue: _category,
-              decoration: const InputDecoration(labelText: 'Vehicle category', prefixIcon: Icon(Icons.category_outlined)),
-              items: const ['Economy', 'Sedan', 'SUV', '7-Seater', 'Hiace', 'Coaster', '4×4 Jeep', 'Luxury'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (value) => setState(() => _category = value ?? _category),
+              decoration: const InputDecoration(
+                labelText: 'Vehicle category',
+                prefixIcon: Icon(Icons.category_outlined),
+              ),
+              items: const [
+                'Motorcycle',
+                'Scooter',
+                'Auto Rickshaw',
+                'Tuk Tuk',
+                'Economy Car',
+                'Sedan',
+                'SUV',
+                '7-Seater',
+                'Hiace',
+                'Coaster',
+                '4×4 Jeep',
+                'Luxury Car',
+              ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+              onChanged: (value) {
+                if (value != null) _applyCategory(value);
+              },
+            ),
+            const SizedBox(height: 7),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F7F4),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(_wheelIcon, color: AppColors.primaryDark, size: 20),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      '$_wheelLabel vehicle · Register it here, complete verification, then go online to receive matching Customer requests.',
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 11.5,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 11),
             _field(_make, 'Manufacturer', Icons.factory_outlined),
