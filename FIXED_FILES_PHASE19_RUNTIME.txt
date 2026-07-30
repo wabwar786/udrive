@@ -1,0 +1,7 @@
+admin_portal/app/lib/admin-api.ts
+admin_portal/app/components/resource-table.tsx
+admin_portal/app/vehicles/page.tsx
+udrive_api/Services/AdminOperationsService.cs
+udrive_api/Infrastructure/Persistence/Migrations/021_phase19_admin_schema_compatibility.sql
+PHASE_19_ALL_PAGES_RUNTIME_FIX.md
+ADMIN_ALL_PAGES_AUDIT.md

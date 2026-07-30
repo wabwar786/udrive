@@ -22,6 +22,25 @@ type Envelope<T> = {
   message?: string;
 };
 
+
+function friendlyApiError(status: number, body: Record<string, unknown>): string {
+  if (status === 401) return 'Your session has expired. Please sign in again.';
+  if (status === 403) return 'You do not have permission to open this section.';
+  if (status === 404) return 'This section or record is not available.';
+  if (status === 409) return 'This record was updated elsewhere. Refresh and try again.';
+  if (status === 422 || status === 400) {
+    const message = typeof body.message === 'string' ? body.message : '';
+    return message && !/traceid|request could not be completed/i.test(message)
+      ? message
+      : 'Some information is invalid. Please review the form and try again.';
+  }
+  if (status >= 500) return 'This section is temporarily unavailable. Please refresh after a moment.';
+  const message = typeof body.message === 'string' ? body.message : '';
+  return message && !/traceid|request could not be completed/i.test(message)
+    ? message
+    : 'This action is temporarily unavailable. Please try again.';
+}
+
 const KEY = 'udrive-admin-session-v10';
 export const ADMIN_PORTAL_BUILD = 'verification-list-v2';
 
@@ -133,11 +152,7 @@ export async function apiFetch<T>(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(
-      body.message ??
-        body.detail ??
-        `Request failed (${response.status}).`,
-    );
+    throw new Error(friendlyApiError(response.status, body as Record<string, unknown>));
   }
 
   return (body as Envelope<T>).data;
@@ -154,11 +169,7 @@ export async function apiProtectedFile(
 
   if (!response.ok) {
     const body = await response.clone().json().catch(() => ({}));
-    throw new Error(
-      body.message ??
-        body.detail ??
-        `Document could not be loaded (${response.status}).`,
-    );
+    throw new Error(friendlyApiError(response.status, body as Record<string, unknown>));
   }
 
   const responseType = response.headers.get('content-type') ?? '';
