@@ -58,8 +58,8 @@ builder.Services.AddScoped<PackageMarketplaceService>(_ =>
     new PackageMarketplaceService(connectionString, authOptions));
 builder.Services.AddScoped<TourInterestService>(_ =>
     new TourInterestService(connectionString));
-builder.Services.AddScoped<AdminOperationsService>(_ =>
-    new AdminOperationsService(connectionString));
+builder.Services.AddScoped<AdminOperationsService>(sp =>
+    new AdminOperationsService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<AdminUserManagementService>(_ =>
     new AdminUserManagementService(connectionString));
 builder.Services.AddScoped<TripOperationsService>(_ => new TripOperationsService(connectionString));

@@ -11,6 +11,7 @@ import 'customer/customer_pages.dart';
 import 'customer/family_tour_planner_screen.dart';
 import 'customer/join_tour_screen.dart';
 import 'customer/live_bookings_screen.dart';
+import 'customer/live_explore_screen.dart';
 import 'customer/live_packages_screen.dart';
 import 'customer/live_tour_interest_screen.dart';
 import 'driver/live_create_package_screen.dart';
@@ -281,7 +282,7 @@ class _MainShellState extends State<MainShell> {
         'bookRide' => const TourismBookingScreen(),
         'joinTour' => const LiveTourInterestScreen(),
         'familyPlanner' => const FamilyTourPlannerScreen(),
-        'explore' => const ExploreScreen(),
+        'explore' => const LiveExploreScreen(),
         'packages' => const LivePackagesScreen(),
         'trips' => const LiveBookingsScreen(),
         'wallet' => const WalletScreen(),

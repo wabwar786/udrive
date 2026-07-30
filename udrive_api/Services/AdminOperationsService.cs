@@ -7,7 +7,7 @@ using UDrive.Api.Models;
 
 namespace UDrive.Api.Services;
 
-public sealed class AdminOperationsService(string connectionString)
+public sealed class AdminOperationsService(string connectionString, LocalFileStorageService files)
 {
     private NpgsqlConnection OpenConnection() => new(connectionString);
 
@@ -100,7 +100,66 @@ public sealed class AdminOperationsService(string connectionString)
     public async Task<ServiceResult<IReadOnlyList<AdminDriverDto>>> DriversAsync(CancellationToken ct){await using var cn=OpenConnection();await cn.OpenAsync(ct);const string sql=@"select dp.id,u.id,u.full_name,u.phone_number,dp.verification_status,dp.average_rating,dp.completed_trips,dp.safety_score,dp.is_online,count(v.id),dp.updated_at from udrive.driver_profiles dp join udrive.users u on u.id=dp.user_id left join udrive.vehicles v on v.driver_profile_id=dp.id group by dp.id,u.id order by dp.updated_at desc";var list=new List<AdminDriverDto>();await using var cmd=new NpgsqlCommand(sql,cn);await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))list.Add(new(r.GetGuid(0),r.GetGuid(1),r.GetString(2),r.GetString(3),r.GetString(4),r.GetDecimal(5),r.GetInt32(6),r.GetInt32(7),r.GetBoolean(8),Convert.ToInt32(r.GetInt64(9)),r.GetFieldValue<DateTimeOffset>(10)));return ServiceResult<IReadOnlyList<AdminDriverDto>>.Ok(list);}
     public async Task<ServiceResult<IReadOnlyList<AdminVehicleDto>>> VehiclesAsync(CancellationToken ct){await using var cn=OpenConnection();await cn.OpenAsync(ct);const string sql=@"select v.id,u.full_name,v.registration_number,concat(v.make,' ',v.model,' ',v.year),coalesce(v.wheel_type, case when lower(v.category) ~ '(motorcycle|motorbike|bike|scooter|2[ -]?wheel|two[ -]?wheel)' then '2Wheel' when lower(v.category) ~ '(rickshaw|auto|tuk|3[ -]?wheel|three[ -]?wheel)' then '3Wheel' else '4Wheel' end),v.passenger_capacity,v.is_four_by_four,v.mountain_readiness_score,v.status,v.updated_at from udrive.vehicles v join udrive.driver_profiles dp on dp.id=v.driver_profile_id join udrive.users u on u.id=dp.user_id order by v.updated_at desc";var list=new List<AdminVehicleDto>();await using var cmd=new NpgsqlCommand(sql,cn);await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))list.Add(new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.GetString(4),r.GetInt32(5),r.GetBoolean(6),r.GetInt32(7),r.GetString(8),r.GetFieldValue<DateTimeOffset>(9)));return ServiceResult<IReadOnlyList<AdminVehicleDto>>.Ok(list);}
 
-    public async Task<ServiceResult<IReadOnlyList<AdminDestinationDto>>> DestinationsAsync(CancellationToken ct){await using var cn=OpenConnection();await cn.OpenAsync(ct);const string sql=@"select id,slug,name_en,name_ur,district,best_season,recommended_vehicle,network_status,family_suitability_score,route_safety_score,st_y(location::geometry),st_x(location::geometry),is_active,cover_image_url from udrive.destinations order by name_en";var list=new List<AdminDestinationDto>();await using var cmd=new NpgsqlCommand(sql,cn);await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))list.Add(new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.GetString(4),r.GetString(5),r.GetString(6),r.GetString(7),r.GetInt32(8),r.GetInt32(9),r.GetDouble(10),r.GetDouble(11),r.GetBoolean(12),r.IsDBNull(13)?null:r.GetString(13)));return ServiceResult<IReadOnlyList<AdminDestinationDto>>.Ok(list);}
+
+    public async Task<ServiceResult<string>> UploadDestinationImageAsync(Guid actor, Guid destinationId, IFormFile file, CancellationToken ct)
+    {
+        await using var cn = OpenConnection();
+        await cn.OpenAsync(ct);
+        await using var exists = new NpgsqlCommand("select cover_image_url from udrive.destinations where id=@id", cn);
+        exists.Parameters.AddWithValue("id", destinationId);
+        var oldValue = await exists.ExecuteScalarAsync(ct);
+        if (oldValue is null) return ServiceResult<string>.Fail(404, "destination_not_found", "Destination was not found.");
+        try
+        {
+            var stored = await files.SaveAsync(file, "destinations", destinationId, ct);
+            var publicUrl = $"/api/v1/catalog/destination-images/{destinationId:N}/{Path.GetFileName(stored.RelativeUrl)}";
+            await using var update = new NpgsqlCommand("update udrive.destinations set cover_image_url=@url,updated_at=now() where id=@id", cn);
+            update.Parameters.AddWithValue("id", destinationId);
+            update.Parameters.AddWithValue("url", publicUrl);
+            await update.ExecuteNonQueryAsync(ct);
+            if (oldValue is string oldUrl && !string.IsNullOrWhiteSpace(oldUrl)) files.DeleteProtectedFile(oldUrl);
+            await AuditStandaloneAsync(cn, actor, "destination.image_updated", "Destination", destinationId.ToString(), JsonSerializer.Serialize(new { coverImageUrl = publicUrl }), ct);
+            return ServiceResult<string>.Ok(publicUrl, "Destination cover image updated.");
+        }
+        catch (InvalidDataException ex)
+        {
+            return ServiceResult<string>.Fail(400, "invalid_destination_image", ex.Message);
+        }
+    }
+
+    public async Task<ServiceResult<bool>> DeleteDestinationAsync(Guid actor, Guid id, CancellationToken ct)
+    {
+        await using var cn = OpenConnection();
+        await cn.OpenAsync(ct);
+        await using var find = new NpgsqlCommand("select cover_image_url from udrive.destinations where id=@id", cn);
+        find.Parameters.AddWithValue("id", id);
+        var image = await find.ExecuteScalarAsync(ct);
+        if (image is null) return ServiceResult<bool>.Fail(404, "destination_not_found", "Destination was not found.");
+
+        await using var refs = new NpgsqlCommand("select count(*) from udrive.tour_packages where destination_id=@id", cn);
+        refs.Parameters.AddWithValue("id", id);
+        var referenceCount = Convert.ToInt32(await refs.ExecuteScalarAsync(ct) ?? 0);
+        if (referenceCount > 0)
+        {
+            return ServiceResult<bool>.Fail(409, "destination_in_use", "This destination is used by one or more Driver packages. Deactivate it instead of deleting it.");
+        }
+
+        try
+        {
+            await using var delete = new NpgsqlCommand("delete from udrive.destinations where id=@id", cn);
+            delete.Parameters.AddWithValue("id", id);
+            await delete.ExecuteNonQueryAsync(ct);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+        {
+            return ServiceResult<bool>.Fail(409, "destination_in_use", "This destination is linked with a route, booking or package. Deactivate it instead of deleting it.");
+        }
+        if (image is string imageUrl && !string.IsNullOrWhiteSpace(imageUrl)) files.DeleteProtectedFile(imageUrl);
+        await AuditStandaloneAsync(cn, actor, "destination.deleted", "Destination", id.ToString(), "{}", ct);
+        return ServiceResult<bool>.Ok(true, "Destination deleted.");
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<AdminDestinationDto>>> DestinationsAsync(CancellationToken ct){await using var cn=OpenConnection();await cn.OpenAsync(ct);const string sql=@"select id,slug,name_en,name_ur,summary_en,summary_ur,district,best_season,recommended_vehicle,network_status,family_suitability_score,route_safety_score,st_y(location::geometry),st_x(location::geometry),is_active,cover_image_url from udrive.destinations order by name_en";var list=new List<AdminDestinationDto>();await using var cmd=new NpgsqlCommand(sql,cn);await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))list.Add(new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.GetString(4),r.GetString(5),r.GetString(6),r.GetString(7),r.GetString(8),r.GetString(9),r.GetInt32(10),r.GetInt32(11),r.GetDouble(12),r.GetDouble(13),r.GetBoolean(14),r.IsDBNull(15)?null:r.GetString(15)));return ServiceResult<IReadOnlyList<AdminDestinationDto>>.Ok(list);}
     public Task<ServiceResult<Guid>> CreateDestinationAsync(Guid actor,UpsertDestinationRequest request,CancellationToken ct)=>UpsertDestinationAsync(actor,null,request,ct);
     public Task<ServiceResult<Guid>> UpdateDestinationAsync(Guid actor,Guid id,UpsertDestinationRequest request,CancellationToken ct)=>UpsertDestinationAsync(actor,id,request,ct);
     private async Task<ServiceResult<Guid>> UpsertDestinationAsync(Guid actor,Guid? id,UpsertDestinationRequest request,CancellationToken ct){await using var cn=OpenConnection();await cn.OpenAsync(ct);var entity=id??Guid.NewGuid();const string sql=@"insert into udrive.destinations(id,slug,name_en,name_ur,summary_en,summary_ur,location,district,best_season,recommended_vehicle,network_status,family_suitability_score,route_safety_score,cover_image_url,is_active,created_at,updated_at) values(@id,@slug,@en,@ur,@sen,@sur,st_setsrid(st_makepoint(@lng,@lat),4326)::geography,@district,@season,@vehicle,@network,@family,@safety,@image,@active,now(),now()) on conflict(id) do update set slug=excluded.slug,name_en=excluded.name_en,name_ur=excluded.name_ur,summary_en=excluded.summary_en,summary_ur=excluded.summary_ur,location=excluded.location,district=excluded.district,best_season=excluded.best_season,recommended_vehicle=excluded.recommended_vehicle,network_status=excluded.network_status,family_suitability_score=excluded.family_suitability_score,route_safety_score=excluded.route_safety_score,cover_image_url=excluded.cover_image_url,is_active=excluded.is_active,updated_at=now()";await using var cmd=new NpgsqlCommand(sql,cn);cmd.Parameters.AddWithValue("id",entity);cmd.Parameters.AddWithValue("slug",request.Slug);cmd.Parameters.AddWithValue("en",request.NameEn);cmd.Parameters.AddWithValue("ur",request.NameUr);cmd.Parameters.AddWithValue("sen",request.SummaryEn);cmd.Parameters.AddWithValue("sur",request.SummaryUr);cmd.Parameters.AddWithValue("lng",request.Longitude);cmd.Parameters.AddWithValue("lat",request.Latitude);cmd.Parameters.AddWithValue("district",request.District);cmd.Parameters.AddWithValue("season",request.BestSeason);cmd.Parameters.AddWithValue("vehicle",request.RecommendedVehicle);cmd.Parameters.AddWithValue("network",request.NetworkStatus);cmd.Parameters.AddWithValue("family",request.FamilySuitabilityScore);cmd.Parameters.AddWithValue("safety",request.RouteSafetyScore);AddText(cmd,"image",request.CoverImageUrl);cmd.Parameters.AddWithValue("active",request.IsActive);await cmd.ExecuteNonQueryAsync(ct);await AuditStandaloneAsync(cn,actor,id is null?"destination.created":"destination.updated","Destination",entity.ToString(),JsonSerializer.Serialize(request),ct);return id is null?ServiceResult<Guid>.Created(entity):ServiceResult<Guid>.Ok(entity);}

@@ -32,7 +32,7 @@ public sealed record UpdateUserRolesRequest([Required, MinLength(1)] string[] Ro
 public sealed record AdminDriverDto(Guid DriverProfileId, Guid UserId, string FullName, string PhoneNumber, string VerificationStatus, decimal AverageRating, int CompletedTrips, int SafetyScore, bool IsOnline, int VehicleCount, DateTimeOffset UpdatedAt);
 public sealed record AdminVehicleDto(Guid Id, string DriverName, string RegistrationNumber, string Vehicle, string Category, int PassengerCapacity, bool IsFourByFour, int MountainReadinessScore, string Status, DateTimeOffset UpdatedAt);
 
-public sealed record AdminDestinationDto(Guid Id, string Slug, string NameEn, string NameUr, string District, string BestSeason, string RecommendedVehicle, string NetworkStatus, int FamilySuitabilityScore, int RouteSafetyScore, double Latitude, double Longitude, bool IsActive, string? CoverImageUrl);
+public sealed record AdminDestinationDto(Guid Id, string Slug, string NameEn, string NameUr, string SummaryEn, string SummaryUr, string District, string BestSeason, string RecommendedVehicle, string NetworkStatus, int FamilySuitabilityScore, int RouteSafetyScore, double Latitude, double Longitude, bool IsActive, string? CoverImageUrl);
 public sealed record UpsertDestinationRequest(
     [Required, StringLength(120)] string Slug, [Required, StringLength(160)] string NameEn,
     [Required, StringLength(200)] string NameUr, [Required] string SummaryEn, [Required] string SummaryUr,
