@@ -66,6 +66,7 @@ builder.Services.AddScoped<FeedbackService>(sp => new FeedbackService(connection
 builder.Services.AddScoped<CommunicationService>(_ => new CommunicationService(connectionString));
 builder.Services.AddScoped<SafetyService>(_ => new SafetyService(connectionString));
 builder.Services.AddScoped<Phase18TourService>(_ => new Phase18TourService(connectionString));
+builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(connectionString));
 builder.Services.AddScoped<VerificationFileLookupService>(serviceProvider =>
     new VerificationFileLookupService(
         connectionString,
