@@ -20,12 +20,34 @@ public sealed class Phase19AdminService(string connectionString)
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(ct);
 
-        async Task<decimal> ScalarAsync(string sql, DateTimeOffset rangeStart, DateTimeOffset rangeEnd)
+        async Task<decimal> SafeScalarAsync(string sql, DateTimeOffset rangeStart, DateTimeOffset rangeEnd)
         {
-            await using var command = new NpgsqlCommand(sql, connection);
-            command.Parameters.AddWithValue("a", rangeStart);
-            command.Parameters.AddWithValue("b", rangeEnd);
-            return Convert.ToDecimal(await command.ExecuteScalarAsync(ct) ?? 0);
+            try
+            {
+                await using var command = new NpgsqlCommand(sql, connection);
+                command.Parameters.AddWithValue("a", rangeStart);
+                command.Parameters.AddWithValue("b", rangeEnd);
+                return Convert.ToDecimal(await command.ExecuteScalarAsync(ct) ?? 0);
+            }
+            catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
+            {
+                // Some production databases contain older optional finance/operations schemas.
+                // Keep the dashboard available and show zero for a metric until its migration is applied.
+                return 0;
+            }
+        }
+
+        async Task<int> SafeCountAsync(string sql)
+        {
+            try
+            {
+                await using var command = new NpgsqlCommand(sql, connection);
+                return Convert.ToInt32(await command.ExecuteScalarAsync(ct) ?? 0);
+            }
+            catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
+            {
+                return 0;
+            }
         }
 
         static decimal CalculateChange(decimal current, decimal previous) =>
@@ -38,7 +60,7 @@ public sealed class Phase19AdminService(string connectionString)
             ("Bookings", "SELECT count(*) FROM udrive.bookings WHERE created_at >= @a AND created_at < @b", "blue"),
             ("Completed trips", "SELECT count(*) FROM udrive.bookings WHERE status IN ('TripCompleted','Completed') AND updated_at >= @a AND updated_at < @b", "green"),
             ("Gross booking value", "SELECT COALESCE(sum(total_amount),0) FROM udrive.bookings WHERE created_at >= @a AND created_at < @b", "purple"),
-            ("Amount collected", "SELECT COALESCE(sum(amount-refund_amount),0) FROM udrive.payments WHERE status IN ('Paid','Verified') AND created_at >= @a AND created_at < @b", "green"),
+            ("Amount collected", "SELECT COALESCE(sum(amount - COALESCE(refund_amount,0)),0) FROM udrive.payments WHERE status IN ('Paid','Verified') AND created_at >= @a AND created_at < @b", "green"),
             ("Platform commission", "SELECT COALESCE(sum(commission_amount),0) FROM udrive.driver_earnings WHERE created_at >= @a AND created_at < @b", "orange"),
             ("Driver earnings", "SELECT COALESCE(sum(net_amount),0) FROM udrive.driver_earnings WHERE created_at >= @a AND created_at < @b", "blue")
         };
@@ -46,8 +68,8 @@ public sealed class Phase19AdminService(string connectionString)
         var metrics = new List<ExecutiveMetricDto>();
         foreach (var definition in definitions)
         {
-            var current = await ScalarAsync(definition.Sql, start, end);
-            var previous = await ScalarAsync(definition.Sql, previousStart, start);
+            var current = await SafeScalarAsync(definition.Sql, start, end);
+            var previous = await SafeScalarAsync(definition.Sql, previousStart, start);
             metrics.Add(new ExecutiveMetricDto(
                 definition.Label,
                 current,
@@ -57,66 +79,48 @@ public sealed class Phase19AdminService(string connectionString)
         }
 
         var statuses = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        const string statusSql = "SELECT status, count(*)::int FROM udrive.bookings GROUP BY status ORDER BY count(*) DESC";
-        await using (var command = new NpgsqlCommand(statusSql, connection))
-        await using (var reader = await command.ExecuteReaderAsync(ct))
+        try
         {
+            const string statusSql = "SELECT status, count(*)::int FROM udrive.bookings GROUP BY status ORDER BY count(*) DESC";
+            await using var command = new NpgsqlCommand(statusSql, connection);
+            await using var reader = await command.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
                 statuses[reader.GetString(0)] = reader.GetInt32(1);
             }
         }
-
-        var queues = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        const string queueSql = @"
-SELECT
-    (SELECT count(*)::int FROM udrive.driver_profiles WHERE verification_status IN ('Pending','Submitted','ChangesRequired')),
-    (SELECT count(*)::int FROM udrive.vehicles WHERE verification_status IN ('Pending','Submitted','ChangesRequired')),
-    (SELECT count(*)::int FROM udrive.tour_packages WHERE status IN ('Pending','Submitted')),
-    (SELECT count(*)::int FROM udrive.driver_payout_requests WHERE status = 'Pending'),
-    (SELECT count(*)::int FROM udrive.refund_requests WHERE status = 'Pending'),
-    (SELECT count(*)::int FROM udrive.dispute_cases WHERE status NOT IN ('Resolved','Rejected','Closed')),
-    (SELECT count(*)::int FROM udrive.emergency_cases WHERE status NOT IN ('Resolved','FalseAlarm'));";
-
-        await using (var command = new NpgsqlCommand(queueSql, connection))
-        await using (var reader = await command.ExecuteReaderAsync(ct))
+        catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
         {
-            if (await reader.ReadAsync(ct))
-            {
-                queues["drivers"] = reader.GetInt32(0);
-                queues["vehicles"] = reader.GetInt32(1);
-                queues["packages"] = reader.GetInt32(2);
-                queues["payouts"] = reader.GetInt32(3);
-                queues["refunds"] = reader.GetInt32(4);
-                queues["disputes"] = reader.GetInt32(5);
-                queues["emergencies"] = reader.GetInt32(6);
-            }
+            // Core migration is still pending; return an empty pipeline instead of a 500 response.
         }
 
+        var queues = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["drivers"] = await SafeCountAsync("SELECT count(*) FROM udrive.driver_profiles WHERE verification_status IN ('Pending','Submitted','ChangesRequired')"),
+            ["vehicles"] = await SafeCountAsync("SELECT count(*) FROM udrive.vehicles WHERE verification_status IN ('Pending','Submitted','ChangesRequired')"),
+            ["packages"] = await SafeCountAsync("SELECT count(*) FROM udrive.tour_packages WHERE status IN ('Pending','Submitted')"),
+            ["payouts"] = await SafeCountAsync("SELECT count(*) FROM udrive.driver_payout_requests WHERE status = 'Pending'"),
+            ["refunds"] = await SafeCountAsync("SELECT count(*) FROM udrive.refund_requests WHERE status = 'Pending'"),
+            ["disputes"] = await SafeCountAsync("SELECT count(*) FROM udrive.dispute_cases WHERE status NOT IN ('Resolved','Rejected','Closed')"),
+            ["emergencies"] = await SafeCountAsync("SELECT count(*) FROM udrive.emergency_cases WHERE status NOT IN ('Resolved','FalseAlarm')")
+        };
+
         var activity = new List<ExecutiveActivityDto>();
-        const string activitySql = @"
-SELECT type, title, subtitle, status, occurred_at
-FROM (
-    SELECT
-        'Booking' AS type,
-        'Booking ' || COALESCE(booking_reference, left(id::text, 8)) AS title,
-        booking_type || ' · ' || status AS subtitle,
-        status,
-        updated_at AS occurred_at
-    FROM udrive.bookings
-    UNION ALL
-    SELECT 'Emergency', case_reference, emergency_type || ' · ' || status, status, updated_at
-    FROM udrive.emergency_cases
-    UNION ALL
-    SELECT 'Dispute', reference, category || ' · ' || status, status, updated_at
-    FROM udrive.dispute_cases
-) AS activity
-ORDER BY occurred_at DESC
+        try
+        {
+            const string activitySql = @"
+SELECT
+    'Booking' AS type,
+    'Booking ' || COALESCE(booking_reference, left(id::text, 8)) AS title,
+    booking_type || ' · ' || status AS subtitle,
+    status,
+    updated_at AS occurred_at
+FROM udrive.bookings
+ORDER BY updated_at DESC
 LIMIT 12;";
 
-        await using (var command = new NpgsqlCommand(activitySql, connection))
-        await using (var reader = await command.ExecuteReaderAsync(ct))
-        {
+            await using var command = new NpgsqlCommand(activitySql, connection);
+            await using var reader = await command.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
                 activity.Add(new ExecutiveActivityDto(
@@ -126,6 +130,10 @@ LIMIT 12;";
                     reader.GetString(3),
                     reader.GetFieldValue<DateTimeOffset>(4)));
             }
+        }
+        catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
+        {
+            // Recent activity is optional while an older database is being upgraded.
         }
 
         return ServiceResult<ExecutiveDashboardDto>.Ok(
