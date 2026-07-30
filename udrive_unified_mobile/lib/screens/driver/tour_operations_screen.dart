@@ -5,6 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../models/auth_models.dart';
 import '../../models/tour_operation_models.dart';
 import 'live_driver_package_bookings_screen.dart';
 
@@ -120,8 +121,8 @@ class _TourOperationsScreenState extends State<TourOperationsScreen>
 
   Widget _operationsBody() {
     if (_busy) {
-      return const ListView(
-        children: [
+      return ListView(
+        children: const [
           SizedBox(height: 180),
           Center(child: CircularProgressIndicator()),
         ],
