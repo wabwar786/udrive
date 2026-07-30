@@ -218,103 +218,116 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _customerBottomNavigation() {
-    Widget item(String key, IconData icon, String label) {
+    Widget navIcon(String key, IconData icon) {
       final selected = _customerPage == key;
       return Expanded(
-        child: InkWell(
-          onTap: () => setState(() => _customerPage = key),
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            height: 62,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  icon,
-                  color: selected ? AppColors.primary : AppColors.muted,
-                  size: 22,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: selected ? AppColors.primaryDark : AppColors.muted,
-                    fontSize: 10.5,
-                    fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
+        child: Tooltip(
+          message: _titleFor(key, false),
+          child: InkWell(
+            onTap: () => setState(() => _customerPage = key),
+            borderRadius: BorderRadius.circular(18),
+            child: SizedBox(
+              height: 54,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    size: 22,
+                    color: selected ? AppColors.primaryDark : const Color(0xFFA9AFB8),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 5),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: selected ? 6 : 0,
+                    height: selected ? 6 : 0,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       );
     }
 
-    return BottomAppBar(
-      height: 82,
-      padding: EdgeInsets.zero,
-      color: Colors.white,
-      surfaceTintColor: Colors.white,
-      elevation: 10,
-      child: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            item('home', Icons.home_rounded, context.tr('home')),
-            item('explore', Icons.explore_rounded, context.tr('explore')),
-            Expanded(
-              child: Center(
-                child: Semantics(
-                  button: true,
-                  label: 'Emergency SOS',
-                  child: InkWell(
-                    onTap: () => CustomerSosSheet.show(context),
-                    customBorder: const CircleBorder(),
-                    child: Container(
-                      width: 58,
-                      height: 58,
-                      decoration: BoxDecoration(
-                        color: AppColors.danger,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x332A0005),
-                            blurRadius: 14,
-                            offset: Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      alignment: Alignment.center,
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.sos_rounded, color: Colors.white, size: 25),
-                          Text(
-                            'SOS',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 9.5,
-                              height: 1,
-                              fontWeight: FontWeight.w900,
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: SizedBox(
+            height: 78,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.bottomCenter,
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    height: 58,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: const Color(0xFFE8ECEB)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.navy.withValues(alpha: .12),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        navIcon('home', Icons.home_outlined),
+                        navIcon('explore', Icons.explore_outlined),
+                        const SizedBox(width: 74),
+                        navIcon('packages', Icons.menu_book_outlined),
+                        navIcon('profile', Icons.person_outline_rounded),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 0,
+                  child: Semantics(
+                    button: true,
+                    label: 'Open emergency and safety contacts',
+                    child: InkWell(
+                      onTap: () => CustomerSosSheet.show(context),
+                      customBorder: const CircleBorder(),
+                      child: Container(
+                        width: 62,
+                        height: 62,
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryDark,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primaryDark.withValues(alpha: .28),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                        child: const Icon(Icons.sos_rounded, color: Colors.white, size: 28),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-            item('packages', Icons.luggage_rounded, context.tr('packages')),
-            item('profile', Icons.person_rounded, context.tr('profile')),
-          ],
+          ),
         ),
       ),
     );
