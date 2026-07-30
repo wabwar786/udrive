@@ -5,6 +5,7 @@ import '../core/theme/app_theme.dart';
 import '../core/widgets/brand.dart';
 import '../data/models.dart';
 import 'common/common_pages.dart';
+import 'common/help_guide_screen.dart';
 import 'customer/customer_home_screen.dart';
 import 'customer/customer_pages.dart';
 import 'customer/family_tour_planner_screen.dart';
@@ -246,6 +247,7 @@ class _MainShellState extends State<MainShell> {
       'tourGuardian': 'tourGuardian',
       'offlineCard': 'offlineTravelCard',
       'notifications': 'notifications',
+      'help': 'help',
       'support': 'support',
       'settings': 'settings',
       'profile': 'profile',
@@ -268,6 +270,9 @@ class _MainShellState extends State<MainShell> {
       'driverProfile': 'profile',
       'driverVerification': 'documents',
     };
+    if (key == 'help') {
+      return AppControllerScope.of(context).locale.languageCode == 'ur' ? 'مدد / استعمال کا طریقہ' : 'Help / How to use';
+    }
     return context.tr(mapping[key] ?? (driver ? 'driverDashboard' : 'home'));
   }
 
@@ -287,6 +292,7 @@ class _MainShellState extends State<MainShell> {
         'tourGuardian' => const SafetyHubScreen(),
         'offlineCard' => const SafetyHubScreen(),
         'notifications' => const NotificationsScreen(),
+        'help' => const HelpGuideScreen(driverMode: false),
         'support' => const SupportScreen(),
         'settings' => const SettingsScreen(),
         'profile' => ProfileScreen(onNavigate: _customerNavigate),
@@ -311,6 +317,7 @@ class _MainShellState extends State<MainShell> {
         'documents' => const DriverVerificationScreen(),
         'availability' => const DriverAvailabilityScreen(),
         'reviews' => const DriverReviewsScreen(),
+        'help' => const HelpGuideScreen(driverMode: true),
         'support' => const SupportScreen(),
         'settings' => const SettingsScreen(),
         'driverProfile' => DriverProfileScreen(onNavigate: _driverNavigate),
@@ -444,6 +451,7 @@ class _PremiumDrawer extends StatelessWidget {
         ('tourGuardian', Icons.admin_panel_settings_rounded, context.tr('tourGuardian')),
         ('offlineCard', Icons.download_for_offline_rounded, context.tr('offlineTravelCard')),
         ('notifications', Icons.notifications_rounded, context.tr('notifications')),
+        ('help', Icons.help_center_rounded, AppControllerScope.of(context).locale.languageCode == 'ur' ? 'مدد / استعمال کا طریقہ' : 'Help / How to use'),
         ('support', Icons.support_agent_rounded, context.tr('support')),
         ('settings', Icons.settings_rounded, context.tr('settings')),
         ('profile', Icons.person_rounded, context.tr('profile')),
@@ -467,6 +475,7 @@ class _PremiumDrawer extends StatelessWidget {
         ('driverLiveTracking', Icons.share_location_rounded, context.tr('liveTracking')),
         ('driverSafety', Icons.health_and_safety_rounded, context.tr('safety')),
         ('reviews', Icons.star_rounded, context.tr('reviews')),
+        ('help', Icons.help_center_rounded, AppControllerScope.of(context).locale.languageCode == 'ur' ? 'مدد / استعمال کا طریقہ' : 'Help / How to use'),
         ('support', Icons.support_agent_rounded, context.tr('support')),
         ('settings', Icons.settings_rounded, context.tr('settings')),
         ('driverProfile', Icons.person_rounded, context.tr('profile')),
