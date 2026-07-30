@@ -17,5 +17,6 @@ public sealed class CommunicationController(CommunicationService service, WhatsA
  [HttpGet("bookings/{bookingId:guid}/messages")]public async Task<IActionResult> Messages(Guid bookingId,CancellationToken ct)=>R(await service.MessagesAsync(User.GetRequiredUserId(),bookingId,ct));
  [HttpPost("bookings/{bookingId:guid}/messages")]public async Task<IActionResult> Send(Guid bookingId,SendBookingMessageRequest request,CancellationToken ct)=>R(await service.SendAsync(User.GetRequiredUserId(),bookingId,request,ct));
  [HttpPost("communication/whatsapp/location-share")]public async Task<IActionResult> ShareLocation(WhatsAppLocationShareRequest request,CancellationToken ct)=>R(await whatsAppService.ShareLocationAsync(request,ct));
+ [HttpPost("communication/whatsapp/emergency-broadcast")]public async Task<IActionResult> EmergencyBroadcast(WhatsAppEmergencyBroadcastRequest request,CancellationToken ct)=>R(await whatsAppService.SendEmergencyBroadcastAsync(request,ct));
  IActionResult R<T>(ServiceResult<T> x)=>x.Success?Ok(ApiResponse<T>.Ok(x.Data!,x.Message)):StatusCode(x.StatusCode,new{success=false,error=x.ErrorCode,message=x.Message,traceId=HttpContext.TraceIdentifier});
 }

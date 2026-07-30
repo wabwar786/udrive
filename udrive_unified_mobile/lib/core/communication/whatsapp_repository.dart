@@ -17,4 +17,25 @@ class WhatsAppRepository {
       'longitude': longitude,
     });
   }
+
+  Future<int> emergencyBroadcast({
+    required List<String> numbers,
+    required double latitude,
+    required double longitude,
+    required double accuracyMeters,
+    required String customerName,
+  }) async {
+    final response = await client.postJson('/api/v1/communication/whatsapp/emergency-broadcast', {
+      'numbers': numbers,
+      'latitude': latitude,
+      'longitude': longitude,
+      'accuracyMeters': accuracyMeters,
+      'customerName': customerName,
+    });
+    final data = response['data'];
+    if (data is Map<String, dynamic>) {
+      return (data['recipientCount'] as num?)?.toInt() ?? numbers.length;
+    }
+    return numbers.length;
+  }
 }

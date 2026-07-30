@@ -36,3 +36,5 @@ API_BASE_URL=https://YOUR-API-DOMAIN
 # WA Engine integration (API service only — never expose this key in Flutter/Admin)
 WA_ENGINE_BASE_URL=https://wa-engine-deploy-production.up.railway.app/
 WA_ENGINE_API_KEY=REPLACE_WITH_ROTATED_WA_ENGINE_KEY
+
+UDRIVE_SAFETY_WHATSAPP_NUMBER=923001234567
