@@ -217,7 +217,7 @@ class ProfileScreen extends StatelessWidget {
       const SizedBox(height: 18),
       FilledButton.icon(onPressed: () => controller.switchMode(UserMode.driver), icon: const Icon(Icons.drive_eta_rounded), label: Text(context.tr('switchDriver'))),
       const SizedBox(height: 14),
-      for (final item in [('wallet', Icons.account_balance_wallet_rounded, context.tr('wallet')), ('saved', Icons.bookmark_rounded, context.tr('savedPlaces')), ('safety', Icons.health_and_safety_rounded, context.tr('safety')), ('settings', Icons.settings_rounded, context.tr('settings')), ('support', Icons.support_agent_rounded, context.tr('support'))]) Padding(padding: const EdgeInsets.only(bottom: 9), child: PremiumCard(onTap: () => onNavigate(item.$1), child: Row(children: [Icon(item.$2, color: AppColors.primaryDark), const SizedBox(width: 13), Expanded(child: Text(item.$3, style: const TextStyle(fontWeight: FontWeight.w900))), const Icon(Icons.chevron_right_rounded)]))),
+      for (final item in [('saved', Icons.bookmark_rounded, context.tr('savedPlaces')), ('safety', Icons.health_and_safety_rounded, context.tr('safety')), ('settings', Icons.settings_rounded, context.tr('settings')), ('support', Icons.support_agent_rounded, context.tr('support'))]) Padding(padding: const EdgeInsets.only(bottom: 9), child: PremiumCard(onTap: () => onNavigate(item.$1), child: Row(children: [Icon(item.$2, color: AppColors.primaryDark), const SizedBox(width: 13), Expanded(child: Text(item.$3, style: const TextStyle(fontWeight: FontWeight.w900))), const Icon(Icons.chevron_right_rounded)]))),
     ]);
   }
 }

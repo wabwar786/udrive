@@ -32,3 +32,7 @@ MAINTENANCE_INTERVAL_HOURS=6
 # Admin and Flutter
 NEXT_PUBLIC_API_BASE_URL=https://YOUR-API-DOMAIN
 API_BASE_URL=https://YOUR-API-DOMAIN
+
+# WA Engine integration (API service only — never expose this key in Flutter/Admin)
+WA_ENGINE_BASE_URL=https://wa-engine-deploy-production.up.railway.app/
+WA_ENGINE_API_KEY=REPLACE_WITH_ROTATED_WA_ENGINE_KEY

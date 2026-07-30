@@ -68,6 +68,14 @@ builder.Services.AddScoped<FinanceService>(_ => new FinanceService(connectionStr
 builder.Services.AddScoped<PaymentService>(_ => new PaymentService(connectionString));
 builder.Services.AddScoped<FeedbackService>(sp => new FeedbackService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<CommunicationService>(_ => new CommunicationService(connectionString));
+builder.Services.AddHttpClient<WhatsAppService>(client =>
+{
+    var baseUrl = Environment.GetEnvironmentVariable("WA_ENGINE_BASE_URL")
+        ?? builder.Configuration["WA_ENGINE_BASE_URL"]
+        ?? "https://wa-engine-deploy-production.up.railway.app/";
+    client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : $"{baseUrl}/");
+    client.Timeout = TimeSpan.FromSeconds(20);
+});
 builder.Services.AddScoped<SafetyService>(_ => new SafetyService(connectionString));
 builder.Services.AddScoped<Phase18TourService>(_ => new Phase18TourService(connectionString));
 builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(connectionString));

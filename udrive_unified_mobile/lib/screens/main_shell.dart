@@ -30,6 +30,7 @@ import 'driver/live_vehicle_list_screen.dart';
 import 'driver/onboarding/driver_verification_screen.dart';
 import 'maps/live_tracking_screen.dart';
 import 'safety/safety_hub_screen.dart';
+import 'safety/customer_sos_sheet.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -197,37 +198,98 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _bottomNavigation(bool driver) {
-    final current = driver ? _driverPage : _customerPage;
-    final values = driver
-        ? const ['dashboard', 'requests', 'driverPackages', 'earnings', 'driverProfile']
-        : const ['home', 'explore', 'trips', 'wallet', 'profile'];
-    var index = values.indexOf(current);
+    if (!driver) return _customerBottomNavigation();
+
+    final values = const ['dashboard', 'requests', 'driverPackages', 'earnings', 'driverProfile'];
+    var index = values.indexOf(_driverPage);
     if (index < 0) index = 0;
 
     return NavigationBar(
       selectedIndex: index,
-      onDestinationSelected: (value) => setState(() {
-        if (driver) {
-          _driverPage = values[value];
-        } else {
-          _customerPage = values[value];
-        }
-      }),
-      destinations: driver
-          ? [
-              NavigationDestination(icon: const Icon(Icons.dashboard_outlined), selectedIcon: const Icon(Icons.dashboard_rounded), label: context.tr('home')),
-              NavigationDestination(icon: const Icon(Icons.notifications_active_outlined), selectedIcon: const Icon(Icons.notifications_active_rounded), label: context.tr('rideRequests')),
-              NavigationDestination(icon: const Icon(Icons.luggage_outlined), selectedIcon: const Icon(Icons.luggage_rounded), label: context.tr('packages')),
-              NavigationDestination(icon: const Icon(Icons.payments_outlined), selectedIcon: const Icon(Icons.payments_rounded), label: context.tr('earnings')),
-              NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: context.tr('profile')),
-            ]
-          : [
-              NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home_rounded), label: context.tr('home')),
-              NavigationDestination(icon: const Icon(Icons.explore_outlined), selectedIcon: const Icon(Icons.explore_rounded), label: context.tr('explore')),
-              NavigationDestination(icon: const Icon(Icons.route_outlined), selectedIcon: const Icon(Icons.route_rounded), label: context.tr('trips')),
-              NavigationDestination(icon: const Icon(Icons.account_balance_wallet_outlined), selectedIcon: const Icon(Icons.account_balance_wallet_rounded), label: context.tr('wallet')),
-              NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: context.tr('profile')),
-            ],
+      onDestinationSelected: (value) => setState(() => _driverPage = values[value]),
+      destinations: [
+        NavigationDestination(icon: const Icon(Icons.dashboard_outlined), selectedIcon: const Icon(Icons.dashboard_rounded), label: context.tr('home')),
+        NavigationDestination(icon: const Icon(Icons.notifications_active_outlined), selectedIcon: const Icon(Icons.notifications_active_rounded), label: context.tr('rideRequests')),
+        NavigationDestination(icon: const Icon(Icons.luggage_outlined), selectedIcon: const Icon(Icons.luggage_rounded), label: context.tr('packages')),
+        NavigationDestination(icon: const Icon(Icons.payments_outlined), selectedIcon: const Icon(Icons.payments_rounded), label: context.tr('earnings')),
+        NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: context.tr('profile')),
+      ],
+    );
+  }
+
+  Widget _customerBottomNavigation() {
+    Widget item(String key, IconData icon, String label) {
+      final selected = _customerPage == key;
+      return Expanded(
+        child: InkWell(
+          onTap: () => setState(() => _customerPage = key),
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: selected ? AppColors.primary : AppColors.muted, size: 23),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: selected ? AppColors.primaryDark : AppColors.muted,
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFE1EAE6))),
+        ),
+        child: Row(
+          children: [
+            item('home', Icons.home_rounded, context.tr('home')),
+            item('explore', Icons.explore_rounded, context.tr('explore')),
+            Expanded(
+              child: Center(
+                child: InkWell(
+                  onTap: () => CustomerSosSheet.show(context),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 62,
+                    height: 62,
+                    decoration: BoxDecoration(
+                      color: AppColors.danger,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 4),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x332A0005), blurRadius: 16, offset: Offset(0, 6)),
+                      ],
+                    ),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.sos_rounded, color: Colors.white, size: 27),
+                        Text('SOS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            item('packages', Icons.luggage_rounded, context.tr('packages')),
+            item('profile', Icons.person_rounded, context.tr('profile')),
+          ],
+        ),
+      ),
     );
   }
 
@@ -240,7 +302,6 @@ class _MainShellState extends State<MainShell> {
       'explore': 'explore',
       'packages': 'packages',
       'trips': 'trips',
-      'wallet': 'wallet',
       'saved': 'savedPlaces',
       'safety': 'safety',
       'liveTracking': 'liveTracking',
@@ -285,7 +346,6 @@ class _MainShellState extends State<MainShell> {
         'explore' => const LiveExploreScreen(),
         'packages' => const LivePackagesScreen(),
         'trips' => const LiveBookingsScreen(),
-        'wallet' => const WalletScreen(),
         'saved' => const SavedPlacesScreen(),
         'safety' => const SafetyHubScreen(),
         'liveTracking' => const LiveTrackingScreen(),
@@ -444,7 +504,6 @@ class _PremiumDrawer extends StatelessWidget {
         ('explore', Icons.explore_rounded, context.tr('explore')),
         ('packages', Icons.luggage_rounded, context.tr('packages')),
         ('trips', Icons.route_rounded, context.tr('trips')),
-        ('wallet', Icons.account_balance_wallet_rounded, context.tr('wallet')),
         ('saved', Icons.bookmark_rounded, context.tr('savedPlaces')),
         ('safety', Icons.health_and_safety_rounded, context.tr('safety')),
         ('liveTracking', Icons.share_location_rounded, context.tr('liveTracking')),

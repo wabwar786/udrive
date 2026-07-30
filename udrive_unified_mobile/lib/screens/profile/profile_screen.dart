@@ -50,7 +50,6 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 14),
           const ModeSwitchCard(targetMode: UserMode.driver),
           const SizedBox(height: 14),
-          _tile(Icons.account_balance_wallet_outlined, S.of(context, 'wallet'), 'Open wallet'),
           _tile(Icons.bookmark_border_rounded, S.of(context, 'savedPlaces'), 'View saved places'),
           _tile(Icons.health_and_safety_outlined, S.of(context, 'safety'), 'Open safety centre'),
           _tile(Icons.star_outline_rounded, 'Ratings & complaints', 'Rate trips or open a support case', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FeedbackCenterScreen()))),

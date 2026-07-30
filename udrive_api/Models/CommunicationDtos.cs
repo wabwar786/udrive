@@ -6,3 +6,5 @@ public sealed record NotificationPreferencesDto(bool BookingAlerts,bool PackageA
 public sealed record RegisterDeviceRequest(string DeviceToken,string Platform,string? DeviceName);
 public sealed record BookingMessageDto(Guid Id,Guid BookingId,Guid SenderUserId,string SenderName,string Body,bool IsMine,bool IsRead,DateTimeOffset SentAt);
 public sealed record SendBookingMessageRequest(string Body);
+public sealed record WhatsAppLocationShareRequest(string To,string? ContactName,double Latitude,double Longitude);
+public sealed record WhatsAppSendResultDto(bool Sent,string? ProviderMessageId);
