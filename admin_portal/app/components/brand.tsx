@@ -1,7 +1,7 @@
 export function BrandMark({ size = 44, className = '' }: { size?: number; className?: string }) {
   return (
     <img
-      src="/branding/udrive-icon-v2.png?v=20260730"
+      src="/branding/udrive-icon-v3.png?v=20260730b"
       alt="Udrive"
       width={size}
       height={size}
@@ -12,7 +12,7 @@ export function BrandMark({ size = 44, className = '' }: { size?: number; classN
 }
 
 export function BrandWordmark({
-  height = 42,
+  height = 44,
   className = '',
 }: {
   height?: number;
@@ -20,7 +20,7 @@ export function BrandWordmark({
 }) {
   return (
     <img
-      src="/branding/udrive-wordmark-v2.png?v=20260730"
+      src="/branding/udrive-wordmark-v3.png?v=20260730b"
       alt="Udrive — Your Ride, Our Priority"
       className={className}
       width={Math.round(height * 2.85)}

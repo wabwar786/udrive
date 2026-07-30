@@ -7,9 +7,12 @@ class UDriveLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Image.asset(
-      'assets/images/udrive_wordmark_v2.png',
-      height: compact ? 32 : 44,
+      'assets/images/udrive_wordmark_v3.png',
+      height: compact ? 38 : 52,
       fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      isAntiAlias: true,
+      gaplessPlayback: true,
     );
   }
 }

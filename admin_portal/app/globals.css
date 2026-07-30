@@ -21,3 +21,6 @@
 
 /* Udrive branding v2 */
 .brand{min-height:92px;align-items:flex-start}.brandText{min-width:0;gap:7px}.brandText>img{background:#fff;border-radius:14px;padding:6px 9px;box-sizing:content-box;max-width:150px;height:auto!important}.brandMarkCollapsed{display:none!important;border-radius:13px}.collapsed .brandText{display:none!important}.collapsed .brandMarkCollapsed{display:block!important}.loginLogo{display:inline-flex;width:fit-content;background:#fff;border-radius:18px;padding:10px 14px}.loginLogo img{width:min(360px,100%);height:auto!important}.sidebar .brand{overflow:visible}
+
+/* Phase 20 logo resolution fix */
+.brand{min-height:92px;align-items:flex-start}.brandText{min-width:0;gap:7px}.brandText>img{background:#fff;border-radius:16px;padding:8px 12px;box-sizing:content-box;max-width:158px;height:auto!important}.brandText>span:last-child{margin-left:4px}.brandMarkCollapsed{display:block!important;border-radius:14px}.adminShell:not(.collapsed) .brandMarkCollapsed{display:none!important}.adminShell.collapsed .brandText{display:none!important}.loginLogo{display:inline-flex;width:fit-content;background:#fff;border-radius:18px;padding:10px 14px}.loginLogo img{width:min(360px,100%);height:auto!important}.sidebar .brand{overflow:visible}

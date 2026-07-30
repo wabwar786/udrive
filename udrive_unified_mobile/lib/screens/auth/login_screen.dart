@@ -68,7 +68,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const UDriveMark(size: 58),
+                                const UDriveMark(size: 60),
                                 const SizedBox(height: 12),
                                 Text(
                                   urdu ? 'کشمیر کا محفوظ اور آسان سفر' : 'Your safer way to explore Kashmir',
