@@ -138,9 +138,9 @@ export function AdminFrame({
     <div className={`adminShell ${collapsed ? 'collapsed' : ''}`}>
       <aside className={`sidebar ${open ? 'sidebarOpen' : ''}`}>
         <div className="brand">
-          <BrandMark className="brandMarkImage" />
+          <BrandMark className="brandMarkCollapsed" size={44} />
           <div className="brandText">
-            <BrandWordmark height={26} darkBackground />
+            <BrandWordmark height={42} />
             <span>Tourism Operations</span>
           </div>
           <button className="mobileClose" onClick={() => setOpen(false)}>

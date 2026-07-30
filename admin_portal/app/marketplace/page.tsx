@@ -20,7 +20,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import styles from './marketplace.module.css';
-import { BrandMark, BrandWordmark } from '../components/brand';
+import { BrandWordmark } from '../components/brand';
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'https://udrive-api-production.up.railway.app';
 
@@ -214,7 +214,7 @@ export default function MarketplacePage() {
   if (!tokens) {
     return <main className={styles.loginPage}>
       <section className={styles.loginCard}>
-        <div className={styles.logo}><BrandMark size={40}/><div><BrandWordmark height={26}/><span>Tourism marketplace</span></div></div>
+        <div className={styles.logo}><div><BrandWordmark height={48}/><span>Tourism marketplace</span></div></div>
         <h1>Package approvals</h1>
         <p>Sign in with an Admin or Operations account to review Driver-created tourism packages.</p>
         <label>Admin mobile<input value={phone} onChange={event => setPhone(event.target.value)} inputMode="tel"/></label>
@@ -227,7 +227,7 @@ export default function MarketplacePage() {
 
   return <main className={styles.page}>
     <header className={styles.header}>
-      <div className={styles.logo}><BrandMark size={40}/><div><BrandWordmark height={26}/><span>{tokens.user.fullName}</span></div></div>
+      <div className={styles.logo}><div><BrandWordmark height={48}/><span>{tokens.user.fullName}</span></div></div>
       <div className={styles.headerActions}>
         <button className={styles.secondaryButton} disabled={busy} onClick={loadPackages}><RefreshCw className={busy ? styles.spin : ''} size={17}/> Refresh</button>
         <button className={styles.dangerButton} onClick={logout}><LogOut size={17}/> Logout</button>

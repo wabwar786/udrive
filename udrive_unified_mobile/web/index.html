@@ -11,11 +11,20 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Udrive">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" href="favicon-v2.png?v=20260730"/>
   <link rel="manifest" href="manifest.json">
   <title>Udrive</title>
 </head>
 <body>
+  <script>
+    // Clear old Udrive PWA caches after branding/release updates.
+    const release = 'udrive-20260730-v2';
+    if (localStorage.getItem('udrive_release') !== release) {
+      localStorage.setItem('udrive_release', release);
+      if ('caches' in window) caches.keys().then(keys => Promise.all(keys.map(key => caches.delete(key))));
+      if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(items => items.forEach(item => item.update()));
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -12,7 +12,10 @@ const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   async headers() {
-    return [{ source: '/(.*)', headers: securityHeaders }];
+    return [
+      { source: '/branding/:path*', headers: [...securityHeaders, { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, max-age=0' }] },
+      { source: '/(.*)', headers: securityHeaders },
+    ];
   },
 };
 

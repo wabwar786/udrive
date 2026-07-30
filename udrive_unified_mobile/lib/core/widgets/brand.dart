@@ -10,7 +10,7 @@ class UDriveMark extends StatelessWidget {
     final image = ClipRRect(
       borderRadius: BorderRadius.circular(size * .22),
       child: Image.asset(
-        'assets/images/udrive_icon.png',
+        'assets/images/udrive_icon_v2.png',
         width: size,
         height: size,
         fit: BoxFit.contain,
@@ -48,7 +48,7 @@ class UDriveWordmark extends StatelessWidget {
   Widget build(BuildContext context) {
     final height = compact ? 34.0 : 48.0;
     final image = Image.asset(
-      'assets/images/udrive_wordmark.png',
+      'assets/images/udrive_wordmark_v2.png',
       height: height,
       fit: BoxFit.contain,
     );
