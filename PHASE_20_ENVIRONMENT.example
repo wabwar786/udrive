@@ -1,0 +1,34 @@
+# API database
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+AUTO_APPLY_MIGRATIONS=true
+
+# Required production authentication secrets (use long random values)
+JWT_SIGNING_KEY=REPLACE_WITH_AT_LEAST_64_RANDOM_CHARACTERS
+JWT_ISSUER=udrive-api
+JWT_AUDIENCE=udrive-clients
+JWT_ACCESS_TOKEN_MINUTES=15
+JWT_REFRESH_TOKEN_DAYS=30
+OTP_HASH_SECRET=REPLACE_WITH_LONG_RANDOM_SECRET
+IDENTITY_HASH_SECRET=REPLACE_WITH_LONG_RANDOM_SECRET
+
+# OTP provider
+OTP_PROVIDER=ProductionProvider
+EXPOSE_DEVELOPMENT_OTP=false
+DEVELOPMENT_OTP_CODE=
+
+# Turn on only after every production value above is configured
+ENFORCE_PRODUCTION_SECURITY=false
+
+# Frontend origins, comma separated
+ALLOWED_ORIGINS=https://YOUR-MOBILE-DOMAIN,https://YOUR-ADMIN-DOMAIN
+ENABLE_SWAGGER=false
+
+# File storage
+UPLOAD_ROOT=/app/uploads
+
+# Maintenance
+MAINTENANCE_INTERVAL_HOURS=6
+
+# Admin and Flutter
+NEXT_PUBLIC_API_BASE_URL=https://YOUR-API-DOMAIN
+API_BASE_URL=https://YOUR-API-DOMAIN

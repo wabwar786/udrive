@@ -30,7 +30,7 @@ public sealed class GlobalExceptionHandler(
             _ => (
                 StatusCodes.Status500InternalServerError,
                 "An unexpected error occurred.",
-                "The request could not be completed. Use the traceId when contacting support.")
+                "This service is temporarily unavailable. Please try again shortly.")
         };
 
         if (status >= 500)

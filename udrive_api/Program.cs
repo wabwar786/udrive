@@ -24,6 +24,10 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton(authOptions);
 builder.Services.AddSingleton(new AuthSqlStore(connectionString));
 builder.Services.AddSingleton<LocalFileStorageService>();
+builder.Services.AddSingleton(sp => new ProductionMaintenanceService(
+    connectionString,
+    sp.GetRequiredService<ILogger<ProductionMaintenanceService>>()));
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ProductionMaintenanceService>());
 
 builder.Services.AddDbContextPool<UDriveDbContext>(options =>
 {
@@ -120,6 +124,27 @@ builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 300,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.ContentType = "application/problem+json";
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            status = StatusCodes.Status429TooManyRequests,
+            title = "Too many requests.",
+            detail = "Please wait a moment and try again.",
+            traceId = context.HttpContext.TraceIdentifier
+        }, cancellationToken);
+    };
     options.AddFixedWindowLimiter("location", limiter =>
     {
         limiter.PermitLimit = 40;
@@ -178,8 +203,14 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+ProductionConfigurationValidator.Validate(
+    app.Environment,
+    authOptions,
+    app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ProductionConfiguration"));
+
 app.UseExceptionHandler();
 app.UseMiddleware<RequestContextMiddleware>();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseCors("UDriveClients");
 app.UseRateLimiter();
 app.UseAuthentication();
