@@ -223,19 +223,26 @@ class _MainShellState extends State<MainShell> {
       return Expanded(
         child: InkWell(
           onTap: () => setState(() => _customerPage = key),
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 9),
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            height: 62,
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, color: selected ? AppColors.primary : AppColors.muted, size: 23),
+                Icon(
+                  icon,
+                  color: selected ? AppColors.primary : AppColors.muted,
+                  size: 22,
+                ),
                 const SizedBox(height: 3),
                 Text(
                   label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: selected ? AppColors.primaryDark : AppColors.muted,
-                    fontSize: 11,
+                    fontSize: 10.5,
                     fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
                   ),
                 ),
@@ -246,40 +253,60 @@ class _MainShellState extends State<MainShell> {
       );
     }
 
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Color(0xFFE1EAE6))),
-        ),
+    return BottomAppBar(
+      height: 82,
+      padding: EdgeInsets.zero,
+      color: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 10,
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(8, 4, 8, 4),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             item('home', Icons.home_rounded, context.tr('home')),
             item('explore', Icons.explore_rounded, context.tr('explore')),
             Expanded(
               child: Center(
-                child: InkWell(
-                  onTap: () => CustomerSosSheet.show(context),
-                  borderRadius: BorderRadius.circular(999),
-                  child: Container(
-                    width: 62,
-                    height: 62,
-                    decoration: BoxDecoration(
-                      color: AppColors.danger,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 4),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x332A0005), blurRadius: 16, offset: Offset(0, 6)),
-                      ],
-                    ),
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.sos_rounded, color: Colors.white, size: 27),
-                        Text('SOS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
-                      ],
+                child: Semantics(
+                  button: true,
+                  label: 'Emergency SOS',
+                  child: InkWell(
+                    onTap: () => CustomerSosSheet.show(context),
+                    customBorder: const CircleBorder(),
+                    child: Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: AppColors.danger,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x332A0005),
+                            blurRadius: 14,
+                            offset: Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.sos_rounded, color: Colors.white, size: 25),
+                          Text(
+                            'SOS',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9.5,
+                              height: 1,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
