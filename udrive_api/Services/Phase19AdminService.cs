@@ -153,7 +153,7 @@ SELECT
     CASE WHEN vehicle.id IS NULL THEN NULL ELSE trim(vehicle.make || ' ' || vehicle.model) END,
     vehicle.registration_number,
     COALESCE(request.pickup_label, package.starting_city, 'Pickup') || ' → ' ||
-        COALESCE(request.destination_label, destination.name, 'Destination'),
+        COALESCE(request.destination_label, destination.name_en, 'Destination'),
     b.pickup_at,
     ST_Y(location.location::geometry),
     ST_X(location.location::geometry),
@@ -232,7 +232,7 @@ SELECT
     driver.full_name,
     CASE WHEN vehicle.id IS NULL THEN NULL ELSE trim(vehicle.make || ' ' || vehicle.model) END,
     COALESCE(request.pickup_label, package.starting_city, 'Pickup') || ' → ' ||
-        COALESCE(request.destination_label, destination.name, 'Destination'),
+        COALESCE(request.destination_label, destination.name_en, 'Destination'),
     b.seats_booked,
     b.total_amount,
     COALESCE((
