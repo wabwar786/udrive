@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:udrive_mobile/core/widgets/brand.dart';
 
 void main() {
-  testWidgets('uDrive brand renders', (tester) async {
+  testWidgets('Udrive brand renders', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(

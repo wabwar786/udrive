@@ -35,6 +35,7 @@ import {
   saveSession,
   type AdminSession,
 } from '../lib/admin-api';
+import { BrandMark, BrandWordmark } from './brand';
 
 const groups = [
   {
@@ -137,9 +138,9 @@ export function AdminFrame({
     <div className={`adminShell ${collapsed ? 'collapsed' : ''}`}>
       <aside className={`sidebar ${open ? 'sidebarOpen' : ''}`}>
         <div className="brand">
-          <div className="brandMark">↟</div>
-          <div>
-            <strong>uDrive</strong>
+          <BrandMark className="brandMarkImage" />
+          <div className="brandText">
+            <BrandWordmark height={26} darkBackground />
             <span>Tourism Operations</span>
           </div>
           <button className="mobileClose" onClick={() => setOpen(false)}>

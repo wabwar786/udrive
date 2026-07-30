@@ -1,4 +1,4 @@
-# uDrive premium mobile update
+# Udrive premium mobile update
 
 ## Included
 
@@ -17,10 +17,10 @@
 - Four-step vehicle registration
 - Multiple vehicle list and verification states
 - Android, iOS and web platform scaffolding
-- Original uDrive launcher icon and splash assets
+- Original Udrive launcher icon and splash assets
 - Railway Dockerfile
 - Root GitHub Actions workflow for APK and AAB
 
 ## Important
 
-The icon is an original uDrive route/U mark. It follows the friendly visual direction requested but is not an exact copy of the inDrive trademark.
+The icon is an original Udrive route/U mark. It follows the friendly visual direction requested but is not an exact copy of the inDrive trademark.

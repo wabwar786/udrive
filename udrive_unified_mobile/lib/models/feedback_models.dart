@@ -1,7 +1,7 @@
 class EligibleRatingBooking {
   const EligibleRatingBooking({required this.bookingId,required this.bookingReference,required this.otherPartyName,required this.role,required this.pickupAt,required this.totalAmount,required this.alreadyRated});
   final String bookingId,bookingReference,otherPartyName,role;final DateTime pickupAt;final double totalAmount;final bool alreadyRated;
-  factory EligibleRatingBooking.fromJson(Map<String,dynamic> j)=>EligibleRatingBooking(bookingId:j['bookingId'].toString(),bookingReference:j['bookingReference'].toString(),otherPartyName:j['otherPartyName']?.toString()??'uDrive user',role:j['role']?.toString()??'',pickupAt:DateTime.parse(j['pickupAt'].toString()).toLocal(),totalAmount:(j['totalAmount'] as num?)?.toDouble()??0,alreadyRated:j['alreadyRated']==true);
+  factory EligibleRatingBooking.fromJson(Map<String,dynamic> j)=>EligibleRatingBooking(bookingId:j['bookingId'].toString(),bookingReference:j['bookingReference'].toString(),otherPartyName:j['otherPartyName']?.toString()??'Udrive user',role:j['role']?.toString()??'',pickupAt:DateTime.parse(j['pickupAt'].toString()).toLocal(),totalAmount:(j['totalAmount'] as num?)?.toDouble()??0,alreadyRated:j['alreadyRated']==true);
 }
 class DisputeCaseItem {
   const DisputeCaseItem({required this.id,required this.caseReference,required this.category,required this.priority,required this.subject,required this.description,required this.status,required this.version,required this.createdAt,this.bookingId,this.bookingReference,this.resolutionSummary});

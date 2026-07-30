@@ -35,7 +35,7 @@ class _UDriveAppState extends State<UDriveApp> {
           controller: _controller,
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
-            title: 'uDrive',
+            title: 'Udrive',
             theme: AppTheme.light,
             locale: _controller.locale,
             supportedLocales: AppStrings.supportedLocales,

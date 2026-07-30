@@ -179,7 +179,7 @@ class AppController extends ChangeNotifier {
   List<LiveTourMatch> get liveTourMatches => List.unmodifiable(_liveTourMatches);
   bool get marketplaceBusy => _marketplaceBusy;
   String? get marketplaceError => _marketplaceError;
-  String get currentUserName => _currentUser?.fullName ?? 'uDrive User';
+  String get currentUserName => _currentUser?.fullName ?? 'Udrive User';
   String get currentUserPhone => _currentUser?.phoneNumber ?? '';
   String get driverVerificationStatus =>
       _currentUser?.driverVerificationStatus ?? _driverProfile?.verificationStatus ?? 'Not registered';
@@ -217,7 +217,7 @@ class AppController extends ChangeNotifier {
         pickup: 'Ghari Pan, Muzaffarabad',
         destination: _liveTrip.destination,
         tripOtp: '6421',
-        emergencyNumbers: const ['Rescue 1122', 'Police 15', 'uDrive Safety +92 300 000 1122'],
+        emergencyNumbers: const ['Rescue 1122', 'Police 15', 'Udrive Safety +92 300 000 1122'],
         itinerary: const ['Muzaffarabad', 'Kohala viewpoint', 'Keran', 'Sharda'],
         hotel: 'Neelum View Hotel, Keran',
         lastKnownLocation: _liveTrip.currentLocation,
@@ -345,7 +345,7 @@ class AppController extends ChangeNotifier {
     await verifyOtp(
       phoneNumber: '03000000001',
       code: '1234',
-      fullName: 'uDrive Demo Driver',
+      fullName: 'Udrive Demo Driver',
     );
   }
 

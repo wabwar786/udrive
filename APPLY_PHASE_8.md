@@ -1,4 +1,4 @@
-# Apply Phase 8 to the existing uDrive repository
+# Apply Phase 8 to the existing Udrive repository
 
 This update is structured for the existing monorepo.
 

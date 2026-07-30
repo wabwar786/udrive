@@ -188,7 +188,7 @@ class ApiClient {
       } catch (_) {
         throw ApiException(
           response.statusCode >= 500
-              ? 'The uDrive service is temporarily unavailable.'
+              ? 'The Udrive service is temporarily unavailable.'
               : 'The server returned an invalid response.',
           statusCode: response.statusCode,
         );
@@ -236,7 +236,7 @@ class ApiClient {
         body: {
           'refreshToken': refreshToken,
           'deviceId': deviceId,
-          'deviceName': 'uDrive mobile',
+          'deviceName': 'Udrive mobile',
         },
       );
 

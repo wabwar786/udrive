@@ -87,7 +87,7 @@ async function refresh(session: AdminSession) {
     body: JSON.stringify({
       refreshToken: session.refreshToken,
       deviceId: 'udrive-admin-v10',
-      deviceName: 'uDrive Operations Portal',
+      deviceName: 'Udrive Operations Portal',
     }),
   });
 
@@ -199,10 +199,10 @@ export async function login(phoneNumber: string, code: string) {
     body: JSON.stringify({
       phoneNumber,
       code,
-      fullName: 'uDrive Admin',
+      fullName: 'Udrive Admin',
       language: 'en',
       deviceId: 'udrive-admin-v10',
-      deviceName: 'uDrive Operations Portal',
+      deviceName: 'Udrive Operations Portal',
     }),
   });
 

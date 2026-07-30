@@ -33,7 +33,7 @@ class AuthRepository {
         'fullName': fullName,
         'language': language,
         'deviceId': deviceId,
-        'deviceName': 'uDrive mobile',
+        'deviceName': 'Udrive mobile',
       },
       authenticated: false,
     );

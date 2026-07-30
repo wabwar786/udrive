@@ -593,7 +593,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _bookingType == BookingType.perSeat
-                      ? 'Fuel, toll and uDrive charges are included in the seat fare.'
+                      ? 'Fuel, toll and Udrive charges are included in the seat fare.'
                       : 'Toll charges, if applicable, will be paid by the customer at actual cost.',
                   style: const TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w800),
                 ),

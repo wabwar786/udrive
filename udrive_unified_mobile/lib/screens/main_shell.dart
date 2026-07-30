@@ -179,7 +179,7 @@ class _MainShellState extends State<MainShell> {
 
   String _firstName(String name) {
     final clean = name.trim();
-    if (clean.isEmpty) return 'uDrive User';
+    if (clean.isEmpty) return 'Udrive User';
     return clean.split(RegExp(r'\s+')).first;
   }
 

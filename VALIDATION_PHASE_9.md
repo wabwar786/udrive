@@ -21,8 +21,8 @@ Static validation completed on the repository update:
 
 The current generation environment does not contain the Flutter SDK or .NET SDK, so the authoritative compilation will run through the included GitHub Actions and Railway Docker builds:
 
-- `Build uDrive API`
-- `Build uDrive APK and AAB`
+- `Build Udrive API`
+- `Build Udrive APK and AAB`
 - Railway Admin portal Next.js build
 
 Deploy the API first so migration `005_phase9_live_booking_marketplace` is applied before Mobile/Admin use the new endpoints.

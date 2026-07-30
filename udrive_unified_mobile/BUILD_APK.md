@@ -4,7 +4,7 @@
 
 1. Push the update to `main`.
 2. Open GitHub → Actions.
-3. Open **Build uDrive APK and AAB**.
+3. Open **Build Udrive APK and AAB**.
 4. Run the workflow.
 5. Download `udrive-tourism-phase-3-6-apk`.
 6. Extract it to obtain `app-release.apk`.

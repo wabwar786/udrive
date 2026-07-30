@@ -184,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } catch (_) {
-      if (mounted) setState(() => _error = 'Could not connect to uDrive API. Please try again.');
+      if (mounted) setState(() => _error = 'Could not connect to Udrive API. Please try again.');
     }
   }
 

@@ -1,6 +1,6 @@
-# uDrive Kashmir Tourism Mobile — Phase 8
+# Udrive Kashmir Tourism Mobile — Phase 8
 
-Unified Flutter Customer and Driver application connected to the live uDrive API.
+Unified Flutter Customer and Driver application connected to the live Udrive API.
 
 ## Live Phase 8 features
 

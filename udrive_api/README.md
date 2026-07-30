@@ -1,6 +1,6 @@
-# uDrive API — Phase 8
+# Udrive API — Phase 8
 
-Live authentication and verification backend for the uDrive Kashmir tourism application.
+Live authentication and verification backend for the Udrive Kashmir tourism application.
 
 ## Stack
 

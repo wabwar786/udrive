@@ -28,7 +28,7 @@ class CurrentUser {
   factory CurrentUser.fromJson(Map<String, dynamic> json) => CurrentUser(
         id: json['id']?.toString() ?? '',
         phoneNumber: json['phoneNumber']?.toString() ?? '',
-        fullName: json['fullName']?.toString() ?? 'uDrive User',
+        fullName: json['fullName']?.toString() ?? 'Udrive User',
         email: json['email']?.toString(),
         preferredLanguage: json['preferredLanguage']?.toString() ?? 'en',
         accountStatus: json['accountStatus']?.toString() ?? 'Approved',
