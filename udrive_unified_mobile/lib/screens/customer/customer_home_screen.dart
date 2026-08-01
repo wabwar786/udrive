@@ -421,7 +421,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           slivers: [
             SliverToBoxAdapter(
               child: SizedBox(
-                height: (height - 88) < 790 ? 790 : height - 88,
+                height: height - 88,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -467,205 +467,211 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     SafeArea(
                       bottom: false,
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+                        child: Stack(
                           children: [
-                            Row(
-                              children: [
-                                _CircleButton(
-                                  icon: Icons.menu_rounded,
-                                  onTap: () => Scaffold.of(context).openDrawer(),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerRight,
-                                      child: _VehicleTypePanel(
-                                        onSelected: _showResultsForVehicleType,
+                            Positioned.fill(
+                              bottom: 252,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      _CircleButton(
+                                        icon: Icons.menu_rounded,
+                                        onTap: () => Scaffold.of(context).openDrawer(),
+                                      ),
+                                      const Spacer(),
+                                      if (_activeTrip != null) ...[
+                                        _CircleButton(
+                                          icon: Icons.route_rounded,
+                                          onTap: _openActiveTrip,
+                                          showDot: true,
+                                        ),
+                                        const SizedBox(width: 8),
+                                      ],
+                                      _CircleButton(
+                                        icon: Icons.notifications_none_rounded,
+                                        onTap: () => widget.onNavigate('notifications'),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    '$_greeting, ${_firstName(controller.currentUserName)}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: -.35,
+                                      shadows: [
+                                        Shadow(color: Colors.black38, blurRadius: 10),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    _destinations.isEmpty
+                                        ? 'Explore Kashmir'
+                                        : _destinations[_heroIndex.clamp(
+                                                0, _destinations.length - 1)]
+                                            .name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 32,
+                                      height: 1.02,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -.9,
+                                      shadows: [
+                                        Shadow(color: Colors.black45, blurRadius: 14),
+                                      ],
+                                    ),
+                                  ),
+                                  if (upcoming.isNotEmpty) ...[
+                                    const SizedBox(height: 9),
+                                    _UpcomingDestinations(
+                                      rides: upcoming,
+                                      onSelected: _showResultsForUpcoming,
+                                    ),
+                                  ],
+                                  if (halfBooked.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    _HalfBookedStrip(
+                                      rides: halfBooked,
+                                      onSelected: _showResultsForUpcoming,
+                                    ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  _VehicleTypePanel(
+                                    onSelected: _showResultsForVehicleType,
+                                    highlighted: true,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.fromLTRB(15, 12, 15, 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: .97),
+                                      borderRadius: BorderRadius.circular(26),
+                                      border: Border.all(
+                                        color: const Color(0xFFF1F3F6),
+                                      ),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x15000000),
+                                          blurRadius: 18,
+                                          offset: Offset(0, 8),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        _LocationInput(
+                                          controller: _pickup,
+                                          label: 'From',
+                                          icon: Icons.radio_button_checked_rounded,
+                                          accent: _lime,
+                                          hint: 'Enter pickup address',
+                                          fillColor: const Color(0xFFF8FAFB),
+                                          onTap: () {
+                                            final value = _pickup.text.trim();
+                                            if (value == 'Enter pickup address' ||
+                                                value == 'Detecting current address…') {
+                                              _pickup.clear();
+                                            }
+                                          },
+                                          suffix: IconButton(
+                                            tooltip: 'Use current location',
+                                            onPressed: _locating ? null : _loadLocation,
+                                            icon: _locating
+                                                ? const SizedBox(
+                                                    width: 18,
+                                                    height: 18,
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color: _lime,
+                                                    ),
+                                                  )
+                                                : const Icon(
+                                                    Icons.my_location_rounded,
+                                                    color: _ink,
+                                                    size: 20,
+                                                  ),
+                                          ),
+                                        ),
+                                        const Divider(height: 12),
+                                        _LocationInput(
+                                          controller: _destination,
+                                          label: 'To',
+                                          icon: Icons.location_on_rounded,
+                                          accent: const Color(0xFFF38A2E),
+                                          hint: 'Select destination',
+                                          fillColor: const Color(0xFFF8FAFB),
+                                          readOnly: true,
+                                          onTap: () => setState(() =>
+                                              _showDestinationList = !_showDestinationList),
+                                          suffix: Icon(
+                                            _showDestinationList
+                                                ? Icons.keyboard_arrow_up_rounded
+                                                : Icons.keyboard_arrow_down_rounded,
+                                            color: _ink,
+                                          ),
+                                        ),
+                                        AnimatedSize(
+                                          duration: const Duration(milliseconds: 220),
+                                          child: !_showDestinationList
+                                              ? const SizedBox.shrink()
+                                              : _DestinationDropdown(
+                                                  items: _destinations,
+                                                  onSelected: _selectDestination,
+                                                ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 58,
+                                    child: FilledButton.icon(
+                                      onPressed: _findRides,
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: _lime,
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        shadowColor: Colors.transparent,
+                                        surfaceTintColor: Colors.transparent,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(19),
+                                        ),
+                                      ),
+                                      icon: const Icon(
+                                        Icons.directions_car_filled_rounded,
+                                        size: 22,
+                                        color: Colors.white,
+                                      ),
+                                      label: const Text(
+                                        'Find rides',
+                                        style: TextStyle(
+                                          fontSize: 19,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                          letterSpacing: -.25,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                if (_activeTrip != null) ...[
-                                  _CircleButton(
-                                    icon: Icons.route_rounded,
-                                    onTap: _openActiveTrip,
-                                    showDot: true,
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                _CircleButton(
-                                  icon: Icons.notifications_none_rounded,
-                                  onTap: () => widget.onNavigate('notifications'),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              '$_greeting, ${_firstName(controller.currentUserName)}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -.35,
-                                shadows: [
-                                  Shadow(color: Colors.black38, blurRadius: 10),
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _destinations.isEmpty
-                                  ? 'Explore Kashmir'
-                                  : _destinations[_heroIndex.clamp(
-                                          0, _destinations.length - 1)]
-                                      .name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 34,
-                                height: 1.05,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -.9,
-                                shadows: [
-                                  Shadow(color: Colors.black45, blurRadius: 14),
-                                ],
-                              ),
-                            ),
-                            if (upcoming.isNotEmpty) ...[
-                              const SizedBox(height: 10),
-                              _UpcomingDestinations(
-                                rides: upcoming,
-                                onSelected: _showResultsForUpcoming,
-                              ),
-                            ],
-                            if (halfBooked.isNotEmpty) ...[
-                              const SizedBox(height: 10),
-                              _HalfBookedStrip(
-                                rides: halfBooked,
-                                onSelected: _showResultsForUpcoming,
-                              ),
-                              const SizedBox(height: 10),
-                            ],
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.fromLTRB(15, 12, 15, 12),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: .95),
-                                borderRadius: BorderRadius.circular(26),
-                                border: Border.all(
-                                  color: const Color(0xFFF1F3F6),
-                                ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x17000000),
-                                    blurRadius: 22,
-                                    offset: Offset(0, 12),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                children: [
-                                  _LocationInput(
-                                    controller: _pickup,
-                                    label: 'From',
-                                    icon: Icons.radio_button_checked_rounded,
-                                    accent: _lime,
-                                    hint: 'Current address will appear here',
-                                    fillColor: const Color(0xFFF8FAFB),
-                                    onTap: () {
-                                      final value = _pickup.text.trim();
-                                      if (value == 'Enter pickup address' ||
-                                          value == 'Detecting current address…') {
-                                        _pickup.clear();
-                                      }
-                                    },
-                                    suffix: IconButton(
-                                      tooltip: 'Use current location',
-                                      onPressed: _locating ? null : _loadLocation,
-                                      icon: _locating
-                                          ? const SizedBox(
-                                              width: 18,
-                                              height: 18,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: _lime,
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.my_location_rounded,
-                                              color: _ink,
-                                              size: 20,
-                                            ),
-                                    ),
-                                  ),
-                                  const Divider(height: 14),
-                                  _LocationInput(
-                                    controller: _destination,
-                                    label: 'To',
-                                    icon: Icons.location_on_rounded,
-                                    accent: const Color(0xFFF38A2E),
-                                    hint: 'Select destination',
-                                    fillColor: const Color(0xFFF8FAFB),
-                                    readOnly: true,
-                                    onTap: () => setState(() =>
-                                        _showDestinationList = !_showDestinationList),
-                                    suffix: Icon(
-                                      _showDestinationList
-                                          ? Icons.keyboard_arrow_up_rounded
-                                          : Icons.keyboard_arrow_down_rounded,
-                                      color: _ink,
-                                    ),
-                                  ),
-                                  AnimatedSize(
-                                    duration: const Duration(milliseconds: 220),
-                                    child: !_showDestinationList
-                                        ? const SizedBox.shrink()
-                                        : _DestinationDropdown(
-                                            items: _destinations,
-                                            onSelected: _selectDestination,
-                                          ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 58,
-                              child: FilledButton.icon(
-                                onPressed: _findRides,
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: _lime,
-                                  foregroundColor: Colors.white,
-                                  elevation: 4,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(19),
-                                  ),
-                                ),
-                                icon: const Icon(
-                                  Icons.directions_car_filled_rounded,
-                                  size: 22,
-                                  color: Colors.white,
-                                ),
-                                label: const Text(
-                                  'Find rides',
-                                  style: TextStyle(
-                                    fontSize: 19,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                    letterSpacing: -.25,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
                           ],
                         ),
                       ),
@@ -908,9 +914,13 @@ class _VehicleTypeToggle extends StatelessWidget {
 }
 
 class _VehicleTypePanel extends StatelessWidget {
-  const _VehicleTypePanel({required this.onSelected});
+  const _VehicleTypePanel({
+    required this.onSelected,
+    this.highlighted = false,
+  });
 
   final ValueChanged<String> onSelected;
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
@@ -921,16 +931,22 @@ class _VehicleTypePanel extends StatelessWidget {
       (key: 'coster', icon: Icons.airport_shuttle_rounded, label: 'Coster'),
     ];
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .94),
+        color: highlighted
+            ? _CustomerHomeScreenState._lime.withValues(alpha: .90)
+            : Colors.white.withValues(alpha: .94),
         borderRadius: BorderRadius.circular(17),
-        boxShadow: const [
-          BoxShadow(color: Color(0x18000000), blurRadius: 12),
-        ],
+        border: Border.all(
+          color: highlighted
+              ? Colors.white.withValues(alpha: .55)
+              : const Color(0xFFE5EAEC),
+        ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        mainAxisSize: MainAxisSize.max,
         children: [
           for (var i = 0; i < items.length; i++) ...[
             InkWell(
@@ -944,13 +960,13 @@ class _VehicleTypePanel extends StatelessWidget {
                     Icon(
                       items[i].icon,
                       size: 16,
-                      color: _CustomerHomeScreenState._ink,
+                      color: highlighted ? Colors.white : _CustomerHomeScreenState._ink,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       items[i].label,
-                      style: const TextStyle(
-                        color: _CustomerHomeScreenState._ink,
+                      style: TextStyle(
+                        color: highlighted ? Colors.white : _CustomerHomeScreenState._ink,
                         fontSize: 9,
                         fontWeight: FontWeight.w800,
                       ),
@@ -963,7 +979,7 @@ class _VehicleTypePanel extends StatelessWidget {
               Container(
                 width: 1,
                 height: 22,
-                color: const Color(0xFFE5EAEC),
+                color: highlighted ? Colors.white38 : const Color(0xFFE5EAEC),
               ),
           ],
         ],
