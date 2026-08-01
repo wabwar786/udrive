@@ -477,7 +477,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                   icon: Icons.menu_rounded,
                                   onTap: () => Scaffold.of(context).openDrawer(),
                                 ),
-                                const Spacer(),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerRight,
+                                      child: _VehicleTypePanel(
+                                        onSelected: _showResultsForVehicleType,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
                                 if (_activeTrip != null) ...[
                                   _CircleButton(
                                     icon: Icons.route_rounded,
@@ -491,33 +504,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                   onTap: () => widget.onNavigate('notifications'),
                                 ),
                               ],
-                            ),
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  _VehicleTypeToggle(
-                                    expanded: _showVehicleTypeBar,
-                                    onTap: () => setState(() =>
-                                        _showVehicleTypeBar = !_showVehicleTypeBar),
-                                  ),
-                                  AnimatedSize(
-                                    duration: const Duration(milliseconds: 220),
-                                    curve: Curves.easeOutCubic,
-                                    alignment: Alignment.centerRight,
-                                    child: !_showVehicleTypeBar
-                                        ? const SizedBox.shrink()
-                                        : Padding(
-                                            padding: const EdgeInsets.only(top: 7),
-                                            child: _VehicleTypePanel(
-                                              onSelected: _showResultsForVehicleType,
-                                            ),
-                                          ),
-                                  ),
-                                ],
-                              ),
                             ),
                             const SizedBox(height: 10),
                             Text(
@@ -553,7 +539,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               ),
                             ),
                             if (upcoming.isNotEmpty) ...[
-                              const SizedBox(height: 14),
+                              const SizedBox(height: 10),
                               _UpcomingDestinations(
                                 rides: upcoming,
                                 onSelected: _showResultsForUpcoming,
@@ -565,7 +551,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 rides: halfBooked,
                                 onSelected: _showResultsForUpcoming,
                               ),
-                              const SizedBox(height: 18),
+                              const SizedBox(height: 10),
                             ],
                             const Spacer(),
                             Container(
@@ -593,6 +579,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                     accent: _lime,
                                     hint: 'Current address will appear here',
                                     fillColor: const Color(0xFFF8FAFB),
+                                    onTap: () {
+                                      final value = _pickup.text.trim();
+                                      if (value == 'Enter pickup address' ||
+                                          value == 'Detecting current address…') {
+                                        _pickup.clear();
+                                      }
+                                    },
                                     suffix: IconButton(
                                       tooltip: 'Use current location',
                                       onPressed: _locating ? null : _loadLocation,
@@ -672,14 +665,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 ),
                               ),
                             ),
-                            if (pastDestinations.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              _DestinationHistoryStrip(
-                                items: pastDestinations,
-                                onSelected: _showResultsForDestination,
-                              ),
-                            ],
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6),
                           ],
                         ),
                       ),
@@ -694,6 +680,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     Container(key: _resultsKey),
+                    if (pastDestinations.isNotEmpty) ...[
+                      _DestinationHistoryStrip(
+                        items: pastDestinations,
+                        onSelected: _showResultsForDestination,
+                        darkText: true,
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     Row(
                       children: [
                         Expanded(
@@ -1309,10 +1303,15 @@ class _DestinationDropdown extends StatelessWidget {
 }
 
 class _DestinationHistoryStrip extends StatelessWidget {
-  const _DestinationHistoryStrip({required this.items, required this.onSelected});
+  const _DestinationHistoryStrip({
+    required this.items,
+    required this.onSelected,
+    this.darkText = false,
+  });
 
   final List<String> items;
   final ValueChanged<String> onSelected;
+  final bool darkText;
 
   @override
   Widget build(BuildContext context) => SizedBox(
