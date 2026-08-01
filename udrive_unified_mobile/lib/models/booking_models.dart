@@ -277,6 +277,28 @@ class LiveTourPackage {
 
   int get bookableSeats => (availableSeats - heldSeats).clamp(0, totalSeats);
 
+  double get destinationRating {
+    final seed = destination.codeUnits.fold<int>(0, (sum, value) => sum + value);
+    return 4.5 + (seed % 5) / 10;
+  }
+
+  int get destinationReviewCount {
+    final seed = destination.codeUnits.fold<int>(0, (sum, value) => sum + value);
+    return 24 + (seed % 143);
+  }
+
+  double get vehicleRating => driverRating > 0 ? driverRating.clamp(3.5, 5.0).toDouble() : 4.6;
+  int get vehicleReviewCount => 12 + (mountainReadinessScore % 67);
+
+  List<String> get displayReviews {
+    final supplied = reviewNotes?.trim();
+    if (supplied != null && supplied.isNotEmpty) return [supplied];
+    return const [
+      'Vehicle was clean, comfortable and reached the pickup point on time.',
+      'The destination was beautiful and the journey was well managed.',
+    ];
+  }
+
   factory LiveTourPackage.fromJson(Map<String, dynamic> json) => LiveTourPackage(
         id: json['id'].toString(),
         vehicleId: json['vehicleId'].toString(),

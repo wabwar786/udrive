@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../models/booking_models.dart';
 import 'booking_payment_screen.dart';
+import '../common/booking_chat_screen.dart';
 
 class LiveBookingsScreen extends StatefulWidget {
   const LiveBookingsScreen({super.key});
@@ -226,6 +227,25 @@ class _BookingCard extends StatelessWidget {
                 ),
                 icon: const Icon(Icons.payments_rounded),
                 label: const Text('Pay balance'),
+              ),
+            ),
+          ],
+          if (active) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BookingChatScreen(
+                      bookingId: booking.id,
+                      bookingReference: booking.bookingReference,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+                label: const Text('Chat with driver'),
               ),
             ),
           ],

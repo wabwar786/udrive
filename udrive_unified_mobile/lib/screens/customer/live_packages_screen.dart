@@ -174,7 +174,17 @@ class _PackageCard extends StatelessWidget {
                       const SizedBox(width: 6),
                       Expanded(child: Text(package.startingCity, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13))),
                       const Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Icon(Icons.arrow_forward_rounded, size: 17, color: AppColors.primaryDark)),
-                      Expanded(child: Text(package.destination, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900, fontSize: 13.5))),
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Flexible(child: Text(package.destination, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900, fontSize: 13.5))),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.star_rounded, size: 15, color: Color(0xFFFFB300)),
+                            Text(package.destinationRating.toStringAsFixed(1), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                      ),
                       const SizedBox(width: 5),
                       const Icon(Icons.location_on_rounded, size: 16, color: AppColors.primary),
                     ]),
@@ -183,9 +193,19 @@ class _PackageCard extends StatelessWidget {
                   Text(package.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                   if (package.vehicle.isNotEmpty || package.registrationNumber.isNotEmpty) ...[
                     const SizedBox(height: 3),
-                    Text(
-                      [package.vehicle, package.registrationNumber].where((value) => value.trim().isNotEmpty).join(' · '),
-                      style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            [package.vehicle, package.registrationNumber].where((value) => value.trim().isNotEmpty).join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
+                          ),
+                        ),
+                        const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFB300)),
+                        Text(' ${package.vehicleRating.toStringAsFixed(1)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+                      ],
                     ),
                   ],
                   const SizedBox(height: 12),
@@ -193,6 +213,7 @@ class _PackageCard extends StatelessWidget {
                     spacing: 10,
                     runSpacing: 8,
                     children: [
+                      _PackageFact(Icons.trip_origin_rounded, package.pickupPoint),
                       _PackageFact(Icons.calendar_month_rounded, DateFormat('dd MMM yyyy').format(package.departureAt)),
                       _PackageFact(Icons.verified_user_rounded, package.driverName),
                       _PackageFact(Icons.shield_rounded, '${package.driverSafetyScore}/100'),
@@ -385,6 +406,36 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
                 ),
                 const Divider(height: 22),
                 Row(children: [Expanded(child: Text('${package.startingCity} → ${package.destination}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17))), StatusPill(label: package.status)]),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _RatingPill(label: 'Destination', rating: package.destinationRating, count: package.destinationReviewCount),
+                    _RatingPill(label: 'Vehicle', rating: package.vehicleRating, count: package.vehicleReviewCount),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF7F2),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.trip_origin_rounded, color: AppColors.primaryDark),
+                      const SizedBox(width: 9),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('Pickup point', style: TextStyle(fontSize: 10, color: AppColors.muted, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 3),
+                        Text(package.pickupPoint, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+                      ])),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 12),
                 _Line(Icons.schedule_rounded, DateFormat('dd MMM yyyy · hh:mm a').format(package.departureAt)),
                 _Line(Icons.directions_car_rounded, '${package.vehicle} · ${package.registrationNumber}'),
@@ -437,6 +488,33 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
                   const SizedBox(height: 12),
                   _ItineraryTimeline(items: package.itinerary),
                 ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Reviews', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                const SizedBox(height: 10),
+                ...package.displayReviews.map((review) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const CircleAvatar(radius: 17, child: Icon(Icons.person_rounded, size: 18)),
+                      const SizedBox(width: 9),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          ...List.generate(5, (index) => const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFB300))),
+                        ]),
+                        const SizedBox(height: 3),
+                        Text(review, style: const TextStyle(color: AppColors.muted, height: 1.35, fontSize: 11.5)),
+                      ])),
+                    ],
+                  ),
+                )),
               ],
             ),
           ),
@@ -593,6 +671,31 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
     final input = TextEditingController(text: (_bookingType == 'WholeVehicle' ? package.wholeVehiclePrice * .9 : package.pricePerSeat * _seats * .9).round().toString());
     await showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (sheet) => Padding(padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.viewInsetsOf(sheet).bottom + 20), child: Column(mainAxisSize: MainAxisSize.min, children: [const Text('Send package offer', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)), const SizedBox(height: 14), TextField(controller: input, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Your total offer (PKR)', prefixIcon: Icon(Icons.payments_rounded))), const SizedBox(height: 16), FilledButton(onPressed: () async { try { await AppControllerScope.of(context).createLivePackageOffer(packageId: package.id, bookingType: _bookingType, seats: _bookingType == 'WholeVehicle' ? package.totalSeats : _seats, amount: double.parse(input.text), message: 'Customer tourism package offer'); if (!mounted) return; Navigator.pop(sheet); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offer sent to Driver'))); } catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error'))); } }, child: const Text('Send offer'))])));
   }
+}
+
+
+class _RatingPill extends StatelessWidget {
+  const _RatingPill({required this.label, required this.rating, required this.count});
+  final String label;
+  final double rating;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF7DF),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.star_rounded, size: 15, color: Color(0xFFFFB300)),
+            const SizedBox(width: 3),
+            Text('$label ${rating.toStringAsFixed(1)} · $count reviews', style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800)),
+          ],
+        ),
+      );
 }
 
 

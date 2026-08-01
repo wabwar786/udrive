@@ -431,10 +431,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   String get _greeting {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
+    final hour = DateTime.now().toLocal().hour;
+    if (hour >= 5 && hour < 12) return 'Good morning';
+    if (hour >= 12 && hour < 17) return 'Good afternoon';
+    if (hour >= 17 && hour < 22) return 'Good evening';
+    return 'Good night';
   }
 
   String _firstName(String value) {
@@ -1533,6 +1534,16 @@ class _RideCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
+                              const SizedBox(width: 5),
+                              const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFB300)),
+                              Text(
+                                ride.destinationRating.toStringAsFixed(1),
+                                style: const TextStyle(
+                                  color: _CustomerHomeScreenState._ink,
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -1561,6 +1572,10 @@ class _RideCard extends StatelessWidget {
                               icon: Icons.schedule_rounded,
                               text: DateFormat('dd MMM, hh:mm a')
                                   .format(ride.departureAt),
+                            ),
+                            _RideMeta(
+                              icon: Icons.star_rounded,
+                              text: 'Vehicle ${ride.vehicleRating.toStringAsFixed(1)}',
                             ),
                           ],
                         ),
