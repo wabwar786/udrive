@@ -309,15 +309,28 @@ class _WaitlistCard extends StatelessWidget {
 }
 
 class LivePackageDetailScreen extends StatefulWidget {
-  const LivePackageDetailScreen({required this.package, super.key});
+  const LivePackageDetailScreen({
+    required this.package,
+    this.initialBookingType = 'PerSeat',
+    super.key,
+  });
   final LiveTourPackage package;
+  final String initialBookingType;
 
   @override
   State<LivePackageDetailScreen> createState() => _LivePackageDetailScreenState();
 }
 
 class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
-  String _bookingType = 'PerSeat';
+  late String _bookingType;
+
+  @override
+  void initState() {
+    super.initState();
+    _bookingType = widget.initialBookingType == 'WholeVehicle'
+        ? 'WholeVehicle'
+        : 'PerSeat';
+  }
   int _seats = 1;
   bool _busy = false;
 

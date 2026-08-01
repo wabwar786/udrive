@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
   static const primary = Color(0xFF17B978);
@@ -31,18 +32,20 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: AppColors.background,
-      fontFamily: 'Roboto',
+      fontFamily: GoogleFonts.montserrat().fontFamily,
       visualDensity: VisualDensity.compact,
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.w800),
-        headlineLarge: TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
-        headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-        titleLarge: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-        titleMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-        bodyLarge: TextStyle(fontSize: 13),
-        bodyMedium: TextStyle(fontSize: 12),
-        bodySmall: TextStyle(fontSize: 10.5),
-        labelLarge: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+      textTheme: GoogleFonts.montserratTextTheme(
+        const TextTheme(
+          displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.w800),
+          headlineLarge: TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
+          headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          titleLarge: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          titleMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          bodyLarge: TextStyle(fontSize: 13),
+          bodyMedium: TextStyle(fontSize: 12),
+          bodySmall: TextStyle(fontSize: 10.5),
+          labelLarge: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,

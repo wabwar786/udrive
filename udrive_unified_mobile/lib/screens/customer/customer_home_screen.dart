@@ -48,6 +48,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   String _destinationQuery = '';
   String? _selectedVehicleType;
   DateTime? _selectedDepartureDay;
+  bool _historyNextMonthOnly = false;
+  bool _showVehicleTypeBar = false;
   String? _resultsTitle;
   List<_HeroDestination> _destinations = const [];
   TripOperationsRepository? _tripRepository;
@@ -208,6 +210,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _showDestinationList = false;
       _searched = false;
       _selectedDepartureDay = null;
+      _historyNextMonthOnly = false;
       _resultsTitle = null;
     });
   }
@@ -219,7 +222,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _showDestinationList = false;
       _searched = true;
       _selectedDepartureDay = null;
-      _resultsTitle = 'Available rides for $destination';
+      _historyNextMonthOnly = true;
+      _resultsTitle = 'Rides to $destination · next 30 days';
     });
     _scrollToResults();
   }
@@ -235,6 +239,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ride.departureAt.month,
         ride.departureAt.day,
       );
+      _historyNextMonthOnly = false;
       _resultsTitle =
           '${ride.destination} · ${DateFormat('EEE, dd MMM').format(ride.departureAt)}';
     });
@@ -248,7 +253,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _searched = true;
       _showDestinationList = false;
       _selectedDepartureDay = null;
+      _historyNextMonthOnly = false;
       _destinationQuery = '';
+      _showVehicleTypeBar = false;
       _resultsTitle = title;
     });
     _scrollToResults();
@@ -288,6 +295,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _showDestinationList = false;
       _searched = true;
       _selectedDepartureDay = null;
+      _historyNextMonthOnly = false;
       _resultsTitle = 'Available rides for ${_destination.text.trim()}';
     });
     _scrollToResults();
@@ -318,7 +326,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ? true
           : DateUtils.isSameDay(ride.departureAt, day);
       final matchesType = type == null ? true : _vehicleTypeForRide(ride) == type;
-      return matchesQuery && matchesDay && matchesType;
+      final now = DateTime.now();
+      final matchesHistoryWindow = !_historyNextMonthOnly
+          ? true
+          : !ride.departureAt.isBefore(now) &&
+              ride.departureAt.isBefore(now.add(const Duration(days: 30)));
+      return matchesQuery && matchesDay && matchesType && matchesHistoryWindow;
     }).toList();
     filtered.sort((a, b) => a.departureAt.compareTo(b.departureAt));
     return filtered;
@@ -408,7 +421,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           slivers: [
             SliverToBoxAdapter(
               child: SizedBox(
-                height: height - 88,
+                height: (height - 88) < 790 ? 790 : height - 88,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -482,8 +495,28 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                             const SizedBox(height: 8),
                             Align(
                               alignment: Alignment.centerRight,
-                              child: _VehicleTypePanel(
-                                onSelected: _showResultsForVehicleType,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  _VehicleTypeToggle(
+                                    expanded: _showVehicleTypeBar,
+                                    onTap: () => setState(() =>
+                                        _showVehicleTypeBar = !_showVehicleTypeBar),
+                                  ),
+                                  AnimatedSize(
+                                    duration: const Duration(milliseconds: 220),
+                                    curve: Curves.easeOutCubic,
+                                    alignment: Alignment.centerRight,
+                                    child: !_showVehicleTypeBar
+                                        ? const SizedBox.shrink()
+                                        : Padding(
+                                            padding: const EdgeInsets.only(top: 7),
+                                            child: _VehicleTypePanel(
+                                              onSelected: _showResultsForVehicleType,
+                                            ),
+                                          ),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -527,11 +560,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               ),
                             ],
                             if (halfBooked.isNotEmpty) ...[
-                              const SizedBox(height: 9),
+                              const SizedBox(height: 10),
                               _HalfBookedStrip(
                                 rides: halfBooked,
                                 onSelected: _showResultsForUpcoming,
                               ),
+                              const SizedBox(height: 18),
                             ],
                             const Spacer(),
                             Container(
@@ -630,10 +664,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 label: const Text(
                                   'Find rides',
                                   style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w900,
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w800,
                                     color: Colors.white,
-                                    letterSpacing: -.2,
+                                    letterSpacing: -.25,
                                   ),
                                 ),
                               ),
@@ -645,26 +679,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 onSelected: _showResultsForDestination,
                               ),
                             ],
-                            const SizedBox(height: 10),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: List.generate(
-                                _destinations.length,
-                                (index) => AnimatedContainer(
-                                  duration: const Duration(milliseconds: 180),
-                                  width: index == _heroIndex ? 18 : 6,
-                                  height: 6,
-                                  margin:
-                                      const EdgeInsets.symmetric(horizontal: 3),
-                                  decoration: BoxDecoration(
-                                    color: index == _heroIndex
-                                        ? _lime
-                                        : Colors.white70,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                              ),
-                            ),
+                            const SizedBox(height: 8),
                           ],
                         ),
                       ),
@@ -713,8 +728,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                             onTap: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    LivePackageDetailScreen(package: ride),
+                                builder: (_) => LivePackageDetailScreen(
+                                  package: ride,
+                                  initialBookingType: 'PerSeat',
+                                ),
+                              ),
+                            ),
+                            onWholeVehicle: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => LivePackageDetailScreen(
+                                  package: ride,
+                                  initialBookingType: 'WholeVehicle',
+                                ),
                               ),
                             ),
                           ),
@@ -855,6 +881,38 @@ class _CircleButton extends StatelessWidget {
       );
 }
 
+class _VehicleTypeToggle extends StatelessWidget {
+  const _VehicleTypeToggle({required this.expanded, required this.onTap});
+
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Ink(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: .94),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: const [
+                BoxShadow(color: Color(0x18000000), blurRadius: 10),
+              ],
+            ),
+            child: Icon(
+              expanded ? Icons.close_rounded : Icons.commute_rounded,
+              size: 20,
+              color: _CustomerHomeScreenState._ink,
+            ),
+          ),
+        ),
+      );
+}
+
 class _VehicleTypePanel extends StatelessWidget {
   const _VehicleTypePanel({required this.onSelected});
 
@@ -869,15 +927,15 @@ class _VehicleTypePanel extends StatelessWidget {
       (key: 'coster', icon: Icons.airport_shuttle_rounded, label: 'Coster'),
     ];
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .93),
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white.withValues(alpha: .94),
+        borderRadius: BorderRadius.circular(17),
         boxShadow: const [
-          BoxShadow(color: Color(0x18000000), blurRadius: 10),
+          BoxShadow(color: Color(0x18000000), blurRadius: 12),
         ],
       ),
-      child: Column(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           for (var i = 0; i < items.length; i++) ...[
@@ -885,15 +943,34 @@ class _VehicleTypePanel extends StatelessWidget {
               onTap: () => onSelected(items[i].key),
               borderRadius: BorderRadius.circular(12),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
-                child: Tooltip(
-                  message: items[i].label,
-                  child: Icon(items[i].icon, size: 18, color: _CustomerHomeScreenState._ink),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      items[i].icon,
+                      size: 16,
+                      color: _CustomerHomeScreenState._ink,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      items[i].label,
+                      style: const TextStyle(
+                        color: _CustomerHomeScreenState._ink,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
             if (i != items.length - 1)
-              const SizedBox(height: 2),
+              Container(
+                width: 1,
+                height: 22,
+                color: const Color(0xFFE5EAEC),
+              ),
           ],
         ],
       ),
@@ -906,6 +983,16 @@ class _UpcomingDestinations extends StatelessWidget {
 
   final List<LiveTourPackage> rides;
   final ValueChanged<LiveTourPackage> onSelected;
+
+  String _typeLabel(LiveTourPackage ride) {
+    final raw = '${ride.vehicle} ${ride.title}'.toLowerCase();
+    if (raw.contains('bike') || raw.contains('motor')) return 'Bike';
+    if (raw.contains('rickshaw') || raw.contains('auto')) return 'Rickshaw';
+    if (raw.contains('coaster') || raw.contains('coster') || raw.contains('bus')) {
+      return 'Coster';
+    }
+    return ride.vehicle.trim().isEmpty ? 'Car' : ride.vehicle.trim();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -924,7 +1011,7 @@ class _UpcomingDestinations extends StatelessWidget {
         ),
         const SizedBox(height: 7),
         SizedBox(
-          height: 58,
+          height: 78,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: items.length,
@@ -937,46 +1024,82 @@ class _UpcomingDestinations extends StatelessWidget {
                   onTap: () => onSelected(ride),
                   borderRadius: BorderRadius.circular(16),
                   child: Ink(
-                    padding: const EdgeInsets.symmetric(horizontal: 11),
+                    width: 154,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: .92),
+                      color: Colors.white.withValues(alpha: .80),
                       borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withValues(alpha: .70)),
                       boxShadow: const [
                         BoxShadow(color: Colors.black12, blurRadius: 8),
                       ],
                     ),
-                    child: Row(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const CircleAvatar(
-                          radius: 16,
-                          backgroundColor: Color(0xFFEAF6D9),
-                          child: Icon(
-                            Icons.directions_car_filled_rounded,
-                            size: 17,
-                            color: Color(0xFF5C9417),
-                          ),
-                        ),
-                        const SizedBox(width: 7),
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
                           children: [
-                            Text(
-                              ride.destination,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: _CustomerHomeScreenState._ink,
-                                fontSize: 10.8,
-                                fontWeight: FontWeight.w900,
+                            const Icon(
+                              Icons.directions_car_filled_rounded,
+                              size: 15,
+                              color: Color(0xFF5C9417),
+                            ),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                ride.destination,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: _CustomerHomeScreenState._ink,
+                                  fontSize: 10.8,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
                             ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          DateFormat('EEE, dd MMM').format(ride.departureAt),
+                          style: const TextStyle(
+                            color: _CustomerHomeScreenState._muted,
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _typeLabel(ride),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: _CustomerHomeScreenState._ink,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            const Icon(Icons.event_seat_rounded, size: 11, color: Color(0xFF5C9417)),
                             Text(
-                              DateFormat('EEE, dd MMM').format(ride.departureAt),
+                              ' ${ride.bookableSeats}',
                               style: const TextStyle(
-                                color: _CustomerHomeScreenState._muted,
-                                fontSize: 8.8,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w800,
+                                color: _CustomerHomeScreenState._ink,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'PKR ${ride.pricePerSeat.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                color: Color(0xFF4F8214),
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
                           ],
@@ -1192,199 +1315,317 @@ class _DestinationHistoryStrip extends StatelessWidget {
   final ValueChanged<String> onSelected;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Destination history',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 11.5,
-            fontWeight: FontWeight.w800,
-            shadows: [Shadow(color: Colors.black38, blurRadius: 6)],
-          ),
-        ),
-        const SizedBox(height: 6),
-        SizedBox(
-          height: 34,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 6),
-            itemBuilder: (_, index) => ActionChip(
-              onPressed: () => onSelected(items[index]),
-              label: Text(
-                items[index],
-                style: const TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w800,
-                  color: _CustomerHomeScreenState._ink,
-                ),
+  Widget build(BuildContext context) => SizedBox(
+        height: 35,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 6),
+          itemBuilder: (_, index) => ActionChip(
+            onPressed: () => onSelected(items[index]),
+            label: Text(
+              items[index],
+              style: const TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                color: _CustomerHomeScreenState._ink,
               ),
-              avatar: const Icon(
-                Icons.history_rounded,
-                size: 15,
-                color: Color(0xFF739F18),
-              ),
-              backgroundColor: Colors.white.withValues(alpha: .92),
-              side: BorderSide.none,
-              visualDensity: VisualDensity.compact,
             ),
+            avatar: const Icon(
+              Icons.history_rounded,
+              size: 15,
+              color: Color(0xFF739F18),
+            ),
+            backgroundColor: Colors.white.withValues(alpha: .92),
+            side: BorderSide.none,
+            visualDensity: VisualDensity.compact,
           ),
         ),
-      ],
-    );
-  }
+      );
 }
 
 class _RideCard extends StatelessWidget {
-  const _RideCard({required this.ride, required this.onTap});
+  const _RideCard({
+    required this.ride,
+    required this.onTap,
+    required this.onWholeVehicle,
+  });
 
   final LiveTourPackage ride;
   final VoidCallback onTap;
+  final VoidCallback onWholeVehicle;
+
+  String get _vehicleAsset {
+    final raw = '${ride.vehicle} ${ride.title}'.toLowerCase();
+    if (raw.contains('bike') || raw.contains('motor')) {
+      return 'assets/vehicles/bike.png';
+    }
+    if (raw.contains('rickshaw') || raw.contains('auto')) {
+      return 'assets/vehicles/rickshaw.png';
+    }
+    if (raw.contains('coaster') || raw.contains('coster') || raw.contains('bus')) {
+      return 'assets/vehicles/coaster.png';
+    }
+    if (raw.contains('van')) return 'assets/vehicles/van.png';
+    if (raw.contains('suv') || raw.contains('prado') || raw.contains('fortuner')) {
+      return 'assets/vehicles/suv.png';
+    }
+    return 'assets/vehicles/sedan.png';
+  }
+
+  Widget _vehicleImage() {
+    final url = ride.coverImageUrl;
+    if (url != null && url.trim().isNotEmpty) {
+      return Image.network(
+        url,
+        fit: BoxFit.contain,
+        cacheWidth: 300,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, __, ___) => Image.asset(
+          _vehicleAsset,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+        ),
+      );
+    }
+    return Image.asset(
+      _vehicleAsset,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+    );
+  }
 
   @override
-  Widget build(BuildContext context) => Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Ink(
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE2E9EB)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x12000000),
-                  blurRadius: 16,
-                  offset: Offset(0, 7),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 86,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0F4F5),
-                    borderRadius: BorderRadius.circular(14),
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE2E9EB)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x10000000),
+                blurRadius: 14,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 94,
+                    height: 78,
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F4F5),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: _vehicleImage(),
                   ),
-                  child: ride.coverImageUrl?.isNotEmpty == true
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: Image.network(
-                            ride.coverImageUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.directions_car_filled_rounded,
-                              color: _CustomerHomeScreenState._muted,
-                              size: 40,
-                            ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 5,
                           ),
-                        )
-                      : const Icon(
-                          Icons.directions_car_filled_rounded,
-                          color: _CustomerHomeScreenState._muted,
-                          size: 40,
-                        ),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        ride.vehicle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _CustomerHomeScreenState._ink,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '${ride.pickupPoint} → ${ride.destination}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _CustomerHomeScreenState._muted,
-                          fontSize: 10,
-                          height: 1.3,
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.event_seat_rounded,
-                            size: 13,
-                            color: Color(0xFF6FAE20),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEAF6D9),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          Text(
-                            ' ${ride.availableSeats} seats',
-                            style: const TextStyle(
-                              color: _CustomerHomeScreenState._muted,
-                              fontSize: 9.5,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(
-                            Icons.schedule_rounded,
-                            size: 13,
-                            color: _CustomerHomeScreenState._muted,
-                          ),
-                          Expanded(
-                            child: Text(
-                              ' ${DateFormat('dd MMM, hh:mm a').format(ride.departureAt)}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: _CustomerHomeScreenState._muted,
-                                fontSize: 9.5,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.location_on_rounded,
+                                size: 14,
+                                color: Color(0xFF5C9417),
                               ),
-                            ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  ride.destination,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: _CustomerHomeScreenState._ink,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ],
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          '${ride.pickupPoint} → ${ride.destination}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _CustomerHomeScreenState._muted,
+                            fontSize: 9.8,
+                            height: 1.3,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            _RideMeta(
+                              icon: Icons.event_seat_rounded,
+                              text: '${ride.bookableSeats} seats left',
+                            ),
+                            _RideMeta(
+                              icon: Icons.schedule_rounded,
+                              text: DateFormat('dd MMM, hh:mm a')
+                                  .format(ride.departureAt),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 7),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      'PKR ${ride.pricePerSeat.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        color: Color(0xFF629B18),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w900,
+                ],
+              ),
+              const SizedBox(height: 11),
+              Row(
+                children: [
+                  Expanded(
+                    child: _RateBox(
+                      label: 'Per seat',
+                      amount: ride.pricePerSeat,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _RateBox(
+                      label: 'Whole vehicle',
+                      amount: ride.wholeVehiclePrice,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 9),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onTap,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(38),
+                        padding: const EdgeInsets.symmetric(horizontal: 7),
+                        side: const BorderSide(color: Color(0xFF87C72B)),
+                        foregroundColor: const Color(0xFF568B15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.event_seat_rounded, size: 15),
+                      label: const Text(
+                        'Book seat',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
                       ),
                     ),
-                    const Text(
-                      'per seat',
-                      style: TextStyle(
-                        color: _CustomerHomeScreenState._muted,
-                        fontSize: 8.5,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: onWholeVehicle,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(38),
+                        padding: const EdgeInsets.symmetric(horizontal: 7),
+                        backgroundColor: _CustomerHomeScreenState._lime,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.directions_car_filled_rounded, size: 15),
+                      label: const Text(
+                        'Whole vehicle',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    const Icon(
-                      Icons.arrow_forward_rounded,
-                      color: _CustomerHomeScreenState._ink,
-                      size: 19,
-                    ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _RideMeta extends StatelessWidget {
+  const _RideMeta({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: const Color(0xFF6FAE20)),
+          const SizedBox(width: 3),
+          Text(
+            text,
+            style: const TextStyle(
+              color: _CustomerHomeScreenState._muted,
+              fontSize: 8.8,
+              fontWeight: FontWeight.w600,
             ),
           ),
+        ],
+      );
+}
+
+class _RateBox extends StatelessWidget {
+  const _RateBox({required this.label, required this.amount});
+
+  final String label;
+  final double amount;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F9FA),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE8EDEF)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: _CustomerHomeScreenState._muted,
+                fontSize: 8.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'PKR ${NumberFormat('#,##0').format(amount)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF5A9018),
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
         ),
       );
 }
