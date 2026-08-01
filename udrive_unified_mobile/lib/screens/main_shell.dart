@@ -58,6 +58,8 @@ class _MainShellState extends State<MainShell> {
     final driverHome = driver && pageKey == 'dashboard';
 
     return Scaffold(
+      backgroundColor: customerHome ? const Color(0xFF061923) : null,
+      extendBody: customerHome,
       drawer: _PremiumDrawer(
         mode: controller.mode,
         current: pageKey,
@@ -218,126 +220,88 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _customerBottomNavigation() {
-    Widget navIcon(String key, IconData icon) {
+    Widget item(String key, IconData icon, String label) {
       final selected = _customerPage == key;
       return Expanded(
-        child: Tooltip(
-          message: _titleFor(key, false),
-          child: InkWell(
-            onTap: () => setState(() => _customerPage = key),
-            borderRadius: BorderRadius.circular(18),
-            child: SizedBox(
-              height: 54,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    icon,
-                    size: 22,
-                    color: selected ? const Color(0xFF8ED12B) : const Color(0xFF94A3AA),
+        child: InkWell(
+          onTap: () => setState(() => _customerPage = key),
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            height: 58,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 21, color: selected ? const Color(0xFF8ED12B) : const Color(0xFF9AA8AF)),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected ? const Color(0xFF8ED12B) : const Color(0xFF9AA8AF),
+                    fontSize: 8.5,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _titleFor(key, false),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: selected ? const Color(0xFF8ED12B) : const Color(0xFF94A3AA),
-                      fontSize: 8.5,
-                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: selected ? 6 : 0,
-                    height: selected ? 6 : 0,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
       );
     }
 
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.fromLTRB(22, 0, 22, 14),
-      child: Center(
-        heightFactor: 1,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 430),
-          child: SizedBox(
-            height: 78,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.bottomCenter,
-              children: [
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    height: 58,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0B1B24),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white.withValues(alpha: .08)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: .30),
-                          blurRadius: 24,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        navIcon('home', Icons.home_outlined),
-                        navIcon('explore', Icons.explore_outlined),
-                        const SizedBox(width: 74),
-                        navIcon('packages', Icons.menu_book_outlined),
-                        navIcon('profile', Icons.person_outline_rounded),
-                      ],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 0,
-                  child: Semantics(
-                    button: true,
-                    label: 'Open emergency and safety contacts',
-                    child: InkWell(
-                      onTap: () => CustomerSosSheet.show(context),
-                      customBorder: const CircleBorder(),
-                      child: Container(
-                        width: 62,
-                        height: 62,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF79B928),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF79B928).withValues(alpha: .32),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(Icons.sos_rounded, color: Colors.white, size: 28),
+    return ColoredBox(
+      color: const Color(0xFF061923),
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(14, 5, 14, 10),
+        child: Container(
+          height: 66,
+          padding: const EdgeInsets.symmetric(horizontal: 7),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0B1B24),
+            borderRadius: BorderRadius.circular(23),
+            border: Border.all(color: Colors.white.withValues(alpha: .08)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .28),
+                blurRadius: 22,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              item('home', Icons.home_rounded, 'Home'),
+              item('explore', Icons.explore_outlined, 'Explore'),
+              Expanded(
+                child: Center(
+                  child: InkWell(
+                    onTap: () => CustomerSosSheet.show(context),
+                    customBorder: const CircleBorder(),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF79B928),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFB8E56D), width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF79B928).withValues(alpha: .28),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
                       ),
+                      child: const Icon(Icons.sos_rounded, color: Colors.white, size: 23),
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+              item('packages', Icons.luggage_outlined, 'Packages'),
+              item('profile', Icons.person_outline_rounded, 'Profile'),
+            ],
           ),
         ),
       ),

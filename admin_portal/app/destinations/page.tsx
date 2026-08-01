@@ -174,7 +174,7 @@ export default function DestinationsPage() {
   return (
     <AdminFrame
       title="Explore Kashmir management"
-      subtitle="Add, update, hide or remove the destinations shown to customers."
+      subtitle="Add and manage the destination images used in the mobile Home hero slider and Explore Kashmir."
       actions={
         <button className="primaryButton" onClick={() => { setForm({ ...emptyForm }); setSelectedFile(null); }}>
           <Plus /> Add destination
@@ -193,7 +193,7 @@ export default function DestinationsPage() {
         <header className="panelHeader">
           <div>
             <h2>Explore Kashmir catalogue</h2>
-            <p>Images and details saved here appear in Customer Mode → Explore Kashmir.</p>
+            <p>Every active destination cover image rotates automatically in Customer Mode → Home hero slider and also appears in Explore Kashmir.</p>
           </div>
           <div className="tableTools">
             <label className="searchBox">
@@ -263,9 +263,9 @@ export default function DestinationsPage() {
                 onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
               />
               <button className="secondaryButton wide" type="button" onClick={() => fileInput.current?.click()}>
-                <Upload /> {selectedFile ? 'Change selected image' : 'Upload cover image'}
+                <Upload /> {selectedFile ? 'Change selected image' : 'Upload home hero image'}
               </button>
-              <small>JPG, PNG or WebP. Maximum 10 MB. Recommended 1600 × 900.</small>
+              <small>JPG, PNG or WebP. Maximum 10 MB. Recommended 1440 × 1920 or higher portrait image for the full-screen mobile hero.</small>
             </section>
 
             <div className="formGrid destinationFormGrid">
