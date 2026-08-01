@@ -58,7 +58,7 @@ class _MainShellState extends State<MainShell> {
     final driverHome = driver && pageKey == 'dashboard';
 
     return Scaffold(
-      backgroundColor: customerHome ? const Color(0xFF061923) : null,
+      backgroundColor: customerHome ? const Color(0xFFF7FAFB) : null,
       extendBody: customerHome,
       drawer: _PremiumDrawer(
         mode: controller.mode,
@@ -231,14 +231,22 @@ class _MainShellState extends State<MainShell> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 21, color: selected ? const Color(0xFF8ED12B) : const Color(0xFF9AA8AF)),
+                Icon(
+                  icon,
+                  size: 20,
+                  color: selected
+                      ? const Color(0xFF6FAE20)
+                      : const Color(0xFF7B8A92),
+                ),
                 const SizedBox(height: 3),
                 Text(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: selected ? const Color(0xFF8ED12B) : const Color(0xFF9AA8AF),
+                    color: selected
+                        ? const Color(0xFF6FAE20)
+                        : const Color(0xFF7B8A92),
                     fontSize: 8.5,
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                   ),
@@ -251,22 +259,22 @@ class _MainShellState extends State<MainShell> {
     }
 
     return ColoredBox(
-      color: const Color(0xFF061923),
+      color: const Color(0xFFF7FAFB),
       child: SafeArea(
         top: false,
-        minimum: const EdgeInsets.fromLTRB(14, 5, 14, 10),
+        minimum: const EdgeInsets.fromLTRB(13, 5, 13, 9),
         child: Container(
           height: 66,
           padding: const EdgeInsets.symmetric(horizontal: 7),
           decoration: BoxDecoration(
-            color: const Color(0xFF0B1B24),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(23),
-            border: Border.all(color: Colors.white.withValues(alpha: .08)),
-            boxShadow: [
+            border: Border.all(color: const Color(0xFFE1E8EA)),
+            boxShadow: const [
               BoxShadow(
-                color: Colors.black.withValues(alpha: .28),
+                color: Color(0x18000000),
                 blurRadius: 22,
-                offset: const Offset(0, 8),
+                offset: Offset(0, 8),
               ),
             ],
           ),
@@ -283,18 +291,22 @@ class _MainShellState extends State<MainShell> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF79B928),
+                        color: const Color(0xFF82C927),
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFFB8E56D), width: 2),
-                        boxShadow: [
+                        border: Border.all(color: Colors.white, width: 3),
+                        boxShadow: const [
                           BoxShadow(
-                            color: const Color(0xFF79B928).withValues(alpha: .28),
+                            color: Color(0x3382C927),
                             blurRadius: 16,
-                            offset: const Offset(0, 6),
+                            offset: Offset(0, 6),
                           ),
                         ],
                       ),
-                      child: const Icon(Icons.sos_rounded, color: Colors.white, size: 23),
+                      child: const Icon(
+                        Icons.sos_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
                     ),
                   ),
                 ),
