@@ -35,8 +35,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   MobileTrip? _incomingTrip;
 
   final MapController _mapController = MapController();
+  final ScrollController _scrollController = ScrollController();
+  final PageController _heroController = PageController();
+  final GlobalKey _plannerKey = GlobalKey();
   LatLng? _myLocation;
   String _pickupAddress = 'Current location';
+  String? _selectedDestination;
+  String? _expandedLocationField;
+  int _heroIndex = 0;
+  Timer? _heroTimer;
 
   @override
   void initState() {
@@ -48,6 +55,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadHome();
       _loadMyLocation();
+    });
+    _heroTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || !_heroController.hasClients) return;
+      final next = (_heroIndex + 1) % KashmirPlaces.all.length;
+      _heroController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeInOutCubic,
+      );
     });
   }
 
@@ -99,12 +115,41 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   void _openDestination(String destination) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => TourismBookingScreen(initialDestination: destination),
-      ),
-    );
+    setState(() {
+      _selectedDestination = destination;
+      _expandedLocationField = null;
+    });
+    _focusPlanner();
+  }
+
+  Future<void> _focusPlanner({String? field}) async {
+    if (field != null) {
+      setState(() => _expandedLocationField = field);
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    if (!mounted || !_scrollController.hasClients) return;
+    final contextForPlanner = _plannerKey.currentContext;
+    if (contextForPlanner != null) {
+      await Scrollable.ensureVisible(
+        contextForPlanner,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+        alignment: .03,
+      );
+    } else {
+      await _scrollController.animateTo(430, duration: const Duration(milliseconds: 420), curve: Curves.easeOutCubic);
+    }
+  }
+
+  void _selectSavedLocation(KashmirPlace place) {
+    setState(() {
+      if (_expandedLocationField == 'from') {
+        _pickupAddress = place.name;
+      } else {
+        _selectedDestination = place.name;
+      }
+      _expandedLocationField = null;
+    });
   }
 
   @override
@@ -162,7 +207,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void dispose() {
     _tripRefreshTimer?.cancel();
+    _heroTimer?.cancel();
     _vehicleSearch.dispose();
+    _scrollController.dispose();
+    _heroController.dispose();
     _mapController.dispose();
     super.dispose();
   }
@@ -197,110 +245,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         backgroundColor: _HomePalette.panel,
         onRefresh: _refresh,
         child: CustomScrollView(
+          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
-              child: SizedBox(
-                height: 475,
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: _KashmirMap(
-                        controller: _mapController,
-                        myLocation: _myLocation,
-                        onPlaceTap: (place) => _openDestination(place.name),
-                        localize: (place) => controller.locale.languageCode == 'ur' ? place.urdu : place.name,
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                const Color(0xFF04121B).withValues(alpha: .78),
-                                const Color(0xFF04121B).withValues(alpha: .18),
-                                const Color(0xFF061923).withValues(alpha: .96),
-                              ],
-                              stops: const [0, .48, 1],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SafeArea(
-                      bottom: false,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Builder(
-                                  builder: (context) => _RoundMapButton(
-                                    icon: Icons.menu_rounded,
-                                    onTap: () => Scaffold.of(context).openDrawer(),
-                                  ),
-                                ),
-                                _RoundMapButton(
-                                  icon: Icons.notifications_none_rounded,
-                                  onTap: () {},
-                                  showDot: true,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 35),
-                            const Text(
-                              'Kashmir',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 45,
-                                height: .95,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -.8,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            const Text(
-                              'Beyond Beautiful',
-                              style: TextStyle(
-                                color: _HomePalette.lime,
-                                fontSize: 23,
-                                fontStyle: FontStyle.italic,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            const Text(
-                              'Scenic journeys.\nSeamless rides.',
-                              style: TextStyle(color: Color(0xFFD8E1E5), fontSize: 15, height: 1.35),
-                            ),
-                            const Spacer(),
-                            Center(
-                              child: _MapPickupBubble(
-                                address: _pickupAddress,
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => const TourismBookingScreen()),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: 18,
-                      bottom: 20,
-                      child: _RoundMapButton(icon: Icons.my_location_rounded, onTap: _recenter),
-                    ),
-                  ],
-                ),
+              child: _KashmirHeroCarousel(
+                controller: _heroController,
+                currentIndex: _heroIndex,
+                pickupAddress: _pickupAddress,
+                onPageChanged: (index) => setState(() => _heroIndex = index),
+                onMenuTap: () => Scaffold.of(context).openDrawer(),
+                onNotificationTap: () {},
+                onPickupTap: () => _focusPlanner(field: 'from'),
+                onPlaceTap: _openDestination,
               ),
             ),
             SliverPadding(
@@ -308,17 +265,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   Transform.translate(
+                    key: _plannerKey,
                     offset: const Offset(0, -10),
                     child: _RidePlannerCard(
                       pickupAddress: _pickupAddress,
-                      onPickupTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const TourismBookingScreen()),
-                      ),
-                      onDestinationTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const TourismBookingScreen()),
-                      ),
+                      destination: _selectedDestination,
+                      expandedField: _expandedLocationField,
+                      places: KashmirPlaces.all,
+                      onPickupTap: () => _focusPlanner(field: 'from'),
+                      onDestinationTap: () => _focusPlanner(field: 'to'),
+                      onLocationSelected: _selectSavedLocation,
+                      onCloseDropdown: () => setState(() => _expandedLocationField = null),
                     ),
                   ),
                   if (_incomingTrip != null) ...[
@@ -483,6 +440,126 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
 
 
+class _KashmirHeroCarousel extends StatelessWidget {
+  const _KashmirHeroCarousel({
+    required this.controller,
+    required this.currentIndex,
+    required this.pickupAddress,
+    required this.onPageChanged,
+    required this.onMenuTap,
+    required this.onNotificationTap,
+    required this.onPickupTap,
+    required this.onPlaceTap,
+  });
+
+  final PageController controller;
+  final int currentIndex;
+  final String pickupAddress;
+  final ValueChanged<int> onPageChanged;
+  final VoidCallback onMenuTap;
+  final VoidCallback onNotificationTap;
+  final VoidCallback onPickupTap;
+  final ValueChanged<String> onPlaceTap;
+
+  String _imageFor(KashmirPlace place) {
+    if (place.image != null) return place.image!;
+    if (place.name == 'Muzaffarabad') return 'assets/images/pir_chinasi.png';
+    if (place.name == 'Rawalakot') return 'assets/images/banjosa.png';
+    return 'assets/images/neelum.png';
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        height: 450,
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: controller,
+              itemCount: KashmirPlaces.all.length,
+              onPageChanged: onPageChanged,
+              itemBuilder: (context, index) {
+                final place = KashmirPlaces.all[index];
+                return GestureDetector(
+                  onTap: () => onPlaceTap(place.name),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.asset(_imageFor(place), fit: BoxFit.cover),
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Color(0xA8000B12), Color(0x18000B12), Color(0xFF061923)],
+                            stops: [0, .52, 1],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 20,
+                        right: 20,
+                        bottom: 105,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('DISCOVER KASHMIR', style: TextStyle(color: _HomePalette.lime, fontSize: 9.5, fontWeight: FontWeight.w900, letterSpacing: 1.4)),
+                            const SizedBox(height: 5),
+                            Text(place.name, style: const TextStyle(color: Colors.white, fontSize: 31, height: 1, fontWeight: FontWeight.w800, letterSpacing: -.7)),
+                            const SizedBox(height: 6),
+                            const Text('Scenic journeys. Seamless rides.', style: TextStyle(color: Color(0xFFD7E1E5), fontSize: 12.5, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _RoundMapButton(icon: Icons.menu_rounded, onTap: onMenuTap),
+                    _RoundMapButton(icon: Icons.notifications_none_rounded, onTap: onNotificationTap, showDot: true),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              left: 18,
+              right: 18,
+              bottom: 35,
+              child: Column(
+                children: [
+                  _MapPickupBubble(address: pickupAddress, onTap: onPickupTap),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(
+                      KashmirPlaces.all.length,
+                      (index) => AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        width: index == currentIndex ? 19 : 5,
+                        height: 5,
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        decoration: BoxDecoration(
+                          color: index == currentIndex ? _HomePalette.lime : Colors.white.withValues(alpha: .35),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
 abstract final class _HomePalette {
   static const panel = Color(0xFF0C202A);
   static const card = Color(0xFF17262E);
@@ -569,19 +646,34 @@ class _MapPickupBubble extends StatelessWidget {
 }
 
 class _RidePlannerCard extends StatelessWidget {
-  const _RidePlannerCard({required this.pickupAddress, required this.onPickupTap, required this.onDestinationTap});
+  const _RidePlannerCard({
+    required this.pickupAddress,
+    required this.destination,
+    required this.expandedField,
+    required this.places,
+    required this.onPickupTap,
+    required this.onDestinationTap,
+    required this.onLocationSelected,
+    required this.onCloseDropdown,
+  });
+
   final String pickupAddress;
+  final String? destination;
+  final String? expandedField;
+  final List<KashmirPlace> places;
   final VoidCallback onPickupTap;
   final VoidCallback onDestinationTap;
+  final ValueChanged<KashmirPlace> onLocationSelected;
+  final VoidCallback onCloseDropdown;
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(17, 16, 17, 16),
+        padding: const EdgeInsets.fromLTRB(15, 13, 15, 14),
         decoration: BoxDecoration(
           color: _HomePalette.panel,
-          borderRadius: BorderRadius.circular(27),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white.withValues(alpha: .08)),
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 22, offset: Offset(0, 10))],
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 8))],
         ),
         child: Column(
           children: [
@@ -589,28 +681,106 @@ class _RidePlannerCard extends StatelessWidget {
               color: _HomePalette.lime,
               label: 'From',
               value: pickupAddress,
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(color: _HomePalette.lime.withValues(alpha: .1), borderRadius: BorderRadius.circular(99)),
-                child: const Text('Now', style: TextStyle(color: _HomePalette.lime, fontWeight: FontWeight.w800, fontSize: 12)),
-              ),
+              trailing: const _PlannerPill(label: 'Now'),
               onTap: onPickupTap,
             ),
             Padding(
-              padding: const EdgeInsets.only(left: 37),
+              padding: const EdgeInsets.only(left: 35),
               child: Divider(height: 1, color: Colors.white.withValues(alpha: .1)),
             ),
             _PlannerRow(
               color: _HomePalette.orange,
               label: 'To',
-              value: 'Where to?',
-              trailing: Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white.withValues(alpha: .12))),
-                child: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+              value: destination ?? 'Where to?',
+              trailing: Icon(
+                expandedField == 'to' ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                color: Colors.white,
+                size: 22,
               ),
               onTap: onDestinationTap,
+            ),
+            AnimatedCrossFade(
+              duration: const Duration(milliseconds: 220),
+              crossFadeState: expandedField == null ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+              firstChild: const SizedBox.shrink(),
+              secondChild: _SavedLocationsDropdown(
+                title: expandedField == 'from' ? 'Select pickup location' : 'Select destination',
+                places: places,
+                onSelected: onLocationSelected,
+                onClose: onCloseDropdown,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _PlannerPill extends StatelessWidget {
+  const _PlannerPill({required this.label});
+  final String label;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(color: _HomePalette.lime.withValues(alpha: .1), borderRadius: BorderRadius.circular(99)),
+        child: Text(label, style: const TextStyle(color: _HomePalette.lime, fontWeight: FontWeight.w800, fontSize: 10.5)),
+      );
+}
+
+class _SavedLocationsDropdown extends StatelessWidget {
+  const _SavedLocationsDropdown({required this.title, required this.places, required this.onSelected, required this.onClose});
+  final String title;
+  final List<KashmirPlace> places;
+  final ValueChanged<KashmirPlace> onSelected;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: const EdgeInsets.only(top: 10),
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF132A34),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: .07)),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800))),
+                InkWell(onTap: onClose, borderRadius: BorderRadius.circular(20), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close_rounded, color: _HomePalette.muted, size: 18))),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 250),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: places.length,
+                separatorBuilder: (_, __) => Divider(height: 1, color: Colors.white.withValues(alpha: .06)),
+                itemBuilder: (context, index) {
+                  final place = places[index];
+                  return InkWell(
+                    onTap: () => onSelected(place),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(color: _HomePalette.lime.withValues(alpha: .1), borderRadius: BorderRadius.circular(10)),
+                            child: const Icon(Icons.location_on_rounded, color: _HomePalette.lime, size: 18),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(place.name, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700))),
+                          const Icon(Icons.chevron_right_rounded, color: _HomePalette.muted, size: 18),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -628,24 +798,24 @@ class _PlannerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(13),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
-              Container(width: 17, height: 17, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: color, width: 4))),
-              const SizedBox(width: 12),
+              Container(width: 15, height: 15, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: color, width: 3.5))),
+              const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: const TextStyle(color: _HomePalette.muted, fontSize: 11)),
-                    const SizedBox(height: 3),
-                    Text(value, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: value == 'Where to?' ? _HomePalette.muted : Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                    Text(label, style: const TextStyle(color: _HomePalette.muted, fontSize: 9.5, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(value, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: value == 'Where to?' ? _HomePalette.muted : Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700, height: 1.25)),
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               trailing,
             ],
           ),

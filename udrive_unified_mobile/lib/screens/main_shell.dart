@@ -234,9 +234,20 @@ class _MainShellState extends State<MainShell> {
                   Icon(
                     icon,
                     size: 22,
-                    color: selected ? AppColors.primaryDark : const Color(0xFFA9AFB8),
+                    color: selected ? const Color(0xFF8ED12B) : const Color(0xFF94A3AA),
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 2),
+                  Text(
+                    _titleFor(key, false),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: selected ? const Color(0xFF8ED12B) : const Color(0xFF94A3AA),
+                      fontSize: 8.5,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     width: selected ? 6 : 0,
@@ -275,12 +286,12 @@ class _MainShellState extends State<MainShell> {
                     height: 58,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: const Color(0xFF0B1B24),
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFE8ECEB)),
+                      border: Border.all(color: Colors.white.withValues(alpha: .08)),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.navy.withValues(alpha: .12),
+                          color: Colors.black.withValues(alpha: .30),
                           blurRadius: 24,
                           offset: const Offset(0, 10),
                         ),
@@ -309,12 +320,12 @@ class _MainShellState extends State<MainShell> {
                         width: 62,
                         height: 62,
                         decoration: BoxDecoration(
-                          color: AppColors.primaryDark,
+                          color: const Color(0xFF79B928),
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 4),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primaryDark.withValues(alpha: .28),
+                              color: const Color(0xFF79B928).withValues(alpha: .32),
                               blurRadius: 20,
                               offset: const Offset(0, 8),
                             ),
