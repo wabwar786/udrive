@@ -308,7 +308,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     if (rides.isEmpty)
                       _EmptyRides(destination: _destination.text)
                     else
-                      ...rides.map((ride) => Padding(padding: const EdgeInsets.only(bottom: 11), child: _RideCard(ride: ride, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LivePackageDetailScreen(package: ride))))))),
+                      ...rides.map(
+                        (ride) => Padding(
+                          padding: const EdgeInsets.only(bottom: 11),
+                          child: _RideCard(
+                            ride: ride,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => LivePackageDetailScreen(
+                                  package: ride,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                   ]),
                 ),
               ),
