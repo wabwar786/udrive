@@ -1,9 +1,12 @@
 
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 import '../../core/auth/session_store.dart';
@@ -141,33 +144,87 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _pickup.text = 'Enter pickup address';
         return;
       }
-      final position = await Geolocator.getCurrentPosition();
-      final marks =
-          await placemarkFromCoordinates(position.latitude, position.longitude);
-      if (marks.isEmpty) {
-        _pickup.text = 'Enter pickup address';
-        return;
-      }
-      final mark = marks.first;
-      final values = [
-        mark.street,
-        mark.subLocality,
-        mark.locality,
-        mark.administrativeArea,
-        mark.country,
-      ]
-          .whereType<String>()
-          .map((value) => value.trim())
-          .where((value) => value.isNotEmpty)
-          .toSet()
-          .toList();
-      _pickup.text = values.join(', ');
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
+      );
+      final address = await _reverseGeocode(
+        position.latitude,
+        position.longitude,
+      );
+      _pickup.text = address.isEmpty ? 'Enter pickup address' : address;
       if (mounted) setState(() {});
-    } catch (_) {
+    } catch (error) {
       _pickup.text = 'Enter pickup address';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              kIsWeb
+                  ? 'Current location could not be detected. Please allow location access in the browser and try again.'
+                  : 'Current location could not be detected. Please enable location permission and try again.',
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _locating = false);
     }
+  }
+
+
+  Future<String> _reverseGeocode(double latitude, double longitude) async {
+    if (!kIsWeb) {
+      try {
+        final marks = await placemarkFromCoordinates(latitude, longitude);
+        if (marks.isNotEmpty) {
+          final mark = marks.first;
+          final values = [
+            mark.street,
+            mark.subLocality,
+            mark.locality,
+            mark.administrativeArea,
+            mark.country,
+          ]
+              .whereType<String>()
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toSet()
+              .toList();
+          if (values.isNotEmpty) return values.join(', ');
+        }
+      } catch (_) {
+        // Fall through to the web-compatible reverse-geocoding service.
+      }
+    }
+
+    final uri = Uri.https(
+      'api.bigdatacloud.net',
+      '/data/reverse-geocode-client',
+      {
+        'latitude': latitude.toStringAsFixed(7),
+        'longitude': longitude.toStringAsFixed(7),
+        'localityLanguage': 'en',
+      },
+    );
+    final response = await http.get(uri).timeout(const Duration(seconds: 15));
+    if (response.statusCode < 200 || response.statusCode >= 300) return '';
+    final json = jsonDecode(response.body);
+    if (json is! Map<String, dynamic>) return '';
+    final values = [
+      json['locality'],
+      json['city'],
+      json['principalSubdivision'],
+      json['countryName'],
+    ]
+        .whereType<String>()
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList();
+    return values.join(', ');
   }
 
   Future<void> _refreshActiveTrip() async {
