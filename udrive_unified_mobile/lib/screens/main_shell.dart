@@ -78,7 +78,7 @@ class _MainShellState extends State<MainShell> {
           if (mounted) setState(() {});
         },
       ),
-      appBar: AppBar(
+      appBar: customerHome ? null : AppBar(
         titleSpacing: 4,
         title: (customerHome || driverHome)
             ? Text(

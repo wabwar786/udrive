@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/auth_models.dart';
@@ -816,11 +817,15 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
         ),
       );
       if (!mounted) return;
+      final address = await _reverseGeocodePickup(
+        position.latitude,
+        position.longitude,
+      );
+      if (!mounted) return;
       setState(() {
         _pickupLatitude = position.latitude;
         _pickupLongitude = position.longitude;
-        _pickup.text =
-            'Current location (${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)})';
+        _pickup.text = address;
       });
     } catch (_) {
       if (!silent && mounted) {
@@ -831,6 +836,41 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
     } finally {
       if (mounted) setState(() => _locatingPickup = false);
     }
+  }
+
+
+  Future<String> _reverseGeocodePickup(double latitude, double longitude) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(latitude, longitude);
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+        final parts = <String?>[
+          place.name,
+          place.street,
+          place.subLocality,
+          place.locality,
+          place.subAdministrativeArea,
+          place.administrativeArea,
+          place.postalCode,
+          place.country,
+        ]
+            .whereType<String>()
+            .map((part) => part.trim())
+            .where((part) => part.isNotEmpty)
+            .toList();
+
+        final unique = <String>[];
+        for (final part in parts) {
+          if (!unique.any((item) => item.toLowerCase() == part.toLowerCase())) {
+            unique.add(part);
+          }
+        }
+        if (unique.isNotEmpty) return unique.join(', ');
+      }
+    } catch (_) {
+      // Keep the booking usable if the geocoding provider is temporarily unavailable.
+    }
+    return 'Current location';
   }
 
   void _selectParty(TripPartyType value) => setState(() => _partyType = value);

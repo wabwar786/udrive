@@ -162,358 +162,233 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
-    final active = controller.liveBookings
-        .where((booking) => !_closed.contains(booking.status))
-        .toList()
-      ..sort((a, b) => a.pickupAt.compareTo(b.pickupAt));
-    final upcoming = active
-        .where((booking) => booking.pickupAt.isAfter(DateTime.now()))
-        .length;
-    final pendingOffers = controller.liveRideRequests.fold<int>(
-      0,
-      (sum, request) => sum + request.offersCount,
-    );
     final vehicles = _filteredVehicles(controller.liveMarketplacePackages);
+    final featuredPlaces = KashmirPlaces.all
+        .where((place) => const {'Neelum Valley', 'Pir Chinasi', 'Banjosa Lake'}.contains(place.name))
+        .toList();
 
-    final popular = KashmirPlaces.all.where((p) => p.name != 'Muzaffarabad').toList();
-
-    return Stack(
-      children: [
-        // ── Map-first background (inDrive-style) ──────────────────────────
-        Positioned.fill(
-          child: _KashmirMap(
-            controller: _mapController,
-            myLocation: _myLocation,
-            onPlaceTap: (place) => _openDestination(place.name),
-            localize: (place) =>
-                controller.locale.languageCode == 'ur' ? place.urdu : place.name,
-          ),
-        ),
-
-        // Soft scrim so the floating controls stay legible over map tiles.
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 150,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AppColors.background.withValues(alpha: .92),
-                    AppColors.background.withValues(alpha: 0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // ── Top: "Where to?" pill + popular destination chips ─────────────
-        SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-            child: Column(
-              children: [
-                _WhereToBar(
-                  hint: _t('Where in Kashmir to?', 'کشمیر میں کہاں جانا ہے؟'),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const TourismBookingScreen(),
+    return ColoredBox(
+      color: const Color(0xFF071D2B),
+      child: RefreshIndicator(
+        onRefresh: _refresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: MediaQuery.sizeOf(context).height * .47,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: _KashmirMap(
+                        controller: _mapController,
+                        myLocation: _myLocation,
+                        onPlaceTap: (place) => _openDestination(place.name),
+                        localize: (place) => controller.locale.languageCode == 'ur'
+                            ? place.urdu
+                            : place.name,
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 34,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: popular.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (_, i) {
-                      final place = popular[i];
-                      final label = controller.locale.languageCode == 'ur'
-                          ? place.urdu
-                          : place.name;
-                      return _DestinationChip(
-                        label: label,
-                        onTap: () => _openDestination(place.name),
-                      );
-                    },
-                  ),
-                ),
-                if (_incomingTrip != null) ...[
-                  const SizedBox(height: 10),
-                  _IncomingDriverCard(
-                    trip: _incomingTrip!,
-                    onTap: _openIncomingTrip,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-
-        // ── Recenter button, sitting just above the sheet ─────────────────
-        Positioned(
-          right: 16,
-          bottom: MediaQuery.sizeOf(context).height * 0.48 + 14,
-          child: _MapFab(
-            icon: Icons.my_location_rounded,
-            onTap: _recenter,
-          ),
-        ),
-
-        // ── Bottom draggable ride sheet ───────────────────────────────────
-        DraggableScrollableSheet(
-          initialChildSize: 0.48,
-          minChildSize: 0.28,
-          maxChildSize: 0.92,
-          snap: true,
-          snapSizes: const [0.48],
-          builder: (context, scrollController) => Container(
-            decoration: const BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-              boxShadow: [
-                BoxShadow(color: Color(0x22000000), blurRadius: 24, offset: Offset(0, -6)),
-              ],
-            ),
-            child: Column(
-              children: [
-                const _SheetHandle(),
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: _refresh,
-                    child: ListView(
-                      controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(18, 4, 18, 32),
-                      children: [
-                        Row(
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                const Color(0xFF061925).withValues(alpha: .86),
+                                const Color(0xFF061925).withValues(alpha: .12),
+                                const Color(0xFF071D2B).withValues(alpha: .92),
+                              ],
+                              stops: const [0, .42, 1],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: Text(
-                                _t('Choose your ride', 'اپنی سواری منتخب کریں'),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 18,
+                            Builder(
+                              builder: (context) => InkWell(
+                                onTap: () => Scaffold.of(context).openDrawer(),
+                                customBorder: const CircleBorder(),
+                                child: Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF07141D).withValues(alpha: .88),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white.withValues(alpha: .08)),
+                                  ),
+                                  child: const Icon(Icons.menu_rounded, color: Colors.white, size: 28),
                                 ),
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE7F7F0),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
+                            const SizedBox(height: 20),
+                            RichText(
+                              text: const TextSpan(
+                                style: TextStyle(color: Colors.white, fontSize: 29, fontWeight: FontWeight.w800),
                                 children: [
-                                  Container(
-                                    width: 7,
-                                    height: 7,
-                                    decoration: const BoxDecoration(
-                                      color: AppColors.primary,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '${vehicles.length} ${_t('live', 'دستیاب')}',
-                                    style: const TextStyle(
-                                      color: AppColors.primaryDark,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 11,
-                                    ),
+                                  TextSpan(text: 'Discover '),
+                                  TextSpan(
+                                    text: 'Kashmir',
+                                    style: TextStyle(color: Color(0xFF9CDA2A), fontStyle: FontStyle.italic),
                                   ),
                                 ],
                               ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _VehicleTypeSelector(
-                          selected: _vehicleType,
-                          onSelected: (value) => setState(() => _vehicleType = value),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _vehicleSearch,
-                          textInputAction: TextInputAction.search,
-                          decoration: InputDecoration(
-                            hintText: _t(
-                              'Search destination, e.g. Neelum Valley',
-                              'منزل تلاش کریں، مثلاً نیلم ویلی',
+                            const SizedBox(height: 3),
+                            const Text(
+                              'Paradise on Earth  🍃',
+                              style: TextStyle(color: Color(0xFFD7E2E8), fontSize: 16),
                             ),
-                            prefixIcon: const Icon(Icons.location_searching_rounded),
-                            suffixIconConstraints: const BoxConstraints(minHeight: 46),
-                            suffixIcon: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_query.isNotEmpty)
-                                  IconButton(
-                                    tooltip: _t('Clear search', 'تلاش صاف کریں'),
-                                    onPressed: _vehicleSearch.clear,
-                                    icon: const Icon(Icons.close_rounded, size: 19),
+                            const Spacer(),
+                            Align(
+                              alignment: Alignment.center,
+                              child: InkWell(
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const TourismBookingScreen()),
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                child: Container(
+                                  padding: const EdgeInsets.fromLTRB(18, 10, 12, 10),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF111820).withValues(alpha: .94),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: Colors.white.withValues(alpha: .08)),
+                                    boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 14, offset: Offset(0, 8))],
                                   ),
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 6),
-                                  child: TextButton(
-                                    onPressed: _openAllVehicles,
-                                    style: TextButton.styleFrom(
-                                      minimumSize: const Size(0, 36),
-                                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                                      visualDensity: VisualDensity.compact,
-                                    ),
-                                    child: Text(
-                                      _t('View all', 'سب دیکھیں'),
-                                      style: const TextStyle(fontWeight: FontWeight.w800),
-                                    ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Pickup point', style: TextStyle(color: Color(0xFF9DA6AE), fontSize: 12)),
+                                          SizedBox(height: 2),
+                                          Text('Current location', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                                        ],
+                                      ),
+                                      SizedBox(width: 18),
+                                      Icon(Icons.chevron_right_rounded, color: Colors.white, size: 28),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        if (controller.marketplaceBusy && vehicles.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.all(36),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        else if (vehicles.isEmpty)
-                          _EmptyLiveData(
-                            message: _query.isEmpty
-                                ? _t(
-                                    'No ${_vehicleType.label.toLowerCase()} vehicle is currently available.',
-                                    'اس وقت اس قسم کی کوئی گاڑی دستیاب نہیں۔',
-                                  )
-                                : _t(
-                                    'No ${_vehicleType.label.toLowerCase()} vehicle is going to this destination right now.',
-                                    'اس وقت اس منزل کی طرف اس قسم کی کوئی گاڑی نہیں جا رہی۔',
-                                  ),
-                          )
-                        else
-                          ...vehicles.map(
-                            (package) => Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: _ScheduledVehicleCard(
-                                package: package,
-                                onTap: () => _openVehicle(package),
                               ),
                             ),
-                          ),
-                        if (controller.marketplaceError != null &&
-                            vehicles.isEmpty &&
-                            !controller.marketplaceBusy) ...[
-                          const SizedBox(height: 8),
-                          _ErrorBanner(
-                            message: _t(
-                              'Vehicles could not be refreshed. Pull down or tap retry.',
-                              'گاڑیاں ریفریش نہیں ہو سکیں۔ نیچے کھینچیں یا دوبارہ کوشش کریں۔',
-                            ),
-                            onRetry: _refresh,
-                          ),
-                        ],
-                        if (active.isNotEmpty) ...[
-                          const SizedBox(height: 20),
-                          SectionHeader(
-                            title: _t('Current booking', 'موجودہ بکنگ'),
-                            action: _t('View all', 'سب دیکھیں'),
-                            onAction: () => widget.onNavigate('trips'),
-                          ),
-                          const SizedBox(height: 10),
-                          _LiveBookingCard(
-                            booking: active.first,
-                            onTap: () => widget.onNavigate('trips'),
-                          ),
-                        ],
-                        const SizedBox(height: 18),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _Metric(
-                                icon: Icons.route_rounded,
-                                label: _t('Active trips', 'فعال سفر'),
-                                value: '${active.length}',
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _Metric(
-                                icon: Icons.calendar_month_rounded,
-                                label: _t('Upcoming', 'آنے والے'),
-                                value: '$upcoming',
-                                color: AppColors.info,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _Metric(
-                                icon: Icons.local_offer_rounded,
-                                label: _t('Offers', 'آفرز'),
-                                value: '$pendingOffers',
-                                color: AppColors.secondary,
-                              ),
-                            ),
+                            const Spacer(),
                           ],
                         ),
-                        const SizedBox(height: 20),
-                        SectionHeader(title: _t('Quick actions', 'فوری سہولیات')),
-                        const SizedBox(height: 10),
-                        GridView.count(
-                          crossAxisCount: 2,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          mainAxisSpacing: 10,
-                          crossAxisSpacing: 10,
-                          childAspectRatio: 1.72,
-                          children: [
-                            _Action(
-                              icon: Icons.local_taxi_rounded,
-                              title: _t('Book a ride', 'رائیڈ بک کریں'),
-                              subtitle: _t('Private or shared', 'پرائیویٹ یا شیئرڈ'),
-                              colors: const [Color(0xFF0E8F68), Color(0xFF16B982)],
-                              onTap: () => widget.onNavigate('bookRide'),
-                            ),
-                            _Action(
-                              icon: Icons.directions_bus_filled_rounded,
-                              title: _t('Scheduled rides', 'شیڈول رائیڈز'),
-                              subtitle: _t('Book available seats', 'دستیاب سیٹ بک کریں'),
-                              colors: const [Color(0xFF3568D4), Color(0xFF5A8AF0)],
-                              onTap: () => widget.onNavigate('packages'),
-                            ),
-                            _Action(
-                              icon: Icons.groups_rounded,
-                              title: _t('Join a tour', 'ٹور جوائن کریں'),
-                              subtitle: _t('Find matching tours', 'میچنگ ٹور تلاش کریں'),
-                              colors: const [Color(0xFF7A42C8), Color(0xFFA164E8)],
-                              onTap: () => widget.onNavigate('joinTour'),
-                            ),
-                            _Action(
-                              icon: Icons.health_and_safety_rounded,
-                              title: _t('Safety centre', 'سیفٹی سینٹر'),
-                              subtitle: _t('Tracking & support', 'ٹریکنگ اور مدد'),
-                              colors: const [Color(0xFFE5702A), Color(0xFFF49A46)],
-                              onTap: () => widget.onNavigate('safety'),
-                            ),
-                          ],
+                      ),
+                    ),
+                    Positioned(
+                      right: 20,
+                      bottom: 18,
+                      child: FloatingActionButton.small(
+                        heroTag: 'customer-home-recenter',
+                        backgroundColor: const Color(0xFF111820),
+                        foregroundColor: Colors.white,
+                        onPressed: _recenter,
+                        child: const Icon(Icons.navigation_rounded),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  if (_incomingTrip != null) ...[
+                    _IncomingDriverCard(trip: _incomingTrip!, onTap: _openIncomingTrip),
+                    const SizedBox(height: 14),
+                  ],
+                  _ExploreBanner(onTap: () => widget.onNavigate('explore')),
+                  const SizedBox(height: 16),
+                  _TourismServiceGrid(
+                    onExplore: () => widget.onNavigate('explore'),
+                    onStay: () => widget.onNavigate('packages'),
+                    onTransport: () => widget.onNavigate('bookRide'),
+                    onActivities: () => widget.onNavigate('joinTour'),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF101A22),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white.withValues(alpha: .06)),
+                    ),
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _vehicleSearch,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Where do you want to go in Kashmir?',
+                            hintStyle: const TextStyle(color: Color(0xFF9CA6AE)),
+                            prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFD5DEE3)),
+                            filled: true,
+                            fillColor: const Color(0xFF202930),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+                          ),
                         ),
+                        const SizedBox(height: 8),
+                        for (var i = 0; i < featuredPlaces.length; i++) ...[
+                          _DestinationListTile(
+                            place: featuredPlaces[i],
+                            imagePath: switch (featuredPlaces[i].name) {
+                              'Neelum Valley' => 'assets/images/neelum.png',
+                              'Pir Chinasi' => 'assets/images/pir_chinasi.png',
+                              _ => 'assets/images/banjosa.png',
+                            },
+                            onTap: () => _openDestination(featuredPlaces[i].name),
+                          ),
+                          if (i != featuredPlaces.length - 1)
+                            Divider(height: 1, color: Colors.white.withValues(alpha: .08)),
+                        ],
                       ],
                     ),
                   ),
-                ),
-              ],
+                  if (vehicles.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text('Available rides', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
+                        ),
+                        TextButton(onPressed: _openAllVehicles, child: const Text('View all')),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 154,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: vehicles.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (_, index) {
+                          final package = vehicles[index];
+                          return _CompactRideCard(package: package, onTap: () => _openVehicle(package));
+                        },
+                      ),
+                    ),
+                  ],
+                ]),
+              ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -578,6 +453,184 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
 
   static const _closed = {'Completed', 'Cancelled', 'NoShow'};
+}
+
+
+class _ExploreBanner extends StatelessWidget {
+  const _ExploreBanner({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          height: 112,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF101A22),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withValues(alpha: .06)),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.asset('assets/images/neelum.png', width: 128, height: 84, fit: BoxFit.cover),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('Explore Kashmir', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
+                    SizedBox(height: 4),
+                    Text('Top destinations, handpicked experiences & local guides', style: TextStyle(color: Color(0xFFB6C0C7), fontSize: 12, height: 1.3)),
+                    SizedBox(height: 7),
+                    Text('Best time to visit: Mar – Oct', style: TextStyle(color: Color(0xFF9CDA2A), fontWeight: FontWeight.w700, fontSize: 11)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white),
+            ],
+          ),
+        ),
+      );
+}
+
+class _TourismServiceGrid extends StatelessWidget {
+  const _TourismServiceGrid({required this.onExplore, required this.onStay, required this.onTransport, required this.onActivities});
+  final VoidCallback onExplore, onStay, onTransport, onActivities;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        height: 260,
+        child: Row(
+          children: [
+            Expanded(
+              flex: 11,
+              child: _ServicePanel(
+                title: 'Explore Kashmir',
+                subtitle: 'Tours, Activities & More',
+                icon: Icons.landscape_rounded,
+                highlighted: true,
+                onTap: onExplore,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 10,
+              child: Column(
+                children: [
+                  Expanded(child: _ServicePanel(title: 'Stay', subtitle: 'Hotels, Resorts, Houseboats', icon: Icons.houseboat_rounded, onTap: onStay)),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(child: _ServicePanel(title: 'Transport', subtitle: 'Cabs, Bikes, Buses', icon: Icons.directions_car_rounded, compact: true, onTap: onTransport)),
+                        const SizedBox(width: 10),
+                        Expanded(child: _ServicePanel(title: 'Activities', subtitle: 'Adventure, Skiing, Trekking', icon: Icons.hiking_rounded, compact: true, onTap: onActivities)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _ServicePanel extends StatelessWidget {
+  const _ServicePanel({required this.title, required this.subtitle, required this.icon, required this.onTap, this.highlighted = false, this.compact = false});
+  final String title, subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool highlighted, compact;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: EdgeInsets.all(compact ? 12 : 16),
+          decoration: BoxDecoration(
+            gradient: highlighted
+                ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFA3D928), Color(0xFF5A9C13)])
+                : const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF273038), Color(0xFF151D23)]),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: .06)),
+          ),
+          child: Stack(
+            children: [
+              Positioned(right: compact ? -5 : 4, bottom: compact ? -3 : 2, child: Icon(icon, size: compact ? 50 : 78, color: Colors.white.withValues(alpha: highlighted ? .92 : .72))),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(color: Colors.white, fontSize: compact ? 14 : 20, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, maxLines: compact ? 3 : 2, style: TextStyle(color: highlighted ? Colors.white : const Color(0xFFB5BEC5), fontSize: compact ? 10.5 : 13, height: 1.25)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _DestinationListTile extends StatelessWidget {
+  const _DestinationListTile({required this.place, required this.imagePath, required this.onTap});
+  final KashmirPlace place;
+  final String imagePath;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+        onTap: onTap,
+        leading: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.asset(imagePath, width: 58, height: 58, fit: BoxFit.cover)),
+        title: Text(place.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+        subtitle: Text('Scenic beauty, local experiences & more', style: const TextStyle(color: Color(0xFF9EA8AF), fontSize: 11)),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white),
+      );
+}
+
+class _CompactRideCard extends StatelessWidget {
+  const _CompactRideCard({required this.package, required this.onTap});
+  final LiveTourPackage package;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: 220,
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: const Color(0xFF101A22),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: .06)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.directions_car_filled_rounded, color: Color(0xFF9CDA2A)),
+                const SizedBox(width: 8),
+                Expanded(child: Text(package.vehicle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
+              ]),
+              const Spacer(),
+              Text(package.destination, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 4),
+              Text('${package.availableSeats} seats available', style: const TextStyle(color: Color(0xFF9EA8AF), fontSize: 11)),
+              const SizedBox(height: 8),
+              Text('PKR ${package.pricePerSeat.toStringAsFixed(0)} / seat', style: const TextStyle(color: Color(0xFF9CDA2A), fontWeight: FontWeight.w800, fontSize: 12)),
+            ],
+          ),
+        ),
+      );
 }
 
 class _IncomingDriverCard extends StatelessWidget {

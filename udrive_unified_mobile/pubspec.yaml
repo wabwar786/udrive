@@ -19,6 +19,7 @@ dependencies:
   battery_plus: ^7.0.0
   connectivity_plus: ^7.0.0
   geolocator: ^14.0.2
+  geocoding: ^4.0.0
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
   url_launcher: ^6.3.2
