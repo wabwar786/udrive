@@ -1,3 +1,4 @@
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -28,12 +29,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   static const _ink = Color(0xFF10212B);
   static const _lime = Color(0xFF8ED12B);
   static const _muted = Color(0xFF667781);
-  static const _surface = Color(0xFFF7FAFB);
+  static const _surface = Color(0xFFF6F8FA);
 
   final _pickup = TextEditingController(text: 'Detecting current address…');
   final _destination = TextEditingController();
   final _pageController = PageController();
   final _scrollController = ScrollController();
+  final _resultsKey = GlobalKey();
   late final ApiClient _api;
 
   Timer? _heroTimer;
@@ -44,6 +46,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   bool _searched = false;
   bool _locating = false;
   String _destinationQuery = '';
+  String? _selectedVehicleType;
+  DateTime? _selectedDepartureDay;
+  String? _resultsTitle;
   List<_HeroDestination> _destinations = const [];
   TripOperationsRepository? _tripRepository;
   MobileTrip? _activeTrip;
@@ -66,7 +71,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final next = (_heroIndex + 1) % _destinations.length;
       _pageController.animateToPage(
         next,
-        duration: const Duration(milliseconds: 650),
+        duration: const Duration(milliseconds: 700),
         curve: Curves.easeInOutCubic,
       );
     });
@@ -86,6 +91,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final controller = AppControllerScope.of(context);
     await controller.refreshHomeVehicles();
     await controller.refreshPhase9Marketplace();
+    await controller.refreshLiveBookings();
   }
 
   Future<void> _loadDestinations() async {
@@ -154,6 +160,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           .toSet()
           .toList();
       _pickup.text = values.join(', ');
+      if (mounted) setState(() {});
     } catch (_) {
       _pickup.text = 'Enter pickup address';
     } finally {
@@ -200,15 +207,71 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _destinationQuery = value.name.toLowerCase();
       _showDestinationList = false;
       _searched = false;
+      _selectedDepartureDay = null;
+      _resultsTitle = null;
     });
   }
 
-  void _selectRideDestination(String destination) {
+  void _showResultsForDestination(String destination) {
     _destination.text = destination;
     setState(() {
       _destinationQuery = destination.toLowerCase();
       _showDestinationList = false;
-      _searched = false;
+      _searched = true;
+      _selectedDepartureDay = null;
+      _resultsTitle = 'Available rides for $destination';
+    });
+    _scrollToResults();
+  }
+
+  void _showResultsForUpcoming(LiveTourPackage ride) {
+    _destination.text = ride.destination;
+    setState(() {
+      _destinationQuery = ride.destination.trim().toLowerCase();
+      _searched = true;
+      _showDestinationList = false;
+      _selectedDepartureDay = DateTime(
+        ride.departureAt.year,
+        ride.departureAt.month,
+        ride.departureAt.day,
+      );
+      _resultsTitle =
+          '${ride.destination} · ${DateFormat('EEE, dd MMM').format(ride.departureAt)}';
+    });
+    _scrollToResults();
+  }
+
+  void _showResultsForVehicleType(String type) {
+    final title = '${type[0].toUpperCase()}${type.substring(1)} rides';
+    setState(() {
+      _selectedVehicleType = type;
+      _searched = true;
+      _showDestinationList = false;
+      _selectedDepartureDay = null;
+      _destinationQuery = '';
+      _resultsTitle = title;
+    });
+    _scrollToResults();
+  }
+
+  void _scrollToResults() {
+    Future<void>.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted || !_scrollController.hasClients) return;
+      final context = _resultsKey.currentContext;
+      if (context != null) {
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic,
+          alignment: 0.05,
+        );
+      } else {
+        _scrollController.animateTo(
+          MediaQuery.sizeOf(this.context).height * .78,
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic,
+        );
+      }
     });
   }
 
@@ -224,38 +287,52 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _destinationQuery = _destination.text.trim().toLowerCase();
       _showDestinationList = false;
       _searched = true;
+      _selectedDepartureDay = null;
+      _resultsTitle = 'Available rides for ${_destination.text.trim()}';
     });
-    Future<void>.delayed(const Duration(milliseconds: 100), () {
-      if (mounted && _scrollController.hasClients) {
-        _scrollController.animateTo(
-          MediaQuery.sizeOf(context).height * .70,
-          duration: const Duration(milliseconds: 450),
-          curve: Curves.easeOutCubic,
-        );
-      }
-    });
+    _scrollToResults();
+  }
+
+  String _vehicleTypeForRide(LiveTourPackage ride) {
+    final raw = '${ride.vehicle} ${ride.title} ${ride.registrationNumber}'.toLowerCase();
+    if (raw.contains('bike') || raw.contains('motor')) return 'bike';
+    if (raw.contains('rickshaw') || raw.contains('auto')) return 'rickshaw';
+    if (raw.contains('coaster') || raw.contains('coster') || raw.contains('bus') || raw.contains('van')) {
+      return 'coster';
+    }
+    return 'car';
   }
 
   List<LiveTourPackage> _matchingRides(List<LiveTourPackage> source) {
     if (!_searched) return const [];
-    final query = _destinationQuery;
-    return source
-        .where((ride) =>
-            '${ride.destination} ${ride.title} ${ride.pickupPoint}'
-                .toLowerCase()
-                .contains(query))
-        .toList()
-      ..sort((a, b) => a.departureAt.compareTo(b.departureAt));
+    final query = _destinationQuery.trim();
+    final day = _selectedDepartureDay;
+    final type = _selectedVehicleType;
+    final filtered = source.where((ride) {
+      final matchesQuery = query.isEmpty
+          ? true
+          : '${ride.destination} ${ride.title} ${ride.pickupPoint}'
+              .toLowerCase()
+              .contains(query);
+      final matchesDay = day == null
+          ? true
+          : DateUtils.isSameDay(ride.departureAt, day);
+      final matchesType = type == null ? true : _vehicleTypeForRide(ride) == type;
+      return matchesQuery && matchesDay && matchesType;
+    }).toList();
+    filtered.sort((a, b) => a.departureAt.compareTo(b.departureAt));
+    return filtered;
   }
 
   List<LiveTourPackage> _nextSevenDayRides(List<LiveTourPackage> source) {
     final now = DateTime.now();
     final end = now.add(const Duration(days: 7));
-    return source
+    final rides = source
         .where((ride) =>
             !ride.departureAt.isBefore(now) && ride.departureAt.isBefore(end))
-        .toList()
-      ..sort((a, b) => a.departureAt.compareTo(b.departureAt));
+        .toList();
+    rides.sort((a, b) => a.departureAt.compareTo(b.departureAt));
+    return rides;
   }
 
   List<LiveTourPackage> _halfBookedRides(List<LiveTourPackage> source) {
@@ -264,6 +341,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final reserved = ride.totalSeats - ride.bookableSeats;
       return reserved / ride.totalSeats >= .5;
     }).toList();
+  }
+
+  List<String> _destinationHistory(List<LiveBooking> bookings) {
+    final sorted = bookings
+        .where((booking) => booking.destinationLabel.trim().isNotEmpty)
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final seen = <String>{};
+    final results = <String>[];
+    for (final booking in sorted) {
+      final key = booking.destinationLabel.trim().toLowerCase();
+      if (seen.add(key)) {
+        results.add(booking.destinationLabel.trim());
+      }
+      if (results.length >= 8) break;
+    }
+    return results;
   }
 
   String get _greeting {
@@ -296,6 +390,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final rides = _matchingRides(marketplace);
     final upcoming = _nextSevenDayRides(marketplace);
     final halfBooked = _halfBookedRides(marketplace);
+    final pastDestinations = _destinationHistory(controller.liveBookings);
     final height = MediaQuery.sizeOf(context).height;
 
     return ColoredBox(
@@ -313,7 +408,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           slivers: [
             SliverToBoxAdapter(
               child: SizedBox(
-                height: height - 86,
+                height: height - 88,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -329,18 +424,37 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Color(0x92071318),
-                            Color(0x18071318),
-                            Color(0xB8071318),
+                            Color(0x52030B12),
+                            Color(0x12030B12),
+                            Color(0x65FFFFFF),
+                            Color(0xDDF6F8FA),
                           ],
-                          stops: [0, .48, 1],
+                          stops: [0, .26, .72, 1],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: IgnorePointer(
+                        child: Container(
+                          height: 170,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.transparent, _surface],
+                              stops: [.0, 1],
+                            ),
+                          ),
                         ),
                       ),
                     ),
                     SafeArea(
                       bottom: false,
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(17, 13, 17, 18),
+                        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -361,19 +475,28 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 ],
                                 _CircleButton(
                                   icon: Icons.notifications_none_rounded,
-                                  onTap: () =>
-                                      widget.onNavigate('notifications'),
+                                  onTap: () => widget.onNavigate('notifications'),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: _VehicleTypePanel(
+                                onSelected: _showResultsForVehicleType,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
                             Text(
                               '$_greeting, ${_firstName(controller.currentUserName)}',
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 18,
+                                fontSize: 17,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: -.35,
+                                shadows: [
+                                  Shadow(color: Colors.black38, blurRadius: 10),
+                                ],
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -387,12 +510,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 29,
+                                fontSize: 34,
                                 height: 1.05,
                                 fontWeight: FontWeight.w900,
-                                letterSpacing: -.8,
+                                letterSpacing: -.9,
                                 shadows: [
-                                  Shadow(color: Colors.black45, blurRadius: 12),
+                                  Shadow(color: Colors.black45, blurRadius: 14),
                                 ],
                               ),
                             ),
@@ -400,28 +523,29 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               const SizedBox(height: 14),
                               _UpcomingDestinations(
                                 rides: upcoming,
-                                onSelected: _selectRideDestination,
+                                onSelected: _showResultsForUpcoming,
                               ),
                             ],
                             if (halfBooked.isNotEmpty) ...[
                               const SizedBox(height: 9),
                               _HalfBookedStrip(
                                 rides: halfBooked,
-                                onSelected: _selectRideDestination,
+                                onSelected: _showResultsForUpcoming,
                               ),
                             ],
                             const Spacer(),
                             Container(
-                              padding:
-                                  const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                              padding: const EdgeInsets.fromLTRB(15, 12, 15, 12),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: .96),
-                                borderRadius: BorderRadius.circular(22),
-                                border: Border.all(color: Colors.white),
+                                color: Colors.white.withValues(alpha: .95),
+                                borderRadius: BorderRadius.circular(26),
+                                border: Border.all(
+                                  color: const Color(0xFFF1F3F6),
+                                ),
                                 boxShadow: const [
                                   BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 25,
+                                    color: Color(0x17000000),
+                                    blurRadius: 22,
                                     offset: Offset(0, 12),
                                   ),
                                 ],
@@ -433,7 +557,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                     label: 'From',
                                     icon: Icons.radio_button_checked_rounded,
                                     accent: _lime,
-                                    hint: 'Enter pickup point manually',
+                                    hint: 'Current address will appear here',
+                                    fillColor: const Color(0xFFF8FAFB),
                                     suffix: IconButton(
                                       tooltip: 'Use current location',
                                       onPressed: _locating ? null : _loadLocation,
@@ -459,11 +584,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                     label: 'To',
                                     icon: Icons.location_on_rounded,
                                     accent: const Color(0xFFF38A2E),
-                                    hint: 'Where do you want to go?',
+                                    hint: 'Select destination',
+                                    fillColor: const Color(0xFFF8FAFB),
                                     readOnly: true,
                                     onTap: () => setState(() =>
-                                        _showDestinationList =
-                                            !_showDestinationList),
+                                        _showDestinationList = !_showDestinationList),
                                     suffix: Icon(
                                       _showDestinationList
                                           ? Icons.keyboard_arrow_up_rounded
@@ -483,33 +608,43 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 14),
                             SizedBox(
                               width: double.infinity,
-                              height: 52,
+                              height: 58,
                               child: FilledButton.icon(
                                 onPressed: _findRides,
                                 style: FilledButton.styleFrom(
                                   backgroundColor: _lime,
-                                  foregroundColor: const Color(0xFF132106),
+                                  foregroundColor: Colors.white,
                                   elevation: 4,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(17),
+                                    borderRadius: BorderRadius.circular(19),
                                   ),
                                 ),
                                 icon: const Icon(
                                   Icons.directions_car_filled_rounded,
-                                  size: 19,
+                                  size: 22,
+                                  color: Colors.white,
                                 ),
                                 label: const Text(
                                   'Find rides',
                                   style: TextStyle(
-                                    fontSize: 13,
+                                    fontSize: 22,
                                     fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    letterSpacing: -.2,
                                   ),
                                 ),
                               ),
                             ),
+                            if (pastDestinations.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              _DestinationHistoryStrip(
+                                items: pastDestinations,
+                                onSelected: _showResultsForDestination,
+                              ),
+                            ],
                             const SizedBox(height: 10),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -517,14 +652,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 _destinations.length,
                                 (index) => AnimatedContainer(
                                   duration: const Duration(milliseconds: 180),
-                                  width: index == _heroIndex ? 18 : 5,
-                                  height: 5,
+                                  width: index == _heroIndex ? 18 : 6,
+                                  height: 6,
                                   margin:
                                       const EdgeInsets.symmetric(horizontal: 3),
                                   decoration: BoxDecoration(
                                     color: index == _heroIndex
                                         ? _lime
-                                        : Colors.white60,
+                                        : Colors.white70,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                 ),
@@ -540,17 +675,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
             if (_searched)
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 125),
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 125),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
+                    Container(key: _resultsKey),
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Available rides',
-                            style: TextStyle(
+                            _resultsTitle ?? 'Available rides',
+                            style: const TextStyle(
                               color: _ink,
-                              fontSize: 17,
+                              fontSize: 18,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -660,6 +796,7 @@ class _HeroSlider extends StatelessWidget {
       itemBuilder: (_, index) => Image.network(
         items[index].imageUrl,
         fit: BoxFit.cover,
+        alignment: Alignment.center,
         errorBuilder: (_, __, ___) => const ColoredBox(
           color: Color(0xFFDCE6E9),
           child: Center(
@@ -692,7 +829,7 @@ class _CircleButton extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .93),
+              color: Colors.white.withValues(alpha: .94),
               shape: BoxShape.circle,
               boxShadow: const [
                 BoxShadow(color: Colors.black26, blurRadius: 12),
@@ -706,7 +843,10 @@ class _CircleButton extends StatelessWidget {
                   const Positioned(
                     right: 6,
                     top: 6,
-                    child: CircleAvatar(radius: 4, backgroundColor: _CustomerHomeScreenState._lime),
+                    child: CircleAvatar(
+                      radius: 4,
+                      backgroundColor: _CustomerHomeScreenState._lime,
+                    ),
                   ),
               ],
             ),
@@ -715,19 +855,61 @@ class _CircleButton extends StatelessWidget {
       );
 }
 
-class _UpcomingDestinations extends StatelessWidget {
-  const _UpcomingDestinations({required this.rides, required this.onSelected});
+class _VehicleTypePanel extends StatelessWidget {
+  const _VehicleTypePanel({required this.onSelected});
 
-  final List<LiveTourPackage> rides;
   final ValueChanged<String> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final unique = <String, LiveTourPackage>{};
-    for (final ride in rides) {
-      unique.putIfAbsent(ride.destination.trim().toLowerCase(), () => ride);
-    }
-    final items = unique.values.take(6).toList();
+    const items = <({String key, IconData icon, String label})>[
+      (key: 'car', icon: Icons.directions_car_filled_rounded, label: 'Car'),
+      (key: 'bike', icon: Icons.two_wheeler_rounded, label: 'Bike'),
+      (key: 'rickshaw', icon: Icons.electric_rickshaw_rounded, label: 'Rickshaw'),
+      (key: 'coster', icon: Icons.airport_shuttle_rounded, label: 'Coster'),
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .93),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(color: Color(0x18000000), blurRadius: 10),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            InkWell(
+              onTap: () => onSelected(items[i].key),
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
+                child: Tooltip(
+                  message: items[i].label,
+                  child: Icon(items[i].icon, size: 18, color: _CustomerHomeScreenState._ink),
+                ),
+              ),
+            ),
+            if (i != items.length - 1)
+              const SizedBox(height: 2),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _UpcomingDestinations extends StatelessWidget {
+  const _UpcomingDestinations({required this.rides, required this.onSelected});
+
+  final List<LiveTourPackage> rides;
+  final ValueChanged<LiveTourPackage> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = rides.take(8).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -735,13 +917,14 @@ class _UpcomingDestinations extends StatelessWidget {
           'Vehicles departing in next 7 days',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 10.5,
+            fontSize: 12,
             fontWeight: FontWeight.w800,
+            shadows: [Shadow(color: Colors.black45, blurRadius: 6)],
           ),
         ),
         const SizedBox(height: 7),
         SizedBox(
-          height: 55,
+          height: 58,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: items.length,
@@ -751,13 +934,13 @@ class _UpcomingDestinations extends StatelessWidget {
               return Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () => onSelected(ride.destination),
-                  borderRadius: BorderRadius.circular(15),
+                  onTap: () => onSelected(ride),
+                  borderRadius: BorderRadius.circular(16),
                   child: Ink(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 11),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: .92),
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: const [
                         BoxShadow(color: Colors.black12, blurRadius: 8),
                       ],
@@ -784,7 +967,7 @@ class _UpcomingDestinations extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: _CustomerHomeScreenState._ink,
-                                fontSize: 10.5,
+                                fontSize: 10.8,
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
@@ -792,7 +975,7 @@ class _UpcomingDestinations extends StatelessWidget {
                               DateFormat('EEE, dd MMM').format(ride.departureAt),
                               style: const TextStyle(
                                 color: _CustomerHomeScreenState._muted,
-                                fontSize: 8.5,
+                                fontSize: 8.8,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -815,11 +998,11 @@ class _HalfBookedStrip extends StatelessWidget {
   const _HalfBookedStrip({required this.rides, required this.onSelected});
 
   final List<LiveTourPackage> rides;
-  final ValueChanged<String> onSelected;
+  final ValueChanged<LiveTourPackage> onSelected;
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        height: 30,
+        height: 32,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: rides.take(5).length,
@@ -831,7 +1014,7 @@ class _HalfBookedStrip extends StatelessWidget {
                 ? 0
                 : ((reserved / ride.totalSeats) * 100).round();
             return ActionChip(
-              onPressed: () => onSelected(ride.destination),
+              onPressed: () => onSelected(ride),
               avatar: const Icon(
                 Icons.local_fire_department_rounded,
                 size: 14,
@@ -841,7 +1024,7 @@ class _HalfBookedStrip extends StatelessWidget {
                 '${ride.destination} $percentage% booked',
                 style: const TextStyle(
                   color: _CustomerHomeScreenState._ink,
-                  fontSize: 8.5,
+                  fontSize: 8.6,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -865,6 +1048,7 @@ class _LocationInput extends StatelessWidget {
     required this.icon,
     required this.accent,
     required this.hint,
+    required this.fillColor,
     this.readOnly = false,
     this.onTap,
     this.suffix,
@@ -875,6 +1059,7 @@ class _LocationInput extends StatelessWidget {
   final IconData icon;
   final Color accent;
   final String hint;
+  final Color fillColor;
   final bool readOnly;
   final VoidCallback? onTap;
   final Widget? suffix;
@@ -884,7 +1069,7 @@ class _LocationInput extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(top: 16),
+            padding: const EdgeInsets.only(top: 17),
             child: Icon(icon, color: accent, size: 19),
           ),
           const SizedBox(width: 10),
@@ -895,26 +1080,36 @@ class _LocationInput extends StatelessWidget {
               onTap: onTap,
               style: const TextStyle(
                 color: _CustomerHomeScreenState._ink,
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
               decoration: InputDecoration(
-                filled: false,
+                filled: true,
+                fillColor: fillColor,
                 isDense: true,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 3),
+                contentPadding: const EdgeInsets.fromLTRB(14, 15, 8, 15),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFFE5ECEF)),
+                ),
                 labelText: label,
                 labelStyle: TextStyle(
                   color: accent,
-                  fontSize: 10,
+                  fontSize: 10.5,
                   fontWeight: FontWeight.w900,
                 ),
                 hintText: hint,
                 hintStyle: const TextStyle(
                   color: Color(0xFF9AA7AD),
-                  fontSize: 11,
+                  fontSize: 11.5,
                 ),
                 suffixIcon: suffix,
                 suffixIconConstraints: const BoxConstraints(minWidth: 36),
@@ -988,6 +1183,59 @@ class _DestinationDropdown extends StatelessWidget {
           },
         ),
       );
+}
+
+class _DestinationHistoryStrip extends StatelessWidget {
+  const _DestinationHistoryStrip({required this.items, required this.onSelected});
+
+  final List<String> items;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Destination history',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w800,
+            shadows: [Shadow(color: Colors.black38, blurRadius: 6)],
+          ),
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: 34,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (_, index) => ActionChip(
+              onPressed: () => onSelected(items[index]),
+              label: Text(
+                items[index],
+                style: const TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w800,
+                  color: _CustomerHomeScreenState._ink,
+                ),
+              ),
+              avatar: const Icon(
+                Icons.history_rounded,
+                size: 15,
+                color: Color(0xFF739F18),
+              ),
+              backgroundColor: Colors.white.withValues(alpha: .92),
+              side: BorderSide.none,
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _RideCard extends StatelessWidget {
@@ -1172,7 +1420,9 @@ class _EmptyRides extends StatelessWidget {
             ),
             const SizedBox(height: 5),
             Text(
-              'No active ride is currently going towards $destination.',
+              destination.trim().isEmpty
+                  ? 'No ride is currently available for this filter.'
+                  : 'No active ride is currently going towards $destination.',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: _CustomerHomeScreenState._muted,
