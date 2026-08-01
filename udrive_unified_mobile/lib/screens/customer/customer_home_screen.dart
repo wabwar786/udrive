@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../core/widgets/vehicle_art.dart';
 import '../../models/booking_models.dart';
 import '../../models/trip_operations_models.dart';
 import 'live_packages_screen.dart';
@@ -30,6 +33,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Timer? _tripRefreshTimer;
   MobileTrip? _incomingTrip;
 
+  final MapController _mapController = MapController();
+  LatLng? _myLocation;
+
   @override
   void initState() {
     super.initState();
@@ -37,7 +43,43 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final value = _vehicleSearch.text.trim().toLowerCase();
       if (value != _query) setState(() => _query = value);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadHome());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadHome();
+      _loadMyLocation();
+    });
+  }
+
+  Future<void> _loadMyLocation() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+      setState(() => _myLocation = LatLng(position.latitude, position.longitude));
+    } catch (_) {
+      // Location is a nice-to-have on the map; ignore failures silently.
+    }
+  }
+
+  void _recenter() {
+    final target = _myLocation ?? KashmirPlaces.hub;
+    _mapController.move(target, _myLocation != null ? 13 : 9);
+  }
+
+  void _openDestination(String destination) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TourismBookingScreen(initialDestination: destination),
+      ),
+    );
   }
 
   @override
@@ -96,6 +138,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void dispose() {
     _tripRefreshTimer?.cancel();
     _vehicleSearch.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -132,197 +175,345 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
     final vehicles = _filteredVehicles(controller.liveMarketplacePackages);
 
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 32),
-        children: [
-          _BookingHero(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const TourismBookingScreen(),
+    final popular = KashmirPlaces.all.where((p) => p.name != 'Muzaffarabad').toList();
+
+    return Stack(
+      children: [
+        // ── Map-first background (inDrive-style) ──────────────────────────
+        Positioned.fill(
+          child: _KashmirMap(
+            controller: _mapController,
+            myLocation: _myLocation,
+            onPlaceTap: (place) => _openDestination(place.name),
+            localize: (place) =>
+                controller.locale.languageCode == 'ur' ? place.urdu : place.name,
+          ),
+        ),
+
+        // Soft scrim so the floating controls stay legible over map tiles.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 150,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    AppColors.background.withValues(alpha: .92),
+                    AppColors.background.withValues(alpha: 0),
+                  ],
+                ),
               ),
             ),
           ),
-          if (_incomingTrip != null) ...[
-            const SizedBox(height: 10),
-            _IncomingDriverCard(
-              trip: _incomingTrip!,
-              onTap: _openIncomingTrip,
-            ),
-          ],
-          const SizedBox(height: 14),
-          _VehicleTypeSelector(
-            selected: _vehicleType,
-            onSelected: (value) => setState(() => _vehicleType = value),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _vehicleSearch,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: _t(
-                'Search destination, e.g. Neelum Valley',
-                'منزل تلاش کریں، مثلاً نیلم ویلی',
-              ),
-              prefixIcon: const Icon(Icons.location_searching_rounded),
-              suffixIconConstraints: const BoxConstraints(minHeight: 46),
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_query.isNotEmpty)
-                    IconButton(
-                      tooltip: _t('Clear search', 'تلاش صاف کریں'),
-                      onPressed: _vehicleSearch.clear,
-                      icon: const Icon(Icons.close_rounded, size: 19),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: TextButton(
-                      onPressed: _openAllVehicles,
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(0, 36),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      child: Text(
-                        _t('View all', 'سب دیکھیں'),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
+        ),
+
+        // ── Top: "Where to?" pill + popular destination chips ─────────────
+        SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: Column(
+              children: [
+                _WhereToBar(
+                  hint: _t('Where in Kashmir to?', 'کشمیر میں کہاں جانا ہے؟'),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const TourismBookingScreen(),
                     ),
                   ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 34,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: popular.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (_, i) {
+                      final place = popular[i];
+                      final label = controller.locale.languageCode == 'ur'
+                          ? place.urdu
+                          : place.name;
+                      return _DestinationChip(
+                        label: label,
+                        onTap: () => _openDestination(place.name),
+                      );
+                    },
+                  ),
+                ),
+                if (_incomingTrip != null) ...[
+                  const SizedBox(height: 10),
+                  _IncomingDriverCard(
+                    trip: _incomingTrip!,
+                    onTap: _openIncomingTrip,
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          if (controller.marketplaceBusy && vehicles.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(36),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (vehicles.isEmpty)
-            _EmptyLiveData(
-              message: _query.isEmpty
-                  ? _t(
-                      'No ${_vehicleType.label.toLowerCase()} vehicle is currently available.',
-                      'اس وقت اس قسم کی کوئی گاڑی دستیاب نہیں۔',
-                    )
-                  : _t(
-                      'No ${_vehicleType.label.toLowerCase()} vehicle is going to this destination right now.',
-                      'اس وقت اس منزل کی طرف اس قسم کی کوئی گاڑی نہیں جا رہی۔',
+        ),
+
+        // ── Recenter button, sitting just above the sheet ─────────────────
+        Positioned(
+          right: 16,
+          bottom: MediaQuery.sizeOf(context).height * 0.48 + 14,
+          child: _MapFab(
+            icon: Icons.my_location_rounded,
+            onTap: _recenter,
+          ),
+        ),
+
+        // ── Bottom draggable ride sheet ───────────────────────────────────
+        DraggableScrollableSheet(
+          initialChildSize: 0.48,
+          minChildSize: 0.28,
+          maxChildSize: 0.92,
+          snap: true,
+          snapSizes: const [0.48],
+          builder: (context, scrollController) => Container(
+            decoration: const BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              boxShadow: [
+                BoxShadow(color: Color(0x22000000), blurRadius: 24, offset: Offset(0, -6)),
+              ],
+            ),
+            child: Column(
+              children: [
+                const _SheetHandle(),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _refresh,
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(18, 4, 18, 32),
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _t('Choose your ride', 'اپنی سواری منتخب کریں'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE7F7F0),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.primary,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '${vehicles.length} ${_t('live', 'دستیاب')}',
+                                    style: const TextStyle(
+                                      color: AppColors.primaryDark,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _VehicleTypeSelector(
+                          selected: _vehicleType,
+                          onSelected: (value) => setState(() => _vehicleType = value),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _vehicleSearch,
+                          textInputAction: TextInputAction.search,
+                          decoration: InputDecoration(
+                            hintText: _t(
+                              'Search destination, e.g. Neelum Valley',
+                              'منزل تلاش کریں، مثلاً نیلم ویلی',
+                            ),
+                            prefixIcon: const Icon(Icons.location_searching_rounded),
+                            suffixIconConstraints: const BoxConstraints(minHeight: 46),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_query.isNotEmpty)
+                                  IconButton(
+                                    tooltip: _t('Clear search', 'تلاش صاف کریں'),
+                                    onPressed: _vehicleSearch.clear,
+                                    icon: const Icon(Icons.close_rounded, size: 19),
+                                  ),
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: TextButton(
+                                    onPressed: _openAllVehicles,
+                                    style: TextButton.styleFrom(
+                                      minimumSize: const Size(0, 36),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    child: Text(
+                                      _t('View all', 'سب دیکھیں'),
+                                      style: const TextStyle(fontWeight: FontWeight.w800),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (controller.marketplaceBusy && vehicles.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(36),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        else if (vehicles.isEmpty)
+                          _EmptyLiveData(
+                            message: _query.isEmpty
+                                ? _t(
+                                    'No ${_vehicleType.label.toLowerCase()} vehicle is currently available.',
+                                    'اس وقت اس قسم کی کوئی گاڑی دستیاب نہیں۔',
+                                  )
+                                : _t(
+                                    'No ${_vehicleType.label.toLowerCase()} vehicle is going to this destination right now.',
+                                    'اس وقت اس منزل کی طرف اس قسم کی کوئی گاڑی نہیں جا رہی۔',
+                                  ),
+                          )
+                        else
+                          ...vehicles.map(
+                            (package) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _ScheduledVehicleCard(
+                                package: package,
+                                onTap: () => _openVehicle(package),
+                              ),
+                            ),
+                          ),
+                        if (controller.marketplaceError != null &&
+                            vehicles.isEmpty &&
+                            !controller.marketplaceBusy) ...[
+                          const SizedBox(height: 8),
+                          _ErrorBanner(
+                            message: _t(
+                              'Vehicles could not be refreshed. Pull down or tap retry.',
+                              'گاڑیاں ریفریش نہیں ہو سکیں۔ نیچے کھینچیں یا دوبارہ کوشش کریں۔',
+                            ),
+                            onRetry: _refresh,
+                          ),
+                        ],
+                        if (active.isNotEmpty) ...[
+                          const SizedBox(height: 20),
+                          SectionHeader(
+                            title: _t('Current booking', 'موجودہ بکنگ'),
+                            action: _t('View all', 'سب دیکھیں'),
+                            onAction: () => widget.onNavigate('trips'),
+                          ),
+                          const SizedBox(height: 10),
+                          _LiveBookingCard(
+                            booking: active.first,
+                            onTap: () => widget.onNavigate('trips'),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _Metric(
+                                icon: Icons.route_rounded,
+                                label: _t('Active trips', 'فعال سفر'),
+                                value: '${active.length}',
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _Metric(
+                                icon: Icons.calendar_month_rounded,
+                                label: _t('Upcoming', 'آنے والے'),
+                                value: '$upcoming',
+                                color: AppColors.info,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _Metric(
+                                icon: Icons.local_offer_rounded,
+                                label: _t('Offers', 'آفرز'),
+                                value: '$pendingOffers',
+                                color: AppColors.secondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        SectionHeader(title: _t('Quick actions', 'فوری سہولیات')),
+                        const SizedBox(height: 10),
+                        GridView.count(
+                          crossAxisCount: 2,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: 1.72,
+                          children: [
+                            _Action(
+                              icon: Icons.local_taxi_rounded,
+                              title: _t('Book a ride', 'رائیڈ بک کریں'),
+                              subtitle: _t('Private or shared', 'پرائیویٹ یا شیئرڈ'),
+                              colors: const [Color(0xFF0E8F68), Color(0xFF16B982)],
+                              onTap: () => widget.onNavigate('bookRide'),
+                            ),
+                            _Action(
+                              icon: Icons.directions_bus_filled_rounded,
+                              title: _t('Scheduled rides', 'شیڈول رائیڈز'),
+                              subtitle: _t('Book available seats', 'دستیاب سیٹ بک کریں'),
+                              colors: const [Color(0xFF3568D4), Color(0xFF5A8AF0)],
+                              onTap: () => widget.onNavigate('packages'),
+                            ),
+                            _Action(
+                              icon: Icons.groups_rounded,
+                              title: _t('Join a tour', 'ٹور جوائن کریں'),
+                              subtitle: _t('Find matching tours', 'میچنگ ٹور تلاش کریں'),
+                              colors: const [Color(0xFF7A42C8), Color(0xFFA164E8)],
+                              onTap: () => widget.onNavigate('joinTour'),
+                            ),
+                            _Action(
+                              icon: Icons.health_and_safety_rounded,
+                              title: _t('Safety centre', 'سیفٹی سینٹر'),
+                              subtitle: _t('Tracking & support', 'ٹریکنگ اور مدد'),
+                              colors: const [Color(0xFFE5702A), Color(0xFFF49A46)],
+                              onTap: () => widget.onNavigate('safety'),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-            )
-          else
-            ...vehicles.map(
-              (package) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _ScheduledVehicleCard(
-                  package: package,
-                  onTap: () => _openVehicle(package),
+                  ),
                 ),
-              ),
+              ],
             ),
-          if (controller.marketplaceError != null &&
-              vehicles.isEmpty &&
-              !controller.marketplaceBusy) ...[
-            const SizedBox(height: 8),
-            _ErrorBanner(
-              message: _t(
-                'Vehicles could not be refreshed. Pull down or tap retry.',
-                'گاڑیاں ریفریش نہیں ہو سکیں۔ نیچے کھینچیں یا دوبارہ کوشش کریں۔',
-              ),
-              onRetry: _refresh,
-            ),
-          ],
-          if (active.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            SectionHeader(
-              title: _t('Current booking', 'موجودہ بکنگ'),
-              action: _t('View all', 'سب دیکھیں'),
-              onAction: () => widget.onNavigate('trips'),
-            ),
-            const SizedBox(height: 10),
-            _LiveBookingCard(
-              booking: active.first,
-              onTap: () => widget.onNavigate('trips'),
-            ),
-          ],
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: _Metric(
-                  icon: Icons.route_rounded,
-                  label: _t('Active trips', 'فعال سفر'),
-                  value: '${active.length}',
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _Metric(
-                  icon: Icons.calendar_month_rounded,
-                  label: _t('Upcoming', 'آنے والے'),
-                  value: '$upcoming',
-                  color: AppColors.info,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _Metric(
-                  icon: Icons.local_offer_rounded,
-                  label: _t('Offers', 'آفرز'),
-                  value: '$pendingOffers',
-                  color: AppColors.secondary,
-                ),
-              ),
-            ],
           ),
-          const SizedBox(height: 20),
-          SectionHeader(title: _t('Quick actions', 'فوری سہولیات')),
-          const SizedBox(height: 10),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 1.72,
-            children: [
-              _Action(
-                icon: Icons.local_taxi_rounded,
-                title: _t('Book a ride', 'رائیڈ بک کریں'),
-                subtitle: _t('Private or shared', 'پرائیویٹ یا شیئرڈ'),
-                colors: const [Color(0xFF0E8F68), Color(0xFF16B982)],
-                onTap: () => widget.onNavigate('bookRide'),
-              ),
-              _Action(
-                icon: Icons.directions_bus_filled_rounded,
-                title: _t('Scheduled rides', 'شیڈول رائیڈز'),
-                subtitle: _t('Book available seats', 'دستیاب سیٹ بک کریں'),
-                colors: const [Color(0xFF3568D4), Color(0xFF5A8AF0)],
-                onTap: () => widget.onNavigate('packages'),
-              ),
-              _Action(
-                icon: Icons.groups_rounded,
-                title: _t('Join a tour', 'ٹور جوائن کریں'),
-                subtitle: _t('Find matching tours', 'میچنگ ٹور تلاش کریں'),
-                colors: const [Color(0xFF7A42C8), Color(0xFFA164E8)],
-                onTap: () => widget.onNavigate('joinTour'),
-              ),
-              _Action(
-                icon: Icons.health_and_safety_rounded,
-                title: _t('Safety centre', 'سیفٹی سینٹر'),
-                subtitle: _t('Tracking & support', 'ٹریکنگ اور مدد'),
-                colors: const [Color(0xFFE5702A), Color(0xFFF49A46)],
-                onTap: () => widget.onNavigate('safety'),
-              ),
-            ],
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -466,71 +657,297 @@ class _IncomingDriverCard extends StatelessWidget {
   }
 }
 
-class _BookingHero extends StatelessWidget {
-  const _BookingHero({required this.onTap});
+/// Full-bleed OpenStreetMap of Azad Kashmir with tourist-destination pins and
+/// a scatter of "live" vehicles around the Muzaffarabad hub.
+class _KashmirMap extends StatelessWidget {
+  const _KashmirMap({
+    required this.controller,
+    required this.myLocation,
+    required this.onPlaceTap,
+    required this.localize,
+  });
 
-  final VoidCallback onTap;
+  final MapController controller;
+  final LatLng? myLocation;
+  final ValueChanged<KashmirPlace> onPlaceTap;
+  final String Function(KashmirPlace) localize;
 
   @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF063F32), Color(0xFF129E6A)],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF129E6A).withValues(alpha: .24),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
+  Widget build(BuildContext context) {
+    return FlutterMap(
+      mapController: controller,
+      options: MapOptions(
+        initialCenter: KashmirPlaces.hub,
+        initialZoom: 9,
+        minZoom: 6,
+        maxZoom: 18,
+        interactionOptions: const InteractionOptions(
+          flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+        ),
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.udrive.mobile',
+          maxZoom: 19,
+        ),
+        // Nearby "live" vehicles around the hub.
+        MarkerLayer(
+          markers: [
+            for (final point in KashmirPlaces.nearbyVehicles)
+              Marker(
+                point: point,
+                width: 34,
+                height: 34,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.primary, width: 1.6),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.navy.withValues(alpha: .18),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.directions_car_filled_rounded,
+                    size: 17,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        // Tourist destination pins (tap to book toward that spot).
+        MarkerLayer(
+          markers: [
+            for (final place in KashmirPlaces.all)
+              Marker(
+                point: place.point,
+                width: 132,
+                height: 46,
+                child: _PlacePin(
+                  label: localize(place),
+                  hub: place.name == 'Muzaffarabad',
+                  onTap: () => onPlaceTap(place),
+                ),
+              ),
+          ],
+        ),
+        if (myLocation != null)
+          MarkerLayer(
+            markers: [
+              Marker(
+                point: myLocation!,
+                width: 26,
+                height: 26,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.info,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.info.withValues(alpha: .4),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                context.tr('whereTo'),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 22,
+        const RichAttributionWidget(
+          attributions: [TextSourceAttribution('OpenStreetMap contributors')],
+        ),
+      ],
+    );
+  }
+}
+
+class _PlacePin extends StatelessWidget {
+  const _PlacePin({required this.label, required this.hub, required this.onTap});
+
+  final String label;
+  final bool hub;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = hub ? AppColors.navy : AppColors.primaryDark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.navy.withValues(alpha: .24),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
                 ),
-              ),
-              const SizedBox(height: 5),
-              const Text(
-                'Book a private vehicle or reserve seats on a scheduled ride.',
-                style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                decoration: BoxDecoration(
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  hub ? Icons.trip_origin_rounded : Icons.place_rounded,
+                  size: 13,
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.search_rounded, color: AppColors.primaryDark),
-                    SizedBox(width: 9),
-                    Expanded(
-                      child: Text(
-                        'Pickup and destination',
-                        style: TextStyle(
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 10.5,
                     ),
-                    Icon(Icons.arrow_forward_rounded),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+          Icon(Icons.arrow_drop_down_rounded, size: 16, color: color),
+        ],
+      ),
+    );
+  }
+}
+
+/// inDrive-style floating "Where to?" search bar shown over the map.
+class _WhereToBar extends StatelessWidget {
+  const _WhereToBar({required this.hint, required this.onTap});
+
+  final String hint;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.white,
+        elevation: 6,
+        shadowColor: AppColors.navy.withValues(alpha: .18),
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+            child: Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: .14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.search_rounded, size: 18, color: AppColors.primaryDark),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(
+                    hint,
+                    style: const TextStyle(
+                      color: AppColors.navy,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_rounded, size: 18, color: AppColors.muted),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _DestinationChip extends StatelessWidget {
+  const _DestinationChip({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        elevation: 2,
+        shadowColor: AppColors.navy.withValues(alpha: .12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.place_rounded, size: 14, color: AppColors.primary),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                    color: AppColors.navy,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _MapFab extends StatelessWidget {
+  const _MapFab({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.white,
+        shape: const CircleBorder(),
+        elevation: 5,
+        shadowColor: AppColors.navy.withValues(alpha: .2),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 46,
+            height: 46,
+            child: Icon(icon, color: AppColors.primaryDark, size: 22),
+          ),
+        ),
+      );
+}
+
+class _SheetHandle extends StatelessWidget {
+  const _SheetHandle();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 4),
+        child: Container(
+          width: 44,
+          height: 5,
+          decoration: BoxDecoration(
+            color: const Color(0xFFD3DBD8),
+            borderRadius: BorderRadius.circular(999),
           ),
         ),
       );
@@ -908,7 +1325,6 @@ class _ScheduledVehicleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final seats = package.bookableSeats;
     final money = NumberFormat('#,###').format(package.pricePerSeat);
-    final image = package.coverImageUrl?.trim();
     final seatBackground = seats <= 0
         ? const Color(0xFFFFE6E6)
         : seats <= 2
@@ -974,21 +1390,12 @@ class _ScheduledVehicleCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(11),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: image != null && image.isNotEmpty
-                      ? Image.network(image, fit: BoxFit.contain, errorBuilder: (_, __, ___) => _vehicleFallback())
-                      : _vehicleFallback(),
+                VehicleThumb(
+                  vehicleText: '${package.vehicle} ${package.title} ${package.registrationNumber}',
+                  size: 62,
+                  radius: 14,
                 ),
-                const SizedBox(width: 9),
+                const SizedBox(width: 11),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1055,10 +1462,6 @@ class _ScheduledVehicleCard extends StatelessWidget {
     );
   }
 
-  static Widget _vehicleFallback() => const DecoratedBox(
-        decoration: BoxDecoration(color: Colors.white),
-        child: Icon(Icons.directions_car_filled_rounded, color: AppColors.primaryDark, size: 24),
-      );
 }
 
 class _RoutePlace extends StatelessWidget {

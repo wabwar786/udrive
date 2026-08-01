@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../core/widgets/vehicle_art.dart';
 import '../../models/booking_models.dart';
 import 'vehicle_live_map.dart';
 
@@ -133,10 +134,10 @@ class _PackageCard extends StatelessWidget {
             SizedBox(
               height: 150,
               child: Stack(fit: StackFit.expand, children: [
-                if (package.coverImageUrl != null && package.coverImageUrl!.isNotEmpty)
-                  Image.network(package.coverImageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0E6C52), Color(0xFF17B978)]))))
-                else
-                  const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0E6C52), Color(0xFF17B978)]))),
+                VehicleBanner(
+                  vehicleText: '${package.vehicle} ${package.title} ${package.registrationNumber}',
+                  imageUrl: package.coverImageUrl,
+                ),
                 const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black54]))),
                 Positioned(
                   right: 12,
@@ -340,6 +341,36 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    VehicleThumb(
+                      vehicleText: '${package.vehicle} ${package.title} ${package.registrationNumber}',
+                      size: 58,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            package.vehicle.isEmpty ? package.title : package.vehicle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                          ),
+                          if (package.registrationNumber.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              package.registrationNumber,
+                              style: const TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 22),
                 Row(children: [Expanded(child: Text('${package.startingCity} → ${package.destination}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17))), StatusPill(label: package.status)]),
                 const SizedBox(height: 12),
                 _Line(Icons.schedule_rounded, DateFormat('dd MMM yyyy · hh:mm a').format(package.departureAt)),
