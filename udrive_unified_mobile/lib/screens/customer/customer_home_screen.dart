@@ -1247,7 +1247,7 @@ class _UpcomingDestinations extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: dark ? Colors.white : _CustomerHomeScreenState._ink,
+                                  color: _CustomerHomeScreenState._ink,
                                   fontSize: 10.8,
                                   fontWeight: FontWeight.w900,
                                 ),
