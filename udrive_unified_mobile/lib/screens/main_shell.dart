@@ -170,7 +170,7 @@ class _MainShellState extends State<MainShell> {
         duration: const Duration(milliseconds: 240),
         child: KeyedSubtree(key: ValueKey('${controller.mode.name}-$pageKey'), child: page),
       ),
-      bottomNavigationBar: driverNeedsVerification ? null : _bottomNavigation(driver),
+      bottomNavigationBar: driverNeedsVerification || !driver ? null : _bottomNavigation(driver),
     );
   }
 
@@ -417,7 +417,13 @@ class _MainShellState extends State<MainShell> {
 }
 
 class _PremiumDrawer extends StatelessWidget {
-  const _PremiumDrawer({required this.mode, required this.current, required this.onSelected, required this.onSwitchMode});
+  const _PremiumDrawer({
+    required this.mode,
+    required this.current,
+    required this.onSelected,
+    required this.onSwitchMode,
+  });
+
   final UserMode mode;
   final String current;
   final ValueChanged<String> onSelected;
@@ -425,81 +431,94 @@ class _PremiumDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final controller = AppControllerScope.of(context);
     final driver = mode == UserMode.driver;
     final entries = driver ? _driverEntries(context) : _customerEntries(context);
+    const drawerColor = Color(0xFF202322);
+    const lime = Color(0xFFB7F20B);
+
     return Drawer(
-      width: MediaQuery.sizeOf(context).width.clamp(290, 350).toDouble(),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.horizontal(right: Radius.circular(30))),
+      width: MediaQuery.sizeOf(context).width.clamp(300, 360).toDouble(),
+      backgroundColor: drawerColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.horizontal(right: Radius.circular(0)),
+      ),
       child: SafeArea(
         child: Column(
           children: [
-            Container(
-              margin: const EdgeInsets.all(14),
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(26),
-                gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF063F32), AppColors.primary]),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const UDriveWordmark(light: true, compact: true),
-                  const SizedBox(height: 22),
-                  Row(
-                    children: [
-                      const CircleAvatar(radius: 27, backgroundColor: Colors.white, child: Icon(Icons.person_rounded, color: AppColors.primaryDark, size: 30)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(AppControllerScope.of(context).currentUserName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
-                            const SizedBox(height: 3),
-                            Text(driver ? context.tr('driverMode') : context.tr('customerMode'), style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
-                          ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 22, 18, 18),
+              child: InkWell(
+                onTap: () => onSelected(driver ? 'driverProfile' : 'profile'),
+                borderRadius: BorderRadius.circular(18),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor: Colors.white12,
+                      child: Text(
+                        _initials(controller.currentUserName),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                      Icon(
-                        AppControllerScope.of(context).driverApproved ? Icons.verified_rounded : Icons.pending_rounded,
-                        color: AppControllerScope.of(context).driverApproved ? AppColors.accent : Colors.white70,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  InkWell(
-                    onTap: onSwitchMode,
-                    borderRadius: BorderRadius.circular(15),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(15)),
-                      child: Row(
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(driver ? Icons.person_rounded : Icons.drive_eta_rounded, color: Colors.white, size: 20),
-                          const SizedBox(width: 9),
-                          Expanded(child: Text(driver ? context.tr('switchCustomer') : context.tr('switchDriver'), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900))),
-                          const Icon(Icons.swap_horiz_rounded, color: Colors.white70),
+                          Text(
+                            controller.currentUserName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.star_rounded, color: Color(0xFFFFB000), size: 17),
+                              const SizedBox(width: 4),
+                              Text(
+                                driver ? 'Driver account' : 'Customer account',
+                                style: const TextStyle(color: Colors.white60, fontSize: 12),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
-                  ),
-                ],
+                    const Icon(Icons.chevron_right_rounded, color: Colors.white),
+                  ],
+                ),
               ),
             ),
+            const Divider(height: 1, color: Colors.white12),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
                 children: [
                   for (final entry in entries)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 3),
+                      padding: const EdgeInsets.only(bottom: 2),
                       child: ListTile(
+                        minLeadingWidth: 28,
                         selected: current == entry.$1,
-                        selectedTileColor: AppColors.primary.withValues(alpha: .1),
-                        selectedColor: AppColors.primaryDark,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                        leading: Icon(entry.$2, size: 22),
-                        title: Text(entry.$3, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                        trailing: current == entry.$1 ? const Icon(Icons.circle, size: 7, color: AppColors.primary) : null,
+                        selectedTileColor: Colors.white24,
+                        iconColor: Colors.white54,
+                        textColor: Colors.white,
+                        selectedColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
+                        leading: Icon(entry.$2, size: 24),
+                        title: Text(
+                          entry.$3,
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                        ),
                         onTap: () => onSelected(entry.$1),
                       ),
                     ),
@@ -507,14 +526,35 @@ class _PremiumDrawer extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  Navigator.pop(context);
-                  await AppControllerScope.of(context).logout();
-                },
-                icon: const Icon(Icons.logout_rounded, color: AppColors.danger),
-                label: Text(context.tr('logout'), style: const TextStyle(color: AppColors.danger)),
+              padding: const EdgeInsets.fromLTRB(22, 10, 22, 22),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: FilledButton(
+                      onPressed: onSwitchMode,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: lime,
+                        foregroundColor: const Color(0xFF101310),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: Text(
+                        driver ? 'Customer mode' : 'Driver mode',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await controller.logout();
+                    },
+                    icon: const Icon(Icons.logout_rounded, color: Colors.white60, size: 19),
+                    label: const Text('Logout', style: TextStyle(color: Colors.white60)),
+                  ),
+                ],
               ),
             ),
           ],
@@ -523,48 +563,39 @@ class _PremiumDrawer extends StatelessWidget {
     );
   }
 
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).take(2);
+    final value = parts.map((e) => e[0].toUpperCase()).join();
+    return value.isEmpty ? 'U' : value;
+  }
+
   List<(String, IconData, String)> _customerEntries(BuildContext context) => [
-        ('home', Icons.home_rounded, context.tr('home')),
-        ('bookRide', Icons.local_taxi_rounded, context.tr('bookRide')),
-        ('joinTour', Icons.groups_rounded, context.tr('joinTour')),
-        ('familyPlanner', Icons.family_restroom_rounded, context.tr('familyTourPlanner')),
-        ('explore', Icons.explore_rounded, context.tr('explore')),
-        ('packages', Icons.luggage_rounded, context.tr('packages')),
-        ('trips', Icons.route_rounded, context.tr('trips')),
-        ('saved', Icons.bookmark_rounded, context.tr('savedPlaces')),
-        ('safety', Icons.health_and_safety_rounded, context.tr('safety')),
-        ('liveTracking', Icons.share_location_rounded, context.tr('liveTracking')),
-        ('trustedContacts', Icons.people_alt_rounded, context.tr('trustedContacts')),
-        ('tourGuardian', Icons.admin_panel_settings_rounded, context.tr('tourGuardian')),
-        ('offlineCard', Icons.download_for_offline_rounded, context.tr('offlineTravelCard')),
-        ('notifications', Icons.notifications_rounded, context.tr('notifications')),
-        ('help', Icons.help_center_rounded, AppControllerScope.of(context).locale.languageCode == 'ur' ? 'مدد / استعمال کا طریقہ' : 'Help / How to use'),
-        ('support', Icons.support_agent_rounded, context.tr('support')),
-        ('settings', Icons.settings_rounded, context.tr('settings')),
-        ('profile', Icons.person_rounded, context.tr('profile')),
+        ('home', Icons.directions_car_outlined, 'Book a ride'),
+        ('trips', Icons.history_rounded, 'Request history'),
+        ('explore', Icons.landscape_outlined, 'Explore Kashmir'),
+        ('packages', Icons.luggage_outlined, 'Tour packages'),
+        ('saved', Icons.bookmark_border_rounded, 'Saved places'),
+        ('notifications', Icons.notifications_none_rounded, 'Notifications'),
+        ('safety', Icons.health_and_safety_outlined, 'Safety'),
+        ('settings', Icons.settings_outlined, 'Settings'),
+        ('help', Icons.info_outline_rounded, 'Help'),
+        ('support', Icons.chat_bubble_outline_rounded, 'Support'),
       ];
 
   List<(String, IconData, String)> _driverEntries(BuildContext context) => [
-        if (!AppControllerScope.of(context).driverApproved) ('driverVerification', Icons.verified_user_rounded, AppControllerScope.of(context).locale.languageCode == 'ur' ? 'ڈرائیور کی تصدیق' : 'Driver verification'),
-        ('dashboard', Icons.dashboard_rounded, context.tr('driverDashboard')),
-        ('requests', Icons.notifications_active_rounded, context.tr('rideRequests')),
-        ('activeTrip', Icons.navigation_rounded, context.tr('activeTrip')),
-        ('driverPackages', Icons.luggage_rounded, context.tr('myPackages')),
-        ('createPackage', Icons.add_box_rounded, context.tr('createPackage')),
-        ('packageBookings', Icons.confirmation_number_rounded, context.tr('packageBookings')),
-        ('vehicleSuitability', Icons.terrain_rounded, context.tr('vehicleSuitability')),
-        ('earnings', Icons.insights_rounded, context.tr('earnings')),
-        ('payouts', Icons.account_balance_wallet_rounded, context.tr('payouts')),
-        ('vehicles', Icons.directions_car_filled_rounded, context.tr('vehicles')),
-        ('documents', Icons.fact_check_rounded, context.tr('documents')),
-        ('availability', Icons.calendar_month_rounded, context.tr('availability')),
-        ('roadReports', Icons.add_road_rounded, context.tr('roadReports')),
-        ('driverLiveTracking', Icons.share_location_rounded, context.tr('liveTracking')),
-        ('driverSafety', Icons.health_and_safety_rounded, context.tr('safety')),
-        ('reviews', Icons.star_rounded, context.tr('reviews')),
-        ('help', Icons.help_center_rounded, AppControllerScope.of(context).locale.languageCode == 'ur' ? 'مدد / استعمال کا طریقہ' : 'Help / How to use'),
-        ('support', Icons.support_agent_rounded, context.tr('support')),
-        ('settings', Icons.settings_rounded, context.tr('settings')),
-        ('driverProfile', Icons.person_rounded, context.tr('profile')),
+        if (!AppControllerScope.of(context).driverApproved)
+          ('driverVerification', Icons.verified_user_rounded, 'Driver verification'),
+        ('dashboard', Icons.dashboard_outlined, 'Dashboard'),
+        ('requests', Icons.notifications_active_outlined, 'Ride requests'),
+        ('activeTrip', Icons.navigation_outlined, 'Active trip'),
+        ('driverPackages', Icons.luggage_outlined, 'My routes & tours'),
+        ('createPackage', Icons.add_box_outlined, 'Create route or tour'),
+        ('earnings', Icons.account_balance_wallet_outlined, 'Earnings'),
+        ('vehicles', Icons.directions_car_outlined, 'Vehicles'),
+        ('reviews', Icons.star_border_rounded, 'Reviews'),
+        ('settings', Icons.settings_outlined, 'Settings'),
+        ('help', Icons.info_outline_rounded, 'Help'),
+        ('support', Icons.chat_bubble_outline_rounded, 'Support'),
       ];
 }
+

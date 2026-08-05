@@ -8,10 +8,20 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late final AnimationController _animation = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..forward();
-  late final Animation<double> _scale = CurvedAnimation(parent: _animation, curve: Curves.easeOutBack);
-  late final Animation<double> _fade = CurvedAnimation(parent: _animation, curve: Curves.easeIn);
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animation = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..forward();
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _animation,
+    curve: Curves.easeIn,
+  );
+  late final Animation<Offset> _slide = Tween(
+    begin: const Offset(0, .16),
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _animation, curve: Curves.easeOutCubic));
 
   @override
   void dispose() {
@@ -21,45 +31,101 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF073D31), AppColors.primaryDark, AppColors.primary],
+        backgroundColor: const Color(0xFF0E171C),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF18303A), Color(0xFF0E171C), Color(0xFF080D10)],
+                ),
+              ),
             ),
-          ),
-          child: Stack(
-            children: [
-              Positioned(top: -80, right: -80, child: _Glow(size: 260, opacity: .12)),
-              Positioned(bottom: -110, left: -80, child: _Glow(size: 330, opacity: .09)),
-              Center(
-                child: FadeTransition(
-                  opacity: _fade,
-                  child: ScaleTransition(
-                    scale: _scale,
-                    child: const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        UDriveMark(size: 112),
-                        SizedBox(height: 24),
-                        Text.rich(
-                          TextSpan(children: [
-                            TextSpan(text: 'u', style: TextStyle(color: AppColors.accent)),
-                            TextSpan(text: 'Drive'),
-                          ]),
-                          style: TextStyle(color: Colors.white, fontSize: 44, fontWeight: FontWeight.w900, letterSpacing: -2),
+            Positioned(top: -90, right: -80, child: _Glow(size: 290, opacity: .09)),
+            SafeArea(
+              child: FadeTransition(
+                opacity: _fade,
+                child: SlideTransition(
+                  position: _slide,
+                  child: Column(
+                    children: [
+                      const Spacer(flex: 2),
+                      const UDriveMark(size: 84),
+                      const SizedBox(height: 14),
+                      const Text.rich(
+                        TextSpan(children: [
+                          TextSpan(text: 'u', style: TextStyle(color: Color(0xFFB7F20B))),
+                          TextSpan(text: 'Drive'),
+                        ]),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 38,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -1.8,
                         ),
-                        SizedBox(height: 8),
-                        Text('Explore freely. Ride confidently.', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Local rides. Luxury Kashmir journeys.',
+                        style: TextStyle(color: Colors.white60, fontWeight: FontWeight.w600),
+                      ),
+                      const Spacer(),
+                      SizedBox(
+                        height: 245,
+                        width: double.infinity,
+                        child: Stack(
+                          alignment: Alignment.bottomCenter,
+                          children: [
+                            Positioned(
+                              left: 2,
+                              bottom: 20,
+                              child: Transform.rotate(
+                                angle: -.06,
+                                child: Image.asset('assets/vehicles/suv.png', width: 220, fit: BoxFit.contain),
+                              ),
+                            ),
+                            Positioned(
+                              right: -4,
+                              bottom: 0,
+                              child: Transform.rotate(
+                                angle: .035,
+                                child: Image.asset('assets/vehicles/sedan.png', width: 245, fit: BoxFit.contain),
+                              ),
+                            ),
+                            Positioned(
+                              bottom: 6,
+                              child: Container(
+                                width: 260,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: .30),
+                                  borderRadius: BorderRadius.circular(99),
+                                  boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 22)],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      const SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFB7F20B),
+                          strokeWidth: 2.6,
+                        ),
+                      ),
+                      const SizedBox(height: 34),
+                    ],
                   ),
                 ),
               ),
-              const Positioned(left: 0, right: 0, bottom: 42, child: Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4))),
-            ],
-          ),
+            ),
+          ],
         ),
       );
 }
@@ -72,6 +138,9 @@ class _Glow extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: opacity)),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.primary.withValues(alpha: opacity),
+        ),
       );
 }

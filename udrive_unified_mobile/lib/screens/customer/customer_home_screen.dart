@@ -18,6 +18,7 @@ import '../../core/state/app_controller.dart';
 import '../../models/booking_models.dart';
 import '../../models/trip_operations_models.dart';
 import '../operations/live_trip_navigation_screen.dart';
+import '../safety/customer_sos_sheet.dart';
 import 'live_packages_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -503,8 +504,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final controller = AppControllerScope.of(context);
     final marketplace = controller.liveMarketplacePackages;
     final rides = _matchingRides(marketplace);
-    final heroHeight = (MediaQuery.sizeOf(context).height * .40)
-        .clamp(300.0, 365.0)
+    final heroHeight = (MediaQuery.sizeOf(context).height * .46)
+        .clamp(340.0, 430.0)
         .toDouble();
 
     return ColoredBox(
@@ -569,6 +570,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                 ],
+                                _TopSosButton(
+                                  onTap: () => CustomerSosSheet.show(context),
+                                ),
+                                const SizedBox(width: 8),
                                 _CircleButton(
                                   icon: Icons.notifications_none_rounded,
                                   onTap: () => widget.onNavigate('notifications'),
@@ -612,6 +617,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 shadows: [Shadow(color: Colors.black45, blurRadius: 8)],
                               ),
                             ),
+                            const SizedBox(height: 14),
+                            _CompactModeSelector(
+                              mode: _serviceMode,
+                              onChanged: (mode) => setState(() {
+                                _serviceMode = mode;
+                                _searched = false;
+                                _selectedDepartureDay = null;
+                                _showDestinationList = false;
+                                _resultsTitle = null;
+                              }),
+                            ),
                           ],
                         ),
                       ),
@@ -628,16 +644,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     const _OfflineBookingBanner(),
                     const SizedBox(height: 10),
                   ],
-                  _ServiceModeSelector(
-                    mode: _serviceMode,
-                    onChanged: (mode) => setState(() {
-                      _serviceMode = mode;
-                      _searched = false;
-                      _selectedDepartureDay = null;
-                      _showDestinationList = false;
-                      _resultsTitle = null;
-                    }),
-                  ),
                   if (_activeTrip != null) ...[
                     const SizedBox(height: 10),
                     _ActiveTripHomeCard(trip: _activeTrip!, onTap: _openActiveTrip),
@@ -646,9 +652,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   Container(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFE9EEF1)),
+                      color: const Color(0xFF202322),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: const Color(0xFF303532)),
                       boxShadow: const [
                         BoxShadow(
                           color: Color(0x10000000),
@@ -665,7 +671,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           icon: Icons.radio_button_checked_rounded,
                           accent: _lime,
                           hint: 'Enter pickup address',
-                          fillColor: const Color(0xFFF8FAFB),
+                          fillColor: const Color(0xFF303432),
                           onTap: () {
                             final value = _pickup.text.trim();
                             if (value == 'Enter pickup address' ||
@@ -685,17 +691,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                     height: 18,
                                     child: CircularProgressIndicator(strokeWidth: 2, color: _lime),
                                   )
-                                : const Icon(Icons.my_location_rounded, color: _ink, size: 20),
+                                : const Icon(Icons.my_location_rounded, color: Colors.white, size: 20),
                           ),
                         ),
-                        const Divider(height: 12),
+                        const Divider(height: 12, color: Colors.white12),
                         _LocationInput(
                           controller: _destination,
                           label: 'To',
                           icon: Icons.location_on_rounded,
                           accent: const Color(0xFFF38A2E),
                           hint: 'Type address or select destination',
-                          fillColor: const Color(0xFFF8FAFB),
+                          fillColor: const Color(0xFF303432),
                           onTap: () => setState(() => _showDestinationList = true),
                           onChanged: (value) => setState(() {
                             _destinationQuery = value.trim().toLowerCase();
@@ -709,7 +715,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               _showDestinationList
                                   ? Icons.keyboard_arrow_up_rounded
                                   : Icons.keyboard_arrow_down_rounded,
-                              color: _ink,
+                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -723,7 +729,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 ),
                         ),
                         if (_serviceMode == _HomeServiceMode.exploreKashmir) ...[
-                          const Divider(height: 12),
+                          const Divider(height: 12, color: Colors.white12),
                           InkWell(
                             borderRadius: BorderRadius.circular(14),
                             onTap: _pickTravelDate,
@@ -731,7 +737,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.calendar_month_rounded, color: _ink, size: 21),
+                                  const Icon(Icons.calendar_month_rounded, color: _lime, size: 21),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
@@ -739,16 +745,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                       children: [
                                         const Text(
                                           'Travel date',
-                                          style: TextStyle(fontSize: 11, color: _muted, fontWeight: FontWeight.w700),
+                                          style: TextStyle(fontSize: 11, color: Colors.white60, fontWeight: FontWeight.w700),
                                         ),
                                         Text(
                                           DateFormat('EEE, dd MMM yyyy').format(_travelDate),
-                                          style: const TextStyle(fontWeight: FontWeight.w800, color: _ink),
+                                          style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const Icon(Icons.chevron_right_rounded, color: _muted),
+                                  const Icon(Icons.chevron_right_rounded, color: Colors.white54),
                                 ],
                               ),
                             ),
@@ -764,13 +770,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     child: FilledButton.icon(
                       onPressed: _findRides,
                       style: FilledButton.styleFrom(
-                        backgroundColor: _ink,
-                        foregroundColor: Colors.white,
+                        backgroundColor: _lime,
+                        foregroundColor: _ink,
                         elevation: 0,
                         shadowColor: Colors.transparent,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(19)),
                       ),
-                      icon: const Icon(Icons.directions_car_filled_rounded, size: 22, color: _lime),
+                      icon: const Icon(Icons.arrow_forward_rounded, size: 22, color: _ink),
                       label: Text(
                         _serviceMode == _HomeServiceMode.localRide
                             ? 'Find local rides'
@@ -778,7 +784,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: Colors.white,
+                          color: _ink,
                           letterSpacing: -.2,
                         ),
                       ),
@@ -789,7 +795,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
             if (_searched)
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 125),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 36),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     Container(key: _resultsKey),
@@ -928,6 +934,85 @@ class _HeroSlider extends StatelessWidget {
           child: Center(
             child: Icon(Icons.landscape_rounded, color: Colors.white, size: 70),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class _TopSosButton extends StatelessWidget {
+  const _TopSosButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Ink(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 13),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE53935),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: const [BoxShadow(color: Color(0x55E53935), blurRadius: 12)],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.sos_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 5),
+                Text('SOS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _CompactModeSelector extends StatelessWidget {
+  const _CompactModeSelector({required this.mode, required this.onChanged});
+  final _HomeServiceMode mode;
+  final ValueChanged<_HomeServiceMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: const Color(0xDD202322),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _item(_HomeServiceMode.localRide, Icons.directions_bus_rounded, 'Local'),
+            _item(_HomeServiceMode.exploreKashmir, Icons.landscape_rounded, 'Tours'),
+          ],
+        ),
+      );
+
+  Widget _item(_HomeServiceMode value, IconData icon, String label) {
+    final selected = mode == value;
+    return InkWell(
+      onTap: () => onChanged(value),
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? _CustomerHomeScreenState._lime : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 17, color: selected ? _CustomerHomeScreenState._ink : Colors.white70),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(color: selected ? _CustomerHomeScreenState._ink : Colors.white70, fontWeight: FontWeight.w900, fontSize: 12)),
+          ],
         ),
       ),
     );
@@ -1162,7 +1247,7 @@ class _UpcomingDestinations extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  color: _CustomerHomeScreenState._ink,
+                                  color: dark ? Colors.white : _CustomerHomeScreenState._ink,
                                   fontSize: 10.8,
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -1300,60 +1385,65 @@ class _LocationInput extends StatelessWidget {
   final Widget? suffix;
 
   @override
-  Widget build(BuildContext context) => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 17),
-            child: Icon(icon, color: accent, size: 19),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              readOnly: readOnly,
-              onTap: onTap,
-              onChanged: onChanged,
-              style: const TextStyle(
-                color: _CustomerHomeScreenState._ink,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final dark = fillColor.computeLuminance() < .35;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 17),
+          child: Icon(icon, color: accent, size: 19),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: TextField(
+            controller: controller,
+            readOnly: readOnly,
+            onTap: onTap,
+            onChanged: onChanged,
+            style: TextStyle(
+              color: dark ? Colors.white : _CustomerHomeScreenState._ink,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: fillColor,
+              isDense: true,
+              contentPadding: const EdgeInsets.fromLTRB(14, 15, 8, 15),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
               ),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: fillColor,
-                isDense: true,
-                contentPadding: const EdgeInsets.fromLTRB(14, 15, 8, 15),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: Color(0xFFE5ECEF)),
-                ),
-                labelText: label,
-                labelStyle: TextStyle(
-                  color: accent,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w900,
-                ),
-                hintText: hint,
-                hintStyle: const TextStyle(
-                  color: Color(0xFF9AA7AD),
-                  fontSize: 11.5,
-                ),
-                suffixIcon: suffix,
-                suffixIconConstraints: const BoxConstraints(minWidth: 36),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
               ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: dark ? Colors.white24 : const Color(0xFFE5ECEF),
+                ),
+              ),
+              labelText: label,
+              labelStyle: TextStyle(
+                color: accent,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w900,
+              ),
+              hintText: hint,
+              hintStyle: TextStyle(
+                color: dark ? Colors.white54 : const Color(0xFF9AA7AD),
+                fontSize: 11.5,
+              ),
+              suffixIcon: suffix,
+              suffixIconConstraints: const BoxConstraints(minWidth: 36),
             ),
           ),
-        ],
-      );
+        ),
+      ],
+    );
+  }
 }
 
 class _DestinationDropdown extends StatelessWidget {
