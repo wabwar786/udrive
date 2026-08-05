@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
@@ -60,6 +62,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   _HomeServiceMode _serviceMode = _HomeServiceMode.localRide;
   DateTime _travelDate = DateTime.now();
   bool _offline = false;
+  LatLng _currentPoint = const LatLng(34.3700, 73.4711);
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   String? _resultsTitle;
   List<_HeroDestination> _destinations = const [];
@@ -183,13 +186,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return;
       }
 
-      final address = await _reverseGeocode(
-        position.latitude,
-        position.longitude,
-      );
+      final latitude = position.latitude;
+      final longitude = position.longitude;
+      final address = await _reverseGeocode(latitude, longitude);
       _pickup.text = address.isNotEmpty
           ? address
-          : '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+          : '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}';
+      if (mounted) {
+        setState(() {
+          _currentPoint = LatLng(latitude, longitude);
+        });
+      }
     } catch (_) {
       _pickup.text = 'Tap location icon to try again';
       if (mounted) {
@@ -502,364 +509,577 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
-    final marketplace = controller.liveMarketplacePackages;
-    final rides = _matchingRides(marketplace);
-    final heroHeight = (MediaQuery.sizeOf(context).height * .46)
-        .clamp(340.0, 430.0)
-        .toDouble();
+    final rides = _matchingRides(controller.liveMarketplacePackages);
 
     return ColoredBox(
-      color: _surface,
-      child: RefreshIndicator(
-        color: _lime,
-        onRefresh: () async => Future.wait([
-          _loadDestinations(),
-          _loadMarketplace(),
-          _loadLocation(),
-        ]),
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: heroHeight,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _HeroSlider(
-                      items: _destinations,
-                      loading: _loadingDestinations,
-                      controller: _pageController,
-                      onChanged: (value) => setState(() => _heroIndex = value),
-                    ),
-                    const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Color(0x65030B12),
-                            Color(0x18030B12),
-                            Color(0x24030B12),
-                            Color(0xB510212B),
-                          ],
-                          stops: [0, .28, .62, 1],
-                        ),
-                      ),
-                    ),
-                    SafeArea(
-                      bottom: false,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                _CircleButton(
-                                  icon: Icons.menu_rounded,
-                                  onTap: () => Scaffold.of(context).openDrawer(),
-                                ),
-                                const Spacer(),
-                                if (_activeTrip != null) ...[
-                                  _CircleButton(
-                                    icon: Icons.route_rounded,
-                                    onTap: _openActiveTrip,
-                                    showDot: true,
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                _TopSosButton(
-                                  onTap: () => CustomerSosSheet.show(context),
-                                ),
-                                const SizedBox(width: 8),
-                                _CircleButton(
-                                  icon: Icons.notifications_none_rounded,
-                                  onTap: () => widget.onNavigate('notifications'),
-                                ),
-                              ],
-                            ),
-                            const Spacer(),
-                            Text(
-                              '$_greeting, ${_firstName(controller.currentUserName)}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -.25,
-                                shadows: [Shadow(color: Colors.black38, blurRadius: 10)],
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _destinations.isEmpty
-                                  ? 'Explore Kashmir'
-                                  : _destinations[_heroIndex.clamp(0, _destinations.length - 1)].name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 34,
-                                height: 1,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -1,
-                                shadows: [Shadow(color: Colors.black45, blurRadius: 14)],
-                              ),
-                            ),
-                            const SizedBox(height: 7),
-                            const Text(
-                              'Easy local travel and Kashmir trips in one place',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                shadows: [Shadow(color: Colors.black45, blurRadius: 8)],
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            _CompactModeSelector(
-                              mode: _serviceMode,
-                              onChanged: (mode) => setState(() {
-                                _serviceMode = mode;
-                                _searched = false;
-                                _selectedDepartureDay = null;
-                                _showDestinationList = false;
-                                _resultsTitle = null;
-                              }),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+      color: const Color(0xFF111311),
+      child: Stack(
+        children: [
+          Positioned.fill(child: _buildMapBackground()),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: .32),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: .08),
+                    ],
+                    stops: const [0, .28, 1],
+                  ),
                 ),
               ),
             ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  if (_offline) ...[
-                    const _OfflineBookingBanner(),
-                    const SizedBox(height: 10),
-                  ],
+          ),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Row(
+                children: [
+                  _MapActionButton(
+                    icon: Icons.menu_rounded,
+                    onTap: () => Scaffold.of(context).openDrawer(),
+                  ),
+                  const Spacer(),
                   if (_activeTrip != null) ...[
-                    const SizedBox(height: 10),
-                    _ActiveTripHomeCard(trip: _activeTrip!, onTap: _openActiveTrip),
+                    _MapActionButton(
+                      icon: Icons.route_rounded,
+                      onTap: _openActiveTrip,
+                      showDot: true,
+                    ),
+                    const SizedBox(width: 8),
                   ],
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF202322),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: const Color(0xFF303532)),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x10000000),
-                          blurRadius: 16,
-                          offset: Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        _LocationInput(
-                          controller: _pickup,
-                          label: 'From',
-                          icon: Icons.radio_button_checked_rounded,
-                          accent: _lime,
-                          hint: 'Enter pickup address',
-                          fillColor: const Color(0xFF303432),
-                          onTap: () {
-                            final value = _pickup.text.trim();
-                            if (value == 'Enter pickup address' ||
-                                value == 'Detecting current address…' ||
-                                value.startsWith('Tap location') ||
-                                value.startsWith('Allow location') ||
-                                value.startsWith('Turn on location')) {
-                              _pickup.clear();
-                            }
-                          },
-                          suffix: IconButton(
-                            tooltip: 'Use current location',
-                            onPressed: _locating ? null : _loadLocation,
-                            icon: _locating
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: _lime),
-                                  )
-                                : const Icon(Icons.my_location_rounded, color: Colors.white, size: 20),
-                          ),
-                        ),
-                        const Divider(height: 12, color: Colors.white12),
-                        _LocationInput(
-                          controller: _destination,
-                          label: 'To',
-                          icon: Icons.location_on_rounded,
-                          accent: const Color(0xFFF38A2E),
-                          hint: 'Type address or select destination',
-                          fillColor: const Color(0xFF303432),
-                          onTap: () => setState(() => _showDestinationList = true),
-                          onChanged: (value) => setState(() {
-                            _destinationQuery = value.trim().toLowerCase();
-                            _showDestinationList = true;
-                            _searched = false;
-                          }),
-                          suffix: IconButton(
-                            tooltip: 'Show Kashmir destinations',
-                            onPressed: () => setState(() => _showDestinationList = !_showDestinationList),
-                            icon: Icon(
-                              _showDestinationList
-                                  ? Icons.keyboard_arrow_up_rounded
-                                  : Icons.keyboard_arrow_down_rounded,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 220),
-                          child: !_showDestinationList
-                              ? const SizedBox.shrink()
-                              : _DestinationDropdown(
-                                  items: _destinations,
-                                  onSelected: _selectDestination,
-                                ),
-                        ),
-                        if (_serviceMode == _HomeServiceMode.exploreKashmir) ...[
-                          const Divider(height: 12, color: Colors.white12),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(14),
-                            onTap: _pickTravelDate,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.calendar_month_rounded, color: _lime, size: 21),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'Travel date',
-                                          style: TextStyle(fontSize: 11, color: Colors.white60, fontWeight: FontWeight.w700),
-                                        ),
-                                        Text(
-                                          DateFormat('EEE, dd MMM yyyy').format(_travelDate),
-                                          style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const Icon(Icons.chevron_right_rounded, color: Colors.white54),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+                  _CompactSosButton(onTap: () => CustomerSosSheet.show(context)),
+                  const SizedBox(width: 8),
+                  _MapActionButton(
+                    icon: Icons.notifications_none_rounded,
+                    onTap: () => widget.onNavigate('notifications'),
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 58,
-                    child: FilledButton.icon(
-                      onPressed: _findRides,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _lime,
-                        foregroundColor: _ink,
-                        elevation: 0,
-                        shadowColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(19)),
-                      ),
-                      icon: const Icon(Icons.arrow_forward_rounded, size: 22, color: _ink),
-                      label: Text(
-                        _serviceMode == _HomeServiceMode.localRide
-                            ? 'Find local rides'
-                            : 'Find Kashmir trips',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: _ink,
-                          letterSpacing: -.2,
-                        ),
-                      ),
-                    ),
-                  ),
-                ]),
+                ],
               ),
             ),
-            if (_searched)
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 36),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    Container(key: _resultsKey),
+          ),
+          Positioned(
+            top: 92,
+            left: 16,
+            right: 16,
+            child: _PickupMapCard(
+              address: _pickup.text,
+              locating: _locating,
+              onTap: _loadLocation,
+            ),
+          ),
+          if (_offline)
+            const Positioned(
+              top: 158,
+              left: 16,
+              right: 16,
+              child: _OfflineMapPill(),
+            ),
+          DraggableScrollableSheet(
+            initialChildSize: .40,
+            minChildSize: .34,
+            maxChildSize: .88,
+            snap: true,
+            snapSizes: const [.40, .88],
+            builder: (context, sheetController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFF202220),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  boxShadow: [
+                    BoxShadow(color: Color(0x45000000), blurRadius: 28, offset: Offset(0, -8)),
+                  ],
+                ),
+                child: ListView(
+                  controller: sheetController,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
                     Row(
                       children: [
                         Expanded(
                           child: Text(
-                            _resultsTitle ?? 'Available rides',
+                            _serviceMode == _HomeServiceMode.localRide
+                                ? 'Where are you going?'
+                                : 'Plan your Kashmir trip',
                             style: const TextStyle(
-                              color: _ink,
-                              fontSize: 18,
+                              color: Colors.white,
+                              fontSize: 22,
                               fontWeight: FontWeight.w900,
+                              letterSpacing: -.55,
                             ),
                           ),
                         ),
-                        Text(
-                          '${rides.length} found',
-                          style: const TextStyle(
-                            color: Color(0xFF629B18),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        _SmallModePill(
+                          selected: _serviceMode == _HomeServiceMode.localRide,
+                          icon: Icons.directions_car_rounded,
+                          label: 'Local',
+                          onTap: () => _switchMode(_HomeServiceMode.localRide),
+                        ),
+                        const SizedBox(width: 7),
+                        _SmallModePill(
+                          selected: _serviceMode == _HomeServiceMode.exploreKashmir,
+                          icon: Icons.landscape_rounded,
+                          label: 'Tours',
+                          onTap: () => _switchMode(_HomeServiceMode.exploreKashmir),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    if (rides.isEmpty)
-                      _EmptyRides(destination: _destination.text)
-                    else
-                      ...rides.map(
-                        (ride) => Padding(
-                          padding: const EdgeInsets.only(bottom: 11),
-                          child: _RideCard(
-                            ride: ride,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => LivePackageDetailScreen(
-                                  package: ride,
-                                  initialBookingType: 'PerSeat',
-                                ),
+                    const SizedBox(height: 14),
+                    _InDriveSearchField(
+                      controller: _pickup,
+                      icon: Icons.radio_button_checked_rounded,
+                      iconColor: _lime,
+                      hint: 'Pickup location',
+                      suffix: IconButton(
+                        tooltip: 'Use current location',
+                        onPressed: _locating ? null : _loadLocation,
+                        icon: _locating
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: _lime),
+                              )
+                            : const Icon(Icons.my_location_rounded, color: Colors.white70, size: 20),
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    _InDriveSearchField(
+                      controller: _destination,
+                      icon: Icons.search_rounded,
+                      iconColor: Colors.white,
+                      hint: _serviceMode == _HomeServiceMode.localRide
+                          ? 'Where to? Type any address'
+                          : 'Choose a Kashmir destination',
+                      onTap: () => setState(() => _showDestinationList = true),
+                      onChanged: (value) => setState(() {
+                        _destinationQuery = value.trim().toLowerCase();
+                        _showDestinationList = _serviceMode == _HomeServiceMode.exploreKashmir;
+                        _searched = false;
+                      }),
+                      suffix: _serviceMode == _HomeServiceMode.exploreKashmir
+                          ? IconButton(
+                              onPressed: () => setState(() => _showDestinationList = !_showDestinationList),
+                              icon: Icon(
+                                _showDestinationList
+                                    ? Icons.keyboard_arrow_up_rounded
+                                    : Icons.keyboard_arrow_down_rounded,
+                                color: Colors.white70,
+                              ),
+                            )
+                          : null,
+                    ),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      child: _serviceMode != _HomeServiceMode.exploreKashmir || !_showDestinationList
+                          ? const SizedBox.shrink()
+                          : Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: _DestinationDropdown(
+                                items: _destinations,
+                                onSelected: _selectDestination,
                               ),
                             ),
-                            onWholeVehicle: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => LivePackageDetailScreen(
-                                  package: ride,
-                                  initialBookingType: 'WholeVehicle',
+                    ),
+                    if (_serviceMode == _HomeServiceMode.exploreKashmir) ...[
+                      const SizedBox(height: 9),
+                      _TourDateTile(date: _travelDate, onTap: _pickTravelDate),
+                    ],
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 56,
+                      child: FilledButton(
+                        onPressed: _findRides,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _lime,
+                          foregroundColor: _ink,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _serviceMode == _HomeServiceMode.localRide
+                                  ? 'Find local rides'
+                                  : 'Find Kashmir tours',
+                              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.arrow_forward_rounded),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_activeTrip != null) ...[
+                      const SizedBox(height: 12),
+                      _ActiveTripHomeCard(trip: _activeTrip!, onTap: _openActiveTrip),
+                    ],
+                    if (_searched) ...[
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _resultsTitle ?? 'Available rides',
+                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                          Text(
+                            '${rides.length} found',
+                            style: const TextStyle(color: _lime, fontSize: 12, fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      if (rides.isEmpty)
+                        _EmptyRides(destination: _destination.text)
+                      else
+                        ...rides.map(
+                          (ride) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _RideCard(
+                              ride: ride,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => LivePackageDetailScreen(
+                                    package: ride,
+                                    initialBookingType: 'PerSeat',
+                                  ),
+                                ),
+                              ),
+                              onWholeVehicle: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => LivePackageDetailScreen(
+                                    package: ride,
+                                    initialBookingType: 'WholeVehicle',
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                  ]),
+                    ],
+                  ],
                 ),
-              ),
-          ],
-        ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 
+  void _switchMode(_HomeServiceMode mode) {
+    setState(() {
+      _serviceMode = mode;
+      _searched = false;
+      _selectedDepartureDay = null;
+      _resultsTitle = null;
+      _showDestinationList = mode == _HomeServiceMode.exploreKashmir;
+    });
+  }
+
+  Widget _buildMapBackground() {
+    return FlutterMap(
+      options: MapOptions(
+        initialCenter: _currentPoint,
+        initialZoom: 14.8,
+        interactionOptions: const InteractionOptions(
+          flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+        ),
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.udrive.mobile',
+        ),
+        MarkerLayer(
+          markers: [
+            Marker(
+              point: _currentPoint,
+              width: 58,
+              height: 58,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _lime, width: 5),
+                  boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 14)],
+                ),
+                child: const Icon(Icons.person_pin_circle_rounded, color: _ink, size: 29),
+              ),
+            ),
+          ],
+        ),
+        RichAttributionWidget(
+          attributions: const [TextSourceAttribution('OpenStreetMap contributors')],
+        ),
+      ],
+    );
+  }
+
+}
+
+class _MapActionButton extends StatelessWidget {
+  const _MapActionButton({required this.icon, required this.onTap, this.showDot = false});
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool showDot;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0xE8202220),
+        shape: const CircleBorder(),
+        elevation: 8,
+        shadowColor: Colors.black45,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(icon, color: Colors.white, size: 25),
+                if (showDot)
+                  const Positioned(
+                    right: 8,
+                    top: 8,
+                    child: CircleAvatar(radius: 4, backgroundColor: _CustomerHomeScreenState._lime),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _CompactSosButton extends StatelessWidget {
+  const _CompactSosButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0xFFD92D20),
+        borderRadius: BorderRadius.circular(24),
+        elevation: 8,
+        shadowColor: Colors.black45,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: const SizedBox(
+            height: 48,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.sos_rounded, color: Colors.white, size: 22),
+                  SizedBox(width: 5),
+                  Text('SOS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _PickupMapCard extends StatelessWidget {
+  const _PickupMapCard({required this.address, required this.locating, required this.onTap});
+  final String address;
+  final bool locating;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Material(
+          color: const Color(0xEE202220),
+          borderRadius: BorderRadius.circular(16),
+          elevation: 8,
+          shadowColor: Colors.black45,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.my_location_rounded, color: _CustomerHomeScreenState._lime, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Pickup point', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w700)),
+                          Text(
+                            address,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      ),
+                    ),
+                    locating
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.chevron_right_rounded, color: Colors.white70),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _OfflineMapPill extends StatelessWidget {
+  const _OfflineMapPill();
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF79009),
+            borderRadius: BorderRadius.circular(99),
+            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+          ),
+          child: const Text(
+            'Offline mode · confirmation will need SMS',
+            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900),
+          ),
+        ),
+      );
+}
+
+class _SmallModePill extends StatelessWidget {
+  const _SmallModePill({required this.selected, required this.icon, required this.label, required this.onTap});
+  final bool selected;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: selected ? _CustomerHomeScreenState._lime : const Color(0xFF343734),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: selected ? _CustomerHomeScreenState._ink : Colors.white70),
+                const SizedBox(width: 5),
+                Text(label, style: TextStyle(color: selected ? _CustomerHomeScreenState._ink : Colors.white70, fontSize: 11, fontWeight: FontWeight.w900)),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _InDriveSearchField extends StatelessWidget {
+  const _InDriveSearchField({
+    required this.controller,
+    required this.icon,
+    required this.iconColor,
+    required this.hint,
+    this.suffix,
+    this.onTap,
+    this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final IconData icon;
+  final Color iconColor;
+  final String hint;
+  final Widget? suffix;
+  final VoidCallback? onTap;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  Widget build(BuildContext context) => TextField(
+        controller: controller,
+        onTap: onTap,
+        onChanged: onChanged,
+        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w600),
+          prefixIcon: Icon(icon, color: iconColor, size: 21),
+          suffixIcon: suffix,
+          filled: true,
+          fillColor: const Color(0xFF343734),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: _CustomerHomeScreenState._lime, width: 1.5),
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 17),
+        ),
+      );
+}
+
+class _TourDateTile extends StatelessWidget {
+  const _TourDateTile({required this.date, required this.onTap});
+  final DateTime date;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0xFF343734),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Row(
+              children: [
+                const Icon(Icons.calendar_month_rounded, color: _CustomerHomeScreenState._lime),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Travel date', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700)),
+                ),
+                Text(
+                  DateFormat('dd MMM yyyy').format(date),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 class _HeroDestination {
