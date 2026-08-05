@@ -24,6 +24,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   TripOperationsRepository? _tripRepository;
   List<MobileTrip> _acceptedTrips = const [];
   Timer? _acceptedRefreshTimer;
+  bool _isOnline = true;
 
   @override
   void didChangeDependencies() {
@@ -121,6 +122,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
         children: [
+          _DriverAvailabilityCard(
+            isOnline: _isOnline,
+            onChanged: (value) => setState(() => _isOnline = value),
+            nextTrip: _acceptedTrips.isEmpty ? null : _acceptedTrips.first,
+            onOpenTrip: _acceptedTrips.isEmpty ? null : () => _openAcceptedRide(_acceptedTrips.first),
+          ),
+          const SizedBox(height: 14),
           if (_acceptedTrips.isNotEmpty) ...[
             Row(
               children: [
@@ -203,7 +211,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             ),
           ],
           const SizedBox(height: 18),
-          SectionHeader(title: _t('Driver tools', 'ڈرائیور ٹولز')),
+          SectionHeader(title: _t('Quick actions', 'فوری اختیارات')),
           const SizedBox(height: 9),
           GridView.count(
             shrinkWrap: true,
@@ -222,8 +230,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               ),
               _ToolCard(
                 icon: Icons.add_road_rounded,
-                title: _t('Create package', 'پیکیج بنائیں'),
-                subtitle: _t('Add a new tour', 'نیا ٹور شامل کریں'),
+                title: _t('Create local route', 'لوکل روٹ بنائیں'),
+                subtitle: _t('Daily seat departure', 'روزانہ سیٹ روانگی'),
                 colors: const [Color(0xFF7B3FE4), Color(0xFFA76CF2)],
                 onTap: () => widget.onNavigate('createPackage'),
               ),
@@ -896,6 +904,73 @@ class _EmptyRequests extends StatelessWidget {
               ),
             ),
             IconButton(onPressed: onRefresh, icon: const Icon(Icons.refresh_rounded)),
+          ],
+        ),
+      );
+}
+
+class _DriverAvailabilityCard extends StatelessWidget {
+  const _DriverAvailabilityCard({
+    required this.isOnline,
+    required this.onChanged,
+    required this.nextTrip,
+    required this.onOpenTrip,
+  });
+  final bool isOnline;
+  final ValueChanged<bool> onChanged;
+  final MobileTrip? nextTrip;
+  final VoidCallback? onOpenTrip;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: AppColors.navy,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: (isOnline ? AppColors.primary : Colors.white24),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(isOnline ? Icons.wifi_tethering_rounded : Icons.wifi_off_rounded, color: Colors.white),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(isOnline ? 'You are online' : 'You are offline', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 17)),
+                    Text(isOnline ? 'New ride requests can reach you' : 'Go online when you are ready', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                  ]),
+                ),
+                Switch(value: isOnline, onChanged: onChanged),
+              ],
+            ),
+            if (nextTrip != null) ...[
+              const Divider(color: Colors.white24, height: 22),
+              InkWell(
+                onTap: onOpenTrip,
+                borderRadius: BorderRadius.circular(14),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(children: [
+                    const Icon(Icons.schedule_rounded, color: AppColors.primary),
+                    const SizedBox(width: 10),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Next trip', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700)),
+                      Text('${nextTrip!.pickupLabel} → ${nextTrip!.destinationLabel}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                      Text(DateFormat('EEE, dd MMM · hh:mm a').format(nextTrip!.pickupAt), style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                    ])),
+                    const Icon(Icons.chevron_right_rounded, color: Colors.white),
+                  ]),
+                ),
+              ),
+            ],
           ],
         ),
       );

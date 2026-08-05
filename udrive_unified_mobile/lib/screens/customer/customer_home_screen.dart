@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -27,6 +28,8 @@ class CustomerHomeScreen extends StatefulWidget {
   @override
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
 }
+
+enum _HomeServiceMode { localRide, exploreKashmir }
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   static const _ink = Color(0xFF10212B);
@@ -53,6 +56,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   DateTime? _selectedDepartureDay;
   bool _historyNextMonthOnly = false;
   bool _showVehicleTypeBar = false;
+  _HomeServiceMode _serviceMode = _HomeServiceMode.localRide;
+  DateTime _travelDate = DateTime.now();
+  bool _offline = false;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   String? _resultsTitle;
   List<_HeroDestination> _destinations = const [];
   TripOperationsRepository? _tripRepository;
@@ -62,6 +69,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void initState() {
     super.initState();
     _api = ApiClient(SessionStore());
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+      if (!mounted) return;
+      setState(() => _offline = results.every((value) => value == ConnectivityResult.none));
+    });
+    Connectivity().checkConnectivity().then((results) {
+      if (mounted) setState(() => _offline = results.every((value) => value == ConnectivityResult.none));
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future.wait([
         _loadDestinations(),
@@ -339,6 +353,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     });
   }
 
+  Future<void> _pickTravelDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _travelDate.isBefore(DateTime.now()) ? DateTime.now() : _travelDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 180)),
+    );
+    if (selected != null && mounted) setState(() => _travelDate = selected);
+  }
+
   void _findRides() {
     FocusScope.of(context).unfocus();
     if (_pickup.text.trim().isEmpty || _destination.text.trim().isEmpty) {
@@ -351,9 +375,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _destinationQuery = _destination.text.trim().toLowerCase();
       _showDestinationList = false;
       _searched = true;
-      _selectedDepartureDay = null;
+      _selectedDepartureDay = _travelDate;
       _historyNextMonthOnly = false;
-      _resultsTitle = 'Available rides for ${_destination.text.trim()}';
+      _resultsTitle = _serviceMode == _HomeServiceMode.localRide
+          ? 'Local rides to ${_destination.text.trim()} · ${DateFormat('dd MMM').format(_travelDate)}'
+          : 'Kashmir trips to ${_destination.text.trim()} · ${DateFormat('dd MMM').format(_travelDate)}';
     });
     _scrollToResults();
   }
@@ -446,6 +472,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void dispose() {
     _heroTimer?.cancel();
+    _connectivitySubscription?.cancel();
     _tripTimer?.cancel();
     _pickup.dispose();
     _destination.dispose();
@@ -463,6 +490,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final halfBooked = _halfBookedRides(marketplace);
     final pastDestinations = _destinationHistory(controller.liveBookings);
     final height = MediaQuery.sizeOf(context).height;
+    final heroHeight = (height * .78).clamp(640.0, 760.0).toDouble();
 
     return ColoredBox(
       color: _surface,
@@ -479,7 +507,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           slivers: [
             SliverToBoxAdapter(
               child: SizedBox(
-                height: height - 88,
+                height: heroHeight,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -614,6 +642,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  if (_offline) ...[
+                                    const _OfflineBookingBanner(),
+                                    const SizedBox(height: 8),
+                                  ],
+                                  _ServiceModeSelector(
+                                    mode: _serviceMode,
+                                    onChanged: (mode) => setState(() {
+                                      _serviceMode = mode;
+                                      _searched = false;
+                                      _resultsTitle = null;
+                                    }),
+                                  ),
+                                  const SizedBox(height: 9),
+                                  if (_activeTrip != null) ...[
+                                    _ActiveTripHomeCard(trip: _activeTrip!, onTap: _openActiveTrip),
+                                    const SizedBox(height: 9),
+                                  ],
                                   Container(
                                     padding: const EdgeInsets.fromLTRB(15, 12, 15, 12),
                                     decoration: BoxDecoration(
@@ -692,6 +737,30 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                                   onSelected: _selectDestination,
                                                 ),
                                         ),
+                                        const Divider(height: 12),
+                                        InkWell(
+                                          borderRadius: BorderRadius.circular(14),
+                                          onTap: _pickTravelDate,
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+                                            child: Row(
+                                              children: [
+                                                const Icon(Icons.calendar_month_rounded, color: _ink, size: 21),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      const Text('Travel date', style: TextStyle(fontSize: 11, color: _muted, fontWeight: FontWeight.w700)),
+                                                      Text(DateFormat('EEE, dd MMM yyyy').format(_travelDate), style: const TextStyle(fontWeight: FontWeight.w800, color: _ink)),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const Icon(Icons.chevron_right_rounded, color: _muted),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -716,8 +785,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                         size: 22,
                                         color: Colors.white,
                                       ),
-                                      label: const Text(
-                                        'Find rides',
+                                      label: Text(
+                                        _serviceMode == _HomeServiceMode.localRide ? 'Find local rides' : 'Find Kashmir trips',
                                         style: TextStyle(
                                           fontSize: 19,
                                           fontWeight: FontWeight.w800,
@@ -1759,6 +1828,96 @@ class _EmptyRides extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      );
+}
+
+class _ServiceModeSelector extends StatelessWidget {
+  const _ServiceModeSelector({required this.mode, required this.onChanged});
+  final _HomeServiceMode mode;
+  final ValueChanged<_HomeServiceMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .96),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [BoxShadow(color: Color(0x18000000), blurRadius: 16, offset: Offset(0, 7))],
+        ),
+        child: Row(
+          children: [
+            Expanded(child: _item(_HomeServiceMode.localRide, Icons.directions_bus_rounded, 'Local Ride', 'Daily seat transport')),
+            Expanded(child: _item(_HomeServiceMode.exploreKashmir, Icons.landscape_rounded, 'Explore Kashmir', 'Tours & private trips')),
+          ],
+        ),
+      );
+
+  Widget _item(_HomeServiceMode value, IconData icon, String title, String subtitle) {
+    final selected = mode == value;
+    return InkWell(
+      onTap: () => onChanged(value),
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF10212B) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: selected ? Colors.white : const Color(0xFF10212B), size: 21),
+            const SizedBox(width: 7),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, maxLines: 1, style: TextStyle(color: selected ? Colors.white : const Color(0xFF10212B), fontWeight: FontWeight.w900, fontSize: 13)),
+              Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: selected ? Colors.white70 : const Color(0xFF667781), fontSize: 9.5, fontWeight: FontWeight.w600)),
+            ])),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OfflineBookingBanner extends StatelessWidget {
+  const _OfflineBookingBanner();
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(color: const Color(0xFFFFF3D8), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFFFD789))),
+        child: const Row(children: [
+          Icon(Icons.signal_wifi_connected_no_internet_4_rounded, color: Color(0xFF9A6500), size: 20),
+          SizedBox(width: 9),
+          Expanded(child: Text('Offline mode: saved routes remain visible. SMS confirmation will be required for offline bookings.', style: TextStyle(color: Color(0xFF714B00), fontSize: 11, fontWeight: FontWeight.w700))),
+        ]),
+      );
+}
+
+class _ActiveTripHomeCard extends StatelessWidget {
+  const _ActiveTripHomeCard({required this.trip, required this.onTap});
+  final MobileTrip trip;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+            decoration: BoxDecoration(color: const Color(0xFF10212B), borderRadius: BorderRadius.circular(16)),
+            child: Row(children: [
+              const CircleAvatar(backgroundColor: Color(0xFF8ED12B), child: Icon(Icons.route_rounded, color: Colors.white)),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(trip.tripStatus == 'TripStarted' ? 'Trip in progress' : 'Driver is coming', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+                Text('${trip.pickupLabel} → ${trip.destinationLabel}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+              ])),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white),
+            ]),
+          ),
         ),
       );
 }
