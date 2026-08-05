@@ -334,8 +334,8 @@ class _DestinationCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(23)),
                 child: item['coverImageUrl'] == null
-                    ? const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0B5A44), Color(0xFF17B978)])), child: Center(child: Icon(Icons.landscape_rounded, color: Colors.white70, size: 62)))
-                    : Image.network(ApiConfig.absoluteUrl(item['coverImageUrl']?.toString()), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0B5A44), Color(0xFF17B978)])), child: Center(child: Icon(Icons.landscape_rounded, color: Colors.white70, size: 62)))),
+                    ? const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF08151C), Color(0xFF10212B)])), child: Center(child: Icon(Icons.landscape_rounded, color: Colors.white70, size: 62)))
+                    : Image.network(ApiConfig.absoluteUrl(item['coverImageUrl']?.toString()), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF08151C), Color(0xFF10212B)])), child: Center(child: Icon(Icons.landscape_rounded, color: Colors.white70, size: 62)))),
               ),
               const DecoratedBox(decoration: BoxDecoration(borderRadius: BorderRadius.vertical(top: Radius.circular(23)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black54]))),
               Positioned(

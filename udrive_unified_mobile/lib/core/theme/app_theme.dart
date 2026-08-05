@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
-  static const primary = Color(0xFF17B978);
-  static const primaryDark = Color(0xFF087A55);
-  static const secondary = Color(0xFF176B87);
-  static const accent = Color(0xFFFFB703);
-  static const navy = Color(0xFF0D1B2A);
-  static const background = Color(0xFFF5F8F7);
+  static const primary = Color(0xFF10212B);
+  static const primaryDark = Color(0xFF08151C);
+  static const secondary = Color(0xFF8ED12B);
+  static const accent = Color(0xFF8ED12B);
+  static const navy = Color(0xFF10212B);
+  static const background = Color(0xFFF6F8FA);
   static const surface = Color(0xFFFFFFFF);
   static const muted = Color(0xFF667085);
-  static const border = Color(0xFFE4ECE9);
+  static const border = Color(0xFFE2E9EB);
   static const danger = Color(0xFFE5484D);
   static const success = Color(0xFF16A36A);
   static const info = Color(0xFF2F80ED);
@@ -106,7 +106,7 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         height: 72,
         backgroundColor: Colors.white,
-        indicatorColor: AppColors.primary.withValues(alpha: .14),
+        indicatorColor: AppColors.secondary.withValues(alpha: .22),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             fontSize: 11,

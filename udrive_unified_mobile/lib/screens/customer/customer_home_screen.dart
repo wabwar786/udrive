@@ -144,42 +144,57 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Future<void> _loadLocation() async {
     if (_locating) return;
     if (mounted) setState(() => _locating = true);
+    _pickup.text = 'Detecting current address…';
+
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
-        _pickup.text = 'Enter pickup address';
+        _pickup.text = 'Turn on location to use current address';
         return;
       }
+
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        _pickup.text = 'Enter pickup address';
+      if (permission == LocationPermission.deniedForever) {
+        _pickup.text = 'Allow location from app settings';
         return;
       }
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
+      if (permission == LocationPermission.denied) {
+        _pickup.text = 'Allow location to detect pickup';
+        return;
+      }
+
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 15),
+          ),
+        );
+      } catch (_) {
+        position = await Geolocator.getLastKnownPosition();
+      }
+
+      if (position == null) {
+        _pickup.text = 'Tap location icon to try again';
+        return;
+      }
+
       final address = await _reverseGeocode(
         position.latitude,
         position.longitude,
       );
-      _pickup.text = address.isEmpty ? 'Enter pickup address' : address;
-      if (mounted) setState(() {});
-    } catch (error) {
-      _pickup.text = 'Enter pickup address';
+      _pickup.text = address.isNotEmpty
+          ? address
+          : '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+    } catch (_) {
+      _pickup.text = 'Tap location icon to try again';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              kIsWeb
-                  ? 'Current location could not be detected. Please allow location access in the browser and try again.'
-                  : 'Current location could not be detected. Please enable location permission and try again.',
-            ),
+          const SnackBar(
+            content: Text('Location could not be detected. Please allow location access and try again.'),
           ),
         );
       }
@@ -375,10 +390,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _destinationQuery = _destination.text.trim().toLowerCase();
       _showDestinationList = false;
       _searched = true;
-      _selectedDepartureDay = _travelDate;
-      _historyNextMonthOnly = false;
+      _selectedDepartureDay = _serviceMode == _HomeServiceMode.exploreKashmir
+          ? _travelDate
+          : null;
+      _historyNextMonthOnly = _serviceMode == _HomeServiceMode.localRide;
       _resultsTitle = _serviceMode == _HomeServiceMode.localRide
-          ? 'Local rides to ${_destination.text.trim()} · ${DateFormat('dd MMM').format(_travelDate)}'
+          ? 'Local rides to ${_destination.text.trim()}'
           : 'Kashmir trips to ${_destination.text.trim()} · ${DateFormat('dd MMM').format(_travelDate)}';
     });
     _scrollToResults();
@@ -490,7 +507,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final halfBooked = _halfBookedRides(marketplace);
     final pastDestinations = _destinationHistory(controller.liveBookings);
     final height = MediaQuery.sizeOf(context).height;
-    final heroHeight = (height * .78).clamp(640.0, 760.0).toDouble();
+    final heroHeight = (_serviceMode == _HomeServiceMode.localRide ? height * .64 : height * .70)
+        .clamp(_serviceMode == _HomeServiceMode.localRide ? 520.0 : 580.0, 690.0)
+        .toDouble();
 
     return ColoredBox(
       color: _surface,
@@ -557,7 +576,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         child: Stack(
                           children: [
                             Positioned.fill(
-                              bottom: 252,
+                              bottom: 225,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -615,25 +634,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                       ],
                                     ),
                                   ),
-                                  if (upcoming.isNotEmpty) ...[
-                                    const SizedBox(height: 9),
-                                    _UpcomingDestinations(
-                                      rides: upcoming,
-                                      onSelected: _showResultsForUpcoming,
-                                    ),
-                                  ],
-                                  if (halfBooked.isNotEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    _HalfBookedStrip(
-                                      rides: halfBooked,
-                                      onSelected: _showResultsForUpcoming,
-                                    ),
-                                  ],
-                                  const SizedBox(height: 8),
-                                  _VehicleTypePanel(
-                                    onSelected: _showResultsForVehicleType,
-                                    highlighted: true,
-                                  ),
                                 ],
                               ),
                             ),
@@ -651,6 +651,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                     onChanged: (mode) => setState(() {
                                       _serviceMode = mode;
                                       _searched = false;
+                                      _selectedDepartureDay = null;
+                                      _showDestinationList = false;
                                       _resultsTitle = null;
                                     }),
                                   ),
@@ -737,30 +739,32 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                                   onSelected: _selectDestination,
                                                 ),
                                         ),
-                                        const Divider(height: 12),
-                                        InkWell(
-                                          borderRadius: BorderRadius.circular(14),
-                                          onTap: _pickTravelDate,
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-                                            child: Row(
-                                              children: [
-                                                const Icon(Icons.calendar_month_rounded, color: _ink, size: 21),
-                                                const SizedBox(width: 12),
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      const Text('Travel date', style: TextStyle(fontSize: 11, color: _muted, fontWeight: FontWeight.w700)),
-                                                      Text(DateFormat('EEE, dd MMM yyyy').format(_travelDate), style: const TextStyle(fontWeight: FontWeight.w800, color: _ink)),
-                                                    ],
+                                        if (_serviceMode == _HomeServiceMode.exploreKashmir) ...[
+                                          const Divider(height: 12),
+                                          InkWell(
+                                            borderRadius: BorderRadius.circular(14),
+                                            onTap: _pickTravelDate,
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+                                              child: Row(
+                                                children: [
+                                                  const Icon(Icons.calendar_month_rounded, color: _ink, size: 21),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        const Text('Travel date', style: TextStyle(fontSize: 11, color: _muted, fontWeight: FontWeight.w700)),
+                                                        Text(DateFormat('EEE, dd MMM yyyy').format(_travelDate), style: const TextStyle(fontWeight: FontWeight.w800, color: _ink)),
+                                                      ],
+                                                    ),
                                                   ),
-                                                ),
-                                                const Icon(Icons.chevron_right_rounded, color: _muted),
-                                              ],
+                                                  const Icon(Icons.chevron_right_rounded, color: _muted),
+                                                ],
+                                              ),
                                             ),
                                           ),
-                                        ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -771,7 +775,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                     child: FilledButton.icon(
                                       onPressed: _findRides,
                                       style: FilledButton.styleFrom(
-                                        backgroundColor: _lime,
+                                        backgroundColor: _ink,
                                         foregroundColor: Colors.white,
                                         elevation: 0,
                                         shadowColor: Colors.transparent,
@@ -783,7 +787,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                       icon: const Icon(
                                         Icons.directions_car_filled_rounded,
                                         size: 22,
-                                        color: Colors.white,
+                                        color: _lime,
                                       ),
                                       label: Text(
                                         _serviceMode == _HomeServiceMode.localRide ? 'Find local rides' : 'Find Kashmir trips',
@@ -813,14 +817,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     Container(key: _resultsKey),
-                    if (pastDestinations.isNotEmpty) ...[
-                      _DestinationHistoryStrip(
-                        items: pastDestinations,
-                        onSelected: _showResultsForDestination,
-                        darkText: true,
-                      ),
-                      const SizedBox(height: 14),
-                    ],
                     Row(
                       children: [
                         Expanded(
@@ -1847,8 +1843,8 @@ class _ServiceModeSelector extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Expanded(child: _item(_HomeServiceMode.localRide, Icons.directions_bus_rounded, 'Local Ride', 'Daily seat transport')),
-            Expanded(child: _item(_HomeServiceMode.exploreKashmir, Icons.landscape_rounded, 'Explore Kashmir', 'Tours & private trips')),
+            Expanded(child: _item(_HomeServiceMode.localRide, Icons.directions_bus_rounded, 'Local Ride', 'Per-seat travel')),
+            Expanded(child: _item(_HomeServiceMode.exploreKashmir, Icons.landscape_rounded, 'Explore Kashmir', 'Tour packages')),
           ],
         ),
       );

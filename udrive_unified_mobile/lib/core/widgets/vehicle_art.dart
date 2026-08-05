@@ -131,7 +131,7 @@ class VehicleBanner extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF0E6C52), Color(0xFF17B978)],
+          colors: [Color(0xFF10212B), Color(0xFF10212B)],
         ),
       ),
       child: Center(
