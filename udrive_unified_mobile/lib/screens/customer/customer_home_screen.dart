@@ -22,6 +22,8 @@ import '../../models/trip_operations_models.dart';
 import '../operations/live_trip_navigation_screen.dart';
 import '../safety/customer_sos_sheet.dart';
 import 'live_packages_screen.dart';
+import 'live_explore_screen.dart';
+import 'udrive_route_flow_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({required this.onNavigate, super.key});
@@ -536,9 +538,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = AppControllerScope.of(context);
-    final rides = _matchingRides(controller.liveMarketplacePackages);
-
     return ColoredBox(
       color: const Color(0xFF111311),
       child: Stack(
@@ -552,11 +551,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withValues(alpha: .32),
+                      Colors.black.withValues(alpha: .36),
                       Colors.transparent,
-                      Colors.black.withValues(alpha: .08),
+                      Colors.black.withValues(alpha: .18),
                     ],
-                    stops: const [0, .28, 1],
+                    stops: const [0, .42, 1],
                   ),
                 ),
               ),
@@ -609,213 +608,80 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               child: _OfflineMapPill(),
             ),
           DraggableScrollableSheet(
-            initialChildSize: .40,
-            minChildSize: .34,
-            maxChildSize: .88,
+            initialChildSize: .56,
+            minChildSize: .48,
+            maxChildSize: .90,
             snap: true,
-            snapSizes: const [.40, .88],
+            snapSizes: const [.56, .90],
             builder: (context, sheetController) {
               return Container(
                 decoration: const BoxDecoration(
-                  color: Color(0xFF202220),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  color: Color(0xFA181A18),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
                   boxShadow: [
-                    BoxShadow(color: Color(0x45000000), blurRadius: 28, offset: Offset(0, -8)),
+                    BoxShadow(color: Color(0x66000000), blurRadius: 30, offset: Offset(0, -8)),
                   ],
                 ),
                 child: ListView(
                   controller: sheetController,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  padding: const EdgeInsets.fromLTRB(16, 9, 16, 32),
                   children: [
                     Center(
                       child: Container(
-                        width: 42,
+                        width: 46,
                         height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(99),
-                        ),
+                        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99)),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    _UDriveServicesGrid(
+                      onCity: () => _openRouteFlow(UDriveServiceType.city),
+                      onTours: () => _openRouteFlow(UDriveServiceType.tours),
+                      onPrivate: () => _openRouteFlow(UDriveServiceType.privateVehicle),
+                      onExplore: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveExploreScreen())),
                     ),
                     const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _serviceMode == _HomeServiceMode.localRide
-                                ? 'Where are you going?'
-                                : 'Plan your Kashmir trip',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -.55,
-                            ),
+                    Material(
+                      color: const Color(0xFF303330),
+                      borderRadius: BorderRadius.circular(18),
+                      child: InkWell(
+                        onTap: () => _openRouteFlow(UDriveServiceType.city),
+                        borderRadius: BorderRadius.circular(18),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+                          child: Row(
+                            children: [
+                              Icon(Icons.search_rounded, color: Colors.white, size: 30),
+                              SizedBox(width: 14),
+                              Expanded(child: Text('Where to?', style: TextStyle(color: Colors.white70, fontSize: 19, fontWeight: FontWeight.w800))),
+                            ],
                           ),
-                        ),
-                        _SmallModePill(
-                          selected: _serviceMode == _HomeServiceMode.localRide,
-                          icon: Icons.directions_car_rounded,
-                          label: 'Local',
-                          onTap: () => _switchMode(_HomeServiceMode.localRide),
-                        ),
-                        const SizedBox(width: 7),
-                        _SmallModePill(
-                          selected: _serviceMode == _HomeServiceMode.exploreKashmir,
-                          icon: Icons.landscape_rounded,
-                          label: 'Tours',
-                          onTap: () => _switchMode(_HomeServiceMode.exploreKashmir),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    _InDriveSearchField(
-                      controller: _pickup,
-                      icon: Icons.radio_button_checked_rounded,
-                      iconColor: _lime,
-                      hint: 'Pickup location',
-                      suffix: IconButton(
-                        tooltip: 'Use current location',
-                        onPressed: _locating ? null : _loadLocation,
-                        icon: _locating
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: _lime),
-                              )
-                            : const Icon(Icons.my_location_rounded, color: Colors.white70, size: 20),
-                      ),
-                    ),
-                    const SizedBox(height: 9),
-                    _InDriveSearchField(
-                      controller: _destination,
-                      icon: Icons.search_rounded,
-                      iconColor: Colors.white,
-                      hint: _serviceMode == _HomeServiceMode.localRide
-                          ? 'Where to? Type any address'
-                          : 'Choose a Kashmir destination',
-                      onTap: () => setState(() => _showDestinationList = true),
-                      onChanged: (value) => setState(() {
-                        _destinationQuery = value.trim().toLowerCase();
-                        _showDestinationList = _serviceMode == _HomeServiceMode.exploreKashmir;
-                        _searched = true;
-                        _selectedDepartureDay = null;
-                        _historyNextMonthOnly = true;
-                        _resultsTitle = value.trim().isEmpty
-                            ? (_serviceMode == _HomeServiceMode.localRide
-                                ? 'Available local rides'
-                                : 'Kashmir tours · next 30 days')
-                            : (_serviceMode == _HomeServiceMode.localRide
-                                ? 'Local rides to ${value.trim()}'
-                                : 'Kashmir trips to ${value.trim()}');
-                      }),
-                      suffix: _serviceMode == _HomeServiceMode.exploreKashmir
-                          ? IconButton(
-                              onPressed: () => setState(() => _showDestinationList = !_showDestinationList),
-                              icon: Icon(
-                                _showDestinationList
-                                    ? Icons.keyboard_arrow_up_rounded
-                                    : Icons.keyboard_arrow_down_rounded,
-                                color: Colors.white70,
-                              ),
-                            )
-                          : null,
-                    ),
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 200),
-                      child: _serviceMode != _HomeServiceMode.exploreKashmir || !_showDestinationList
-                          ? const SizedBox.shrink()
-                          : Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: _DestinationDropdown(
-                                items: _destinations,
-                                onSelected: _selectDestination,
-                              ),
-                            ),
-                    ),
-                    if (_serviceMode == _HomeServiceMode.exploreKashmir) ...[
-                      const SizedBox(height: 9),
-                      _TourDateTile(date: _travelDate, onTap: _pickTravelDate),
-                    ],
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 56,
-                      child: FilledButton(
-                        onPressed: _findRides,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _lime,
-                          foregroundColor: _ink,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              _serviceMode == _HomeServiceMode.localRide
-                                  ? 'Find local rides'
-                                  : 'Find Kashmir tours',
-                              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
-                            ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.arrow_forward_rounded),
-                          ],
                         ),
                       ),
                     ),
-                    if (_searched) ...[
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _resultsTitle ?? 'Available rides',
-                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
-                            ),
-                          ),
-                          Text(
-                            '${rides.length} found',
-                            style: const TextStyle(color: _lime, fontSize: 12, fontWeight: FontWeight.w900),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      if (rides.isEmpty)
-                        _EmptyRides(destination: _destination.text)
-                      else
-                        ...rides.map(
-                          (ride) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _RideCard(
-                              ride: ride,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => LivePackageDetailScreen(
-                                    package: ride,
-                                    initialBookingType: 'PerSeat',
-                                  ),
-                                ),
-                              ),
-                              onWholeVehicle: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => LivePackageDetailScreen(
-                                    package: ride,
-                                    initialBookingType: 'WholeVehicle',
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+                    const SizedBox(height: 10),
+                    const _RecentPlaceTile(title: 'D-17/2 Markaz', subtitle: 'D-17, Islamabad'),
+                    const Divider(color: Colors.white10, indent: 54),
+                    const _RecentPlaceTile(title: 'F-10 Markaz', subtitle: 'F-10, Islamabad'),
                   ],
                 ),
               );
             },
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _openRouteFlow(UDriveServiceType type) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UDriveRouteFlowScreen(
+          serviceType: type,
+          pickupLabel: _pickup.text.trim().isEmpty ? 'Current location' : _pickup.text.trim(),
+          pickupPoint: _currentPoint,
+        ),
       ),
     );
   }
@@ -2255,5 +2121,174 @@ class _ActiveTripHomeCard extends StatelessWidget {
             ]),
           ),
         ),
+      );
+}
+
+class _UDriveServicesGrid extends StatelessWidget {
+  const _UDriveServicesGrid({
+    required this.onCity,
+    required this.onTours,
+    required this.onPrivate,
+    required this.onExplore,
+  });
+
+  final VoidCallback onCity;
+  final VoidCallback onTours;
+  final VoidCallback onPrivate;
+  final VoidCallback onExplore;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        height: 254,
+        child: Row(
+          children: [
+            Expanded(
+              flex: 11,
+              child: _ServiceTile(
+                title: 'Travel within city',
+                subtitle: 'car, bike, rickshaw',
+                icon: Icons.directions_car_filled_rounded,
+                secondaryIcon: Icons.two_wheeler_rounded,
+                onTap: onCity,
+                large: true,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 10,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: _ServiceTile(
+                      title: 'Tours & Trips',
+                      subtitle: 'coster, car',
+                      icon: Icons.airport_shuttle_rounded,
+                      onTap: onTours,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Expanded(
+                    child: _ServiceTile(
+                      title: 'Private Vehicle',
+                      subtitle: 'coster, car, bike',
+                      icon: Icons.local_taxi_rounded,
+                      secondaryIcon: Icons.two_wheeler_rounded,
+                      onTap: onPrivate,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Expanded(
+                    child: _ServiceTile(
+                      title: 'Explore Kashmir',
+                      subtitle: 'destinations & experiences',
+                      icon: Icons.landscape_rounded,
+                      onTap: onExplore,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _ServiceTile extends StatelessWidget {
+  const _ServiceTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+    this.secondaryIcon,
+    this.large = false,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final IconData? secondaryIcon;
+  final VoidCallback onTap;
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0xFF252725),
+        borderRadius: BorderRadius.circular(22),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: Colors.white10),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF272927), Color(0xFF1A1C1A)],
+              ),
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  right: large ? -38 : -20,
+                  bottom: large ? -42 : -28,
+                  child: Transform.rotate(
+                    angle: -.22,
+                    child: Container(
+                      width: large ? 180 : 110,
+                      height: large ? 180 : 110,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFB7F20A),
+                        borderRadius: BorderRadius.circular(38),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.all(large ? 16 : 13),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: TextStyle(color: Colors.white, fontSize: large ? 18 : 15, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 2),
+                      Text(subtitle, maxLines: 2, style: TextStyle(color: Colors.white60, fontSize: large ? 12 : 10.5, height: 1.2)),
+                      const Spacer(),
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (secondaryIcon != null) ...[
+                              Icon(secondaryIcon, color: const Color(0xFF101210), size: large ? 38 : 25),
+                              const SizedBox(width: 3),
+                            ],
+                            Icon(icon, color: const Color(0xFF101210), size: large ? 58 : 37),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _RecentPlaceTile extends StatelessWidget {
+  const _RecentPlaceTile({required this.title, required this.subtitle});
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        onTap: () {},
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+        leading: const Icon(Icons.history_rounded, color: Colors.white54, size: 29),
+        title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+        subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54)),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
       );
 }
