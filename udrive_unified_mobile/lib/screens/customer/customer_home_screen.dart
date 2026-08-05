@@ -44,6 +44,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final _destination = TextEditingController();
   final _pageController = PageController();
   final _scrollController = ScrollController();
+  final _mapController = MapController();
   final _resultsKey = GlobalKey();
   late final ApiClient _api;
 
@@ -52,19 +53,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   int _heroIndex = 0;
   bool _loadingDestinations = true;
   bool _showDestinationList = false;
-  bool _searched = false;
+  bool _searched = true;
   bool _locating = false;
   String _destinationQuery = '';
   String? _selectedVehicleType;
   DateTime? _selectedDepartureDay;
-  bool _historyNextMonthOnly = false;
+  bool _historyNextMonthOnly = true;
   bool _showVehicleTypeBar = false;
   _HomeServiceMode _serviceMode = _HomeServiceMode.localRide;
   DateTime _travelDate = DateTime.now();
   bool _offline = false;
   LatLng _currentPoint = const LatLng(34.3700, 73.4711);
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  String? _resultsTitle;
+  String? _resultsTitle = 'Available local rides';
   List<_HeroDestination> _destinations = const [];
   TripOperationsRepository? _tripRepository;
   MobileTrip? _activeTrip;
@@ -193,8 +194,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ? address
           : '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}';
       if (mounted) {
+        final point = LatLng(latitude, longitude);
         setState(() {
-          _currentPoint = LatLng(latitude, longitude);
+          _currentPoint = point;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _mapController.move(point, 15.8);
         });
       }
     } catch (_) {
@@ -302,10 +307,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     setState(() {
       _destinationQuery = value.name.toLowerCase();
       _showDestinationList = false;
-      _searched = false;
+      _searched = true;
       _selectedDepartureDay = null;
-      _historyNextMonthOnly = false;
-      _resultsTitle = null;
+      _historyNextMonthOnly = true;
+      _resultsTitle = _serviceMode == _HomeServiceMode.localRide
+          ? 'Local rides to ${value.name}'
+          : 'Kashmir trips to ${value.name}';
     });
   }
 
@@ -388,23 +395,28 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   void _findRides() {
     FocusScope.of(context).unfocus();
-    if (_pickup.text.trim().isEmpty || _destination.text.trim().isEmpty) {
+    if (_pickup.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter pickup and destination.')),
+        const SnackBar(content: Text('Please enter or detect your pickup location.')),
       );
       return;
     }
+    final destination = _destination.text.trim();
     setState(() {
-      _destinationQuery = _destination.text.trim().toLowerCase();
+      _destinationQuery = destination.toLowerCase();
       _showDestinationList = false;
       _searched = true;
-      _selectedDepartureDay = _serviceMode == _HomeServiceMode.exploreKashmir
+      _selectedDepartureDay = _serviceMode == _HomeServiceMode.exploreKashmir && destination.isNotEmpty
           ? _travelDate
           : null;
-      _historyNextMonthOnly = _serviceMode == _HomeServiceMode.localRide;
-      _resultsTitle = _serviceMode == _HomeServiceMode.localRide
-          ? 'Local rides to ${_destination.text.trim()}'
-          : 'Kashmir trips to ${_destination.text.trim()} · ${DateFormat('dd MMM').format(_travelDate)}';
+      _historyNextMonthOnly = true;
+      _resultsTitle = destination.isEmpty
+          ? (_serviceMode == _HomeServiceMode.localRide
+              ? 'Available local rides'
+              : 'Kashmir tours · next 30 days')
+          : (_serviceMode == _HomeServiceMode.localRide
+              ? 'Local rides to $destination'
+              : 'Kashmir trips to $destination');
     });
     _scrollToResults();
   }
@@ -419,27 +431,42 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return 'car';
   }
 
+  bool _looksLikeTour(LiveTourPackage ride) {
+    final text = '${ride.title} ${ride.description ?? ''}'.toLowerCase();
+    return ride.returnAt != null ||
+        ride.itinerary.isNotEmpty ||
+        ride.inclusions.isNotEmpty ||
+        text.contains('tour') ||
+        text.contains('trip') ||
+        text.contains('package') ||
+        text.contains('valley') ||
+        text.contains('lake');
+  }
+
   List<LiveTourPackage> _matchingRides(List<LiveTourPackage> source) {
     if (!_searched) return const [];
+    final now = DateTime.now();
+    final end = now.add(const Duration(days: 30));
     final query = _destinationQuery.trim();
     final day = _selectedDepartureDay;
     final type = _selectedVehicleType;
-    final filtered = source.where((ride) {
-      final matchesQuery = query.isEmpty
-          ? true
-          : '${ride.destination} ${ride.title} ${ride.pickupPoint}'
-              .toLowerCase()
-              .contains(query);
-      final matchesDay = day == null
-          ? true
-          : DateUtils.isSameDay(ride.departureAt, day);
-      final matchesType = type == null ? true : _vehicleTypeForRide(ride) == type;
-      final now = DateTime.now();
-      final matchesHistoryWindow = !_historyNextMonthOnly
-          ? true
-          : !ride.departureAt.isBefore(now) &&
-              ride.departureAt.isBefore(now.add(const Duration(days: 30)));
-      return matchesQuery && matchesDay && matchesType && matchesHistoryWindow;
+
+    final modeMatches = source.where((ride) {
+      final isTour = _looksLikeTour(ride);
+      return _serviceMode == _HomeServiceMode.exploreKashmir ? isTour : !isTour;
+    }).toList();
+    // Older API records may not yet contain a service type. In that case,
+    // keep the screen useful instead of showing an empty list.
+    final candidates = modeMatches.isEmpty ? source : modeMatches;
+
+    final filtered = candidates.where((ride) {
+      final searchable = '${ride.destination} ${ride.title} ${ride.pickupPoint} ${ride.startingCity}'
+          .toLowerCase();
+      final matchesQuery = query.isEmpty || searchable.contains(query);
+      final matchesDay = day == null || DateUtils.isSameDay(ride.departureAt, day);
+      final matchesType = type == null || _vehicleTypeForRide(ride) == type;
+      final inNextThirtyDays = !ride.departureAt.isBefore(now) && ride.departureAt.isBefore(end);
+      return matchesQuery && matchesDay && matchesType && inNextThirtyDays;
     }).toList();
     filtered.sort((a, b) => a.departureAt.compareTo(b.departureAt));
     return filtered;
@@ -503,6 +530,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _destination.dispose();
     _pageController.dispose();
     _scrollController.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -670,7 +698,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       onChanged: (value) => setState(() {
                         _destinationQuery = value.trim().toLowerCase();
                         _showDestinationList = _serviceMode == _HomeServiceMode.exploreKashmir;
-                        _searched = false;
+                        _searched = true;
+                        _selectedDepartureDay = null;
+                        _historyNextMonthOnly = true;
+                        _resultsTitle = value.trim().isEmpty
+                            ? (_serviceMode == _HomeServiceMode.localRide
+                                ? 'Available local rides'
+                                : 'Kashmir tours · next 30 days')
+                            : (_serviceMode == _HomeServiceMode.localRide
+                                ? 'Local rides to ${value.trim()}'
+                                : 'Kashmir trips to ${value.trim()}');
                       }),
                       suffix: _serviceMode == _HomeServiceMode.exploreKashmir
                           ? IconButton(
@@ -726,10 +763,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         ),
                       ),
                     ),
-                    if (_activeTrip != null) ...[
-                      const SizedBox(height: 12),
-                      _ActiveTripHomeCard(trip: _activeTrip!, onTap: _openActiveTrip),
-                    ],
                     if (_searched) ...[
                       const SizedBox(height: 20),
                       Row(
@@ -788,17 +821,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   void _switchMode(_HomeServiceMode mode) {
+    _destination.clear();
     setState(() {
       _serviceMode = mode;
-      _searched = false;
+      _destinationQuery = '';
+      _searched = true;
       _selectedDepartureDay = null;
-      _resultsTitle = null;
-      _showDestinationList = mode == _HomeServiceMode.exploreKashmir;
+      _historyNextMonthOnly = true;
+      _resultsTitle = mode == _HomeServiceMode.localRide
+          ? 'Available local rides'
+          : 'Kashmir tours · next 30 days';
+      _showDestinationList = false;
     });
   }
 
   Widget _buildMapBackground() {
     return FlutterMap(
+      mapController: _mapController,
       options: MapOptions(
         initialCenter: _currentPoint,
         initialZoom: 14.8,
@@ -815,16 +854,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           markers: [
             Marker(
               point: _currentPoint,
-              width: 58,
-              height: 58,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: _lime, width: 5),
-                  boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 14)],
-                ),
-                child: const Icon(Icons.person_pin_circle_rounded, color: _ink, size: 29),
+              width: 116,
+              height: 92,
+              alignment: Alignment.bottomCenter,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF202220),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 10)],
+                    ),
+                    child: const Text(
+                      'PICKUP POINT',
+                      style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Icon(Icons.location_pin, color: _lime, size: 50),
+                ],
               ),
             ),
           ],
