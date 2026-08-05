@@ -41,6 +41,7 @@ builder.Services.AddDbContextPool<UDriveDbContext>(options =>
 
 builder.Services.AddScoped<SqlMigrationRunner>();
 builder.Services.AddScoped<CatalogService>();
+builder.Services.AddScoped<MarketplacePricingService>(_ => new MarketplacePricingService(connectionString));
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<DriverVerificationService>(serviceProvider =>

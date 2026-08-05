@@ -7,7 +7,7 @@ namespace UDrive.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/catalog")]
-public sealed class CatalogController(CatalogService catalogService, LocalFileStorageService fileStorage) : ControllerBase
+public sealed class CatalogController(CatalogService catalogService, LocalFileStorageService fileStorage, MarketplacePricingService pricingService) : ControllerBase
 {
     [HttpGet("destinations")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<DestinationDto>>>> GetDestinations(
@@ -16,6 +16,15 @@ public sealed class CatalogController(CatalogService catalogService, LocalFileSt
     {
         var data = await catalogService.GetDestinationsAsync(language, cancellationToken);
         return Ok(ApiResponse<IReadOnlyList<DestinationDto>>.Ok(data));
+    }
+
+    [HttpGet("service-rates")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<ServiceVehicleRateDto>>>> GetServiceRates(
+        [FromQuery] string serviceType = "City",
+        CancellationToken cancellationToken = default)
+    {
+        var data = await pricingService.GetRatesAsync(serviceType, cancellationToken);
+        return Ok(ApiResponse<IReadOnlyList<ServiceVehicleRateDto>>.Ok(data));
     }
 
     [HttpGet("destination-images/{owner}/{fileName}")]

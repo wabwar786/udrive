@@ -12,8 +12,18 @@ namespace UDrive.Api.Controllers;
 [Route("api/v1/driver/marketplace")]
 public sealed class DriverMarketplaceController(
     BookingService bookingService,
-    PackageMarketplaceService packageService) : ControllerBase
+    PackageMarketplaceService packageService,
+    MarketplacePricingService pricingService) : ControllerBase
 {
+    [HttpPost("presence")]
+    public async Task<IActionResult> UpdatePresence(
+        DriverPresenceUpdateRequest request,
+        CancellationToken cancellationToken)
+    {
+        var updated = await pricingService.UpdatePresenceAsync(User.GetRequiredUserId(), request, cancellationToken);
+        return updated ? Ok(new { success = true }) : StatusCode(409, new { success = false, message = "Driver must be approved and online." });
+    }
+
     [HttpGet("ride-requests")]
     public async Task<IActionResult> GetRideRequests(
         CancellationToken cancellationToken) =>

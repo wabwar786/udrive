@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/localization/app_strings.dart';
@@ -24,6 +25,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   TripOperationsRepository? _tripRepository;
   List<MobileTrip> _acceptedTrips = const [];
   Timer? _acceptedRefreshTimer;
+  Timer? _presenceTimer;
   bool _isOnline = true;
 
   @override
@@ -42,12 +44,33 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       const Duration(seconds: 10),
       (_) => _loadAcceptedTrips(silent: true),
     );
+    _presenceTimer = Timer.periodic(const Duration(seconds: 30), (_) => _publishPresence());
+    _publishPresence();
   }
 
   @override
   void dispose() {
     _acceptedRefreshTimer?.cancel();
+    _presenceTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _publishPresence() async {
+    if (!_isOnline || !mounted) return;
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
+      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      if (!mounted) return;
+      await AppControllerScope.of(context).apiClient.postJson('/api/v1/driver/marketplace/presence', {
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'accuracy': position.accuracy,
+        'deviceTimestamp': DateTime.now().toUtc().toIso8601String(),
+      });
+    } catch (_) {}
   }
 
   Future<void> _refresh() async {
@@ -124,7 +147,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         children: [
           _DriverAvailabilityCard(
             isOnline: _isOnline,
-            onChanged: (value) => setState(() => _isOnline = value),
+            onChanged: (value) { setState(() => _isOnline = value); if (value) _publishPresence(); },
             nextTrip: _acceptedTrips.isEmpty ? null : _acceptedTrips.first,
             onOpenTrip: _acceptedTrips.isEmpty ? null : () => _openAcceptedRide(_acceptedTrips.first),
           ),

@@ -49,10 +49,15 @@ class UDriveRouteFlowScreen extends StatefulWidget {
 }
 
 class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
+  late final TextEditingController _from;
   final _to = TextEditingController();
-  final _focus = FocusNode();
+  final _fromFocus = FocusNode();
+  final _toFocus = FocusNode();
   Timer? _debounce;
   bool _searching = false;
+  bool _editingFrom = false;
+  late LatLng _pickupPoint;
+  late String _pickupLabel;
   List<_PlaceResult> _results = const [];
 
   static const _suggested = [
@@ -65,29 +70,32 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
   @override
   void initState() {
     super.initState();
+    _pickupPoint = widget.pickupPoint;
+    _pickupLabel = widget.pickupLabel;
+    _from = TextEditingController(text: widget.pickupLabel);
     _results = _suggested;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _toFocus.requestFocus());
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _from.dispose();
     _to.dispose();
-    _focus.dispose();
+    _fromFocus.dispose();
+    _toFocus.dispose();
     super.dispose();
   }
 
-  void _onChanged(String value) {
+  void _onChanged(String value, {required bool from}) {
+    _editingFrom = from;
     _debounce?.cancel();
     final query = value.trim();
     if (query.length < 2) {
-      setState(() {
-        _searching = false;
-        _results = _suggested;
-      });
+      setState(() { _searching = false; _results = _suggested; });
       return;
     }
-    _debounce = Timer(const Duration(milliseconds: 450), () => _search(query));
+    _debounce = Timer(const Duration(milliseconds: 400), () => _search(query));
   }
 
   Future<void> _search(String query) async {
@@ -95,16 +103,9 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     setState(() => _searching = true);
     try {
       final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
-        'q': query,
-        'format': 'jsonv2',
-        'addressdetails': '1',
-        'limit': '8',
-        'countrycodes': 'pk',
+        'q': query, 'format': 'jsonv2', 'addressdetails': '1', 'limit': '8', 'countrycodes': 'pk',
       });
-      final response = await http.get(uri, headers: const {
-        'User-Agent': 'UDrive-Mobile/1.0',
-        'Accept-Language': 'en',
-      }).timeout(const Duration(seconds: 12));
+      final response = await http.get(uri, headers: const {'User-Agent': 'UDrive-Mobile/1.0','Accept-Language': 'en'}).timeout(const Duration(seconds: 12));
       if (response.statusCode < 200 || response.statusCode >= 300) return;
       final raw = jsonDecode(response.body);
       if (raw is! List) return;
@@ -112,200 +113,77 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
         final map = Map<String, dynamic>.from(entry);
         final display = '${map['display_name'] ?? ''}'.trim();
         final parts = display.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-        return _PlaceResult(
-          parts.isEmpty ? query : parts.first,
-          parts.skip(1).take(3).join(', '),
-          double.tryParse('${map['lat']}') ?? 0,
-          double.tryParse('${map['lon']}') ?? 0,
-        );
+        return _PlaceResult(parts.isEmpty ? query : parts.first, parts.skip(1).take(4).join(', '), double.tryParse('${map['lat']}') ?? 0, double.tryParse('${map['lon']}') ?? 0);
       }).where((item) => item.latitude != 0 && item.longitude != 0).toList();
       if (mounted) setState(() => _results = items);
-    } catch (_) {
-      // Keep previous suggestions when the public search service is unavailable.
-    } finally {
-      if (mounted) setState(() => _searching = false);
-    }
+    } catch (_) {} finally { if (mounted) setState(() => _searching = false); }
   }
 
   void _select(_PlaceResult place) {
+    if (_editingFrom) {
+      setState(() {
+        _pickupPoint = LatLng(place.latitude, place.longitude);
+        _pickupLabel = '${place.title}${place.subtitle.isEmpty ? '' : ', ${place.subtitle}'}';
+        _from.text = _pickupLabel;
+        _results = _suggested;
+        _editingFrom = false;
+      });
+      _toFocus.requestFocus();
+      return;
+    }
     FocusScope.of(context).unfocus();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UDriveVehicleSelectionScreen(
-          serviceType: widget.serviceType,
-          pickupLabel: widget.pickupLabel,
-          pickupPoint: widget.pickupPoint,
-          destination: place,
-        ),
-      ),
-    );
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => UDriveVehicleSelectionScreen(
+      serviceType: widget.serviceType,
+      pickupLabel: _pickupLabel,
+      pickupPoint: _pickupPoint,
+      destination: place,
+    )));
   }
+
+  InputDecoration _fieldDecoration(String label, IconData icon, {Widget? suffix}) => InputDecoration(
+    labelText: label,
+    labelStyle: const TextStyle(color: _muted, fontSize: 12),
+    prefixIcon: Icon(icon, color: Colors.white, size: 25),
+    suffixIcon: suffix,
+    filled: true,
+    fillColor: _tile,
+    contentPadding: const EdgeInsets.symmetric(vertical: 14),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.white24)),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.white, width: 1.5)),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final typed = _to.text.trim().isNotEmpty;
+    final activeText = (_editingFrom ? _from.text : _to.text).trim();
+    final typed = activeText.isNotEmpty;
     return Scaffold(
       backgroundColor: _ink,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: ColorFiltered(
-              colorFilter: const ColorFilter.matrix([
-                .48, 0, 0, 0, 0,
-                0, .55, 0, 0, 0,
-                0, 0, .72, 0, 0,
-                0, 0, 0, 1, 0,
-              ]),
-              child: FlutterMap(
-                options: MapOptions(initialCenter: widget.pickupPoint, initialZoom: 14.8),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.udrive.mobile',
-                  ),
-                  MarkerLayer(markers: [
-                    Marker(
-                      point: widget.pickupPoint,
-                      width: 48,
-                      height: 48,
-                      child: const Icon(Icons.location_pin, color: _lime, size: 46),
-                    ),
-                  ]),
-                ],
-              ),
-            ),
-          ),
-          Positioned.fill(child: ColoredBox(color: Colors.black.withValues(alpha: .22))),
-          SafeArea(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 720),
-                height: MediaQuery.sizeOf(context).height * .92,
-                decoration: const BoxDecoration(
-                  color: Color(0xFA181A18),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-                  boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 26, offset: Offset(0, -8))],
-                ),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 9),
-                    Container(width: 46, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99))),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(22, 18, 16, 14),
-                      child: Row(
-                        children: [
-                          const Spacer(),
-                          const Text('Enter your route', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
-                          const Spacer(),
-                          IconButton.filledTonal(
-                            onPressed: () => Navigator.pop(context),
-                            style: IconButton.styleFrom(backgroundColor: Colors.white10),
-                            icon: const Icon(Icons.close_rounded, color: Colors.white),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Column(
-                        children: [
-                          _RouteField(
-                            label: 'From',
-                            value: widget.pickupLabel,
-                            icon: Icons.airline_seat_recline_normal_rounded,
-                            readOnly: true,
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: _to,
-                            focusNode: _focus,
-                            onChanged: (value) {
-                              setState(() {});
-                              _onChanged(value);
-                            },
-                            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
-                            decoration: InputDecoration(
-                              labelText: 'To',
-                              labelStyle: const TextStyle(color: _muted),
-                              hintText: widget.serviceType == UDriveServiceType.tours ? 'Search destination or city' : 'Type destination or address',
-                              hintStyle: const TextStyle(color: Colors.white38),
-                              prefixIcon: const Icon(Icons.search_rounded, color: Colors.white, size: 30),
-                              suffixIcon: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (typed)
-                                    IconButton(
-                                      onPressed: () {
-                                        _to.clear();
-                                        _onChanged('');
-                                        setState(() {});
-                                      },
-                                      icon: const Icon(Icons.cancel_rounded, color: Colors.white54),
-                                    ),
-                                  const Padding(
-                                    padding: EdgeInsets.only(right: 10),
-                                    child: Icon(Icons.map_rounded, color: Color(0xFF75B8FF)),
-                                  ),
-                                ],
-                              ),
-                              filled: true,
-                              fillColor: _tile,
-                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.white70, width: 1.4)),
-                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.white, width: 2)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
-                      child: Row(
-                        children: [
-                          _FilterChip(label: typed ? 'Search Results' : 'Suggested', selected: true),
-                          const SizedBox(width: 9),
-                          const _FilterChip(label: 'Saved', selected: false),
-                          if (_searching) ...[
-                            const Spacer(),
-                            const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: _lime)),
-                          ],
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(20, 2, 20, 28),
-                        itemCount: _results.length,
-                        separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1, indent: 50),
-                        itemBuilder: (context, index) {
-                          final place = _results[index];
-                          final distance = const Distance().as(LengthUnit.Kilometer, widget.pickupPoint, LatLng(place.latitude, place.longitude));
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(vertical: 7),
-                            leading: Icon(typed ? Icons.location_on_outlined : Icons.history_rounded, color: Colors.white54, size: 29),
-                            title: Text(place.title, style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w800)),
-                            subtitle: Text(place.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, height: 1.3)),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (typed) Text('${distance.toStringAsFixed(1)} km', style: const TextStyle(color: _muted, fontSize: 12)),
-                                const SizedBox(width: 8),
-                                const Icon(Icons.bookmark_border_rounded, color: Colors.white54),
-                              ],
-                            ),
-                            onTap: () => _select(place),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      body: Stack(children: [
+        Positioned.fill(child: ColorFiltered(
+          colorFilter: const ColorFilter.matrix([.42,0,0,0,0,0,.48,0,0,0,0,0,.62,0,0,0,0,0,1,0]),
+          child: FlutterMap(options: MapOptions(initialCenter: _pickupPoint, initialZoom: 14.5), children: [
+            TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.udrive.mobile'),
+            MarkerLayer(markers: [Marker(point: _pickupPoint,width:48,height:48,child:const Icon(Icons.location_pin,color:_lime,size:46))]),
+          ]),
+        )),
+        Positioned.fill(child: ColoredBox(color: Colors.black.withValues(alpha: .26))),
+        SafeArea(child: Align(alignment: Alignment.bottomCenter, child: Container(
+          constraints: const BoxConstraints(maxWidth: 720),
+          height: MediaQuery.sizeOf(context).height * .92,
+          decoration: const BoxDecoration(color: Color(0xFC151715),borderRadius: BorderRadius.vertical(top: Radius.circular(30)),boxShadow:[BoxShadow(color:Colors.black54,blurRadius:26,offset:Offset(0,-8))]),
+          child: Column(children: [
+            const SizedBox(height:9),Container(width:46,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(99))),
+            Padding(padding:const EdgeInsets.fromLTRB(22,16,16,12),child:Row(children:[const Spacer(),Text(widget.serviceType.title,style:const TextStyle(color:Colors.white,fontSize:17,fontWeight:FontWeight.w900)),const Spacer(),IconButton.filledTonal(onPressed:()=>Navigator.pop(context),style:IconButton.styleFrom(backgroundColor:Colors.white10),icon:const Icon(Icons.close_rounded,color:Colors.white))])),
+            Padding(padding:const EdgeInsets.symmetric(horizontal:20),child:Column(children:[
+              TextField(controller:_from,focusNode:_fromFocus,onTap:(){setState(()=>_editingFrom=true);_onChanged(_from.text,from:true);},onChanged:(v){setState(()=>_editingFrom=true);_onChanged(v,from:true);},style:const TextStyle(color:Colors.white,fontSize:13,fontWeight:FontWeight.w700),decoration:_fieldDecoration('From',Icons.my_location_rounded)),
+              const SizedBox(height:9),
+              TextField(controller:_to,focusNode:_toFocus,onTap:()=>setState(()=>_editingFrom=false),onChanged:(v){setState(()=>_editingFrom=false);_onChanged(v,from:false);},style:const TextStyle(color:Colors.white,fontSize:13,fontWeight:FontWeight.w700),decoration:_fieldDecoration('To',Icons.search_rounded,suffix: _to.text.isEmpty?const Icon(Icons.map_rounded,color:Color(0xFF75B8FF)):IconButton(onPressed:(){_to.clear();_onChanged('',from:false);setState((){});},icon:const Icon(Icons.cancel_rounded,color:Colors.white54)))),
+            ])),
+            Padding(padding:const EdgeInsets.fromLTRB(20,14,20,8),child:Row(children:[_FilterChip(label:typed?'Search Results':'Suggested',selected:true),const SizedBox(width:8),const _FilterChip(label:'Saved',selected:false),if(_searching)...[const Spacer(),const SizedBox(width:17,height:17,child:CircularProgressIndicator(strokeWidth:2,color:_lime))]])),
+            Expanded(child:ListView.separated(padding:const EdgeInsets.fromLTRB(20,0,20,24),itemCount:_results.length,separatorBuilder:(_,__)=>const Divider(color:Colors.white10,height:1,indent:48),itemBuilder:(context,index){final place=_results[index];final distance=const Distance().as(LengthUnit.Kilometer,_pickupPoint,LatLng(place.latitude,place.longitude));return ListTile(contentPadding:const EdgeInsets.symmetric(vertical:5),leading:Icon(typed?Icons.location_on_outlined:Icons.history_rounded,color:Colors.white54,size:27),title:Text(place.title,style:const TextStyle(color:Colors.white,fontSize:13,fontWeight:FontWeight.w800)),subtitle:Text(place.subtitle,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(color:_muted,fontSize:11.5,height:1.25)),trailing:typed?Text('${distance.toStringAsFixed(1)} km',style:const TextStyle(color:_muted,fontSize:11)):const Icon(Icons.chevron_right_rounded,color:Colors.white38),onTap:()=>_select(place));})),
+          ]),
+        ))),
+      ]),
     );
   }
 }
@@ -339,6 +217,8 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   int _seats = 1;
   final _perSeatOffer = TextEditingController();
   final _wholeVehicleOffer = TextEditingController();
+  final Map<String, _DbRate> _dbRates = {};
+  bool _loadingRates = true;
 
   @override
   void initState() {
@@ -346,6 +226,41 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     if (widget.serviceType == UDriveServiceType.privateVehicle) {
       _bookingMode = _FareBookingMode.wholeVehicle;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadRates());
+  }
+
+  Future<void> _loadRates() async {
+    try {
+      final controller = AppControllerScope.of(context);
+      final service = widget.serviceType == UDriveServiceType.privateVehicle ? 'PrivateVehicle' : 'City';
+      final response = await controller.apiClient.getJson('/api/v1/catalog/service-rates?serviceType=$service', authenticated: false);
+      final raw = response['data'];
+      if (raw is List) {
+        for (final item in raw.whereType<Map>()) {
+          final map = Map<String, dynamic>.from(item);
+          final category = '${map['vehicleCategory'] ?? ''}'.toLowerCase();
+          _dbRates[category] = _DbRate(
+            (map['perSeatRate'] as num?)?.toDouble() ?? 0,
+            (map['wholeVehicleRate'] as num?)?.toDouble() ?? 0,
+          );
+        }
+      }
+      _applySelectedDefaultRates();
+    } catch (_) {
+      // Rates remain editable when the pricing endpoint is temporarily unavailable.
+    } finally {
+      if (mounted) setState(() => _loadingRates = false);
+    }
+  }
+
+  void _applySelectedDefaultRates() {
+    final choice = _choices[_selected];
+    final package = _matchingPackage(AppControllerScope.of(context), choice);
+    final db = _dbRates[_normaliseVehicle(choice.name)];
+    final perSeat = package?.pricePerSeat ?? db?.perSeatRate;
+    final whole = package?.wholeVehiclePrice ?? db?.wholeVehicleRate;
+    if (perSeat != null && perSeat > 0) _perSeatOffer.text = perSeat.round().toString();
+    if (whole != null && whole > 0) _wholeVehicleOffer.text = whole.round().toString();
   }
 
   @override
@@ -360,6 +275,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
             _VehicleChoiceData('Bike', '1 seat', 'Fast city travel', 1, Icons.two_wheeler_rounded),
             _VehicleChoiceData('Car', '4 seats', 'Comfortable city ride', 4, Icons.directions_car_rounded),
             _VehicleChoiceData('Rickshaw', '3 seats', 'Economical local ride', 3, Icons.electric_rickshaw_rounded),
+            _VehicleChoiceData('Coster', '22 seats', 'Shared seat or complete vehicle', 22, Icons.directions_bus_filled_rounded),
           ],
         UDriveServiceType.tours => const [
             _VehicleChoiceData('Car', '4 seats', 'Tour car or shared seat', 4, Icons.directions_car_rounded),
@@ -416,9 +332,8 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     final choice = _choices[_selected];
     final package = _matchingPackage(controller, choice);
     final wholeVehicle = _bookingMode == _FareBookingMode.wholeVehicle;
-    final amount = package == null
-        ? _typedAmount(wholeVehicle ? _wholeVehicleOffer : _perSeatOffer)
-        : (wholeVehicle ? package.wholeVehiclePrice : package.pricePerSeat * _seats);
+    final enteredRate = _typedAmount(wholeVehicle ? _wholeVehicleOffer : _perSeatOffer);
+    final amount = enteredRate == null ? null : (wholeVehicle ? enteredRate : enteredRate * _seats);
 
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -495,8 +410,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       (widget.pickupPoint.latitude + destinationPoint.latitude) / 2,
       (widget.pickupPoint.longitude + destinationPoint.longitude) / 2,
     );
-    final perSeatAmount = selectedPackage?.pricePerSeat ?? _typedAmount(_perSeatOffer) ?? 0;
-    final wholeAmount = selectedPackage?.wholeVehiclePrice ?? _typedAmount(_wholeVehicleOffer) ?? 0;
+    final selectedDbRate = _dbRates[_normaliseVehicle(selected.name)];
+    final perSeatAmount = _typedAmount(_perSeatOffer) ?? selectedPackage?.pricePerSeat ?? selectedDbRate?.perSeatRate ?? 0;
+    final wholeAmount = _typedAmount(_wholeVehicleOffer) ?? selectedPackage?.wholeVehiclePrice ?? selectedDbRate?.wholeVehicleRate ?? 0;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0C0E0D),
@@ -596,7 +512,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         color: active ? const Color(0xFF292C2A) : Colors.transparent,
                         borderRadius: BorderRadius.circular(18),
                         child: InkWell(
-                          onTap: () => setState(() { _selected = index; _seats = _seats.clamp(1, item.capacity).toInt(); }),
+                          onTap: () { setState(() { _selected = index; _seats = _seats.clamp(1, item.capacity).toInt(); }); _applySelectedDefaultRates(); },
                           borderRadius: BorderRadius.circular(18),
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
@@ -784,6 +700,12 @@ class _RouteSummary extends StatelessWidget {
       );
 }
 
+
+class _DbRate {
+  const _DbRate(this.perSeatRate, this.wholeVehicleRate);
+  final double perSeatRate;
+  final double wholeVehicleRate;
+}
 class _PlaceResult {
   const _PlaceResult(this.title, this.subtitle, this.latitude, this.longitude);
   final String title;

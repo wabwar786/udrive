@@ -210,7 +210,10 @@ public sealed class BookingService(
                    COALESCE(NULLIF(u.full_name, ''), 'Customer') AS customer_name
             FROM udrive.ride_requests rr
             JOIN udrive.users u ON u.id = rr.customer_user_id
+            JOIN udrive.driver_presence_locations dpl ON dpl.driver_profile_id = @driverProfileId
             WHERE rr.status IN ('Open', 'ReceivingOffers')
+              AND dpl.server_timestamp > now() - interval '2 minutes'
+              AND ST_DWithin(dpl.location, rr.pickup_location, 5000)
               AND rr.pickup_at > now()
               AND (rr.expires_at IS NULL OR rr.expires_at > now())
               AND rr.customer_user_id <> @driverUserId

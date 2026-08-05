@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/state/app_controller.dart';
+import '../../core/booking/trip_operations_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../models/booking_models.dart';
+import '../operations/live_trip_navigation_screen.dart';
 
 class DriverOffersScreen extends StatefulWidget {
   const DriverOffersScreen({
@@ -314,6 +316,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     setState(() => _confirming = true);
     try {
       final controller = AppControllerScope.of(context);
+      final selectedOffer = controller.liveDriverOffers.firstWhere((x) => x.id == _selectedOfferId);
       final booking = await controller.selectLiveDriverOffer(
         rideRequestId: widget.rideRequestId,
         offerId: _selectedOfferId!,
@@ -355,6 +358,8 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                     children: [
                       _ResultLine(label: _t(context, 'Driver', 'ڈرائیور'), value: booking.driverName ?? '-'),
                       _ResultLine(label: _t(context, 'Vehicle', 'گاڑی'), value: booking.vehicle ?? '-'),
+                      _ResultLine(label: _t(context, 'Driver arrival', 'ڈرائیور کی آمد'), value: '${selectedOffer.estimatedArrivalMinutes} minutes'),
+                      _ResultLine(label: _t(context, 'Live location', 'لائیو لوکیشن'), value: 'Updates every 10 seconds'),
                       _ResultLine(label: _t(context, 'Trip OTP', 'سفر او ٹی پی'), value: booking.tripOtp ?? '-'),
                       _ResultLine(
                         label: _t(context, 'Total', 'کل رقم'),
@@ -365,11 +370,22 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    Navigator.popUntil(context, (route) => route.isFirst);
+                  onPressed: () async {
+                    final navigator = Navigator.of(context);
+                    final repo = TripOperationsRepository(controller.apiClient);
+                    try {
+                      final trips = await repo.customerTrips();
+                      final trip = trips.firstWhere((x) => x.bookingId == booking.id);
+                      if (!context.mounted) return;
+                      navigator.pop();
+                      navigator.pushReplacement(MaterialPageRoute(builder: (_) => CustomerFullScreenTrackingScreen(trip: trip, repository: repo)));
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      navigator.pop();
+                      navigator.popUntil((route) => route.isFirst);
+                    }
                   },
-                  child: Text(_t(context, 'Open My Trips', 'میرے سفر کھولیں')),
+                  child: Text(_t(context, 'Track Driver Live', 'ڈرائیور کو لائیو دیکھیں')),
                 ),
               ],
             ),
