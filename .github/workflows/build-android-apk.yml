@@ -1,0 +1,54 @@
+name: Build UDrive Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "udrive_unified_mobile/**"
+      - ".github/workflows/build-android-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Generate Android project files when missing
+        working-directory: udrive_unified_mobile
+        run: |
+          if [ ! -d "android" ]; then
+            flutter create .               --platforms=android               --project-name=udrive_mobile               --org=com.udrive
+          fi
+
+      - name: Install dependencies
+        working-directory: udrive_unified_mobile
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: udrive_unified_mobile
+        run: flutter build apk --release --dart-define=DEFAULT_MODE=customer
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: udrive-mobile-apk
+          path: udrive_unified_mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
