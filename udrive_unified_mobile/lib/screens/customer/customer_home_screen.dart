@@ -538,6 +538,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final controller = AppControllerScope.of(context);
+    final recentBookings = controller.liveBookings.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return ColoredBox(
       color: const Color(0xFF111311),
       child: Stack(
@@ -659,10 +662,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    const _RecentPlaceTile(title: 'D-17/2 Markaz', subtitle: 'D-17, Islamabad'),
-                    const Divider(color: Colors.white10, indent: 54),
-                    const _RecentPlaceTile(title: 'F-10 Markaz', subtitle: 'F-10, Islamabad'),
+                    const SizedBox(height: 12),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 2),
+                      child: Text('Recent bookings', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
+                    ),
+                    const SizedBox(height: 4),
+                    if (recentBookings.isEmpty)
+                      const _EmptyRecentBookings()
+                    else
+                      ...recentBookings.take(3).map((booking) => _RecentBookingTile(
+                            booking: booking,
+                            onTap: () => _openRouteFlow(UDriveServiceType.city),
+                          )),
                   ],
                 ),
               );
@@ -2145,11 +2157,11 @@ class _UDriveServicesGrid extends StatelessWidget {
             Expanded(
               flex: 11,
               child: _ServiceTile(
-                title: 'Travel within city',
-                subtitle: 'car, bike, rickshaw',
-                icon: Icons.directions_car_filled_rounded,
-                secondaryIcon: Icons.two_wheeler_rounded,
-                onTap: onCity,
+                title: 'Tours & Trips',
+                subtitle: 'per seat or full vehicle',
+                icon: Icons.airport_shuttle_rounded,
+                secondaryIcon: Icons.landscape_rounded,
+                onTap: onTours,
                 large: true,
               ),
             ),
@@ -2160,10 +2172,11 @@ class _UDriveServicesGrid extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _ServiceTile(
-                      title: 'Tours & Trips',
-                      subtitle: 'coster, car',
-                      icon: Icons.airport_shuttle_rounded,
-                      onTap: onTours,
+                      title: 'Travel within city',
+                      subtitle: 'car, bike, rickshaw',
+                      icon: Icons.directions_car_filled_rounded,
+                      secondaryIcon: Icons.two_wheeler_rounded,
+                      onTap: onCity,
                     ),
                   ),
                   const SizedBox(height: 9),
@@ -2273,6 +2286,79 @@ class _ServiceTile extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      );
+}
+
+class _RecentBookingTile extends StatelessWidget {
+  const _RecentBookingTile({required this.booking, required this.onTap});
+
+  final LiveBooking booking;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateFormat('dd MMM, h:mm a').format(booking.pickupAt);
+    final isTour = booking.tourPackageId != null || booking.packageBookingId != null;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)),
+                child: Icon(isTour ? Icons.landscape_rounded : Icons.route_rounded, color: _CustomerHomeScreenState._lime, size: 20),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      booking.destinationLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${booking.pickupLabel}  •  $date',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white54, fontSize: 10.5),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white38, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyRecentBookings extends StatelessWidget {
+  const _EmptyRecentBookings();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: const EdgeInsets.only(top: 6),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: Colors.white.withValues(alpha: .05), borderRadius: BorderRadius.circular(14)),
+        child: const Row(
+          children: [
+            Icon(Icons.receipt_long_rounded, color: Colors.white38, size: 20),
+            SizedBox(width: 10),
+            Expanded(child: Text('Your completed and upcoming bookings will appear here.', style: TextStyle(color: Colors.white54, fontSize: 11.5))),
+          ],
         ),
       );
 }
