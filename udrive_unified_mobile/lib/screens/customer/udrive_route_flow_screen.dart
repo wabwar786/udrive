@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/state/app_controller.dart';
 import '../../models/booking_models.dart';
@@ -58,23 +59,61 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
   bool _editingFrom = false;
   late LatLng _pickupPoint;
   late String _pickupLabel;
+  late UDriveServiceType _serviceType;
+  bool _initialWholeVehicle = false;
   List<_PlaceResult> _results = const [];
-
-  static const _suggested = [
-    _PlaceResult('D-17/2 Markaz', 'D-17, Islamabad', 33.6945, 72.8257),
-    _PlaceResult('F-10 Markaz', 'F-10, Islamabad', 33.6998, 73.0127),
-    _PlaceResult('Blue Area', 'Jinnah Avenue, Islamabad', 33.7105, 73.0551),
-    _PlaceResult('Saddar Rawalpindi', 'Saddar, Rawalpindi', 33.5964, 73.0537),
-  ];
+  List<_PlaceResult> _recentSearches = const [];
 
   @override
   void initState() {
     super.initState();
     _pickupPoint = widget.pickupPoint;
     _pickupLabel = widget.pickupLabel;
+    _serviceType = widget.serviceType;
     _from = TextEditingController(text: widget.pickupLabel);
-    _results = _suggested;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _toFocus.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadRecentSearches();
+      _toFocus.requestFocus();
+    });
+  }
+
+  Future<void> _loadRecentSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList('udrive_recent_destination_searches') ?? const [];
+    final items = <_PlaceResult>[];
+    for (final value in raw) {
+      try {
+        final map = Map<String, dynamic>.from(jsonDecode(value) as Map);
+        items.add(_PlaceResult(
+          '${map['title'] ?? ''}',
+          '${map['subtitle'] ?? ''}',
+          (map['latitude'] as num?)?.toDouble() ?? 0,
+          (map['longitude'] as num?)?.toDouble() ?? 0,
+        ));
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() {
+      _recentSearches = items.where((e) => e.latitude != 0 && e.longitude != 0).take(8).toList();
+      if (_to.text.trim().isEmpty && !_editingFrom) _results = _recentSearches;
+    });
+  }
+
+  Future<void> _rememberSearch(_PlaceResult place) async {
+    final prefs = await SharedPreferences.getInstance();
+    final items = <_PlaceResult>[place, ..._recentSearches.where((e) =>
+      e.title.toLowerCase() != place.title.toLowerCase() ||
+      e.subtitle.toLowerCase() != place.subtitle.toLowerCase())].take(8).toList();
+    await prefs.setStringList(
+      'udrive_recent_destination_searches',
+      items.map((e) => jsonEncode({
+        'title': e.title,
+        'subtitle': e.subtitle,
+        'latitude': e.latitude,
+        'longitude': e.longitude,
+      })).toList(),
+    );
+    if (mounted) setState(() => _recentSearches = items);
   }
 
   @override
@@ -92,7 +131,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     _debounce?.cancel();
     final query = value.trim();
     if (query.length < 2) {
-      setState(() { _searching = false; _results = _suggested; });
+      setState(() { _searching = false; _results = _recentSearches; });
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 400), () => _search(query));
@@ -125,15 +164,17 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
         _pickupPoint = LatLng(place.latitude, place.longitude);
         _pickupLabel = '${place.title}${place.subtitle.isEmpty ? '' : ', ${place.subtitle}'}';
         _from.text = _pickupLabel;
-        _results = _suggested;
+        _results = _recentSearches;
         _editingFrom = false;
       });
       _toFocus.requestFocus();
       return;
     }
     FocusScope.of(context).unfocus();
+    _rememberSearch(place);
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => UDriveVehicleSelectionScreen(
-      serviceType: widget.serviceType,
+      serviceType: _serviceType,
+      initialWholeVehicle: _initialWholeVehicle,
       pickupLabel: _pickupLabel,
       pickupPoint: _pickupPoint,
       destination: place,
@@ -157,6 +198,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     final activeText = (_editingFrom ? _from.text : _to.text).trim();
     final typed = activeText.isNotEmpty;
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: _ink,
       body: Stack(children: [
         Positioned.fill(child: ColorFiltered(
@@ -169,17 +211,57 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
         Positioned.fill(child: ColoredBox(color: Colors.black.withValues(alpha: .26))),
         SafeArea(child: Align(alignment: Alignment.bottomCenter, child: Container(
           constraints: const BoxConstraints(maxWidth: 720),
-          height: MediaQuery.sizeOf(context).height * .92,
+          height: (MediaQuery.sizeOf(context).height * .94 - MediaQuery.viewInsetsOf(context).bottom).clamp(430.0, MediaQuery.sizeOf(context).height * .94).toDouble(),
           decoration: const BoxDecoration(color: Color(0xFC151715),borderRadius: BorderRadius.vertical(top: Radius.circular(30)),boxShadow:[BoxShadow(color:Colors.black54,blurRadius:26,offset:Offset(0,-8))]),
           child: Column(children: [
             const SizedBox(height:9),Container(width:46,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(99))),
-            Padding(padding:const EdgeInsets.fromLTRB(22,16,16,12),child:Row(children:[const Spacer(),Text(widget.serviceType.title,style:const TextStyle(color:Colors.white,fontSize:17,fontWeight:FontWeight.w900)),const Spacer(),IconButton.filledTonal(onPressed:()=>Navigator.pop(context),style:IconButton.styleFrom(backgroundColor:Colors.white10),icon:const Icon(Icons.close_rounded,color:Colors.white))])),
+            Padding(padding:const EdgeInsets.fromLTRB(14,16,14,12),child:Row(children:[IconButton.filledTonal(onPressed:()=>Navigator.maybePop(context),style:IconButton.styleFrom(backgroundColor:Colors.white10),icon:const Icon(Icons.arrow_back_rounded,color:Colors.white)),const SizedBox(width:8),Expanded(child:Text(_serviceType.title,textAlign:TextAlign.center,style:const TextStyle(color:Colors.white,fontSize:17,fontWeight:FontWeight.w900))),const SizedBox(width:8),IconButton.filledTonal(onPressed:()=>Navigator.of(context).popUntil((route)=>route.isFirst),style:IconButton.styleFrom(backgroundColor:Colors.white10),icon:const Icon(Icons.home_rounded,color:Colors.white))])),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(14)),
+                    child: Row(children: [
+                      Expanded(child: _RouteModeChoice(
+                        label: 'City-to-city',
+                        selected: _serviceType == UDriveServiceType.city,
+                        onTap: () => setState(() => _serviceType = UDriveServiceType.city),
+                      )),
+                      Expanded(child: _RouteModeChoice(
+                        label: 'Tour booking',
+                        selected: _serviceType == UDriveServiceType.tours,
+                        onTap: () => setState(() => _serviceType = UDriveServiceType.tours),
+                      )),
+                    ]),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(color: const Color(0xFF222522), borderRadius: BorderRadius.circular(14)),
+                    child: Row(children: [
+                      Expanded(child: _RouteModeChoice(
+                        label: 'Seat booking',
+                        selected: !_initialWholeVehicle,
+                        onTap: () => setState(() => _initialWholeVehicle = false),
+                      )),
+                      Expanded(child: _RouteModeChoice(
+                        label: 'Full vehicle',
+                        selected: _initialWholeVehicle,
+                        onTap: () => setState(() => _initialWholeVehicle = true),
+                      )),
+                    ]),
+                  ),
+                ],
+              ),
+            ),
             Padding(padding:const EdgeInsets.symmetric(horizontal:20),child:Column(children:[
               TextField(controller:_from,focusNode:_fromFocus,onTap:(){setState(()=>_editingFrom=true);_onChanged(_from.text,from:true);},onChanged:(v){setState(()=>_editingFrom=true);_onChanged(v,from:true);},style:const TextStyle(color:Colors.white,fontSize:13,fontWeight:FontWeight.w700),decoration:_fieldDecoration('From',Icons.my_location_rounded)),
               const SizedBox(height:9),
               TextField(controller:_to,focusNode:_toFocus,onTap:()=>setState(()=>_editingFrom=false),onChanged:(v){setState(()=>_editingFrom=false);_onChanged(v,from:false);},style:const TextStyle(color:Colors.white,fontSize:13,fontWeight:FontWeight.w700),decoration:_fieldDecoration('To',Icons.search_rounded,suffix: _to.text.isEmpty?const Icon(Icons.map_rounded,color:Color(0xFF75B8FF)):IconButton(onPressed:(){_to.clear();_onChanged('',from:false);setState((){});},icon:const Icon(Icons.cancel_rounded,color:Colors.white54)))),
             ])),
-            Padding(padding:const EdgeInsets.fromLTRB(20,14,20,8),child:Row(children:[_FilterChip(label:typed?'Search Results':'Suggested',selected:true),const SizedBox(width:8),const _FilterChip(label:'Saved',selected:false),if(_searching)...[const Spacer(),const SizedBox(width:17,height:17,child:CircularProgressIndicator(strokeWidth:2,color:_lime))]])),
+            Padding(padding:const EdgeInsets.fromLTRB(20,14,20,8),child:Row(children:[_FilterChip(label:typed?'Search Results':'Recent searches',selected:true),const SizedBox(width:8),if(_searching)...[const Spacer(),const SizedBox(width:17,height:17,child:CircularProgressIndicator(strokeWidth:2,color:_lime))]])),
             Expanded(child:ListView.separated(padding:const EdgeInsets.fromLTRB(20,0,20,24),itemCount:_results.length,separatorBuilder:(_,__)=>const Divider(color:Colors.white10,height:1,indent:48),itemBuilder:(context,index){final place=_results[index];final distance=const Distance().as(LengthUnit.Kilometer,_pickupPoint,LatLng(place.latitude,place.longitude));return ListTile(contentPadding:const EdgeInsets.symmetric(vertical:5),leading:Icon(typed?Icons.location_on_outlined:Icons.history_rounded,color:Colors.white54,size:27),title:Text(place.title,style:const TextStyle(color:Colors.white,fontSize:13,fontWeight:FontWeight.w800)),subtitle:Text(place.subtitle,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(color:_muted,fontSize:11.5,height:1.25)),trailing:typed?Text('${distance.toStringAsFixed(1)} km',style:const TextStyle(color:_muted,fontSize:11)):const Icon(Icons.chevron_right_rounded,color:Colors.white38),onTap:()=>_select(place));})),
           ]),
         ))),
@@ -196,6 +278,7 @@ class UDriveVehicleSelectionScreen extends StatefulWidget {
     required this.pickupLabel,
     required this.pickupPoint,
     required this.destination,
+    this.initialWholeVehicle = false,
     super.key,
   });
 
@@ -203,6 +286,7 @@ class UDriveVehicleSelectionScreen extends StatefulWidget {
   final String pickupLabel;
   final LatLng pickupPoint;
   final _PlaceResult destination;
+  final bool initialWholeVehicle;
 
   @override
   State<UDriveVehicleSelectionScreen> createState() => _UDriveVehicleSelectionScreenState();
@@ -223,7 +307,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   @override
   void initState() {
     super.initState();
-    if (widget.serviceType == UDriveServiceType.privateVehicle) {
+    if (widget.serviceType == UDriveServiceType.privateVehicle || widget.initialWholeVehicle) {
       _bookingMode = _FareBookingMode.wholeVehicle;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadRates());
@@ -272,19 +356,19 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   List<_VehicleChoiceData> get _choices => switch (widget.serviceType) {
         UDriveServiceType.city => const [
-            _VehicleChoiceData('Bike', '1 seat', 'Fast city travel', 1, Icons.two_wheeler_rounded),
-            _VehicleChoiceData('Car', '4 seats', 'Comfortable city ride', 4, Icons.directions_car_rounded),
-            _VehicleChoiceData('Rickshaw', '3 seats', 'Economical local ride', 3, Icons.electric_rickshaw_rounded),
-            _VehicleChoiceData('Coster', '22 seats', 'Shared seat or complete vehicle', 22, Icons.directions_bus_filled_rounded),
+            _VehicleChoiceData('Bike', '1 seat', 'Fast city travel', 1, 'assets/vehicles_photo/bike_photo.png'),
+            _VehicleChoiceData('Car', '4 seats', 'Comfortable city ride', 4, 'assets/vehicles_photo/car_photo.png'),
+            _VehicleChoiceData('Rickshaw', '3 seats', 'Economical local ride', 3, 'assets/vehicles_photo/rickshaw_photo.png'),
+            _VehicleChoiceData('Coster', '22 seats', 'Shared seat or complete vehicle', 22, 'assets/vehicles_photo/coaster_photo.png'),
           ],
         UDriveServiceType.tours => const [
-            _VehicleChoiceData('Car', '4 seats', 'Tour car or shared seat', 4, Icons.directions_car_rounded),
-            _VehicleChoiceData('Coster', '22 seats', 'Group tour and per-seat travel', 22, Icons.airport_shuttle_rounded),
+            _VehicleChoiceData('Car', '4 seats', 'Tour car or shared seat', 4, 'assets/vehicles_photo/car_photo.png'),
+            _VehicleChoiceData('Coster', '22 seats', 'Group tour and per-seat travel', 22, 'assets/vehicles_photo/coaster_photo.png'),
           ],
         UDriveServiceType.privateVehicle => const [
-            _VehicleChoiceData('Car', '4 seats', 'Book the complete car', 4, Icons.local_taxi_rounded),
-            _VehicleChoiceData('Coster', '22 seats', 'Private vehicle for groups', 22, Icons.directions_bus_filled_rounded),
-            _VehicleChoiceData('Bike', '1 seat', 'Private bike ride', 1, Icons.two_wheeler_rounded),
+            _VehicleChoiceData('Car', '4 seats', 'Book the complete car', 4, 'assets/vehicles_photo/private_car_photo.png'),
+            _VehicleChoiceData('Coster', '22 seats', 'Private vehicle for groups', 22, 'assets/vehicles_photo/coaster_photo.png'),
+            _VehicleChoiceData('Bike', '1 seat', 'Private bike ride', 1, 'assets/vehicles_photo/bike_photo.png'),
           ],
       };
 
@@ -449,8 +533,12 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     style: IconButton.styleFrom(backgroundColor: const Color(0xF0121413)),
                     icon: const Icon(Icons.arrow_back_rounded, size: 20),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(child: _RouteSummary(pickup: widget.pickupLabel, destination: widget.destination.title)),
+                  const Spacer(),
+                  IconButton.filled(
+                    onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                    style: IconButton.styleFrom(backgroundColor: const Color(0xF0121413)),
+                    icon: const Icon(Icons.home_rounded, size: 20),
+                  ),
                 ],
               ),
             ),
@@ -518,7 +606,13 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
                             decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: active ? Colors.white24 : Colors.white.withValues(alpha: .04))),
                             child: Row(children: [
-                              Container(width: 48, height: 48, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .055), borderRadius: BorderRadius.circular(14)), child: Icon(item.icon, color: active ? _lime : Colors.white70, size: 29)),
+                              Container(
+                                width: 72,
+                                height: 54,
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(color: Colors.white.withValues(alpha: .035), borderRadius: BorderRadius.circular(14)),
+                                child: Image.asset(item.imageAsset, fit: BoxFit.contain, filterQuality: FilterQuality.high),
+                              ),
                               const SizedBox(width: 10),
                               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 Text(item.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
@@ -715,10 +809,40 @@ class _PlaceResult {
 }
 
 class _VehicleChoiceData {
-  const _VehicleChoiceData(this.name, this.meta, this.note, this.capacity, this.icon);
+  const _VehicleChoiceData(this.name, this.meta, this.note, this.capacity, this.imageAsset);
   final String name;
   final String meta;
   final String note;
   final int capacity;
-  final IconData icon;
+  final String imageAsset;
+}
+
+class _RouteModeChoice extends StatelessWidget {
+  const _RouteModeChoice({required this.label, required this.selected, required this.onTap});
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(11),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? _lime : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.black : Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      );
 }

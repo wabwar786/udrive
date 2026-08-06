@@ -7,12 +7,12 @@ import '../theme/app_theme.dart';
 /// illustrations so every ride card shows a real vehicle picture instead of a
 /// bare icon. Used across the customer home, packages and booking screens.
 enum VehicleArt {
-  sedan('assets/vehicles/sedan.png', 'Car', Icons.directions_car_filled_rounded),
-  suv('assets/vehicles/suv.png', '4x4 / Jeep', Icons.terrain_rounded),
-  van('assets/vehicles/van.png', 'Van', Icons.airport_shuttle_rounded),
-  coaster('assets/vehicles/coaster.png', 'Coaster', Icons.directions_bus_filled_rounded),
-  bike('assets/vehicles/bike.png', 'Bike', Icons.two_wheeler_rounded),
-  rickshaw('assets/vehicles/rickshaw.png', 'Rickshaw', Icons.electric_rickshaw_rounded);
+  sedan('assets/vehicles_photo/car_photo.png', 'Car', Icons.directions_car_filled_rounded),
+  suv('assets/vehicles_photo/private_car_photo.png', '4x4 / Jeep', Icons.terrain_rounded),
+  van('assets/vehicles_photo/coaster_photo.png', 'Van', Icons.airport_shuttle_rounded),
+  coaster('assets/vehicles_photo/coaster_photo.png', 'Coaster', Icons.directions_bus_filled_rounded),
+  bike('assets/vehicles_photo/bike_photo.png', 'Bike', Icons.two_wheeler_rounded),
+  rickshaw('assets/vehicles_photo/rickshaw_photo.png', 'Rickshaw', Icons.electric_rickshaw_rounded);
 
   const VehicleArt(this.asset, this.label, this.icon);
 

@@ -77,7 +77,27 @@ class _LiveExploreScreenState extends State<LiveExploreScreen> {
           .contains(q);
     }).toList();
 
-    return RefreshIndicator(
+    return Scaffold(
+      backgroundColor: const Color(0xFF111311),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF111311),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: () => Navigator.maybePop(context),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+        title: Text(_t('Explore Kashmir', 'کشمیر کی سیر کریں'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        actions: [
+          IconButton(
+            tooltip: 'Home',
+            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+            icon: const Icon(Icons.home_rounded),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
@@ -142,6 +162,7 @@ class _LiveExploreScreenState extends State<LiveExploreScreen> {
             else
               _buildPackages(packages),
         ],
+      ),
       ),
     );
   }

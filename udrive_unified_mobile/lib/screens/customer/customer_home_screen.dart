@@ -1714,19 +1714,19 @@ class _RideCard extends StatelessWidget {
   String get _vehicleAsset {
     final raw = '${ride.vehicle} ${ride.title}'.toLowerCase();
     if (raw.contains('bike') || raw.contains('motor')) {
-      return 'assets/vehicles/bike.png';
+      return 'assets/vehicles_photo/bike_photo.png';
     }
     if (raw.contains('rickshaw') || raw.contains('auto')) {
-      return 'assets/vehicles/rickshaw.png';
+      return 'assets/vehicles_photo/rickshaw_photo.png';
     }
     if (raw.contains('coaster') || raw.contains('coster') || raw.contains('bus')) {
-      return 'assets/vehicles/coaster.png';
+      return 'assets/vehicles_photo/coaster_photo.png';
     }
-    if (raw.contains('van')) return 'assets/vehicles/van.png';
+    if (raw.contains('van')) return 'assets/vehicles_photo/coaster_photo.png';
     if (raw.contains('suv') || raw.contains('prado') || raw.contains('fortuner')) {
-      return 'assets/vehicles/suv.png';
+      return 'assets/vehicles_photo/private_car_photo.png';
     }
-    return 'assets/vehicles/sedan.png';
+    return 'assets/vehicles_photo/car_photo.png';
   }
 
   Widget _vehicleImage() {
@@ -2161,6 +2161,7 @@ class _UDriveServicesGrid extends StatelessWidget {
                 subtitle: 'per seat or full vehicle',
                 icon: Icons.airport_shuttle_rounded,
                 secondaryIcon: Icons.landscape_rounded,
+                imageAsset: 'assets/vehicles_photo/tour_photo.png',
                 onTap: onTours,
                 large: true,
               ),
@@ -2176,6 +2177,7 @@ class _UDriveServicesGrid extends StatelessWidget {
                       subtitle: 'car, bike, rickshaw',
                       icon: Icons.directions_car_filled_rounded,
                       secondaryIcon: Icons.two_wheeler_rounded,
+                      imageAsset: 'assets/vehicles_photo/car_photo.png',
                       onTap: onCity,
                     ),
                   ),
@@ -2186,6 +2188,7 @@ class _UDriveServicesGrid extends StatelessWidget {
                       subtitle: 'coster, car, bike',
                       icon: Icons.local_taxi_rounded,
                       secondaryIcon: Icons.two_wheeler_rounded,
+                      imageAsset: 'assets/vehicles_photo/private_car_photo.png',
                       onTap: onPrivate,
                     ),
                   ),
@@ -2195,6 +2198,7 @@ class _UDriveServicesGrid extends StatelessWidget {
                       title: 'Explore Kashmir',
                       subtitle: 'destinations & experiences',
                       icon: Icons.landscape_rounded,
+                      imageAsset: 'assets/images/neelum.png',
                       onTap: onExplore,
                     ),
                   ),
@@ -2213,6 +2217,7 @@ class _ServiceTile extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.secondaryIcon,
+    this.imageAsset,
     this.large = false,
   });
 
@@ -2220,12 +2225,13 @@ class _ServiceTile extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final IconData? secondaryIcon;
+  final String? imageAsset;
   final VoidCallback onTap;
   final bool large;
 
   @override
   Widget build(BuildContext context) => Material(
-        color: const Color(0xFF252725),
+        color: const Color(0xFF171917),
         borderRadius: BorderRadius.circular(22),
         child: InkWell(
           onTap: onTap,
@@ -2233,51 +2239,72 @@ class _ServiceTile extends StatelessWidget {
           child: Ink(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: const Color(0xFF3A3E3A)),
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFF272927), Color(0xFF1A1C1A)],
+                colors: [Color(0xFF252825), Color(0xFF121412)],
               ),
             ),
             child: Stack(
+              clipBehavior: Clip.hardEdge,
               children: [
                 Positioned(
-                  right: large ? -38 : -20,
-                  bottom: large ? -42 : -28,
+                  right: large ? -50 : -34,
+                  bottom: large ? -54 : -38,
                   child: Transform.rotate(
-                    angle: -.22,
+                    angle: -.18,
                     child: Container(
-                      width: large ? 180 : 110,
-                      height: large ? 180 : 110,
+                      width: large ? 210 : 132,
+                      height: large ? 210 : 132,
                       decoration: BoxDecoration(
                         color: const Color(0xFFB7F20A),
-                        borderRadius: BorderRadius.circular(38),
+                        borderRadius: BorderRadius.circular(42),
                       ),
                     ),
                   ),
                 ),
+                if (imageAsset != null)
+                  Positioned(
+                    right: large ? -2 : -5,
+                    bottom: large ? 4 : -2,
+                    child: SizedBox(
+                      width: large ? 185 : 116,
+                      height: large ? 118 : 76,
+                      child: Image.asset(
+                        imageAsset!,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        errorBuilder: (_, __, ___) => Icon(
+                          icon,
+                          color: const Color(0xFF101210),
+                          size: large ? 58 : 37,
+                        ),
+                      ),
+                    ),
+                  ),
                 Padding(
                   padding: EdgeInsets.all(large ? 16 : 13),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: TextStyle(color: Colors.white, fontSize: large ? 18 : 15, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 2),
-                      Text(subtitle, maxLines: 2, style: TextStyle(color: Colors.white60, fontSize: large ? 12 : 10.5, height: 1.2)),
-                      const Spacer(),
-                      Align(
-                        alignment: Alignment.bottomRight,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            if (secondaryIcon != null) ...[
-                              Icon(secondaryIcon, color: const Color(0xFF101210), size: large ? 38 : 25),
-                              const SizedBox(width: 3),
-                            ],
-                            Icon(icon, color: const Color(0xFF101210), size: large ? 58 : 37),
-                          ],
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: large ? 17 : 14,
+                          fontWeight: FontWeight.w900,
+                          height: 1.08,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        style: TextStyle(
+                          color: Colors.white60,
+                          fontSize: large ? 11.5 : 10,
+                          height: 1.2,
                         ),
                       ),
                     ],

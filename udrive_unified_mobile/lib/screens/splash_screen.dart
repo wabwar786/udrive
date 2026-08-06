@@ -84,7 +84,7 @@ class _SplashScreenState extends State<SplashScreen>
                               bottom: 20,
                               child: Transform.rotate(
                                 angle: -.06,
-                                child: Image.asset('assets/vehicles/suv.png', width: 220, fit: BoxFit.contain),
+                                child: Image.asset('assets/vehicles_photo/private_car_photo.png', width: 220, fit: BoxFit.contain),
                               ),
                             ),
                             Positioned(
@@ -92,7 +92,7 @@ class _SplashScreenState extends State<SplashScreen>
                               bottom: 0,
                               child: Transform.rotate(
                                 angle: .035,
-                                child: Image.asset('assets/vehicles/sedan.png', width: 245, fit: BoxFit.contain),
+                                child: Image.asset('assets/vehicles_photo/car_photo.png', width: 245, fit: BoxFit.contain),
                               ),
                             ),
                             Positioned(
