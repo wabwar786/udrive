@@ -334,6 +334,8 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   final _wholeVehicleOffer = TextEditingController();
   final Map<String, _DbRate> _dbRates = {};
   bool _loadingRates = true;
+  String? _selectedPackageId;
+  Timer? _availabilityTimer;
 
   @override
   void initState() {
@@ -342,6 +344,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       _bookingMode = _FareBookingMode.wholeVehicle;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadRates());
+    _availabilityTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted && widget.serviceType == UDriveServiceType.tours) setState(() {});
+    });
   }
 
   Future<void> _loadRates() async {
@@ -359,6 +364,10 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
             (map['wholeVehicleRate'] as num?)?.toDouble() ?? 0,
           );
         }
+      }
+      if (widget.serviceType == UDriveServiceType.tours) {
+        final packages = _matchingPackages(controller);
+        if (packages.isNotEmpty) _selectedPackageId ??= packages.first.id;
       }
       _applySelectedDefaultRates();
     } catch (_) {
@@ -380,6 +389,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   @override
   void dispose() {
+    _availabilityTimer?.cancel();
     _perSeatOffer.dispose();
     _wholeVehicleOffer.dispose();
     super.dispose();
@@ -421,19 +431,54 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     return 'car';
   }
 
-  LiveTourPackage? _matchingPackage(AppController controller, _VehicleChoiceData choice) {
-    if (widget.serviceType != UDriveServiceType.tours) return null;
-    final destination = widget.destination.title.toLowerCase();
+  List<LiveTourPackage> _matchingPackages(AppController controller) {
+    if (widget.serviceType != UDriveServiceType.tours) return const [];
+    final destination = widget.destination.title.trim().toLowerCase();
+    final now = DateTime.now();
+    final end = now.add(const Duration(days: 30));
     final candidates = controller.liveMarketplacePackages.where((package) {
-      final matchesDestination = package.destination.toLowerCase().contains(destination) ||
-          package.title.toLowerCase().contains(destination) ||
-          destination.contains(package.destination.toLowerCase());
-      final matchesVehicle = _normaliseVehicle(package.vehicle) == _normaliseVehicle(choice.name);
-      final withinThirtyDays = package.departureAt.isAfter(DateTime.now().subtract(const Duration(minutes: 1))) &&
-          package.departureAt.isBefore(DateTime.now().add(const Duration(days: 30)));
-      return matchesDestination && matchesVehicle && withinThirtyDays;
+      final searchable = '${package.destination} ${package.title} ${package.pickupPoint} ${package.startingCity}'.toLowerCase();
+      final matchesDestination = searchable.contains(destination) || destination.contains(package.destination.toLowerCase());
+      final withinThirtyDays = package.departureAt.isAfter(now.subtract(const Duration(hours: 2))) && package.departureAt.isBefore(end);
+      return matchesDestination && withinThirtyDays;
     }).toList()..sort((a, b) => a.departureAt.compareTo(b.departureAt));
-    return candidates.isEmpty ? null : candidates.first;
+    return candidates;
+  }
+
+  LiveTourPackage? _matchingPackage(AppController controller, _VehicleChoiceData choice) {
+    final packages = _matchingPackages(controller);
+    if (packages.isEmpty) return null;
+    if (_selectedPackageId != null) {
+      for (final package in packages) {
+        if (package.id == _selectedPackageId) return package;
+      }
+    }
+    for (final package in packages) {
+      if (_normaliseVehicle(package.vehicle) == _normaliseVehicle(choice.name)) return package;
+    }
+    return packages.first;
+  }
+
+  bool _packageBookable(LiveTourPackage package) {
+    final minutes = package.departureAt.difference(DateTime.now()).inMinutes;
+    return package.bookableSeats > 0 && minutes > 10;
+  }
+
+  String _packageTiming(LiveTourPackage package) {
+    final minutes = package.departureAt.difference(DateTime.now()).inMinutes;
+    if (minutes <= 10) return 'Pickup closed';
+    if (minutes < 60) return 'Reaches pickup in about $minutes min';
+    if (minutes < 180) return 'Reaches pickup in about ${(minutes / 60).toStringAsFixed(1)} hr';
+    final d = package.departureAt;
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}  ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _packageImage(LiveTourPackage package) {
+    final type = _normaliseVehicle(package.vehicle);
+    if (type == 'coster') return 'assets/vehicles_photo/coaster_clean.png';
+    if (type == 'bike') return 'assets/vehicles_photo/bike_clean.png';
+    if (type == 'rickshaw') return 'assets/vehicles_photo/rickshaw_clean.png';
+    return 'assets/vehicles_photo/car_clean.png';
   }
 
   double? _typedAmount(TextEditingController controller) {
@@ -450,6 +495,10 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     final enteredRate = _typedAmount(wholeVehicle ? _wholeVehicleOffer : _perSeatOffer);
     final amount = enteredRate == null ? null : (wholeVehicle ? enteredRate : enteredRate * _seats);
 
+    if (package != null && !_packageBookable(package)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This vehicle has already passed the booking cutoff and cannot be booked.')));
+      return;
+    }
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter your fare offer before finding a driver.')),
@@ -465,10 +514,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
     setState(() => _submitting = true);
     try {
-      final pickupAt = widget.serviceType == UDriveServiceType.city
+      final pickupAt = package?.departureAt ?? (widget.serviceType == UDriveServiceType.city
           ? DateTime.now().add(const Duration(minutes: 10))
-          : DateTime(_tourDate.year, _tourDate.month, _tourDate.day, 8);
-      final requestedSeats = wholeVehicle ? choice.capacity : _seats.clamp(1, choice.capacity).toInt();
+          : DateTime(_tourDate.year, _tourDate.month, _tourDate.day, 8));
+      final capacity = package?.totalSeats ?? choice.capacity;
+      final requestedSeats = wholeVehicle ? capacity : _seats.clamp(1, package?.bookableSeats ?? capacity).toInt();
       final request = await controller.createLiveRideRequest({
         'pickupLabel': widget.pickupLabel,
         'destinationLabel': widget.destination.title,
@@ -519,8 +569,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   Widget build(BuildContext context) {
     final app = AppControllerScope.of(context);
     final destinationPoint = LatLng(widget.destination.latitude, widget.destination.longitude);
+    final tourPackages = _matchingPackages(app);
     final selected = _choices[_selected];
     final selectedPackage = _matchingPackage(app, selected);
+    final effectiveCapacity = selectedPackage?.totalSeats ?? selected.capacity;
+    final selectedPackageBookable = selectedPackage == null || _packageBookable(selectedPackage);
     final center = LatLng(
       (widget.pickupPoint.latitude + destinationPoint.latitude) / 2,
       (widget.pickupPoint.longitude + destinationPoint.longitude) / 2,
@@ -617,50 +670,113 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                       const Spacer(),
                       _RoundMiniButton(icon: Icons.remove, onTap: _seats > 1 ? () => setState(() => _seats--) : null),
                       Padding(padding: const EdgeInsets.symmetric(horizontal: 13), child: Text('$_seats', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900))),
-                      _RoundMiniButton(icon: Icons.add, onTap: _seats < selected.capacity ? () => setState(() => _seats++) : null),
+                      _RoundMiniButton(icon: Icons.add, onTap: _seats < effectiveCapacity ? () => setState(() => _seats++) : null),
                     ]),
                   ],
                   const SizedBox(height: 10),
-                  ...List.generate(_choices.length, (index) {
-                    final item = _choices[index];
-                    final active = _selected == index;
-                    final package = _matchingPackage(app, item);
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 7),
-                      child: Material(
-                        color: active ? const Color(0xFF292C2A) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(18),
-                        child: InkWell(
-                          onTap: () { setState(() { _selected = index; _seats = _seats.clamp(1, item.capacity).toInt(); }); _applySelectedDefaultRates(); },
+                  if (widget.serviceType == UDriveServiceType.tours && tourPackages.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: const Color(0xFF222522), borderRadius: BorderRadius.circular(18)),
+                      child: const Row(children: [
+                        Icon(Icons.directions_bus_filled_rounded, color: _lime),
+                        SizedBox(width: 10),
+                        Expanded(child: Text('No scheduled vehicle is currently available for this destination in the next 30 days.', style: TextStyle(color: Colors.white70, fontSize: 11.5, height: 1.35))),
+                      ]),
+                    )
+                  else if (widget.serviceType == UDriveServiceType.tours)
+                    ...tourPackages.map((package) {
+                      final active = package.id == (_selectedPackageId ?? tourPackages.first.id);
+                      final bookable = _packageBookable(package);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Material(
+                          color: active ? const Color(0xFF292D2A) : const Color(0xFF181B19),
                           borderRadius: BorderRadius.circular(18),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
-                            decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: active ? Colors.white24 : Colors.white.withValues(alpha: .04))),
-                            child: Row(children: [
-                              Container(
-                                width: 72,
-                                height: 54,
-                                padding: const EdgeInsets.all(3),
-                                decoration: BoxDecoration(color: Colors.white.withValues(alpha: .035), borderRadius: BorderRadius.circular(14)),
-                                child: Image.asset(item.imageAsset, fit: BoxFit.contain, filterQuality: FilterQuality.high),
+                          child: InkWell(
+                            onTap: bookable ? () {
+                              setState(() {
+                                _selectedPackageId = package.id;
+                                final vehicleIndex = _choices.indexWhere((choice) => _normaliseVehicle(choice.name) == _normaliseVehicle(package.vehicle));
+                                if (vehicleIndex >= 0) _selected = vehicleIndex;
+                                _seats = _seats.clamp(1, package.bookableSeats.clamp(1, package.totalSeats)).toInt();
+                              });
+                              _applySelectedDefaultRates();
+                            } : null,
+                            borderRadius: BorderRadius.circular(18),
+                            child: Container(
+                              padding: const EdgeInsets.all(11),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(color: active ? _lime.withValues(alpha: .75) : Colors.white10),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(item.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
-                                Text('${item.meta}  •  ${item.note}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 10.5)),
-                                const SizedBox(height: 5),
-                                Wrap(spacing: 6, runSpacing: 4, children: [
-                                  _RatePill(label: 'Seat', value: package == null ? 'Your offer' : _money(package.pricePerSeat)),
-                                  _RatePill(label: 'Full', value: package == null ? 'Your offer' : _money(package.wholeVehiclePrice)),
-                                ]),
-                              ])),
-                              Icon(active ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, color: active ? _lime : Colors.white38, size: 24),
-                            ]),
+                              child: Row(children: [
+                                Container(
+                                  width: 78,
+                                  height: 58,
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .04), borderRadius: BorderRadius.circular(13)),
+                                  child: Image.asset(_packageImage(package), fit: BoxFit.contain, filterQuality: FilterQuality.high),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Row(children: [
+                                    Expanded(child: Text('${package.vehicle} • ${package.driverName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w900))),
+                                    if (!bookable) const _StatusBadge(label: 'Closed', color: Color(0xFFE5484D)),
+                                  ]),
+                                  const SizedBox(height: 3),
+                                  Text(_packageTiming(package), style: TextStyle(color: bookable ? _lime : Colors.white38, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                                  const SizedBox(height: 5),
+                                  Wrap(spacing: 5, runSpacing: 4, children: [
+                                    _RatePill(label: 'Seats left', value: '${package.bookableSeats}'),
+                                    _RatePill(label: 'Seat', value: _money(package.pricePerSeat)),
+                                    _RatePill(label: 'Full', value: _money(package.wholeVehiclePrice)),
+                                  ]),
+                                  const SizedBox(height: 4),
+                                  Text('${package.pickupPoint} • ${package.registrationNumber}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 9.5)),
+                                ])),
+                                const SizedBox(width: 5),
+                                Icon(active ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, color: active ? _lime : Colors.white30),
+                              ]),
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }),
+                      );
+                    })
+                  else
+                    ...List.generate(_choices.length, (index) {
+                      final item = _choices[index];
+                      final active = _selected == index;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 7),
+                        child: Material(
+                          color: active ? const Color(0xFF292C2A) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(18),
+                          child: InkWell(
+                            onTap: () { setState(() { _selected = index; _seats = _seats.clamp(1, item.capacity).toInt(); }); _applySelectedDefaultRates(); },
+                            borderRadius: BorderRadius.circular(18),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
+                              decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: active ? Colors.white24 : Colors.white.withValues(alpha: .04))),
+                              child: Row(children: [
+                                Container(width: 72, height: 54, padding: const EdgeInsets.all(3), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .035), borderRadius: BorderRadius.circular(14)), child: Image.asset(item.imageAsset, fit: BoxFit.contain, filterQuality: FilterQuality.high)),
+                                const SizedBox(width: 10),
+                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Text(item.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
+                                  Text('${item.meta}  •  ${item.note}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 10.5)),
+                                  const SizedBox(height: 5),
+                                  Wrap(spacing: 6, runSpacing: 4, children: [
+                                    _RatePill(label: 'Seat', value: _money(_dbRates[_normaliseVehicle(item.name)]?.perSeatRate ?? 0)),
+                                    _RatePill(label: 'Full', value: _money(_dbRates[_normaliseVehicle(item.name)]?.wholeVehicleRate ?? 0)),
+                                  ]),
+                                ])),
+                                Icon(active ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, color: active ? _lime : Colors.white38, size: 24),
+                              ]),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
                   const SizedBox(height: 3),
                   if (selectedPackage == null)
                     TextField(
@@ -714,7 +830,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   SizedBox(
                     height: 52,
                     child: FilledButton(
-                      onPressed: _submitting ? null : _submit,
+                      onPressed: _submitting || (widget.serviceType == UDriveServiceType.tours && (tourPackages.isEmpty || !selectedPackageBookable)) ? null : _submit,
                       style: FilledButton.styleFrom(backgroundColor: _lime, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                       child: _submitting
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black))
@@ -729,6 +845,18 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       ),
     );
   }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.label, required this.color});
+  final String label;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(99)),
+        child: Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w900)),
+      );
 }
 
 class _ModeButton extends StatelessWidget {

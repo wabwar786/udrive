@@ -2200,59 +2200,38 @@ class _UDriveServicesGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        height: 236,
-        child: Row(
+        height: 218,
+        child: GridView.count(
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          crossAxisSpacing: 9,
+          mainAxisSpacing: 9,
+          childAspectRatio: 1.75,
           children: [
-            Expanded(
-              flex: 11,
-              child: _ServiceTile(
-                title: 'Tours & Trips',
-                subtitle: 'per seat or full vehicle',
-                icon: Icons.airport_shuttle_rounded,
-                secondaryIcon: Icons.landscape_rounded,
-                imageAsset: 'assets/vehicles_photo/tour_clean.png',
-                onTap: onTours,
-                large: true,
-              ),
+            _ServiceTile(
+              title: 'Tours & Trips',
+              subtitle: 'seat or full vehicle',
+              imageAsset: 'assets/vehicles_photo/tour_clean.png',
+              onTap: onTours,
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 10,
-              child: Column(
-                children: [
-                  Expanded(
-                    child: _ServiceTile(
-                      title: 'Travel within city',
-                      subtitle: 'car, bike, rickshaw',
-                      icon: Icons.directions_car_filled_rounded,
-                      secondaryIcon: Icons.two_wheeler_rounded,
-                      imageAsset: 'assets/vehicles_photo/car_clean.png',
-                      onTap: onCity,
-                    ),
-                  ),
-                  const SizedBox(height: 9),
-                  Expanded(
-                    child: _ServiceTile(
-                      title: 'Private Vehicle',
-                      subtitle: 'coster, car, bike',
-                      icon: Icons.local_taxi_rounded,
-                      secondaryIcon: Icons.two_wheeler_rounded,
-                      imageAsset: 'assets/vehicles_photo/private_car_clean.png',
-                      onTap: onPrivate,
-                    ),
-                  ),
-                  const SizedBox(height: 9),
-                  Expanded(
-                    child: _ServiceTile(
-                      title: 'Explore Kashmir',
-                      subtitle: 'destinations & experiences',
-                      icon: Icons.landscape_rounded,
-                      imageAsset: 'assets/images/neelum.png',
-                      onTap: onExplore,
-                    ),
-                  ),
-                ],
-              ),
+            _ServiceTile(
+              title: 'Travel within city',
+              subtitle: 'car, bike, rickshaw',
+              imageAsset: 'assets/vehicles_photo/car_clean.png',
+              onTap: onCity,
+            ),
+            _ServiceTile(
+              title: 'Private Vehicle',
+              subtitle: 'coster, car, bike',
+              imageAsset: 'assets/vehicles_photo/private_car_clean.png',
+              onTap: onPrivate,
+            ),
+            _ServiceTile(
+              title: 'Explore Kashmir',
+              subtitle: 'destinations & experiences',
+              imageAsset: 'assets/images/neelum.png',
+              onTap: onExplore,
+              landscape: true,
             ),
           ],
         ),
@@ -2263,97 +2242,115 @@ class _ServiceTile extends StatelessWidget {
   const _ServiceTile({
     required this.title,
     required this.subtitle,
-    required this.icon,
+    required this.imageAsset,
     required this.onTap,
-    this.secondaryIcon,
-    this.imageAsset,
-    this.large = false,
+    this.landscape = false,
   });
 
   final String title;
   final String subtitle;
-  final IconData icon;
-  final IconData? secondaryIcon;
-  final String? imageAsset;
+  final String imageAsset;
   final VoidCallback onTap;
-  final bool large;
+  final bool landscape;
 
   @override
   Widget build(BuildContext context) => Material(
-        color: const Color(0xFF171917),
-        borderRadius: BorderRadius.circular(22),
+        color: const Color(0xFF181B19),
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(22),
           child: Ink(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFF3A3E3A)),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFF3A3F3B)),
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFF252825), Color(0xFF121412)],
+                colors: [Color(0xFF272B28), Color(0xFF111311)],
               ),
             ),
             child: Stack(
+              fit: StackFit.expand,
               clipBehavior: Clip.hardEdge,
               children: [
                 Positioned(
-                  right: large ? -50 : -34,
-                  bottom: large ? -54 : -38,
-                  child: Transform.rotate(
-                    angle: -.18,
-                    child: Container(
-                      width: large ? 210 : 132,
-                      height: large ? 210 : 132,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFB7F20A),
-                        borderRadius: BorderRadius.circular(42),
-                      ),
+                  right: -26,
+                  bottom: -34,
+                  child: Container(
+                    width: 126,
+                    height: 126,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFB7F20A),
+                      shape: BoxShape.circle,
                     ),
                   ),
                 ),
-                if (imageAsset != null)
-                  Positioned(
-                    right: large ? 4 : 2,
-                    bottom: large ? 6 : 4,
-                    child: SizedBox(
-                      width: large ? 170 : 104,
-                      height: large ? 104 : 64,
+                Positioned(
+                  right: landscape ? -8 : 4,
+                  bottom: landscape ? -5 : 5,
+                  child: SizedBox(
+                    width: landscape ? 108 : 100,
+                    height: landscape ? 72 : 58,
+                    child: ClipRect(
                       child: Image.asset(
-                        imageAsset!,
-                        fit: BoxFit.contain,
+                        imageAsset,
+                        fit: landscape ? BoxFit.cover : BoxFit.contain,
+                        alignment: Alignment.bottomRight,
                         filterQuality: FilterQuality.high,
-                        errorBuilder: (_, __, ___) => Icon(
-                          icon,
-                          color: const Color(0xFF101210),
-                          size: large ? 58 : 37,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.directions_car_filled_rounded,
+                          color: Color(0xFF111311),
+                          size: 38,
                         ),
                       ),
                     ),
                   ),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            const Color(0xFF181B19),
+                            const Color(0xFF181B19).withValues(alpha: .92),
+                            Colors.transparent,
+                          ],
+                          stops: const [0, .48, .78],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 Padding(
-                  padding: EdgeInsets.all(large ? 16 : 13),
+                  padding: const EdgeInsets.fromLTRB(13, 13, 76, 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         title,
-                        style: TextStyle(
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                           color: Colors.white,
-                          fontSize: large ? 17 : 14,
-                          fontWeight: FontWeight.w900,
+                          fontSize: 13.5,
                           height: 1.08,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         subtitle,
                         maxLines: 2,
-                        style: TextStyle(
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                           color: Colors.white60,
-                          fontSize: large ? 11.5 : 10,
-                          height: 1.2,
+                          fontSize: 9.5,
+                          height: 1.18,
                         ),
                       ),
                     ],
