@@ -7,3 +7,4 @@ public sealed record CreateHotelRoomRequest(string RoomType, string Description,
 public sealed record UpdateInventoryRequest(DateOnly FromDate, DateOnly ToDate, int AvailableRooms, decimal Rate);
 public sealed record CreateHotelBookingRequest(Guid RoomId, DateOnly CheckIn, DateOnly CheckOut, int Guests, int Rooms, bool IncludeTransport, string? PickupAddress, double? PickupLatitude, double? PickupLongitude);
 public sealed record ReviewHotelRequest(bool Approve, string? Reason);
+public sealed record SetHotelActiveRequest(bool IsActive);

@@ -17,7 +17,9 @@ public sealed class HotelsController(HotelService service):ControllerBase
     [Authorize,HttpGet("owner/bookings")] public async Task<IActionResult> OwnerBookings([FromQuery]Guid? hotelId,CancellationToken ct)=>Result(await service.OwnerBookingsAsync(User.GetRequiredUserId(),hotelId,ct));
         [Authorize,HttpPost("owner/{hotelId:guid}/rooms")] public async Task<IActionResult> AddRoom(Guid hotelId,CreateHotelRoomRequest x,CancellationToken ct)=>Result(await service.AddRoomAsync(User.GetRequiredUserId(),hotelId,x,ct));
     [Authorize,HttpPost("{hotelId:guid}/bookings")] public async Task<IActionResult> Book(Guid hotelId,CreateHotelBookingRequest x,CancellationToken ct)=>Result(await service.BookAsync(User.GetRequiredUserId(),hotelId,x,ct));
+    [Authorize(Roles="Admin,SuperAdmin"),HttpGet("admin")] public async Task<IActionResult> AdminList([FromQuery]string? status,[FromQuery]string? query,CancellationToken ct)=>Result(await service.AdminListAsync(status,query,ct));
     [Authorize(Roles="Admin,SuperAdmin"),HttpGet("admin/pending")] public async Task<IActionResult> Pending(CancellationToken ct)=>Result(await service.PendingAsync(ct));
     [Authorize(Roles="Admin,SuperAdmin"),HttpPost("admin/{id:guid}/review")] public async Task<IActionResult> Review(Guid id,ReviewHotelRequest x,CancellationToken ct)=>Result(await service.ReviewAsync(User.GetRequiredUserId(),id,x,ct));
+    [Authorize(Roles="Admin,SuperAdmin"),HttpPatch("admin/{id:guid}/active")] public async Task<IActionResult> SetActive(Guid id,SetHotelActiveRequest x,CancellationToken ct)=>Result(await service.SetActiveAsync(User.GetRequiredUserId(),id,x.IsActive,ct));
     IActionResult Result<T>(ServiceResult<T> r)=>r.Success?Ok(new{success=true,data=r.Data}):StatusCode(r.StatusCode,new{success=false,error=r.ErrorCode,message=r.Message});
 }

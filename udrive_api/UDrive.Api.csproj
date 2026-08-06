@@ -24,5 +24,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Infrastructure/Persistence/Migrations/*.sql" />
+    <EmbeddedResource Include="Infrastructure/Persistence/Scripts/*.sql" />
   </ItemGroup>
 </Project>

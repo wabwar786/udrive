@@ -13,6 +13,8 @@ import {
   CircleDollarSign,
   ClipboardList,
   BarChart3,
+  Building2,
+  Database,
   Stethoscope,
   Compass,
   Headphones,
@@ -64,6 +66,7 @@ const groups = [
     label: 'TOURISM',
     items: [
       ['/destinations', 'Destinations', Compass],
+      ['/hotels', 'Hotels & approvals', Building2],
       ['/routes', 'Routes', Route],
       ['/advisories', 'Road advisories', MapPinned],
     ],
@@ -82,6 +85,7 @@ const groups = [
       ['/diagnostics', 'Diagnostics', Stethoscope],
       ['/help', 'Help / How to use', CircleHelp],
       ['/settings', 'Settings', Settings],
+      ['/data-management', 'Data management', Database],
     ],
   },
 ] as const;

@@ -23,7 +23,7 @@ public sealed class HotelService(string connectionString)
           AND (@query='' OR h.name ILIKE '%'||@query||'%' OR h.city ILIKE '%'||@query||'%' OR h.address ILIKE '%'||@query||'%')
           AND (@city='' OR h.city ILIKE @city)
         GROUP BY h.id
-        HAVING (@check_in IS NULL OR COALESCE(SUM(CASE WHEN r.is_active THEN COALESCE(i.available_rooms,r.total_rooms) ELSE 0 END),0) >= @rooms)
+        HAVING (@check_in IS NULL OR COUNT(r.id)=0 OR COALESCE(SUM(CASE WHEN r.is_active THEN COALESCE(i.available_rooms,r.total_rooms) ELSE 0 END),0) >= @rooms)
         ORDER BY h.rating DESC,h.created_at DESC
         LIMIT @limit OFFSET @offset;
         """;
@@ -43,7 +43,27 @@ public sealed class HotelService(string connectionString)
 
     public async Task<ServiceResult<object>> MyHotelsAsync(Guid ownerId,CancellationToken ct){await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();cmd.CommandText="""SELECT id,name,address,city,district,latitude,longitude,contact_phone,rating,main_image_url,amenities,transport_available,approval_status,rejection_reason,is_active,created_at FROM udrive.hotels WHERE owner_user_id=@u ORDER BY created_at DESC""";cmd.Parameters.AddWithValue("u",ownerId);var list=new List<object>();await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))list.Add(new{id=r.GetGuid(0),name=r.GetString(1),address=r.GetString(2),city=r.GetString(3),district=r.GetString(4),latitude=r.GetDouble(5),longitude=r.GetDouble(6),contactPhone=r.GetString(7),rating=r.GetDecimal(8),mainImageUrl=r.GetString(9),amenities=JsonSerializer.Deserialize<string[]>(r.GetFieldValue<string>(10))??[],transportAvailable=r.GetBoolean(11),approvalStatus=r.GetString(12),rejectionReason=r.IsDBNull(13)?null:r.GetString(13),isActive=r.GetBoolean(14),createdAt=r.GetDateTime(15)});return ServiceResult<object>.Ok(list);}
 
-    public async Task<ServiceResult<object>> CreateAsync(Guid ownerId,CreateHotelRequest x,CancellationToken ct){if(string.IsNullOrWhiteSpace(x.Name)||string.IsNullOrWhiteSpace(x.Address))return ServiceResult<object>.Fail(400,"validation","Hotel name and address are required.");await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();cmd.CommandText="""INSERT INTO udrive.hotels(owner_user_id,name,description,address,city,district,latitude,longitude,contact_phone,main_image_url,amenities,transport_available) VALUES(@u,@n,@d,@a,@c,@di,@lat,@lng,@p,@img,@am::jsonb,@t) RETURNING id""";cmd.Parameters.AddWithValue("u",ownerId);cmd.Parameters.AddWithValue("n",x.Name.Trim());cmd.Parameters.AddWithValue("d",x.Description??"");cmd.Parameters.AddWithValue("a",x.Address.Trim());cmd.Parameters.AddWithValue("c",x.City.Trim());cmd.Parameters.AddWithValue("di",x.District??"");cmd.Parameters.AddWithValue("lat",x.Latitude);cmd.Parameters.AddWithValue("lng",x.Longitude);cmd.Parameters.AddWithValue("p",x.ContactPhone??"");cmd.Parameters.AddWithValue("img",x.MainImageUrl??"");cmd.Parameters.AddWithValue("am",JsonSerializer.Serialize(x.Amenities??[]));cmd.Parameters.AddWithValue("t",x.TransportAvailable);var id=(Guid)(await cmd.ExecuteScalarAsync(ct))!;return ServiceResult<object>.Ok(new{id,approvalStatus="Pending"});}
+    public async Task<ServiceResult<object>> CreateAsync(Guid ownerId,CreateHotelRequest x,CancellationToken ct)
+    {
+        if(string.IsNullOrWhiteSpace(x.Name)||string.IsNullOrWhiteSpace(x.Address)||string.IsNullOrWhiteSpace(x.City))return ServiceResult<object>.Fail(400,"validation","Hotel name, address and city are required.");
+        if(x.Latitude is < -90 or > 90 || x.Longitude is < -180 or > 180)return ServiceResult<object>.Fail(400,"coordinates","Enter a valid hotel map location.");
+        await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var tx=await c.BeginTransactionAsync(ct);
+        try
+        {
+            await using(var owner=c.CreateCommand())
+            {
+                owner.Transaction=tx;owner.CommandText="""
+                    INSERT INTO udrive.hotel_owner_profiles(user_id,business_name,phone,status,created_at,updated_at)
+                    VALUES(@u,@business,@phone,'Active',now(),now())
+                    ON CONFLICT(user_id) DO UPDATE SET business_name=EXCLUDED.business_name,phone=EXCLUDED.phone,status='Active',updated_at=now();
+                    INSERT INTO udrive.user_roles(user_id,role,created_at) VALUES(@u,'HotelOwner',now()) ON CONFLICT(user_id,role) DO NOTHING;
+                    """;
+                owner.Parameters.AddWithValue("u",ownerId);owner.Parameters.AddWithValue("business",x.Name.Trim());owner.Parameters.AddWithValue("phone",x.ContactPhone??"");await owner.ExecuteNonQueryAsync(ct);
+            }
+            await using var cmd=c.CreateCommand();cmd.Transaction=tx;cmd.CommandText="""INSERT INTO udrive.hotels(owner_user_id,name,description,address,city,district,latitude,longitude,contact_phone,main_image_url,amenities,transport_available) VALUES(@u,@n,@d,@a,@c,@di,@lat,@lng,@p,@img,@am::jsonb,@t) RETURNING id""";cmd.Parameters.AddWithValue("u",ownerId);cmd.Parameters.AddWithValue("n",x.Name.Trim());cmd.Parameters.AddWithValue("d",x.Description??"");cmd.Parameters.AddWithValue("a",x.Address.Trim());cmd.Parameters.AddWithValue("c",x.City.Trim());cmd.Parameters.AddWithValue("di",x.District??"");cmd.Parameters.AddWithValue("lat",x.Latitude);cmd.Parameters.AddWithValue("lng",x.Longitude);cmd.Parameters.AddWithValue("p",x.ContactPhone??"");cmd.Parameters.AddWithValue("img",x.MainImageUrl??"");cmd.Parameters.AddWithValue("am",JsonSerializer.Serialize(x.Amenities??[]));cmd.Parameters.AddWithValue("t",x.TransportAvailable);var id=(Guid)(await cmd.ExecuteScalarAsync(ct))!;await tx.CommitAsync(ct);return ServiceResult<object>.Ok(new{id,approvalStatus="Pending"});
+        }
+        catch{await tx.RollbackAsync(CancellationToken.None);throw;}
+    }
 
     public async Task<ServiceResult<object>> AddRoomAsync(Guid ownerId,Guid hotelId,CreateHotelRoomRequest x,CancellationToken ct){await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();cmd.CommandText="""INSERT INTO udrive.hotel_rooms(hotel_id,room_type,description,capacity,total_rooms,base_rate,image_url,amenities) SELECT @h,@rt,@d,@cap,@total,@rate,@img,@am::jsonb FROM udrive.hotels WHERE id=@h AND owner_user_id=@u RETURNING id""";cmd.Parameters.AddWithValue("h",hotelId);cmd.Parameters.AddWithValue("u",ownerId);cmd.Parameters.AddWithValue("rt",x.RoomType.Trim());cmd.Parameters.AddWithValue("d",x.Description??"");cmd.Parameters.AddWithValue("cap",x.Capacity);cmd.Parameters.AddWithValue("total",x.TotalRooms);cmd.Parameters.AddWithValue("rate",x.BaseRate);cmd.Parameters.AddWithValue("img",x.ImageUrl??"");cmd.Parameters.AddWithValue("am",JsonSerializer.Serialize(x.Amenities??[]));var o=await cmd.ExecuteScalarAsync(ct);return o is Guid id?ServiceResult<object>.Ok(new{id}):ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");}
 
@@ -51,8 +71,67 @@ public sealed class HotelService(string connectionString)
 
     public async Task<ServiceResult<object>> OwnerBookingsAsync(Guid ownerId,Guid? hotelId,CancellationToken ct){await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();cmd.CommandText="""SELECT b.id,b.hotel_id,h.name,r.room_type,b.check_in,b.check_out,b.guests,b.rooms,b.amount,b.status,b.payment_status,b.include_transport,b.created_at FROM udrive.hotel_bookings b JOIN udrive.hotels h ON h.id=b.hotel_id JOIN udrive.hotel_rooms r ON r.id=b.room_id WHERE h.owner_user_id=@u AND (@h IS NULL OR h.id=@h) ORDER BY b.created_at DESC LIMIT 100""";cmd.Parameters.AddWithValue("u",ownerId);cmd.Parameters.AddWithValue("h",(object?)hotelId??DBNull.Value);var list=new List<object>();await using var rr=await cmd.ExecuteReaderAsync(ct);while(await rr.ReadAsync(ct))list.Add(new{id=rr.GetGuid(0),hotelId=rr.GetGuid(1),hotelName=rr.GetString(2),roomType=rr.GetString(3),checkIn=rr.GetFieldValue<DateOnly>(4),checkOut=rr.GetFieldValue<DateOnly>(5),guests=rr.GetInt32(6),rooms=rr.GetInt32(7),amount=rr.GetDecimal(8),status=rr.GetString(9),paymentStatus=rr.GetString(10),includeTransport=rr.GetBoolean(11),createdAt=rr.GetDateTime(12)});return ServiceResult<object>.Ok(list);}
 
-    public async Task<ServiceResult<object>> PendingAsync(CancellationToken ct){await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();cmd.CommandText="""SELECT h.id,h.name,h.address,h.city,h.district,h.contact_phone,h.main_image_url,h.created_at,u.full_name owner_name,u.phone owner_phone FROM udrive.hotels h JOIN udrive.users u ON u.id=h.owner_user_id WHERE h.approval_status='Pending' ORDER BY h.created_at""";var list=new List<object>();await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))list.Add(new{id=r.GetGuid(0),name=r.GetString(1),address=r.GetString(2),city=r.GetString(3),district=r.GetString(4),contactPhone=r.GetString(5),mainImageUrl=r.GetString(6),createdAt=r.GetDateTime(7),ownerName=r.GetString(8),ownerPhone=r.GetString(9)});return ServiceResult<object>.Ok(list);}
-    public async Task<ServiceResult<object>> ReviewAsync(Guid adminId,Guid id,ReviewHotelRequest x,CancellationToken ct){await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();cmd.CommandText="""UPDATE udrive.hotels SET approval_status=@s,rejection_reason=@r,approved_by=CASE WHEN @ok THEN @a ELSE NULL END,approved_at=CASE WHEN @ok THEN now() ELSE NULL END,updated_at=now() WHERE id=@id RETURNING id""";cmd.Parameters.AddWithValue("s",x.Approve?"Approved":"Rejected");cmd.Parameters.AddWithValue("r",(object?)x.Reason??DBNull.Value);cmd.Parameters.AddWithValue("ok",x.Approve);cmd.Parameters.AddWithValue("a",adminId);cmd.Parameters.AddWithValue("id",id);var o=await cmd.ExecuteScalarAsync(ct);return o is Guid?ServiceResult<object>.Ok(new{id,status=x.Approve?"Approved":"Rejected"}):ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");}
+    public async Task<ServiceResult<object>> AdminListAsync(string? status,string? query,CancellationToken ct)
+    {
+        var normalizedStatus = string.IsNullOrWhiteSpace(status) || status.Equals("All",StringComparison.OrdinalIgnoreCase) ? "" : status.Trim();
+        var normalizedQuery = query?.Trim() ?? "";
+        await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();
+        cmd.CommandText="""
+            SELECT h.id,h.name,h.description,h.address,h.city,h.district,h.latitude,h.longitude,
+                   h.contact_phone,h.rating,h.main_image_url,h.transport_available,h.approval_status,
+                   h.rejection_reason,h.is_active,h.created_at,h.updated_at,u.full_name,u.phone_number,
+                   count(r.id) FILTER (WHERE r.is_active) room_types,
+                   COALESCE(sum(r.total_rooms) FILTER (WHERE r.is_active),0) total_rooms
+            FROM udrive.hotels h
+            JOIN udrive.users u ON u.id=h.owner_user_id
+            LEFT JOIN udrive.hotel_rooms r ON r.hotel_id=h.id
+            WHERE (@status='' OR h.approval_status=@status)
+              AND (@query='' OR h.name ILIKE '%'||@query||'%' OR h.city ILIKE '%'||@query||'%'
+                   OR h.address ILIKE '%'||@query||'%' OR u.full_name ILIKE '%'||@query||'%'
+                   OR u.phone_number ILIKE '%'||@query||'%')
+            GROUP BY h.id,u.full_name,u.phone_number
+            ORDER BY CASE h.approval_status WHEN 'Pending' THEN 0 WHEN 'Approved' THEN 1 ELSE 2 END,
+                     h.created_at DESC;
+            """;
+        cmd.Parameters.AddWithValue("status",normalizedStatus);cmd.Parameters.AddWithValue("query",normalizedQuery);
+        var list=new List<object>();await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))list.Add(new
+        {
+            id=r.GetGuid(0),name=r.GetString(1),description=r.GetString(2),address=r.GetString(3),city=r.GetString(4),district=r.GetString(5),
+            latitude=r.GetDouble(6),longitude=r.GetDouble(7),contactPhone=r.GetString(8),rating=r.GetDecimal(9),mainImageUrl=r.GetString(10),
+            transportAvailable=r.GetBoolean(11),approvalStatus=r.GetString(12),rejectionReason=r.IsDBNull(13)?null:r.GetString(13),
+            isActive=r.GetBoolean(14),createdAt=r.GetDateTime(15),updatedAt=r.GetDateTime(16),ownerName=r.GetString(17),ownerPhone=r.GetString(18),
+            roomTypes=r.GetInt64(19),totalRooms=r.GetInt64(20)
+        });
+        return ServiceResult<object>.Ok(list);
+    }
+
+    public async Task<ServiceResult<object>> PendingAsync(CancellationToken ct){await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();cmd.CommandText="""SELECT h.id,h.name,h.address,h.city,h.district,h.contact_phone,h.main_image_url,h.created_at,u.full_name owner_name,u.phone_number owner_phone FROM udrive.hotels h JOIN udrive.users u ON u.id=h.owner_user_id WHERE h.approval_status='Pending' ORDER BY h.created_at""";var list=new List<object>();await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))list.Add(new{id=r.GetGuid(0),name=r.GetString(1),address=r.GetString(2),city=r.GetString(3),district=r.GetString(4),contactPhone=r.GetString(5),mainImageUrl=r.GetString(6),createdAt=r.GetDateTime(7),ownerName=r.GetString(8),ownerPhone=r.GetString(9)});return ServiceResult<object>.Ok(list);}
+    public async Task<ServiceResult<object>> ReviewAsync(Guid adminId,Guid id,ReviewHotelRequest x,CancellationToken ct)
+    {
+        if(!x.Approve&&string.IsNullOrWhiteSpace(x.Reason))return ServiceResult<object>.Fail(400,"rejection_reason_required","Add a reason before rejecting this hotel.");
+        await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var tx=await c.BeginTransactionAsync(ct);
+        try
+        {
+            await using var cmd=c.CreateCommand();cmd.Transaction=tx;
+            cmd.CommandText="""UPDATE udrive.hotels SET approval_status=@s,rejection_reason=NULLIF(@r,''),approved_by=CASE WHEN @ok THEN @a ELSE NULL END,approved_at=CASE WHEN @ok THEN now() ELSE NULL END,updated_at=now() WHERE id=@id RETURNING id""";
+            cmd.Parameters.AddWithValue("s",x.Approve?"Approved":"Rejected");cmd.Parameters.AddWithValue("r",x.Approve?"":x.Reason!.Trim());cmd.Parameters.AddWithValue("ok",x.Approve);cmd.Parameters.AddWithValue("a",adminId);cmd.Parameters.AddWithValue("id",id);
+            var o=await cmd.ExecuteScalarAsync(ct);if(o is not Guid){await tx.RollbackAsync(ct);return ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");}
+            await using var audit=c.CreateCommand();audit.Transaction=tx;audit.CommandText="""INSERT INTO udrive.audit_logs(id,actor_user_id,action,entity_type,entity_id,changes_json,created_at,updated_at) VALUES(gen_random_uuid(),@a,@action,'Hotel',CAST(@id AS text),jsonb_build_object('status',@status,'reason',NULLIF(@reason,'')),now(),now())""";audit.Parameters.AddWithValue("a",adminId);audit.Parameters.AddWithValue("action",x.Approve?"HotelApproved":"HotelRejected");audit.Parameters.AddWithValue("id",id);audit.Parameters.AddWithValue("status",x.Approve?"Approved":"Rejected");audit.Parameters.AddWithValue("reason",x.Reason?.Trim()??"");await audit.ExecuteNonQueryAsync(ct);
+            await tx.CommitAsync(ct);return ServiceResult<object>.Ok(new{id,status=x.Approve?"Approved":"Rejected"});
+        }
+        catch{await tx.RollbackAsync(CancellationToken.None);throw;}
+    }
+
+    public async Task<ServiceResult<object>> SetActiveAsync(Guid adminId,Guid id,bool isActive,CancellationToken ct)
+    {
+        await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var tx=await c.BeginTransactionAsync(ct);
+        try
+        {
+            await using var cmd=c.CreateCommand();cmd.Transaction=tx;cmd.CommandText="UPDATE udrive.hotels SET is_active=@active,updated_at=now() WHERE id=@id RETURNING id";cmd.Parameters.AddWithValue("active",isActive);cmd.Parameters.AddWithValue("id",id);var o=await cmd.ExecuteScalarAsync(ct);if(o is not Guid){await tx.RollbackAsync(ct);return ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");}
+            await using var audit=c.CreateCommand();audit.Transaction=tx;audit.CommandText="""INSERT INTO udrive.audit_logs(id,actor_user_id,action,entity_type,entity_id,changes_json,created_at,updated_at) VALUES(gen_random_uuid(),@a,'HotelVisibilityChanged','Hotel',CAST(@id AS text),jsonb_build_object('isActive',@active),now(),now())""";audit.Parameters.AddWithValue("a",adminId);audit.Parameters.AddWithValue("id",id);audit.Parameters.AddWithValue("active",isActive);await audit.ExecuteNonQueryAsync(ct);await tx.CommitAsync(ct);return ServiceResult<object>.Ok(new{id,isActive});
+        }
+        catch{await tx.RollbackAsync(CancellationToken.None);throw;}
+    }
 
     static object MapHotel(NpgsqlDataReader r,bool detail=false)=>new{id=r.GetGuid(0),name=r.GetString(1),address=r.GetString(2),city=r.GetString(3),district=r.GetString(4),latitude=r.GetDouble(5),longitude=r.GetDouble(6),contactPhone=r.GetString(7),rating=r.GetDecimal(8),mainImageUrl=r.GetString(9),amenities=JsonSerializer.Deserialize<string[]>(r.GetFieldValue<string>(10))??[],transportAvailable=r.GetBoolean(11),description=detail?r.GetString(12):null,startingRate=detail?0:r.GetDecimal(12),availableRooms=detail?0:r.GetInt64(13)};
 }

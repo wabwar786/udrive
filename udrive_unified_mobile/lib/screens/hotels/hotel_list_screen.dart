@@ -5,6 +5,7 @@ import '../../core/hotels/hotel_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/hotel_models.dart';
 import '../customer/udrive_route_flow_screen.dart';
+import '../hotel_owner/hotel_owner_add_screen.dart';
 import 'hotel_detail_screen.dart';
 
 const _ink = Color(0xFF0C0E0D);
@@ -94,12 +95,18 @@ class _HotelListScreenState extends State<HotelListScreen> {
         foregroundColor: Colors.white,
         title: const Text('Hotels & Stays', style: TextStyle(fontWeight: FontWeight.w900)),
         actions: [
+          IconButton(
+            tooltip: 'Add your hotel',
+            onPressed: () => _openAddHotel(),
+            icon: const Icon(Icons.add_business_rounded),
+          ),
           IconButton(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
       body: Column(
         children: [
           _searchBar(),
+          _addHotelBanner(),
           Expanded(
             child: _busy
                 ? const Center(child: CircularProgressIndicator(color: _lime))
@@ -119,6 +126,54 @@ class _HotelListScreenState extends State<HotelListScreen> {
       ),
     );
   }
+
+  Future<void> _openAddHotel() async {
+    final submitted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const HotelOwnerAddScreen(standalone: true)),
+    );
+    if (submitted == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hotel submitted. It will appear here after admin approval.')),
+      );
+    }
+  }
+
+  Widget _addHotelBanner() => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        child: Material(
+          color: const Color(0xFF20251F),
+          borderRadius: BorderRadius.circular(15),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(15),
+            onTap: _openAddHotel,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 19,
+                    backgroundColor: Color(0xFFB7F20A),
+                    child: Icon(Icons.add_business_rounded, color: Colors.black, size: 20),
+                  ),
+                  SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Own a hotel or guest house?', style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w900)),
+                        SizedBox(height: 2),
+                        Text('Add it for admin approval and publish it on UDrive.', style: TextStyle(color: Colors.white60, fontSize: 9.5)),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, color: Colors.white70),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 
   Widget _searchBar() => Padding(
         padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
