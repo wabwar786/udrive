@@ -712,10 +712,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                               ),
                               child: Row(children: [
                                 Container(
-                                  width: 78,
-                                  height: 58,
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .04), borderRadius: BorderRadius.circular(13)),
+                                  width: 84,
+                                  height: 62,
+                                  padding: const EdgeInsets.fromLTRB(6, 5, 6, 5),
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .045), borderRadius: BorderRadius.circular(14)),
                                   child: Image.asset(_packageImage(package), fit: BoxFit.contain, filterQuality: FilterQuality.high),
                                 ),
                                 const SizedBox(width: 10),
@@ -759,7 +760,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
                               decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: active ? Colors.white24 : Colors.white.withValues(alpha: .04))),
                               child: Row(children: [
-                                Container(width: 72, height: 54, padding: const EdgeInsets.all(3), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .035), borderRadius: BorderRadius.circular(14)), child: Image.asset(item.imageAsset, fit: BoxFit.contain, filterQuality: FilterQuality.high)),
+                                Container(width: 84, height: 62, padding: const EdgeInsets.fromLTRB(6, 5, 6, 5), decoration: BoxDecoration(color: Colors.white.withValues(alpha: active ? .06 : .03), borderRadius: BorderRadius.circular(14)), alignment: Alignment.center, child: Image.asset(item.imageAsset, fit: BoxFit.contain, filterQuality: FilterQuality.high)),
                                 const SizedBox(width: 10),
                                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   Text(item.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
