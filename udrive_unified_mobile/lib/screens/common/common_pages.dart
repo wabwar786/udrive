@@ -7,6 +7,7 @@ import '../../core/auth/session_store.dart';
 import '../../core/network/api_client.dart';
 import '../../core/communication/communication_repository.dart';
 import '../../models/communication_models.dart';
+import 'offline_maps_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -67,6 +68,8 @@ class SettingsScreen extends StatelessWidget {
       const SizedBox(height: 18),
       SectionHeader(title: context.tr('settings')),
       const SizedBox(height: 10),
+      PremiumCard(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OfflineMapsScreen())), child: const Row(children: [Icon(Icons.map_outlined, color: AppColors.primaryDark), SizedBox(width: 13), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Offline Maps', style: TextStyle(fontWeight: FontWeight.w900)), SizedBox(height: 3), Text('Download, update and manage route maps', style: TextStyle(color: AppColors.muted, fontSize: 11))])), Icon(Icons.chevron_right_rounded)])),
+      const SizedBox(height: 9),
       for (final item in [(Icons.notifications_rounded, 'Notification preferences'), (Icons.lock_rounded, context.tr('privacy')), (Icons.description_rounded, context.tr('terms')), (Icons.info_rounded, context.tr('about'))]) Padding(padding: const EdgeInsets.only(bottom: 9), child: PremiumCard(onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${item.$2} opened with dummy content.'))), child: Row(children: [Icon(item.$1, color: AppColors.primaryDark), const SizedBox(width: 13), Expanded(child: Text(item.$2, style: const TextStyle(fontWeight: FontWeight.w900))), const Icon(Icons.chevron_right_rounded)]))),
       const SizedBox(height: 8),
       const Center(child: Text('Udrive Mobile 4.0.0 · Tourism demo frontend', style: TextStyle(color: AppColors.muted, fontSize: 11))),

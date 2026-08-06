@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import '../../core/offline_maps/offline_aware_tile_layer.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -35,6 +36,7 @@ class _DriverLiveNavigationScreenState
   String? _error;
   bool _starting = true;
   bool _actionBusy = false;
+  String _mapSource = 'ONLINE_OSM';
   late String _currentStatus;
 
   @override
@@ -213,9 +215,10 @@ class _DriverLiveNavigationScreenState
             mapController: _mapController,
             options: MapOptions(initialCenter: center, initialZoom: 13),
             children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.udrive.mobile',
+              OfflineAwareTileLayer(
+                origin: current ?? pickup ?? center,
+                destination: destination ?? target ?? center,
+                onSourceChanged: (value) { if (mounted && value != _mapSource) setState(() => _mapSource = value); },
               ),
               if (routePoints.length > 1)
                 PolylineLayer(
@@ -300,7 +303,7 @@ class _DriverLiveNavigationScreenState
                             ),
                           ),
                           const SizedBox(width: 7),
-                          const Text('LIVE · 10 sec', style: TextStyle(fontWeight: FontWeight.w800)),
+                          Text('LIVE · 10 sec · ${_mapSource == 'OFFLINE_MAP' ? 'Offline Map' : 'Online Map'}', style: const TextStyle(fontWeight: FontWeight.w800)),
                         ],
                       ),
                     ),
@@ -455,6 +458,7 @@ class _CustomerFullScreenTrackingScreenState
   Timer? _timer;
   TripTracking? _tracking;
   String? _error;
+  String _mapSource = 'ONLINE_OSM';
 
   @override
   void initState() {
@@ -521,9 +525,10 @@ class _CustomerFullScreenTrackingScreenState
             mapController: _mapController,
             options: MapOptions(initialCenter: center, initialZoom: 13),
             children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.udrive.mobile',
+              OfflineAwareTileLayer(
+                origin: driver ?? pickup ?? center,
+                destination: destination ?? target ?? center,
+                onSourceChanged: (value) { if (mounted && value != _mapSource) setState(() => _mapSource = value); },
               ),
               if ([driver, target].whereType<LatLng>().length > 1)
                 PolylineLayer(
@@ -587,7 +592,7 @@ class _CustomerFullScreenTrackingScreenState
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       child: Text(
-                        headingToPickup ? 'Driver is on the way · LIVE' : 'Trip in progress · LIVE',
+                        '${headingToPickup ? 'Driver is on the way' : 'Trip in progress'} · LIVE · ${_mapSource == 'OFFLINE_MAP' ? 'Offline Map' : 'Online Map'}',
                         style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
                     ),

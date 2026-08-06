@@ -17,4 +17,7 @@
 <key>NSCameraUsageDescription</key><string>Udrive uses the camera to upload driver and vehicle documents.</string>
 <key>CADisableMinimumFrameDurationOnPhone</key><true/>
 <key>UIApplicationSupportsIndirectInputEvents</key><true/>
+
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>UDrive uses background location only during an active driver trip to share safe live progress.</string>
 </dict></plist>

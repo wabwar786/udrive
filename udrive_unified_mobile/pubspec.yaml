@@ -25,6 +25,10 @@ dependencies:
   url_launcher: ^6.3.2
   record: ^6.2.1
   google_fonts: ^8.2.0
+  flutter_map_pmtiles: ^1.0.5
+  disk_space_plus: ^0.2.6
+  crypto: ^3.0.7
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
