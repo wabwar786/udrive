@@ -2203,37 +2203,44 @@ class _UDriveServicesGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 246,
-      child: GridView.count(
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: 2,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 1.42,
-        children: [
-          _ServiceTile(
-            title: 'Travel within city',
-            asset: 'assets/images/service_travel_city.png',
-            onTap: onCity,
-          ),
-          _ServiceTile(
-            title: 'Tours & Trips',
-            asset: 'assets/images/service_tours_trips.png',
-            onTap: onTours,
-          ),
-          _ServiceTile(
-            title: 'Private Vehicle',
-            asset: 'assets/images/service_private_vehicle.png',
-            onTap: onPrivate,
-          ),
-          _ServiceTile(
-            title: 'Hotels & Stays',
-            asset: 'assets/images/service_hotel_room.png',
-            onTap: onHotels,
-          ),
-        ],
+    final tiles = <Widget>[
+      _ServiceTile(
+        title: 'Travel within city',
+        asset: 'assets/images/home_services/travel_within_city.webp',
+        onTap: onCity,
       ),
+      _ServiceTile(
+        title: 'Tours & Trips',
+        asset: 'assets/images/home_services/tours_and_trips.webp',
+        onTap: onTours,
+      ),
+      _ServiceTile(
+        title: 'Private Vehicle',
+        asset: 'assets/images/home_services/private_vehicle.webp',
+        onTap: onPrivate,
+      ),
+      _ServiceTile(
+        title: 'Hotels & Stays',
+        asset: 'assets/images/home_services/hotel_room.webp',
+        onTap: onHotels,
+        isPhoto: true,
+      ),
+    ];
+
+    // Responsive two-column grid. shrinkWrap + no scroll keeps it fully
+    // visible inside the parent ListView so the second row is never clipped.
+    return GridView.builder(
+      padding: EdgeInsets.zero,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: tiles.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 11,
+        mainAxisSpacing: 11,
+        childAspectRatio: 1.22,
+      ),
+      itemBuilder: (context, index) => tiles[index],
     );
   }
 }
@@ -2243,14 +2250,18 @@ class _ServiceTile extends StatelessWidget {
     required this.title,
     required this.asset,
     required this.onTap,
+    this.isPhoto = false,
   });
 
   final String title;
   final String asset;
   final VoidCallback onTap;
 
-  static const _card = Color(0xFF111513);
-  static const _lime = Color(0xFF8ED12B);
+  /// Photo cards (Hotels & Stays) fill the card with a cover image and a
+  /// dark overlay. Vehicle cards contain a transparent composition instead.
+  final bool isPhoto;
+
+  static const _card = Color(0xFF151917);
 
   @override
   Widget build(BuildContext context) {
@@ -2266,89 +2277,100 @@ class _ServiceTile extends StatelessWidget {
             color: _card,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: Colors.white.withValues(alpha: .15),
+              color: Colors.white.withValues(alpha: .10),
               width: 1,
             ),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x38000000),
-                blurRadius: 14,
-                offset: Offset(0, 6),
+                color: Color(0x33000000),
+                blurRadius: 12,
+                offset: Offset(0, 5),
               ),
             ],
           ),
-          child: Stack(
-            clipBehavior: Clip.hardEdge,
-            children: [
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        const Color(0xFF1A1F1C),
-                        _card,
-                        _lime.withValues(alpha: .035),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 13,
-                top: 13,
-                right: 10,
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13.5,
-                    height: 1.08,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -.25,
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 2,
-                right: 2,
-                bottom: 2,
-                height: 92,
-                child: Image.asset(
-                  asset,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.bottomCenter,
-                  filterQuality: FilterQuality.high,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-              ),
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 0,
-                child: Container(
-                  height: 2,
-                  decoration: BoxDecoration(
-                    color: _lime,
-                    borderRadius: BorderRadius.circular(100),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x668ED12B),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+          child: isPhoto ? _buildPhotoCard() : _buildVehicleCard(),
         ),
       ),
     );
   }
+
+  // Vehicle composition: title top, transparent image contained in the
+  // lower area and bottom-aligned so it blends into the card surface.
+  Widget _buildVehicleCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(13, 12, 12, 11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: _titleStyle),
+          const SizedBox(height: 6),
+          Expanded(
+            child: SizedBox(
+              width: double.infinity,
+              child: Image.asset(
+                asset,
+                fit: BoxFit.contain,
+                alignment: Alignment.bottomCenter,
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Photo card: full-bleed cover image with a top-down dark gradient so the
+  // title stays readable.
+  Widget _buildPhotoCard() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.asset(
+          asset,
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, __, ___) => const ColoredBox(color: _card),
+        ),
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xD9070908), Color(0x33070908), Color(0x00000000)],
+              stops: [0.0, 0.42, 0.8],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(13, 12, 12, 11),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: _titleStyle.copyWith(
+                shadows: const [
+                  Shadow(color: Color(0xB3000000), blurRadius: 8, offset: Offset(0, 1)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static const TextStyle _titleStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 14,
+    height: 1.1,
+    fontWeight: FontWeight.w800,
+    letterSpacing: -.2,
+  );
 }
 
 class _RecentBookingTile extends StatelessWidget {
