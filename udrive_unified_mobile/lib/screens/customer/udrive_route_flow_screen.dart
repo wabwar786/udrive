@@ -38,12 +38,20 @@ class UDriveRouteFlowScreen extends StatefulWidget {
     required this.serviceType,
     required this.pickupLabel,
     required this.pickupPoint,
+    this.initialDestinationLabel,
+    this.initialDestinationLatitude,
+    this.initialDestinationLongitude,
+    this.skipRouteEntry = false,
     super.key,
   });
 
   final UDriveServiceType serviceType;
   final String pickupLabel;
   final LatLng pickupPoint;
+  final String? initialDestinationLabel;
+  final double? initialDestinationLatitude;
+  final double? initialDestinationLongitude;
+  final bool skipRouteEntry;
 
   @override
   State<UDriveRouteFlowScreen> createState() => _UDriveRouteFlowScreenState();
@@ -73,7 +81,30 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     _from = TextEditingController(text: widget.pickupLabel);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadRecentSearches();
-      _toFocus.requestFocus();
+      if (widget.skipRouteEntry &&
+          widget.initialDestinationLabel != null &&
+          widget.initialDestinationLatitude != null &&
+          widget.initialDestinationLongitude != null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => UDriveVehicleSelectionScreen(
+              serviceType: _serviceType,
+              initialWholeVehicle: _initialWholeVehicle,
+              pickupLabel: _pickupLabel,
+              pickupPoint: _pickupPoint,
+              destination: _PlaceResult(
+                widget.initialDestinationLabel!,
+                '',
+                widget.initialDestinationLatitude!,
+                widget.initialDestinationLongitude!,
+              ),
+            ),
+          ),
+        );
+      } else {
+        _toFocus.requestFocus();
+      }
     });
   }
 
@@ -356,19 +387,19 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   List<_VehicleChoiceData> get _choices => switch (widget.serviceType) {
         UDriveServiceType.city => const [
-            _VehicleChoiceData('Bike', '1 seat', 'Fast city travel', 1, 'assets/vehicles_photo/bike_photo.png'),
-            _VehicleChoiceData('Car', '4 seats', 'Comfortable city ride', 4, 'assets/vehicles_photo/car_photo.png'),
-            _VehicleChoiceData('Rickshaw', '3 seats', 'Economical local ride', 3, 'assets/vehicles_photo/rickshaw_photo.png'),
-            _VehicleChoiceData('Coster', '22 seats', 'Shared seat or complete vehicle', 22, 'assets/vehicles_photo/coaster_photo.png'),
+            _VehicleChoiceData('Bike', '1 seat', 'Fast city travel', 1, 'assets/vehicles_photo/bike_clean.png'),
+            _VehicleChoiceData('Car', '4 seats', 'Comfortable city ride', 4, 'assets/vehicles_photo/car_clean.png'),
+            _VehicleChoiceData('Rickshaw', '3 seats', 'Economical local ride', 3, 'assets/vehicles_photo/rickshaw_clean.png'),
+            _VehicleChoiceData('Coster', '22 seats', 'Shared seat or complete vehicle', 22, 'assets/vehicles_photo/coaster_clean.png'),
           ],
         UDriveServiceType.tours => const [
-            _VehicleChoiceData('Car', '4 seats', 'Tour car or shared seat', 4, 'assets/vehicles_photo/car_photo.png'),
-            _VehicleChoiceData('Coster', '22 seats', 'Group tour and per-seat travel', 22, 'assets/vehicles_photo/coaster_photo.png'),
+            _VehicleChoiceData('Car', '4 seats', 'Tour car or shared seat', 4, 'assets/vehicles_photo/car_clean.png'),
+            _VehicleChoiceData('Coster', '22 seats', 'Group tour and per-seat travel', 22, 'assets/vehicles_photo/coaster_clean.png'),
           ],
         UDriveServiceType.privateVehicle => const [
-            _VehicleChoiceData('Car', '4 seats', 'Book the complete car', 4, 'assets/vehicles_photo/private_car_photo.png'),
-            _VehicleChoiceData('Coster', '22 seats', 'Private vehicle for groups', 22, 'assets/vehicles_photo/coaster_photo.png'),
-            _VehicleChoiceData('Bike', '1 seat', 'Private bike ride', 1, 'assets/vehicles_photo/bike_photo.png'),
+            _VehicleChoiceData('Car', '4 seats', 'Book the complete car', 4, 'assets/vehicles_photo/private_car_clean.png'),
+            _VehicleChoiceData('Coster', '22 seats', 'Private vehicle for groups', 22, 'assets/vehicles_photo/coaster_clean.png'),
+            _VehicleChoiceData('Bike', '1 seat', 'Private bike ride', 1, 'assets/vehicles_photo/bike_clean.png'),
           ],
       };
 

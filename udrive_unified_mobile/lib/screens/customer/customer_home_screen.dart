@@ -671,9 +671,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     if (recentBookings.isEmpty)
                       const _EmptyRecentBookings()
                     else
-                      ...recentBookings.take(3).map((booking) => _RecentBookingTile(
+                      ...recentBookings.take(2).map((booking) => _RecentBookingTile(
                             booking: booking,
-                            onTap: () => _openRouteFlow(UDriveServiceType.city),
+                            onTap: () => _openRecentBooking(booking),
                           )),
                   ],
                 ),
@@ -683,6 +683,55 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ],
       ),
     );
+  }
+
+
+  Future<void> _openRecentBooking(LiveBooking booking) async {
+    final label = booking.destinationLabel.trim();
+    if (label.isEmpty) return;
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'q': '$label, Pakistan',
+        'format': 'jsonv2',
+        'limit': '1',
+        'countrycodes': 'pk',
+      });
+      final response = await http.get(uri, headers: const {
+        'User-Agent': 'UDrive-Mobile/1.0',
+        'Accept-Language': 'en',
+      }).timeout(const Duration(seconds: 10));
+      if (!mounted) return;
+      double lat = _currentPoint.latitude;
+      double lng = _currentPoint.longitude;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final raw = jsonDecode(response.body);
+        if (raw is List && raw.isNotEmpty && raw.first is Map) {
+          final first = Map<String, dynamic>.from(raw.first as Map);
+          lat = double.tryParse('${first['lat']}') ?? lat;
+          lng = double.tryParse('${first['lon']}') ?? lng;
+        }
+      }
+      final isTour = booking.tourPackageId != null || booking.packageBookingId != null;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => UDriveRouteFlowScreen(
+            serviceType: isTour ? UDriveServiceType.tours : UDriveServiceType.city,
+            pickupLabel: _pickup.text.trim().isEmpty ? booking.pickupLabel : _pickup.text.trim(),
+            pickupPoint: _currentPoint,
+            initialDestinationLabel: label,
+            initialDestinationLatitude: lat,
+            initialDestinationLongitude: lng,
+            skipRouteEntry: true,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This booking destination could not be opened right now.')),
+      );
+    }
   }
 
   Future<void> _openRouteFlow(UDriveServiceType type) async {
@@ -1724,9 +1773,9 @@ class _RideCard extends StatelessWidget {
     }
     if (raw.contains('van')) return 'assets/vehicles_photo/coaster_photo.png';
     if (raw.contains('suv') || raw.contains('prado') || raw.contains('fortuner')) {
-      return 'assets/vehicles_photo/private_car_photo.png';
+      return 'assets/vehicles_photo/private_car_clean.png';
     }
-    return 'assets/vehicles_photo/car_photo.png';
+    return 'assets/vehicles_photo/car_clean.png';
   }
 
   Widget _vehicleImage() {
@@ -2151,7 +2200,7 @@ class _UDriveServicesGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        height: 254,
+        height: 236,
         child: Row(
           children: [
             Expanded(
@@ -2161,7 +2210,7 @@ class _UDriveServicesGrid extends StatelessWidget {
                 subtitle: 'per seat or full vehicle',
                 icon: Icons.airport_shuttle_rounded,
                 secondaryIcon: Icons.landscape_rounded,
-                imageAsset: 'assets/vehicles_photo/tour_photo.png',
+                imageAsset: 'assets/vehicles_photo/tour_clean.png',
                 onTap: onTours,
                 large: true,
               ),
@@ -2177,7 +2226,7 @@ class _UDriveServicesGrid extends StatelessWidget {
                       subtitle: 'car, bike, rickshaw',
                       icon: Icons.directions_car_filled_rounded,
                       secondaryIcon: Icons.two_wheeler_rounded,
-                      imageAsset: 'assets/vehicles_photo/car_photo.png',
+                      imageAsset: 'assets/vehicles_photo/car_clean.png',
                       onTap: onCity,
                     ),
                   ),
@@ -2188,7 +2237,7 @@ class _UDriveServicesGrid extends StatelessWidget {
                       subtitle: 'coster, car, bike',
                       icon: Icons.local_taxi_rounded,
                       secondaryIcon: Icons.two_wheeler_rounded,
-                      imageAsset: 'assets/vehicles_photo/private_car_photo.png',
+                      imageAsset: 'assets/vehicles_photo/private_car_clean.png',
                       onTap: onPrivate,
                     ),
                   ),
@@ -2266,11 +2315,11 @@ class _ServiceTile extends StatelessWidget {
                 ),
                 if (imageAsset != null)
                   Positioned(
-                    right: large ? -2 : -5,
-                    bottom: large ? 4 : -2,
+                    right: large ? 4 : 2,
+                    bottom: large ? 6 : 4,
                     child: SizedBox(
-                      width: large ? 185 : 116,
-                      height: large ? 118 : 76,
+                      width: large ? 170 : 104,
+                      height: large ? 104 : 64,
                       child: Image.asset(
                         imageAsset!,
                         fit: BoxFit.contain,
