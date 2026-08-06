@@ -13,22 +13,41 @@ public sealed class HotelService(string connectionString)
         await using var c=new NpgsqlConnection(connectionString); await c.OpenAsync(ct);
         await using var cmd=c.CreateCommand();
         cmd.CommandText="""
-        SELECT h.id,h.name,h.address,h.city,h.district,h.latitude,h.longitude,h.contact_phone,h.rating,h.main_image_url,h.amenities,h.transport_available,
-               COALESCE(MIN(CASE WHEN r.is_active THEN COALESCE(i.rate,r.base_rate) END),0) starting_rate,
-               COALESCE(SUM(CASE WHEN r.is_active THEN COALESCE(i.available_rooms,r.total_rooms) ELSE 0 END),0) available_rooms
+        SELECT h.id,h.name,h.address,h.city,h.district,h.latitude,h.longitude,
+               h.contact_phone,h.rating,h.main_image_url,h.amenities,h.transport_available,
+               COALESCE((
+                   SELECT MIN(COALESCE(i.rate,r.base_rate))
+                   FROM udrive.hotel_rooms r
+                   LEFT JOIN udrive.hotel_room_inventory i
+                     ON i.room_id=r.id AND i.inventory_date=@check_in
+                   WHERE r.hotel_id=h.id AND r.is_active
+               ),0) AS starting_rate,
+               COALESCE((
+                   SELECT SUM(COALESCE(i.available_rooms,r.total_rooms))
+                   FROM udrive.hotel_rooms r
+                   LEFT JOIN udrive.hotel_room_inventory i
+                     ON i.room_id=r.id AND i.inventory_date=@check_in
+                   WHERE r.hotel_id=h.id AND r.is_active
+               ),0) AS available_rooms
         FROM udrive.hotels h
-        LEFT JOIN udrive.hotel_rooms r ON r.hotel_id=h.id
-        LEFT JOIN udrive.hotel_room_inventory i ON i.room_id=r.id AND i.inventory_date=@check_in
-        WHERE h.approval_status='Approved' AND h.is_active
-          AND (@query='' OR h.name ILIKE '%'||@query||'%' OR h.city ILIKE '%'||@query||'%' OR h.address ILIKE '%'||@query||'%')
-          AND (@city='' OR h.city ILIKE @city)
-        GROUP BY h.id
-        HAVING (@check_in IS NULL OR COUNT(r.id)=0 OR COALESCE(SUM(CASE WHEN r.is_active THEN COALESCE(i.available_rooms,r.total_rooms) ELSE 0 END),0) >= @rooms)
+        WHERE lower(h.approval_status)='approved'
+          AND h.is_active=true
+          AND (
+                @query=''
+                OR h.name ILIKE '%'||@query||'%'
+                OR h.city ILIKE '%'||@query||'%'
+                OR h.district ILIKE '%'||@query||'%'
+                OR h.address ILIKE '%'||@query||'%'
+              )
+          AND (@city='' OR h.city ILIKE '%'||@city||'%' OR h.district ILIKE '%'||@city||'%')
         ORDER BY h.rating DESC,h.created_at DESC
         LIMIT @limit OFFSET @offset;
         """;
-        cmd.Parameters.AddWithValue("query",request.Query?.Trim()??""); cmd.Parameters.AddWithValue("city",request.City?.Trim()??"");
-        cmd.Parameters.AddWithValue("check_in",(object?)request.CheckIn??DBNull.Value); cmd.Parameters.AddWithValue("rooms",Math.Max(1,request.Rooms)); cmd.Parameters.AddWithValue("limit",size); cmd.Parameters.AddWithValue("offset",offset);
+        cmd.Parameters.AddWithValue("query",request.Query?.Trim()??"");
+        cmd.Parameters.AddWithValue("city",request.City?.Trim()??"");
+        cmd.Parameters.AddWithValue("check_in",request.CheckIn??DateOnly.FromDateTime(DateTime.UtcNow.Date));
+        cmd.Parameters.AddWithValue("limit",size);
+        cmd.Parameters.AddWithValue("offset",offset);
         var list=new List<object>(); await using var r=await cmd.ExecuteReaderAsync(ct); while(await r.ReadAsync(ct)) list.Add(MapHotel(r));
         return ServiceResult<object>.Ok(new {items=list,page,pageSize=size,hasMore=list.Count==size});
     }
@@ -36,7 +55,7 @@ public sealed class HotelService(string connectionString)
     public async Task<ServiceResult<object>> GetAsync(Guid id, DateOnly? checkIn, DateOnly? checkOut, CancellationToken ct)
     {
         await using var c=new NpgsqlConnection(connectionString); await c.OpenAsync(ct);
-        object? hotel=null; await using(var cmd=c.CreateCommand()) {cmd.CommandText="""SELECT h.id,h.name,h.address,h.city,h.district,h.latitude,h.longitude,h.contact_phone,h.rating,h.main_image_url,h.amenities,h.transport_available,h.description,0::numeric,0::bigint FROM udrive.hotels h WHERE h.id=@id AND h.approval_status='Approved' AND h.is_active""";cmd.Parameters.AddWithValue("id",id);await using var r=await cmd.ExecuteReaderAsync(ct);if(await r.ReadAsync(ct))hotel=MapHotel(r,true);} if(hotel is null)return ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");
+        object? hotel=null; await using(var cmd=c.CreateCommand()) {cmd.CommandText="""SELECT h.id,h.name,h.address,h.city,h.district,h.latitude,h.longitude,h.contact_phone,h.rating,h.main_image_url,h.amenities,h.transport_available,h.description,0::numeric,0::bigint FROM udrive.hotels h WHERE h.id=@id AND lower(h.approval_status)='approved' AND h.is_active""";cmd.Parameters.AddWithValue("id",id);await using var r=await cmd.ExecuteReaderAsync(ct);if(await r.ReadAsync(ct))hotel=MapHotel(r,true);} if(hotel is null)return ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");
         var rooms=new List<object>(); await using(var cmd=c.CreateCommand()){cmd.CommandText="""SELECT r.id,r.room_type,r.description,r.capacity,r.total_rooms,r.base_rate,r.image_url,r.amenities,COALESCE(i.available_rooms,r.total_rooms),COALESCE(i.rate,r.base_rate) FROM udrive.hotel_rooms r LEFT JOIN udrive.hotel_room_inventory i ON i.room_id=r.id AND i.inventory_date=@d WHERE r.hotel_id=@id AND r.is_active ORDER BY r.base_rate""";cmd.Parameters.AddWithValue("id",id);cmd.Parameters.AddWithValue("d",(object?)checkIn??DateOnly.FromDateTime(DateTime.UtcNow));await using var rr=await cmd.ExecuteReaderAsync(ct);while(await rr.ReadAsync(ct))rooms.Add(new{id=rr.GetGuid(0),roomType=rr.GetString(1),description=rr.GetString(2),capacity=rr.GetInt32(3),totalRooms=rr.GetInt32(4),baseRate=rr.GetDecimal(5),imageUrl=rr.GetString(6),amenities=JsonSerializer.Deserialize<string[]>(rr.GetFieldValue<string>(7))??[],availableRooms=rr.GetInt32(8),rate=rr.GetDecimal(9)});}
         return ServiceResult<object>.Ok(new {hotel,rooms});
     }
@@ -67,7 +86,7 @@ public sealed class HotelService(string connectionString)
 
     public async Task<ServiceResult<object>> AddRoomAsync(Guid ownerId,Guid hotelId,CreateHotelRoomRequest x,CancellationToken ct){await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();cmd.CommandText="""INSERT INTO udrive.hotel_rooms(hotel_id,room_type,description,capacity,total_rooms,base_rate,image_url,amenities) SELECT @h,@rt,@d,@cap,@total,@rate,@img,@am::jsonb FROM udrive.hotels WHERE id=@h AND owner_user_id=@u RETURNING id""";cmd.Parameters.AddWithValue("h",hotelId);cmd.Parameters.AddWithValue("u",ownerId);cmd.Parameters.AddWithValue("rt",x.RoomType.Trim());cmd.Parameters.AddWithValue("d",x.Description??"");cmd.Parameters.AddWithValue("cap",x.Capacity);cmd.Parameters.AddWithValue("total",x.TotalRooms);cmd.Parameters.AddWithValue("rate",x.BaseRate);cmd.Parameters.AddWithValue("img",x.ImageUrl??"");cmd.Parameters.AddWithValue("am",JsonSerializer.Serialize(x.Amenities??[]));var o=await cmd.ExecuteScalarAsync(ct);return o is Guid id?ServiceResult<object>.Ok(new{id}):ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");}
 
-    public async Task<ServiceResult<object>> BookAsync(Guid userId,Guid hotelId,CreateHotelBookingRequest x,CancellationToken ct){if(x.CheckOut<=x.CheckIn)return ServiceResult<object>.Fail(400,"dates","Check-out must be after check-in.");await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var tx=await c.BeginTransactionAsync(ct);try{decimal rate;int available;await using(var q=c.CreateCommand()){q.Transaction=tx;q.CommandText="""SELECT COALESCE(i.rate,r.base_rate),COALESCE(i.available_rooms,r.total_rooms) FROM udrive.hotel_rooms r JOIN udrive.hotels h ON h.id=r.hotel_id LEFT JOIN udrive.hotel_room_inventory i ON i.room_id=r.id AND i.inventory_date=@d WHERE r.id=@r AND h.id=@h AND h.approval_status='Approved' AND h.is_active AND r.is_active FOR UPDATE""";q.Parameters.AddWithValue("d",x.CheckIn);q.Parameters.AddWithValue("r",x.RoomId);q.Parameters.AddWithValue("h",hotelId);await using var rr=await q.ExecuteReaderAsync(ct);if(!await rr.ReadAsync(ct))return ServiceResult<object>.Fail(404,"room_not_found","Room is unavailable.");rate=rr.GetDecimal(0);available=rr.GetInt32(1);}if(available<x.Rooms)return ServiceResult<object>.Fail(409,"rooms_unavailable","Not enough rooms are available.");var nights=x.CheckOut.DayNumber-x.CheckIn.DayNumber;var amount=rate*x.Rooms*nights;Guid bookingId;await using(var ins=c.CreateCommand()){ins.Transaction=tx;ins.CommandText="""INSERT INTO udrive.hotel_bookings(customer_user_id,hotel_id,room_id,check_in,check_out,guests,rooms,amount,include_transport) VALUES(@u,@h,@r,@ci,@co,@g,@rooms,@a,@t) RETURNING id""";ins.Parameters.AddWithValue("u",userId);ins.Parameters.AddWithValue("h",hotelId);ins.Parameters.AddWithValue("r",x.RoomId);ins.Parameters.AddWithValue("ci",x.CheckIn);ins.Parameters.AddWithValue("co",x.CheckOut);ins.Parameters.AddWithValue("g",x.Guests);ins.Parameters.AddWithValue("rooms",x.Rooms);ins.Parameters.AddWithValue("a",amount);ins.Parameters.AddWithValue("t",x.IncludeTransport);bookingId=(Guid)(await ins.ExecuteScalarAsync(ct))!;}await tx.CommitAsync(ct);return ServiceResult<object>.Ok(new{bookingId,amount,includeTransport=x.IncludeTransport,transportDestination=new{hotelId,latitude=(double?)null,longitude=(double?)null}});}catch{await tx.RollbackAsync(ct);throw;}}
+    public async Task<ServiceResult<object>> BookAsync(Guid userId,Guid hotelId,CreateHotelBookingRequest x,CancellationToken ct){if(x.CheckOut<=x.CheckIn)return ServiceResult<object>.Fail(400,"dates","Check-out must be after check-in.");await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var tx=await c.BeginTransactionAsync(ct);try{decimal rate;int available;await using(var q=c.CreateCommand()){q.Transaction=tx;q.CommandText="""SELECT COALESCE(i.rate,r.base_rate),COALESCE(i.available_rooms,r.total_rooms) FROM udrive.hotel_rooms r JOIN udrive.hotels h ON h.id=r.hotel_id LEFT JOIN udrive.hotel_room_inventory i ON i.room_id=r.id AND i.inventory_date=@d WHERE r.id=@r AND h.id=@h AND lower(h.approval_status)='approved' AND h.is_active AND r.is_active FOR UPDATE""";q.Parameters.AddWithValue("d",x.CheckIn);q.Parameters.AddWithValue("r",x.RoomId);q.Parameters.AddWithValue("h",hotelId);await using var rr=await q.ExecuteReaderAsync(ct);if(!await rr.ReadAsync(ct))return ServiceResult<object>.Fail(404,"room_not_found","Room is unavailable.");rate=rr.GetDecimal(0);available=rr.GetInt32(1);}if(available<x.Rooms)return ServiceResult<object>.Fail(409,"rooms_unavailable","Not enough rooms are available.");var nights=x.CheckOut.DayNumber-x.CheckIn.DayNumber;var amount=rate*x.Rooms*nights;Guid bookingId;await using(var ins=c.CreateCommand()){ins.Transaction=tx;ins.CommandText="""INSERT INTO udrive.hotel_bookings(customer_user_id,hotel_id,room_id,check_in,check_out,guests,rooms,amount,include_transport) VALUES(@u,@h,@r,@ci,@co,@g,@rooms,@a,@t) RETURNING id""";ins.Parameters.AddWithValue("u",userId);ins.Parameters.AddWithValue("h",hotelId);ins.Parameters.AddWithValue("r",x.RoomId);ins.Parameters.AddWithValue("ci",x.CheckIn);ins.Parameters.AddWithValue("co",x.CheckOut);ins.Parameters.AddWithValue("g",x.Guests);ins.Parameters.AddWithValue("rooms",x.Rooms);ins.Parameters.AddWithValue("a",amount);ins.Parameters.AddWithValue("t",x.IncludeTransport);bookingId=(Guid)(await ins.ExecuteScalarAsync(ct))!;}await tx.CommitAsync(ct);return ServiceResult<object>.Ok(new{bookingId,amount,includeTransport=x.IncludeTransport,transportDestination=new{hotelId,latitude=(double?)null,longitude=(double?)null}});}catch{await tx.RollbackAsync(ct);throw;}}
 
     public async Task<ServiceResult<object>> OwnerBookingsAsync(Guid ownerId,Guid? hotelId,CancellationToken ct){await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();cmd.CommandText="""SELECT b.id,b.hotel_id,h.name,r.room_type,b.check_in,b.check_out,b.guests,b.rooms,b.amount,b.status,b.payment_status,b.include_transport,b.created_at FROM udrive.hotel_bookings b JOIN udrive.hotels h ON h.id=b.hotel_id JOIN udrive.hotel_rooms r ON r.id=b.room_id WHERE h.owner_user_id=@u AND (@h IS NULL OR h.id=@h) ORDER BY b.created_at DESC LIMIT 100""";cmd.Parameters.AddWithValue("u",ownerId);cmd.Parameters.AddWithValue("h",(object?)hotelId??DBNull.Value);var list=new List<object>();await using var rr=await cmd.ExecuteReaderAsync(ct);while(await rr.ReadAsync(ct))list.Add(new{id=rr.GetGuid(0),hotelId=rr.GetGuid(1),hotelName=rr.GetString(2),roomType=rr.GetString(3),checkIn=rr.GetFieldValue<DateOnly>(4),checkOut=rr.GetFieldValue<DateOnly>(5),guests=rr.GetInt32(6),rooms=rr.GetInt32(7),amount=rr.GetDecimal(8),status=rr.GetString(9),paymentStatus=rr.GetString(10),includeTransport=rr.GetBoolean(11),createdAt=rr.GetDateTime(12)});return ServiceResult<object>.Ok(list);}
 

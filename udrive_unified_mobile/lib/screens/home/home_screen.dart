@@ -163,7 +163,7 @@ class _ServiceGrid extends StatelessWidget {
   final ValueChanged<String> onSelected;
   @override Widget build(BuildContext context) {
     const services = [
-      ('Travel within city','Car • Bike • Rickshaw',Icons.local_taxi_rounded),
+      ('City-to-City Ride','Car • Bike • Rickshaw',Icons.local_taxi_rounded),
       ('Tours & Trips','Coster • Car • Shared seats',Icons.route_rounded),
       ('Private Vehicle','Car • Coster • Bike',Icons.directions_car_filled_rounded),
       ('Hotels & Stays','Rooms • Transport • Packages',Icons.hotel_rounded),

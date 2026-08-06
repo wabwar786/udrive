@@ -70,9 +70,22 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
   late String _pickupLabel;
   late UDriveServiceType _serviceType;
   bool _initialWholeVehicle = false;
-  List<_PlaceResult> _results = const [];
+  static const List<_PlaceResult> _fallbackDestinations = [
+    _PlaceResult('Muzaffarabad', 'AJK capital • Domel and city centre', 34.3700, 73.4700),
+    _PlaceResult('Neelum Valley', 'Athmuqam, Keran, Sharda and Kel', 34.5985, 73.9070),
+    _PlaceResult('Keran', 'Neelum District • Riverside destination', 34.6501, 73.9479),
+    _PlaceResult('Sharda', 'Neelum Valley • Sharda bazaar and river', 34.7937, 74.1883),
+    _PlaceResult('Kel', 'Upper Neelum Valley • Arang Kel access', 34.8077, 74.3460),
+    _PlaceResult('Rawalakot', 'Poonch District • Banjosa and Toli Pir', 33.8578, 73.7604),
+    _PlaceResult('Banjosa Lake', 'Rawalakot • Family tourism destination', 33.8107, 73.8135),
+    _PlaceResult('Pir Chinasi', 'Muzaffarabad • Mountain viewpoint', 34.3858, 73.5485),
+    _PlaceResult('Leepa Valley', 'Hattian Bala District • Scenic valley', 34.3103, 73.8674),
+    _PlaceResult('Mirpur', 'AJK • Mangla Lake and city centre', 33.1484, 73.7519),
+  ];
+
+  List<_PlaceResult> _results = _fallbackDestinations;
   List<_PlaceResult> _recentSearches = const [];
-  List<_PlaceResult> _catalogPlaces = const [];
+  List<_PlaceResult> _catalogPlaces = _fallbackDestinations;
   String? _searchMessage;
 
   @override
@@ -109,8 +122,6 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
             ),
           ),
         );
-      } else {
-        _toFocus.requestFocus();
       }
     });
   }
@@ -167,10 +178,11 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
       }
       if (!mounted) return;
       setState(() {
-        _catalogPlaces = loaded;
-        _searchMessage = loaded.isEmpty
-            ? 'Type a destination to search across Pakistan.'
-            : null;
+        _catalogPlaces = _mergePlaces([
+          ...loaded,
+          ..._fallbackDestinations,
+        ]);
+        _searchMessage = null;
         if (_to.text.trim().isEmpty && !_editingFrom) {
           _results = _defaultResults();
         }
@@ -178,7 +190,8 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _searchMessage = 'Saved Kashmir destinations are temporarily unavailable. You can still type any place name.';
+        _catalogPlaces = _fallbackDestinations;
+        _searchMessage = 'Live destination sync is unavailable. Saved Kashmir destinations are ready below.';
         if (_to.text.trim().isEmpty && !_editingFrom) {
           _results = _defaultResults();
         }
@@ -360,21 +373,22 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
   Widget build(BuildContext context) {
     final activeText = (_editingFrom ? _from.text : _to.text).trim();
     final typed = activeText.isNotEmpty;
+
     return Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: _ink,
       body: Stack(
         children: [
           Positioned.fill(
-            child: ColorFiltered(
-              colorFilter: const ColorFilter.matrix([
-                .42, 0, 0, 0, 0,
-                0, .48, 0, 0, 0,
-                0, 0, .62, 0, 0,
-                0, 0, 0, 1, 0,
-              ]),
+            child: IgnorePointer(
               child: FlutterMap(
-                options: MapOptions(initialCenter: _pickupPoint, initialZoom: 14.5),
+                options: MapOptions(
+                  initialCenter: _pickupPoint,
+                  initialZoom: 13.4,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none,
+                  ),
+                ),
                 children: [
                   TileLayer(
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -384,9 +398,13 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                     markers: [
                       Marker(
                         point: _pickupPoint,
-                        width: 48,
-                        height: 48,
-                        child: const Icon(Icons.location_pin, color: _lime, size: 46),
+                        width: 46,
+                        height: 46,
+                        child: const Icon(
+                          Icons.location_pin,
+                          color: _lime,
+                          size: 44,
+                        ),
                       ),
                     ],
                   ),
@@ -394,237 +412,350 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
               ),
             ),
           ),
-          const Positioned.fill(child: ColoredBox(color: Color(0x24111411))),
-          Positioned.fill(
-            child: ColoredBox(
-              color: const Color(0xDC151715),
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 72),
-                  child: Column(
+          const Positioned.fill(
+            child: ColoredBox(color: Color(0xB8121513)),
+          ),
+          SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+                  child: Row(
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                        child: Column(
-                          children: [
-                            if (_serviceType == UDriveServiceType.privateVehicle)
-                              Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(14)),
-                                child: _RouteModeChoice(
-                                  label: 'Private vehicle booking',
-                                  selected: true,
-                                  onTap: () {},
-                                ),
-                              )
-                            else
-                              Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(14)),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: _RouteModeChoice(
-                                        label: 'City-to-city',
-                                        selected: _serviceType == UDriveServiceType.city,
-                                        onTap: () => setState(() => _serviceType = UDriveServiceType.city),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: _RouteModeChoice(
-                                        label: 'Tour booking',
-                                        selected: _serviceType == UDriveServiceType.tours,
-                                        onTap: () => setState(() => _serviceType = UDriveServiceType.tours),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF222522),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: _serviceType == UDriveServiceType.privateVehicle
-                                  ? _RouteModeChoice(
-                                      label: 'Full vehicle',
-                                      selected: true,
-                                      onTap: () {},
-                                    )
-                                  : Row(
-                                      children: [
-                                        Expanded(
-                                          child: _RouteModeChoice(
-                                            label: 'Seat booking',
-                                            selected: !_initialWholeVehicle,
-                                            onTap: () => setState(() => _initialWholeVehicle = false),
-                                          ),
-                                        ),
-                                        Expanded(
-                                          child: _RouteModeChoice(
-                                            label: 'Full vehicle',
-                                            selected: _initialWholeVehicle,
-                                            onTap: () => setState(() => _initialWholeVehicle = true),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: _from,
-                              focusNode: _fromFocus,
-                              onTap: () {
-                                setState(() => _editingFrom = true);
-                                _onChanged(_from.text, from: true);
-                              },
-                              onChanged: (value) {
-                                setState(() => _editingFrom = true);
-                                _onChanged(value, from: true);
-                              },
-                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-                              decoration: _fieldDecoration('From', Icons.my_location_rounded),
-                            ),
-                            const SizedBox(height: 9),
-                            TextField(
-                              controller: _to,
-                              focusNode: _toFocus,
-                              onTap: () => setState(() => _editingFrom = false),
-                              onChanged: (value) {
-                                setState(() => _editingFrom = false);
-                                _onChanged(value, from: false);
-                              },
-                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-                              decoration: _fieldDecoration(
-                                'Search destination',
-                                Icons.search_rounded,
-                                suffix: _to.text.isEmpty
-                                    ? const Icon(Icons.map_rounded, color: Color(0xFF75B8FF))
-                                    : IconButton(
-                                        onPressed: () {
-                                          _to.clear();
-                                          _onChanged('', from: false);
-                                          setState(() {});
-                                        },
-                                        icon: const Icon(Icons.cancel_rounded, color: Colors.white54),
-                                      ),
-                              ),
-                            ),
-                          ],
+                      IconButton.filled(
+                        onPressed: () => Navigator.maybePop(context),
+                        style: IconButton.styleFrom(
+                          backgroundColor: const Color(0xA8121413),
+                        ),
+                        icon: const Icon(
+                          Icons.arrow_back_rounded,
+                          color: Colors.white,
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-                        child: Row(
-                          children: [
-                            _FilterChip(label: typed ? 'Search results' : 'Suggested destinations', selected: true),
-                            if (_searching) ...[
-                              const Spacer(),
-                              const SizedBox(
-                                width: 17,
-                                height: 17,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: _lime),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
+                      const SizedBox(width: 8),
                       Expanded(
-                        child: _results.isEmpty
-                            ? Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 28),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _searching ? Icons.travel_explore_rounded : Icons.search_rounded,
-                                        color: _searching ? _lime : Colors.white38,
-                                        size: 42,
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        _searchMessage ?? 'Type a city, district, hotel or Kashmir destination.',
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.4),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            : ListView.separated(
-                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                                itemCount: _results.length,
-                                separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1, indent: 48),
-                                itemBuilder: (context, index) {
-                                  final place = _results[index];
-                                  final distance = const Distance().as(
-                                    LengthUnit.Kilometer,
-                                    _pickupPoint,
-                                    LatLng(place.latitude, place.longitude),
-                                  );
-                                  return ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(vertical: 5),
-                                    leading: Icon(
-                                      typed ? Icons.location_on_outlined : Icons.place_rounded,
-                                      color: typed ? Colors.white54 : _lime,
-                                      size: 27,
-                                    ),
-                                    title: Text(
-                                      place.title,
-                                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
-                                    ),
-                                    subtitle: Text(
-                                      place.subtitle,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.25),
-                                    ),
-                                    trailing: typed
-                                        ? Text(
-                                            '${distance.toStringAsFixed(1)} km',
-                                            style: const TextStyle(color: _muted, fontSize: 11),
-                                          )
-                                        : const Icon(Icons.chevron_right_rounded, color: Colors.white38),
-                                    onTap: () => _select(place),
-                                  );
-                                },
-                              ),
+                        child: Text(
+                          _serviceType.title,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        onPressed: () => Navigator.of(context)
+                            .popUntil((route) => route.isFirst),
+                        style: IconButton.styleFrom(
+                          backgroundColor: const Color(0xA8121413),
+                        ),
+                        icon: const Icon(
+                          Icons.home_rounded,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
-              child: Row(
-                children: [
-                  IconButton.filled(
-                    onPressed: () => Navigator.maybePop(context),
-                    style: IconButton.styleFrom(backgroundColor: const Color(0x84121413)),
-                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _serviceType.title,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900),
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      color: Color(0xE8151715),
+                      border: Border(
+                        top: BorderSide(color: Colors.white12),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        SingleChildScrollView(
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                          child: Column(
+                            children: [
+                              if (_serviceType ==
+                                  UDriveServiceType.privateVehicle)
+                                Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: _tile,
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: _RouteModeChoice(
+                                    label: 'Private vehicle booking',
+                                    selected: true,
+                                    onTap: () {},
+                                  ),
+                                )
+                              else
+                                Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: _tile,
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: _RouteModeChoice(
+                                          label: 'City-to-city',
+                                          selected: _serviceType ==
+                                              UDriveServiceType.city,
+                                          onTap: () => setState(() =>
+                                              _serviceType =
+                                                  UDriveServiceType.city),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: _RouteModeChoice(
+                                          label: 'Tour booking',
+                                          selected: _serviceType ==
+                                              UDriveServiceType.tours,
+                                          onTap: () => setState(() =>
+                                              _serviceType =
+                                                  UDriveServiceType.tours),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF222522),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: _serviceType ==
+                                        UDriveServiceType.privateVehicle
+                                    ? _RouteModeChoice(
+                                        label: 'Full vehicle',
+                                        selected: true,
+                                        onTap: () {},
+                                      )
+                                    : Row(
+                                        children: [
+                                          Expanded(
+                                            child: _RouteModeChoice(
+                                              label: 'Seat booking',
+                                              selected:
+                                                  !_initialWholeVehicle,
+                                              onTap: () => setState(() =>
+                                                  _initialWholeVehicle =
+                                                      false),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            child: _RouteModeChoice(
+                                              label: 'Full vehicle',
+                                              selected:
+                                                  _initialWholeVehicle,
+                                              onTap: () => setState(() =>
+                                                  _initialWholeVehicle = true),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: _from,
+                                focusNode: _fromFocus,
+                                onTap: () {
+                                  setState(() => _editingFrom = true);
+                                  _onChanged(_from.text, from: true);
+                                },
+                                onChanged: (value) {
+                                  setState(() => _editingFrom = true);
+                                  _onChanged(value, from: true);
+                                },
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                decoration: _fieldDecoration(
+                                  'Pickup location',
+                                  Icons.my_location_rounded,
+                                ),
+                              ),
+                              const SizedBox(height: 9),
+                              TextField(
+                                controller: _to,
+                                focusNode: _toFocus,
+                                textInputAction: TextInputAction.search,
+                                onTap: () =>
+                                    setState(() => _editingFrom = false),
+                                onChanged: (value) {
+                                  setState(() => _editingFrom = false);
+                                  _onChanged(value, from: false);
+                                },
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                decoration: _fieldDecoration(
+                                  'Search destination',
+                                  Icons.search_rounded,
+                                  suffix: _to.text.isEmpty
+                                      ? const Icon(
+                                          Icons.map_rounded,
+                                          color: Color(0xFF75B8FF),
+                                        )
+                                      : IconButton(
+                                          onPressed: () {
+                                            _to.clear();
+                                            _onChanged('', from: false);
+                                            setState(() {});
+                                          },
+                                          icon: const Icon(
+                                            Icons.cancel_rounded,
+                                            color: Colors.white54,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: _FilterChip(
+                                  label: typed
+                                      ? 'Search results'
+                                      : 'Popular Kashmir destinations',
+                                  selected: true,
+                                ),
+                              ),
+                              if (_searching) ...[
+                                const Spacer(),
+                                const SizedBox(
+                                  width: 17,
+                                  height: 17,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: _lime,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: _results.isEmpty
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 28,
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          _searching
+                                              ? Icons.travel_explore_rounded
+                                              : Icons.search_rounded,
+                                          color: _searching
+                                              ? _lime
+                                              : Colors.white38,
+                                          size: 42,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          _searchMessage ??
+                                              'Type a city, district, hotel or Kashmir destination.',
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 12.5,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              : ListView.separated(
+                                  keyboardDismissBehavior:
+                                      ScrollViewKeyboardDismissBehavior.onDrag,
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    24,
+                                  ),
+                                  itemCount: _results.length,
+                                  separatorBuilder: (_, __) => const Divider(
+                                    color: Colors.white10,
+                                    height: 1,
+                                    indent: 48,
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final place = _results[index];
+                                    final distance = const Distance().as(
+                                      LengthUnit.Kilometer,
+                                      _pickupPoint,
+                                      LatLng(
+                                        place.latitude,
+                                        place.longitude,
+                                      ),
+                                    );
+                                    return ListTile(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                        vertical: 4,
+                                      ),
+                                      leading: Icon(
+                                        typed
+                                            ? Icons.location_on_outlined
+                                            : Icons.place_rounded,
+                                        color: typed ? Colors.white54 : _lime,
+                                        size: 27,
+                                      ),
+                                      title: Text(
+                                        place.title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        place.subtitle,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: _muted,
+                                          fontSize: 11.5,
+                                          height: 1.25,
+                                        ),
+                                      ),
+                                      trailing: Text(
+                                        '${distance.toStringAsFixed(0)} km',
+                                        style: const TextStyle(
+                                          color: _muted,
+                                          fontSize: 10.5,
+                                        ),
+                                      ),
+                                      onTap: () => _select(place),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-                    style: IconButton.styleFrom(backgroundColor: const Color(0x84121413)),
-                    icon: const Icon(Icons.home_rounded, color: Colors.white),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -657,6 +788,129 @@ class UDriveVehicleSelectionScreen extends StatefulWidget {
 }
 
 class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScreen> {
+  static const List<_PublicVehicle> _fallbackDemoVehicles = [
+    _PublicVehicle(
+      id: 'demo-bike-1',
+      driverProfileId: 'demo-driver-bike',
+      driverName: 'Usman Bike Rider',
+      driverRating: 4.8,
+      completedTrips: 186,
+      safetyScore: 94,
+      isOnline: true,
+      category: 'Bike',
+      make: 'Honda',
+      model: 'CB 150F',
+      year: 2025,
+      registrationNumber: 'AJK-BK-101',
+      colour: 'Black',
+      passengerCapacity: 1,
+      luggageCapacity: 1,
+      hasAirConditioning: false,
+      hasHeating: false,
+      isFourByFour: false,
+      mountainReadinessScore: 72,
+      imageUrl: '',
+      serviceAreas: ['Muzaffarabad', 'Mirpur'],
+      isDemo: true,
+    ),
+    _PublicVehicle(
+      id: 'demo-car-1',
+      driverProfileId: 'demo-driver-car',
+      driverName: 'Adeel Khan',
+      driverRating: 4.9,
+      completedTrips: 342,
+      safetyScore: 97,
+      isOnline: true,
+      category: 'Car',
+      make: 'Toyota',
+      model: 'Corolla',
+      year: 2024,
+      registrationNumber: 'AJK-UD-201',
+      colour: 'White',
+      passengerCapacity: 4,
+      luggageCapacity: 3,
+      hasAirConditioning: true,
+      hasHeating: true,
+      isFourByFour: false,
+      mountainReadinessScore: 82,
+      imageUrl: '',
+      serviceAreas: ['Muzaffarabad', 'Neelum Valley'],
+      isDemo: true,
+    ),
+    _PublicVehicle(
+      id: 'demo-rickshaw-1',
+      driverProfileId: 'demo-driver-rickshaw',
+      driverName: 'Bilal Local Ride',
+      driverRating: 4.7,
+      completedTrips: 221,
+      safetyScore: 91,
+      isOnline: true,
+      category: 'Rickshaw',
+      make: 'Sazgar',
+      model: 'Royal',
+      year: 2025,
+      registrationNumber: 'AJK-RK-301',
+      colour: 'Green',
+      passengerCapacity: 3,
+      luggageCapacity: 1,
+      hasAirConditioning: false,
+      hasHeating: false,
+      isFourByFour: false,
+      mountainReadinessScore: 65,
+      imageUrl: '',
+      serviceAreas: ['Muzaffarabad City'],
+      isDemo: true,
+    ),
+    _PublicVehicle(
+      id: 'demo-coaster-1',
+      driverProfileId: 'demo-driver-coaster',
+      driverName: 'Kashmir Group Transport',
+      driverRating: 4.9,
+      completedTrips: 128,
+      safetyScore: 98,
+      isOnline: true,
+      category: 'Coster',
+      make: 'Toyota',
+      model: 'Coaster',
+      year: 2023,
+      registrationNumber: 'AJK-CT-401',
+      colour: 'Silver',
+      passengerCapacity: 22,
+      luggageCapacity: 18,
+      hasAirConditioning: true,
+      hasHeating: true,
+      isFourByFour: false,
+      mountainReadinessScore: 88,
+      imageUrl: '',
+      serviceAreas: ['Muzaffarabad', 'Rawalakot', 'Neelum Valley'],
+      isDemo: true,
+    ),
+    _PublicVehicle(
+      id: 'demo-suv-1',
+      driverProfileId: 'demo-driver-suv',
+      driverName: 'Hamza Mountain Tours',
+      driverRating: 4.9,
+      completedTrips: 274,
+      safetyScore: 98,
+      isOnline: true,
+      category: 'Car',
+      make: 'Toyota',
+      model: 'Fortuner 4x4',
+      year: 2024,
+      registrationNumber: 'AJK-SUV-501',
+      colour: 'Black',
+      passengerCapacity: 6,
+      luggageCapacity: 5,
+      hasAirConditioning: true,
+      hasHeating: true,
+      isFourByFour: true,
+      mountainReadinessScore: 99,
+      imageUrl: '',
+      serviceAreas: ['Neelum Valley', 'Leepa Valley', 'Toli Pir'],
+      isDemo: true,
+    ),
+  ];
+
   int _selected = 0;
   bool _submitting = false;
   bool _autoAccept = false;
@@ -731,13 +985,15 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       }
 
       if (!mounted) return;
-      final displayVehicles = _interleaveVehicleCategories(vehicles);
+      _ensureFallbackRates();
+      final sourceVehicles = vehicles.isEmpty
+          ? _fallbackVehiclesForService()
+          : vehicles;
+      final displayVehicles = _interleaveVehicleCategories(sourceVehicles);
       setState(() {
         _availableVehicles = displayVehicles;
         _loadingVehicles = false;
-        _vehicleLoadError = displayVehicles.isEmpty
-            ? 'No approved vehicles are currently published. Ask admin to add demo data and try again.'
-            : null;
+        _vehicleLoadError = null;
 
         if (displayVehicles.isNotEmpty) {
           final preferred = displayVehicles.firstWhere(
@@ -763,14 +1019,48 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       _applySelectedDefaultRates();
     } catch (_) {
       if (!mounted) return;
+      _ensureFallbackRates();
+      final fallback = _interleaveVehicleCategories(
+        _fallbackVehiclesForService(),
+      );
       setState(() {
+        _availableVehicles = fallback;
         _loadingVehicles = false;
-        _vehicleLoadError = 'Vehicles could not be loaded from the server. Tap retry after checking the Railway API deployment.';
+        _vehicleLoadError = null;
       });
-      // Fare fields remain editable when live pricing is temporarily unavailable.
+      if (fallback.isNotEmpty) {
+        _selectPublicVehicle(fallback.first, notify: false);
+        _applySelectedDefaultRates();
+      }
     } finally {
       if (mounted) setState(() => _loadingRates = false);
     }
+  }
+
+  List<_PublicVehicle> _fallbackVehiclesForService() {
+    return switch (widget.serviceType) {
+      UDriveServiceType.city => _fallbackDemoVehicles,
+      UDriveServiceType.tours => _fallbackDemoVehicles
+          .where((vehicle) => vehicle.passengerCapacity >= 4)
+          .toList(growable: false),
+      UDriveServiceType.privateVehicle => _fallbackDemoVehicles
+          .where((vehicle) =>
+              _normaliseVehicle(vehicle.category) != 'rickshaw')
+          .toList(growable: false),
+    };
+  }
+
+  void _ensureFallbackRates() {
+    if (widget.serviceType == UDriveServiceType.tours) {
+      _dbRates.putIfAbsent('car', () => const _DbRate(2800, 16500));
+      _dbRates.putIfAbsent('coster', () => const _DbRate(2200, 42000));
+      return;
+    }
+
+    _dbRates.putIfAbsent('bike', () => const _DbRate(450, 1200));
+    _dbRates.putIfAbsent('car', () => const _DbRate(1200, 4800));
+    _dbRates.putIfAbsent('rickshaw', () => const _DbRate(650, 2200));
+    _dbRates.putIfAbsent('coster', () => const _DbRate(900, 18000));
   }
 
   List<_PublicVehicle> _interleaveVehicleCategories(

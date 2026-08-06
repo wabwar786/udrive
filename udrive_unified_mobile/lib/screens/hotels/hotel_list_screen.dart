@@ -28,6 +28,7 @@ class _HotelListScreenState extends State<HotelListScreen> {
   int _guests = 2;
   int _rooms = 1;
   bool _busy = true;
+  String? _loadError;
   List<HotelSummary> _items = const [];
   late HotelRepository _repo;
 
@@ -42,15 +43,27 @@ class _HotelListScreenState extends State<HotelListScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _busy = true);
+    if (!mounted) return;
+    setState(() {
+      _busy = true;
+      _loadError = null;
+    });
     try {
-      _items = await _repo.search(
+      final loaded = await _repo.search(
         query: _query.text,
         checkIn: _checkIn,
         checkOut: _checkOut,
         guests: _guests,
         rooms: _rooms,
       );
+      if (!mounted) return;
+      setState(() => _items = loaded);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _items = const [];
+        _loadError = '$error'.replaceFirst('Exception: ', '');
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -106,12 +119,13 @@ class _HotelListScreenState extends State<HotelListScreen> {
       body: Column(
         children: [
           _searchBar(),
+          if (_loadError != null) _errorBanner(),
           _addHotelBanner(),
           Expanded(
             child: _busy
                 ? const Center(child: CircularProgressIndicator(color: _lime))
                 : _items.isEmpty
-                    ? const _EmptyHotels()
+                    ? _EmptyHotels(hasError: _loadError != null)
                     : ListView.builder(
                         padding: const EdgeInsets.fromLTRB(14, 2, 14, 28),
                         itemCount: _items.length,
@@ -138,6 +152,34 @@ class _HotelListScreenState extends State<HotelListScreen> {
       );
     }
   }
+
+  Widget _errorBanner() => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF321E1E),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFEA6B66).withValues(alpha: .45)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.cloud_off_rounded, color: Color(0xFFFF8A80), size: 20),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  _loadError ?? 'Hotels could not be loaded.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white70, fontSize: 10.5, height: 1.3),
+                ),
+              ),
+              TextButton(onPressed: _load, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
 
   Widget _addHotelBanner() => Padding(
         padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
@@ -194,25 +236,71 @@ class _HotelListScreenState extends State<HotelListScreen> {
               ),
             ),
             const SizedBox(height: 9),
-            Row(
-              children: [
-                Expanded(child: _dateBox('Check-in', _checkIn, (d) => setState(() => _checkIn = d))),
-                const SizedBox(width: 8),
-                Expanded(child: _dateBox('Check-out', _checkOut, (d) => setState(() => _checkOut = d))),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 46,
-                  child: FilledButton(
-                    onPressed: _load,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _lime,
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final dateFields = [
+                  Expanded(
+                    child: _dateBox(
+                      'Check-in',
+                      _checkIn,
+                      (date) => setState(() => _checkIn = date),
                     ),
-                    child: const Icon(Icons.arrow_forward_rounded, size: 18),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _dateBox(
+                      'Check-out',
+                      _checkOut,
+                      (date) => setState(() => _checkOut = date),
+                    ),
+                  ),
+                ];
+
+                if (constraints.maxWidth < 350) {
+                  return Column(
+                    children: [
+                      Row(children: dateFields),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: FilledButton.icon(
+                          onPressed: _load,
+                          icon: const Icon(Icons.search_rounded, size: 18),
+                          label: const Text('Search hotels'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _lime,
+                            foregroundColor: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    ...dateFields,
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 46,
+                      height: 46,
+                      child: IconButton.filled(
+                        tooltip: 'Search hotels',
+                        onPressed: _load,
+                        style: IconButton.styleFrom(
+                          backgroundColor: _lime,
+                          foregroundColor: Colors.black,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 19),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),
@@ -391,18 +479,29 @@ class _HotelCard extends StatelessWidget {
 }
 
 class _EmptyHotels extends StatelessWidget {
-  const _EmptyHotels();
+  const _EmptyHotels({required this.hasError});
+  final bool hasError;
+
   @override
-  Widget build(BuildContext context) => const Center(
+  Widget build(BuildContext context) => Center(
         child: Padding(
-          padding: EdgeInsets.all(30),
+          padding: const EdgeInsets.all(30),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.hotel_rounded, color: Colors.white24, size: 46),
-              SizedBox(height: 12),
-              Text('No approved hotels found for these dates.',
-                  textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 12.5)),
+              Icon(
+                hasError ? Icons.cloud_off_rounded : Icons.hotel_rounded,
+                color: Colors.white24,
+                size: 46,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                hasError
+                    ? 'Hotels are temporarily unavailable. Use Retry after the updated API is deployed.'
+                    : 'No approved hotels match this search. Clear the destination and search again.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white54, fontSize: 12.5, height: 1.35),
+              ),
             ],
           ),
         ),

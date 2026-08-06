@@ -2221,7 +2221,7 @@ class _UDriveServicesGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final tiles = <Widget>[
       _ServiceTile(
-        title: 'Travel within city',
+        title: 'City-to-City Ride',
         asset: 'assets/images/home_services/travel_within_city.webp',
         onTap: onCity,
       ),
