@@ -78,6 +78,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     _pickupPoint = widget.pickupPoint;
     _pickupLabel = widget.pickupLabel;
     _serviceType = widget.serviceType;
+    _initialWholeVehicle = widget.serviceType == UDriveServiceType.privateVehicle;
     _from = TextEditingController(text: widget.pickupLabel);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadRecentSearches();
@@ -203,7 +204,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     }
     FocusScope.of(context).unfocus();
     _rememberSearch(place);
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => UDriveVehicleSelectionScreen(
+    Navigator.push(context, MaterialPageRoute(builder: (_) => UDriveVehicleSelectionScreen(
       serviceType: _serviceType,
       initialWholeVehicle: _initialWholeVehicle,
       pickupLabel: _pickupLabel,
@@ -231,74 +232,253 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: _ink,
-      body: Stack(children: [
-        Positioned.fill(child: ColorFiltered(
-          colorFilter: const ColorFilter.matrix([.42,0,0,0,0,0,.48,0,0,0,0,0,.62,0,0,0,0,0,1,0]),
-          child: FlutterMap(options: MapOptions(initialCenter: _pickupPoint, initialZoom: 14.5), children: [
-            TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.udrive.mobile'),
-            MarkerLayer(markers: [Marker(point: _pickupPoint,width:48,height:48,child:const Icon(Icons.location_pin,color:_lime,size:46))]),
-          ]),
-        )),
-        Positioned.fill(child: ColoredBox(color: Colors.black.withValues(alpha: .26))),
-        SafeArea(child: Align(alignment: Alignment.bottomCenter, child: Container(
-          constraints: const BoxConstraints(maxWidth: 720),
-          height: (MediaQuery.sizeOf(context).height * .94 - MediaQuery.viewInsetsOf(context).bottom).clamp(430.0, MediaQuery.sizeOf(context).height * .94).toDouble(),
-          decoration: const BoxDecoration(color: Color(0xFC151715),borderRadius: BorderRadius.vertical(top: Radius.circular(30)),boxShadow:[BoxShadow(color:Colors.black54,blurRadius:26,offset:Offset(0,-8))]),
-          child: Column(children: [
-            const SizedBox(height:9),Container(width:46,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(99))),
-            Padding(padding:const EdgeInsets.fromLTRB(14,16,14,12),child:Row(children:[IconButton.filledTonal(onPressed:()=>Navigator.maybePop(context),style:IconButton.styleFrom(backgroundColor:Colors.white10),icon:const Icon(Icons.arrow_back_rounded,color:Colors.white)),const SizedBox(width:8),Expanded(child:Text(_serviceType.title,textAlign:TextAlign.center,style:const TextStyle(color:Colors.white,fontSize:17,fontWeight:FontWeight.w900))),const SizedBox(width:8),IconButton.filledTonal(onPressed:()=>Navigator.of(context).popUntil((route)=>route.isFirst),style:IconButton.styleFrom(backgroundColor:Colors.white10),icon:const Icon(Icons.home_rounded,color:Colors.white))])),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Column(
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: ColorFiltered(
+              colorFilter: const ColorFilter.matrix([
+                .42, 0, 0, 0, 0,
+                0, .48, 0, 0, 0,
+                0, 0, .62, 0, 0,
+                0, 0, 0, 1, 0,
+              ]),
+              child: FlutterMap(
+                options: MapOptions(initialCenter: _pickupPoint, initialZoom: 14.5),
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(14)),
-                    child: Row(children: [
-                      Expanded(child: _RouteModeChoice(
-                        label: 'City-to-city',
-                        selected: _serviceType == UDriveServiceType.city,
-                        onTap: () => setState(() => _serviceType = UDriveServiceType.city),
-                      )),
-                      Expanded(child: _RouteModeChoice(
-                        label: 'Tour booking',
-                        selected: _serviceType == UDriveServiceType.tours,
-                        onTap: () => setState(() => _serviceType = UDriveServiceType.tours),
-                      )),
-                    ]),
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.udrive.mobile',
                   ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(color: const Color(0xFF222522), borderRadius: BorderRadius.circular(14)),
-                    child: Row(children: [
-                      Expanded(child: _RouteModeChoice(
-                        label: 'Seat booking',
-                        selected: !_initialWholeVehicle,
-                        onTap: () => setState(() => _initialWholeVehicle = false),
-                      )),
-                      Expanded(child: _RouteModeChoice(
-                        label: 'Full vehicle',
-                        selected: _initialWholeVehicle,
-                        onTap: () => setState(() => _initialWholeVehicle = true),
-                      )),
-                    ]),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _pickupPoint,
+                        width: 48,
+                        height: 48,
+                        child: const Icon(Icons.location_pin, color: _lime, size: 46),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            Padding(padding:const EdgeInsets.symmetric(horizontal:20),child:Column(children:[
-              TextField(controller:_from,focusNode:_fromFocus,onTap:(){setState(()=>_editingFrom=true);_onChanged(_from.text,from:true);},onChanged:(v){setState(()=>_editingFrom=true);_onChanged(v,from:true);},style:const TextStyle(color:Colors.white,fontSize:13,fontWeight:FontWeight.w700),decoration:_fieldDecoration('From',Icons.my_location_rounded)),
-              const SizedBox(height:9),
-              TextField(controller:_to,focusNode:_toFocus,onTap:()=>setState(()=>_editingFrom=false),onChanged:(v){setState(()=>_editingFrom=false);_onChanged(v,from:false);},style:const TextStyle(color:Colors.white,fontSize:13,fontWeight:FontWeight.w700),decoration:_fieldDecoration('To',Icons.search_rounded,suffix: _to.text.isEmpty?const Icon(Icons.map_rounded,color:Color(0xFF75B8FF)):IconButton(onPressed:(){_to.clear();_onChanged('',from:false);setState((){});},icon:const Icon(Icons.cancel_rounded,color:Colors.white54)))),
-            ])),
-            Padding(padding:const EdgeInsets.fromLTRB(20,14,20,8),child:Row(children:[_FilterChip(label:typed?'Search Results':'Recent searches',selected:true),const SizedBox(width:8),if(_searching)...[const Spacer(),const SizedBox(width:17,height:17,child:CircularProgressIndicator(strokeWidth:2,color:_lime))]])),
-            Expanded(child:ListView.separated(padding:const EdgeInsets.fromLTRB(20,0,20,24),itemCount:_results.length,separatorBuilder:(_,__)=>const Divider(color:Colors.white10,height:1,indent:48),itemBuilder:(context,index){final place=_results[index];final distance=const Distance().as(LengthUnit.Kilometer,_pickupPoint,LatLng(place.latitude,place.longitude));return ListTile(contentPadding:const EdgeInsets.symmetric(vertical:5),leading:Icon(typed?Icons.location_on_outlined:Icons.history_rounded,color:Colors.white54,size:27),title:Text(place.title,style:const TextStyle(color:Colors.white,fontSize:13,fontWeight:FontWeight.w800)),subtitle:Text(place.subtitle,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(color:_muted,fontSize:11.5,height:1.25)),trailing:typed?Text('${distance.toStringAsFixed(1)} km',style:const TextStyle(color:_muted,fontSize:11)):const Icon(Icons.chevron_right_rounded,color:Colors.white38),onTap:()=>_select(place));})),
-          ]),
-        ))),
-      ]),
+          ),
+          const Positioned.fill(child: ColoredBox(color: Color(0x24111411))),
+          Positioned.fill(
+            child: ColoredBox(
+              color: const Color(0xDC151715),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 72),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                        child: Column(
+                          children: [
+                            if (_serviceType == UDriveServiceType.privateVehicle)
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(14)),
+                                child: _RouteModeChoice(
+                                  label: 'Private vehicle booking',
+                                  selected: true,
+                                  onTap: () {},
+                                ),
+                              )
+                            else
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(14)),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: _RouteModeChoice(
+                                        label: 'City-to-city',
+                                        selected: _serviceType == UDriveServiceType.city,
+                                        onTap: () => setState(() => _serviceType = UDriveServiceType.city),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: _RouteModeChoice(
+                                        label: 'Tour booking',
+                                        selected: _serviceType == UDriveServiceType.tours,
+                                        onTap: () => setState(() => _serviceType = UDriveServiceType.tours),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF222522),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: _serviceType == UDriveServiceType.privateVehicle
+                                  ? _RouteModeChoice(
+                                      label: 'Full vehicle',
+                                      selected: true,
+                                      onTap: () {},
+                                    )
+                                  : Row(
+                                      children: [
+                                        Expanded(
+                                          child: _RouteModeChoice(
+                                            label: 'Seat booking',
+                                            selected: !_initialWholeVehicle,
+                                            onTap: () => setState(() => _initialWholeVehicle = false),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: _RouteModeChoice(
+                                            label: 'Full vehicle',
+                                            selected: _initialWholeVehicle,
+                                            onTap: () => setState(() => _initialWholeVehicle = true),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _from,
+                              focusNode: _fromFocus,
+                              onTap: () {
+                                setState(() => _editingFrom = true);
+                                _onChanged(_from.text, from: true);
+                              },
+                              onChanged: (value) {
+                                setState(() => _editingFrom = true);
+                                _onChanged(value, from: true);
+                              },
+                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                              decoration: _fieldDecoration('From', Icons.my_location_rounded),
+                            ),
+                            const SizedBox(height: 9),
+                            TextField(
+                              controller: _to,
+                              focusNode: _toFocus,
+                              onTap: () => setState(() => _editingFrom = false),
+                              onChanged: (value) {
+                                setState(() => _editingFrom = false);
+                                _onChanged(value, from: false);
+                              },
+                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                              decoration: _fieldDecoration(
+                                'To',
+                                Icons.search_rounded,
+                                suffix: _to.text.isEmpty
+                                    ? const Icon(Icons.map_rounded, color: Color(0xFF75B8FF))
+                                    : IconButton(
+                                        onPressed: () {
+                                          _to.clear();
+                                          _onChanged('', from: false);
+                                          setState(() {});
+                                        },
+                                        icon: const Icon(Icons.cancel_rounded, color: Colors.white54),
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+                        child: Row(
+                          children: [
+                            _FilterChip(label: typed ? 'Search Results' : 'Recent searches', selected: true),
+                            if (_searching) ...[
+                              const Spacer(),
+                              const SizedBox(
+                                width: 17,
+                                height: 17,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: _lime),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          itemCount: _results.length,
+                          separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1, indent: 48),
+                          itemBuilder: (context, index) {
+                            final place = _results[index];
+                            final distance = const Distance().as(
+                              LengthUnit.Kilometer,
+                              _pickupPoint,
+                              LatLng(place.latitude, place.longitude),
+                            );
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(vertical: 5),
+                              leading: Icon(
+                                typed ? Icons.location_on_outlined : Icons.history_rounded,
+                                color: Colors.white54,
+                                size: 27,
+                              ),
+                              title: Text(
+                                place.title,
+                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
+                              ),
+                              subtitle: Text(
+                                place.subtitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.25),
+                              ),
+                              trailing: typed
+                                  ? Text(
+                                      '${distance.toStringAsFixed(1)} km',
+                                      style: const TextStyle(color: _muted, fontSize: 11),
+                                    )
+                                  : const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+                              onTap: () => _select(place),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+              child: Row(
+                children: [
+                  IconButton.filled(
+                    onPressed: () => Navigator.maybePop(context),
+                    style: IconButton.styleFrom(backgroundColor: const Color(0x84121413)),
+                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _serviceType.title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                    style: IconButton.styleFrom(backgroundColor: const Color(0x84121413)),
+                    icon: const Icon(Icons.home_rounded, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
+
 }
 
 enum _FareBookingMode { perSeat, wholeVehicle }
@@ -607,42 +787,13 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               ),
             ),
           ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: Row(
-                children: [
-                  IconButton.filled(
-                    onPressed: () => Navigator.pop(context),
-                    style: IconButton.styleFrom(backgroundColor: const Color(0xF0121413)),
-                    icon: const Icon(Icons.arrow_back_rounded, size: 20),
-                  ),
-                  const Spacer(),
-                  IconButton.filled(
-                    onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-                    style: IconButton.styleFrom(backgroundColor: const Color(0xF0121413)),
-                    icon: const Icon(Icons.home_rounded, size: 20),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          DraggableScrollableSheet(
-            initialChildSize: .66,
-            minChildSize: .56,
-            maxChildSize: .94,
-            builder: (context, scrollController) => Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFC111312),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-                boxShadow: [BoxShadow(color: Colors.black87, blurRadius: 30, offset: Offset(0, -8))],
-              ),
-              child: ListView(
-                controller: scrollController,
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                children: [
-                  Center(child: Container(width: 42, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99)))),
-                  const SizedBox(height: 12),
+          Positioned.fill(
+            child: ColoredBox(
+              color: const Color(0xDC111312),
+              child: SafeArea(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 76, 16, 24),
+                  children: [
                   Row(
                     children: [
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -837,6 +988,27 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black))
                           : Text(widget.serviceType == UDriveServiceType.tours ? 'Find tour vehicle' : 'Find a driver', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
                     ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+              child: Row(
+                children: [
+                  IconButton.filled(
+                    onPressed: () => Navigator.pop(context),
+                    style: IconButton.styleFrom(backgroundColor: const Color(0x84121413)),
+                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+                  ),
+                  const Spacer(),
+                  IconButton.filled(
+                    onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                    style: IconButton.styleFrom(backgroundColor: const Color(0x84121413)),
+                    icon: const Icon(Icons.home_rounded, color: Colors.white, size: 20),
                   ),
                 ],
               ),
