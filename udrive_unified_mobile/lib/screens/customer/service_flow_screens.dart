@@ -1079,14 +1079,14 @@ class _PrivateVehiclesScreenState extends State<PrivateVehiclesScreen> {
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 26),
                       itemCount: items.length,
-                      itemBuilder: (context, i) => _card(items[i]),
+                      itemBuilder: (context, i) => _vehicleCard(items[i]),
                     ),
         ),
       ]),
     );
   }
 
-  Widget _card(_VehicleType v) {
+  Widget _vehicleCard(_VehicleType v) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
@@ -1224,9 +1224,9 @@ class _PrivateBookingSheetState extends State<_PrivateBookingSheet> {
         'notes': 'Private Vehicle • ${_withDriver ? 'with driver' : 'self drive'} • $_days day${_days > 1 ? 's' : ''}',
       });
       if (!mounted) return;
-      Navigator.pop(context);
-      Navigator.push(
-        context,
+      final navigator = Navigator.of(context);
+      navigator.pop();
+      navigator.push(
         MaterialPageRoute(
           builder: (_) => DriverOffersScreen(
             rideRequestId: request.id,
