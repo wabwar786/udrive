@@ -2203,36 +2203,64 @@ class _UDriveServicesGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        height: 194,
+        height: 262,
         child: GridView.count(
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: 2,
-          crossAxisSpacing: 9,
-          mainAxisSpacing: 9,
-          childAspectRatio: 1.88,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 1.42,
           children: [
             _ServiceTile(
-              title: 'Tours & Trips',
-              subtitle: 'seat or full vehicle',
-              icon: Icons.directions_bus_rounded,
-              onTap: onTours,
-            ),
-            _ServiceTile(
               title: 'Travel within city',
-              subtitle: 'car, bike, rickshaw',
-              icon: Icons.local_taxi_rounded,
+              subtitle: 'Quick rides around your city',
+              asset: 'assets/vehicles/sedan.png',
+              icon: Icons.location_city_rounded,
+              actionLabel: 'Book ride',
+              features: const [
+                _ServiceFeature(Icons.directions_car_filled_rounded, 'Car'),
+                _ServiceFeature(Icons.two_wheeler_rounded, 'Bike'),
+                _ServiceFeature(Icons.electric_rickshaw_rounded, 'Rickshaw'),
+              ],
               onTap: onCity,
             ),
             _ServiceTile(
-              title: 'Private Vehicle',
-              subtitle: 'coster, car, bike',
-              icon: Icons.directions_car_filled_rounded,
+              title: 'Tours & Trips',
+              subtitle: 'Explore beautiful destinations',
+              asset: 'assets/vehicles/coaster.png',
+              icon: Icons.landscape_rounded,
+              actionLabel: 'Explore trips',
+              features: const [
+                _ServiceFeature(Icons.airport_shuttle_rounded, 'Coster'),
+                _ServiceFeature(Icons.directions_car_rounded, 'Car'),
+                _ServiceFeature(Icons.airline_seat_recline_normal_rounded, 'Seats'),
+              ],
+              onTap: onTours,
+            ),
+            _ServiceTile(
+              title: 'Private vehicle',
+              subtitle: 'Book the complete vehicle',
+              asset: 'assets/vehicles/suv.png',
+              icon: Icons.key_rounded,
+              actionLabel: 'Book private',
+              features: const [
+                _ServiceFeature(Icons.directions_car_rounded, 'Car'),
+                _ServiceFeature(Icons.airport_shuttle_rounded, 'Coster'),
+                _ServiceFeature(Icons.two_wheeler_rounded, 'Bike'),
+              ],
               onTap: onPrivate,
             ),
             _ServiceTile(
-              title: 'Hotels & Stays',
-              subtitle: 'rooms, transport, packages',
-              icon: Icons.hotel_rounded,
+              title: 'Hotels & stays',
+              subtitle: 'Find and book the best stays',
+              asset: 'assets/images/banjosa.png',
+              icon: Icons.apartment_rounded,
+              actionLabel: 'Find hotels',
+              features: const [
+                _ServiceFeature(Icons.hotel_rounded, 'Hotels'),
+                _ServiceFeature(Icons.bed_rounded, 'Rooms'),
+                _ServiceFeature(Icons.local_offer_rounded, 'Deals'),
+              ],
               onTap: onHotels,
             ),
           ],
@@ -2240,22 +2268,41 @@ class _UDriveServicesGrid extends StatelessWidget {
       );
 }
 
+class _ServiceFeature {
+  const _ServiceFeature(this.icon, this.label);
+
+  final IconData icon;
+  final String label;
+}
+
 class _ServiceTile extends StatelessWidget {
   const _ServiceTile({
     required this.title,
     required this.subtitle,
+    required this.asset,
     required this.icon,
+    required this.actionLabel,
+    required this.features,
     required this.onTap,
   });
 
   final String title;
   final String subtitle;
+  final String asset;
   final IconData icon;
+  final String actionLabel;
+  final List<_ServiceFeature> features;
   final VoidCallback onTap;
+
+  static const _card = Color(0xFF171B19);
+  static const _cardTop = Color(0xFF232824);
+  static const _border = Color(0xFF3B423C);
+  static const _lime = Color(0xFF8ED12B);
+  static const _ink = Color(0xFF10212B);
 
   @override
   Widget build(BuildContext context) => Material(
-        color: const Color(0xFF181B19),
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(18),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -2263,84 +2310,146 @@ class _ServiceTile extends StatelessWidget {
           child: Ink(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFF3A3F3B)),
+              border: Border.all(color: _border),
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFF272B28), Color(0xFF111311)],
+                colors: [_cardTop, _card],
               ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x28000000),
+                  blurRadius: 12,
+                  offset: Offset(0, 5),
+                ),
+              ],
             ),
             child: Stack(
-              fit: StackFit.expand,
               clipBehavior: Clip.hardEdge,
               children: [
                 Positioned(
-                  right: -26,
-                  bottom: -34,
+                  right: -34,
+                  top: 18,
                   child: Container(
-                    width: 126,
-                    height: 126,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFB7F20A),
+                    width: 132,
+                    height: 132,
+                    decoration: BoxDecoration(
+                      color: _lime.withValues(alpha: .16),
                       shape: BoxShape.circle,
+                      border: Border.all(color: _lime.withValues(alpha: .22)),
                     ),
                   ),
                 ),
                 Positioned(
-                  right: 12,
-                  bottom: 12,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(width: 58,height: 58,decoration: const BoxDecoration(color: Color(0xFFB7F20A),shape: BoxShape.circle)),
-                      Icon(icon,color: const Color(0xFF17242B),size: 34),
-                    ],
-                  ),
-                ),
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [
-                            const Color(0xFF181B19),
-                            const Color(0xFF181B19).withValues(alpha: .92),
-                            Colors.transparent,
-                          ],
-                          stops: const [0, .48, .78],
-                        ),
+                  right: -8,
+                  bottom: 40,
+                  child: SizedBox(
+                    width: 116,
+                    height: 75,
+                    child: Image.asset(
+                      asset,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      errorBuilder: (_, __, ___) => Icon(
+                        icon,
+                        color: _lime,
+                        size: 46,
                       ),
                     ),
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(13, 13, 76, 10),
+                  padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
+                      Container(
+                        width: 31,
+                        height: 31,
+                        decoration: BoxDecoration(
+                          color: _lime.withValues(alpha: .13),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _lime.withValues(alpha: .28)),
+                        ),
+                        child: Icon(icon, color: _lime, size: 17),
+                      ),
+                      const SizedBox(height: 7),
                       Text(
                         title,
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 13.5,
-                          height: 1.08,
+                          fontSize: 13.2,
                           fontWeight: FontWeight.w900,
+                          letterSpacing: -.15,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white60,
-                          fontSize: 9.5,
-                          height: 1.18,
+                      const SizedBox(height: 2),
+                      SizedBox(
+                        width: 110,
+                        child: Text(
+                          subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white60,
+                            fontSize: 9.2,
+                            height: 1.18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Row(
+                        children: features
+                            .map(
+                              (feature) => Expanded(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(feature.icon, color: Colors.white70, size: 13.5),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      feature.label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 8.1,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
+                      const SizedBox(height: 7),
+                      Container(
+                        height: 30,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: _lime,
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                actionLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: _ink,
+                                  fontSize: 9.6,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward_rounded, color: _ink, size: 15),
+                          ],
                         ),
                       ),
                     ],
