@@ -1,4 +1,355 @@
-import 'package:flutter/material.dart';import '../../core/hotels/hotel_repository.dart';import '../../core/state/app_controller.dart';import '../../models/hotel_models.dart';import 'hotel_detail_screen.dart';
-class HotelListScreen extends StatefulWidget{const HotelListScreen({this.destination,super.key});final String? destination;@override State<HotelListScreen>createState()=>_S();}
-class _S extends State<HotelListScreen>{final q=TextEditingController();DateTime ci=DateTime.now().add(const Duration(days:1)),co=DateTime.now().add(const Duration(days:2));int guests=2,rooms=1;bool busy=true;List<HotelSummary>items=[];late HotelRepository repo;@override void didChangeDependencies(){super.didChangeDependencies();repo=HotelRepository(AppControllerScope.of(context).apiClient);if(q.text.isEmpty&&widget.destination!=null)q.text=widget.destination!;if(items.isEmpty)_load();}Future<void>_load()async{setState(()=>busy=true);try{items=await repo.search(query:q.text,checkIn:ci,checkOut:co,guests:guests,rooms:rooms);}finally{if(mounted)setState(()=>busy=false);}}@override Widget build(BuildContext c)=>Scaffold(backgroundColor:const Color(0xFFF4F6F5),appBar:AppBar(title:const Text('Hotels & Stays'),actions:[IconButton(onPressed:_load,icon:const Icon(Icons.refresh_rounded))]),body:Column(children:[Padding(padding:const EdgeInsets.all(12),child:Column(children:[TextField(controller:q,onSubmitted:(_)=>_load(),decoration:InputDecoration(prefixIcon:const Icon(Icons.search_rounded,size:20),hintText:'Destination or hotel',isDense:true,filled:true,fillColor:Colors.white,border:OutlineInputBorder(borderRadius:BorderRadius.circular(16),borderSide:BorderSide.none))),const SizedBox(height:9),Row(children:[Expanded(child:_date('Check-in',ci,(d)=>setState(()=>ci=d))),const SizedBox(width:8),Expanded(child:_date('Check-out',co,(d)=>setState(()=>co=d))),const SizedBox(width:8),FilledButton(onPressed:_load,child:const Icon(Icons.arrow_forward_rounded,size:18))])])),Expanded(child:busy?const Center(child:CircularProgressIndicator()):items.isEmpty?const Center(child:Text('No approved hotels found.')):ListView.builder(padding:const EdgeInsets.fromLTRB(12,0,12,24),itemCount:items.length,itemBuilder:(c,i)=>_card(items[i])))]));Widget _date(String l,DateTime d,ValueChanged<DateTime>set)=>InkWell(onTap:()async{final x=await showDatePicker(context:context,firstDate:DateTime.now(),lastDate:DateTime.now().add(const Duration(days:365)),initialDate:d);if(x!=null)set(x);},child:Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:10),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(14)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(l,style:const TextStyle(fontSize:9,color:Colors.black54)),Text('${d.day}/${d.month}/${d.year}',style:const TextStyle(fontSize:11,fontWeight:FontWeight.w800))])));Widget _card(HotelSummary h)=>Card(margin:const EdgeInsets.only(bottom:10),clipBehavior:Clip.antiAlias,child:InkWell(onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>HotelDetailScreen(hotel:h,checkIn:ci,checkOut:co))),child:Row(children:[Container(width:108,height:112,color:const Color(0xFFE9F4DF),child:h.mainImageUrl.isEmpty?const Icon(Icons.hotel_rounded,size:44,color:Color(0xFF315239)):Image.network(h.mainImageUrl,fit:BoxFit.cover,errorBuilder:(_,__,___)=>const Icon(Icons.hotel_rounded,size:44))),Expanded(child:Padding(padding:const EdgeInsets.all(11),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(h.name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:13,fontWeight:FontWeight.w900)),const SizedBox(height:3),Text('${h.city} • ${h.address}',maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:10,color:Colors.black54)),const SizedBox(height:8),Row(children:[const Icon(Icons.star_rounded,size:15,color:Color(0xFF8CCB38)),Text(' ${h.rating.toStringAsFixed(1)}',style:const TextStyle(fontSize:10)),const Spacer(),Text(h.startingRate>0?'From PKR ${h.startingRate.toStringAsFixed(0)}':'Check rooms',style:const TextStyle(fontSize:11,fontWeight:FontWeight.w900))]),const SizedBox(height:4),Text('${h.availableRooms} rooms available',style:const TextStyle(fontSize:9,color:Colors.black54))])))])));
+import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../../core/hotels/hotel_repository.dart';
+import '../../core/state/app_controller.dart';
+import '../../models/hotel_models.dart';
+import '../customer/udrive_route_flow_screen.dart';
+import 'hotel_detail_screen.dart';
+
+const _ink = Color(0xFF0C0E0D);
+const _card = Color(0xFF151816);
+const _tile = Color(0xFF232724);
+const _lime = Color(0xFFB7F20A);
+const _muted = Color(0xFF9AA09A);
+
+class HotelListScreen extends StatefulWidget {
+  const HotelListScreen({this.destination, super.key});
+  final String? destination;
+  @override
+  State<HotelListScreen> createState() => _HotelListScreenState();
+}
+
+class _HotelListScreenState extends State<HotelListScreen> {
+  final _query = TextEditingController();
+  DateTime _checkIn = DateTime.now().add(const Duration(days: 1));
+  DateTime _checkOut = DateTime.now().add(const Duration(days: 2));
+  int _guests = 2;
+  int _rooms = 1;
+  bool _busy = true;
+  List<HotelSummary> _items = const [];
+  late HotelRepository _repo;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _repo = HotelRepository(AppControllerScope.of(context).apiClient);
+    if (_query.text.isEmpty && widget.destination != null) {
+      _query.text = widget.destination!;
+    }
+    if (_items.isEmpty) _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _busy = true);
+    try {
+      _items = await _repo.search(
+        query: _query.text,
+        checkIn: _checkIn,
+        checkOut: _checkOut,
+        guests: _guests,
+        rooms: _rooms,
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  void _openHotel(HotelSummary hotel) => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => HotelDetailScreen(hotel: hotel, checkIn: _checkIn, checkOut: _checkOut),
+        ),
+      );
+
+  // Book a vehicle heading to the selected hotel (reuses the ride/booking flow).
+  void _rideToHotel(HotelSummary hotel) => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => UDriveRouteFlowScreen(
+            serviceType: UDriveServiceType.city,
+            pickupLabel: 'Current location',
+            pickupPoint: const LatLng(34.3700, 73.4700),
+            initialDestinationLabel: '${hotel.name} — ${hotel.address}',
+            initialDestinationLatitude: hotel.latitude,
+            initialDestinationLongitude: hotel.longitude,
+            skipRouteEntry: true,
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _ink,
+      appBar: AppBar(
+        backgroundColor: _ink,
+        surfaceTintColor: _ink,
+        foregroundColor: Colors.white,
+        title: const Text('Hotels & Stays', style: TextStyle(fontWeight: FontWeight.w900)),
+        actions: [
+          IconButton(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh_rounded)),
+        ],
+      ),
+      body: Column(
+        children: [
+          _searchBar(),
+          Expanded(
+            child: _busy
+                ? const Center(child: CircularProgressIndicator(color: _lime))
+                : _items.isEmpty
+                    ? const _EmptyHotels()
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(14, 2, 14, 28),
+                        itemCount: _items.length,
+                        itemBuilder: (context, index) => _HotelCard(
+                          hotel: _items[index],
+                          onOpen: () => _openHotel(_items[index]),
+                          onRide: () => _rideToHotel(_items[index]),
+                        ),
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _searchBar() => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+        child: Column(
+          children: [
+            TextField(
+              controller: _query,
+              onSubmitted: (_) => _load(),
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.white70),
+                hintText: 'Destination or hotel',
+                hintStyle: const TextStyle(color: _muted, fontSize: 12.5),
+                isDense: true,
+                filled: true,
+                fillColor: _tile,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+              ),
+            ),
+            const SizedBox(height: 9),
+            Row(
+              children: [
+                Expanded(child: _dateBox('Check-in', _checkIn, (d) => setState(() => _checkIn = d))),
+                const SizedBox(width: 8),
+                Expanded(child: _dateBox('Check-out', _checkOut, (d) => setState(() => _checkOut = d))),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 46,
+                  child: FilledButton(
+                    onPressed: _load,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _lime,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Icon(Icons.arrow_forward_rounded, size: 18),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+  Widget _dateBox(String label, DateTime value, ValueChanged<DateTime> onPick) => InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () async {
+          final picked = await showDatePicker(
+            context: context,
+            firstDate: DateTime.now(),
+            lastDate: DateTime.now().add(const Duration(days: 365)),
+            initialDate: value,
+          );
+          if (picked != null) onPick(picked);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(14)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 9.5, color: _muted)),
+              const SizedBox(height: 1),
+              Text('${value.day}/${value.month}/${value.year}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+            ],
+          ),
+        ),
+      );
+}
+
+class _HotelCard extends StatelessWidget {
+  const _HotelCard({required this.hotel, required this.onOpen, required this.onRide});
+  final HotelSummary hotel;
+  final VoidCallback onOpen;
+  final VoidCallback onRide;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 11),
+      child: Material(
+        color: _card,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onOpen,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  SizedBox(
+                    height: 132,
+                    width: double.infinity,
+                    child: hotel.mainImageUrl.isEmpty
+                        ? const ColoredBox(
+                            color: Color(0xFF20241F),
+                            child: Icon(Icons.hotel_rounded, size: 46, color: _lime),
+                          )
+                        : Image.network(
+                            hotel.mainImageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const ColoredBox(
+                              color: Color(0xFF20241F),
+                              child: Icon(Icons.hotel_rounded, size: 46, color: _lime),
+                            ),
+                          ),
+                  ),
+                  Positioned(
+                    left: 10,
+                    top: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: Colors.black.withValues(alpha: .55), borderRadius: BorderRadius.circular(99)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.star_rounded, size: 13, color: _lime),
+                        const SizedBox(width: 3),
+                        Text(hotel.rating.toStringAsFixed(1),
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+                      ]),
+                    ),
+                  ),
+                  if (hotel.transportAvailable)
+                    Positioned(
+                      right: 10,
+                      top: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: _lime.withValues(alpha: .92), borderRadius: BorderRadius.circular(99)),
+                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.directions_car_rounded, size: 13, color: Colors.black),
+                          SizedBox(width: 3),
+                          Text('Transport', style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.w900)),
+                        ]),
+                      ),
+                    ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(13, 11, 13, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(hotel.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 3),
+                    Text('${hotel.city} • ${hotel.address}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _muted, fontSize: 11)),
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Starts from', style: TextStyle(color: _muted, fontSize: 9.5)),
+                            const SizedBox(height: 1),
+                            Text(
+                              hotel.startingRate > 0 ? 'PKR ${hotel.startingRate.toStringAsFixed(0)}' : 'Check rooms',
+                              style: const TextStyle(color: _lime, fontSize: 16, fontWeight: FontWeight.w900),
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        Text('${hotel.availableRooms} rooms',
+                            style: const TextStyle(color: Colors.white54, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                    const SizedBox(height: 11),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: onRide,
+                            icon: const Icon(Icons.local_taxi_rounded, size: 17),
+                            label: const Text('Book ride', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(44),
+                              side: const BorderSide(color: Colors.white24),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: onOpen,
+                            icon: const Icon(Icons.bed_rounded, size: 17),
+                            label: const Text('Book room', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: _lime,
+                              foregroundColor: Colors.black,
+                              minimumSize: const Size.fromHeight(44),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyHotels extends StatelessWidget {
+  const _EmptyHotels();
+  @override
+  Widget build(BuildContext context) => const Center(
+        child: Padding(
+          padding: EdgeInsets.all(30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.hotel_rounded, color: Colors.white24, size: 46),
+              SizedBox(height: 12),
+              Text('No approved hotels found for these dates.',
+                  textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 12.5)),
+            ],
+          ),
+        ),
+      );
 }

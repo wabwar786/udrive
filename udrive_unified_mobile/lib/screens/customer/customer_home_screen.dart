@@ -42,12 +42,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   static const _lime = Color(0xFF8ED12B);
   static const _muted = Color(0xFF667781);
   static const _surface = Color(0xFFF6F8FA);
+  // Fraction the services sheet expands to on load so the full box shows.
+  static const double _kSheetExpanded = 0.90;
+  static const double _kSheetInitial = 0.56;
 
   final _pickup = TextEditingController(text: 'Detecting current address…');
   final _destination = TextEditingController();
   final _pageController = PageController();
   final _scrollController = ScrollController();
   final _mapController = MapController();
+  final _sheetController = DraggableScrollableController();
   final _resultsKey = GlobalKey();
   late final ApiClient _api;
 
@@ -85,6 +89,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (mounted) setState(() => _offline = results.every((value) => value == ConnectivityResult.none));
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Auto-expand the services sheet so the complete box is visible by default.
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (mounted && _sheetController.isAttached) {
+          _sheetController.animateTo(
+            _kSheetExpanded,
+            duration: const Duration(milliseconds: 520),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
       await Future.wait([
         _loadDestinations(),
         _loadLocation(),
@@ -534,6 +548,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _pageController.dispose();
     _scrollController.dispose();
     _mapController.dispose();
+    _sheetController.dispose();
     super.dispose();
   }
 
@@ -612,11 +627,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               child: _OfflineMapPill(),
             ),
           DraggableScrollableSheet(
-            initialChildSize: .56,
+            controller: _sheetController,
+            initialChildSize: _kSheetInitial,
             minChildSize: .48,
-            maxChildSize: .90,
+            maxChildSize: _kSheetExpanded,
             snap: true,
-            snapSizes: const [.56, .90],
+            snapSizes: const [_kSheetInitial, _kSheetExpanded],
             builder: (context, sheetController) {
               return Container(
                 decoration: const BoxDecoration(
