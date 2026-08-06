@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/network/api_config.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/booking_models.dart';
 import 'driver_offers_screen.dart';
@@ -21,7 +22,7 @@ enum UDriveServiceType { city, tours, privateVehicle }
 
 extension UDriveServiceTypeLabel on UDriveServiceType {
   String get title => switch (this) {
-        UDriveServiceType.city => 'Travel within city',
+        UDriveServiceType.city => 'City-to-City Ride',
         UDriveServiceType.tours => 'Tours & Trips',
         UDriveServiceType.privateVehicle => 'Private Vehicle',
       };
@@ -71,6 +72,8 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
   bool _initialWholeVehicle = false;
   List<_PlaceResult> _results = const [];
   List<_PlaceResult> _recentSearches = const [];
+  List<_PlaceResult> _catalogPlaces = const [];
+  String? _searchMessage;
 
   @override
   void initState() {
@@ -81,7 +84,10 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     _initialWholeVehicle = widget.serviceType == UDriveServiceType.privateVehicle;
     _from = TextEditingController(text: widget.pickupLabel);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadRecentSearches();
+      Future.wait([
+        _loadRecentSearches(),
+        _loadCatalogDestinations(),
+      ]);
       if (widget.skipRouteEntry &&
           widget.initialDestinationLabel != null &&
           widget.initialDestinationLatitude != null &&
@@ -127,8 +133,81 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     if (!mounted) return;
     setState(() {
       _recentSearches = items.where((e) => e.latitude != 0 && e.longitude != 0).take(8).toList();
-      if (_to.text.trim().isEmpty && !_editingFrom) _results = _recentSearches;
+      if (_to.text.trim().isEmpty && !_editingFrom) {
+        _results = _defaultResults();
+      }
     });
+  }
+
+  Future<void> _loadCatalogDestinations() async {
+    try {
+      final controller = AppControllerScope.of(context);
+      final response = await controller.apiClient.getJson(
+        '/api/v1/catalog/destinations?language=en',
+        authenticated: false,
+      );
+      final raw = response['data'];
+      final loaded = <_PlaceResult>[];
+      if (raw is List) {
+        for (final item in raw.whereType<Map>()) {
+          final map = Map<String, dynamic>.from(item);
+          final name = '${map['name'] ?? ''}'.trim();
+          final district = '${map['district'] ?? ''}'.trim();
+          final summary = '${map['summary'] ?? ''}'.trim();
+          final latitude = (map['latitude'] as num?)?.toDouble() ?? 0;
+          final longitude = (map['longitude'] as num?)?.toDouble() ?? 0;
+          if (name.isEmpty || latitude == 0 || longitude == 0) continue;
+          loaded.add(_PlaceResult(
+            name,
+            [district, summary].where((value) => value.isNotEmpty).join(' • '),
+            latitude,
+            longitude,
+          ));
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _catalogPlaces = loaded;
+        _searchMessage = loaded.isEmpty
+            ? 'Type a destination to search across Pakistan.'
+            : null;
+        if (_to.text.trim().isEmpty && !_editingFrom) {
+          _results = _defaultResults();
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _searchMessage = 'Saved Kashmir destinations are temporarily unavailable. You can still type any place name.';
+        if (_to.text.trim().isEmpty && !_editingFrom) {
+          _results = _defaultResults();
+        }
+      });
+    }
+  }
+
+  List<_PlaceResult> _defaultResults() => _mergePlaces([
+        ..._recentSearches,
+        ..._catalogPlaces,
+      ]).take(14).toList();
+
+  List<_PlaceResult> _localMatches(String query) {
+    final needle = query.trim().toLowerCase();
+    if (needle.isEmpty) return _defaultResults();
+    return _catalogPlaces.where((place) {
+      final text = '${place.title} ${place.subtitle}'.toLowerCase();
+      return text.contains(needle);
+    }).take(12).toList();
+  }
+
+  List<_PlaceResult> _mergePlaces(Iterable<_PlaceResult> values) {
+    final seen = <String>{};
+    final merged = <_PlaceResult>[];
+    for (final item in values) {
+      final key = '${item.title.toLowerCase()}|${item.latitude.toStringAsFixed(4)}|${item.longitude.toStringAsFixed(4)}';
+      if (seen.add(key)) merged.add(item);
+    }
+    return merged;
   }
 
   Future<void> _rememberSearch(_PlaceResult place) async {
@@ -163,31 +242,83 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     _debounce?.cancel();
     final query = value.trim();
     if (query.length < 2) {
-      setState(() { _searching = false; _results = _recentSearches; });
+      setState(() {
+        _searching = false;
+        _searchMessage = null;
+        _results = from ? _localMatches(query) : _defaultResults();
+      });
       return;
     }
-    _debounce = Timer(const Duration(milliseconds: 400), () => _search(query));
+
+    final local = _localMatches(query);
+    setState(() {
+      _results = local;
+      _searchMessage = local.isEmpty ? 'Searching all Pakistan locations…' : null;
+    });
+    _debounce = Timer(const Duration(milliseconds: 350), () => _search(query));
   }
 
   Future<void> _search(String query) async {
     if (!mounted) return;
+    final local = _localMatches(query);
     setState(() => _searching = true);
     try {
       final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
-        'q': query, 'format': 'jsonv2', 'addressdetails': '1', 'limit': '8', 'countrycodes': 'pk',
+        'q': '$query, Pakistan',
+        'format': 'jsonv2',
+        'addressdetails': '1',
+        'limit': '10',
+        'countrycodes': 'pk',
       });
-      final response = await http.get(uri, headers: const {'User-Agent': 'UDrive-Mobile/1.0','Accept-Language': 'en'}).timeout(const Duration(seconds: 12));
-      if (response.statusCode < 200 || response.statusCode >= 300) return;
+      final response = await http.get(
+        uri,
+        headers: const {
+          'User-Agent': 'UDrive-Mobile/1.0',
+          'Accept-Language': 'en',
+        },
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Location search unavailable');
+      }
       final raw = jsonDecode(response.body);
-      if (raw is! List) return;
-      final items = raw.whereType<Map>().map((entry) {
-        final map = Map<String, dynamic>.from(entry);
-        final display = '${map['display_name'] ?? ''}'.trim();
-        final parts = display.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-        return _PlaceResult(parts.isEmpty ? query : parts.first, parts.skip(1).take(4).join(', '), double.tryParse('${map['lat']}') ?? 0, double.tryParse('${map['lon']}') ?? 0);
-      }).where((item) => item.latitude != 0 && item.longitude != 0).toList();
-      if (mounted) setState(() => _results = items);
-    } catch (_) {} finally { if (mounted) setState(() => _searching = false); }
+      final online = <_PlaceResult>[];
+      if (raw is List) {
+        for (final entry in raw.whereType<Map>()) {
+          final map = Map<String, dynamic>.from(entry);
+          final display = '${map['display_name'] ?? ''}'.trim();
+          final parts = display
+              .split(',')
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toList();
+          final item = _PlaceResult(
+            parts.isEmpty ? query : parts.first,
+            parts.skip(1).take(4).join(', '),
+            double.tryParse('${map['lat']}') ?? 0,
+            double.tryParse('${map['lon']}') ?? 0,
+          );
+          if (item.latitude != 0 && item.longitude != 0) online.add(item);
+        }
+      }
+      if (!mounted) return;
+      final merged = _mergePlaces([...local, ...online]);
+      setState(() {
+        _results = merged;
+        _searchMessage = merged.isEmpty
+            ? 'No destination found. Try a nearby city, district or landmark.'
+            : null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _results = local;
+        _searchMessage = local.isEmpty
+            ? 'Online location search is unavailable. Try a saved Kashmir destination below.'
+            : null;
+      });
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
   }
 
   void _select(_PlaceResult place) {
@@ -367,7 +498,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                               },
                               style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
                               decoration: _fieldDecoration(
-                                'To',
+                                'Search destination',
                                 Icons.search_rounded,
                                 suffix: _to.text.isEmpty
                                     ? const Icon(Icons.map_rounded, color: Color(0xFF75B8FF))
@@ -388,7 +519,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
                         child: Row(
                           children: [
-                            _FilterChip(label: typed ? 'Search Results' : 'Recent searches', selected: true),
+                            _FilterChip(label: typed ? 'Search results' : 'Suggested destinations', selected: true),
                             if (_searching) ...[
                               const Spacer(),
                               const SizedBox(
@@ -401,44 +532,66 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                         ),
                       ),
                       Expanded(
-                        child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          itemCount: _results.length,
-                          separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1, indent: 48),
-                          itemBuilder: (context, index) {
-                            final place = _results[index];
-                            final distance = const Distance().as(
-                              LengthUnit.Kilometer,
-                              _pickupPoint,
-                              LatLng(place.latitude, place.longitude),
-                            );
-                            return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(vertical: 5),
-                              leading: Icon(
-                                typed ? Icons.location_on_outlined : Icons.history_rounded,
-                                color: Colors.white54,
-                                size: 27,
+                        child: _results.isEmpty
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 28),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _searching ? Icons.travel_explore_rounded : Icons.search_rounded,
+                                        color: _searching ? _lime : Colors.white38,
+                                        size: 42,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        _searchMessage ?? 'Type a city, district, hotel or Kashmir destination.',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.4),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                itemCount: _results.length,
+                                separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1, indent: 48),
+                                itemBuilder: (context, index) {
+                                  final place = _results[index];
+                                  final distance = const Distance().as(
+                                    LengthUnit.Kilometer,
+                                    _pickupPoint,
+                                    LatLng(place.latitude, place.longitude),
+                                  );
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(vertical: 5),
+                                    leading: Icon(
+                                      typed ? Icons.location_on_outlined : Icons.place_rounded,
+                                      color: typed ? Colors.white54 : _lime,
+                                      size: 27,
+                                    ),
+                                    title: Text(
+                                      place.title,
+                                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
+                                    ),
+                                    subtitle: Text(
+                                      place.subtitle,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.25),
+                                    ),
+                                    trailing: typed
+                                        ? Text(
+                                            '${distance.toStringAsFixed(1)} km',
+                                            style: const TextStyle(color: _muted, fontSize: 11),
+                                          )
+                                        : const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+                                    onTap: () => _select(place),
+                                  );
+                                },
                               ),
-                              title: Text(
-                                place.title,
-                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
-                              ),
-                              subtitle: Text(
-                                place.subtitle,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.25),
-                              ),
-                              trailing: typed
-                                  ? Text(
-                                      '${distance.toStringAsFixed(1)} km',
-                                      style: const TextStyle(color: _muted, fontSize: 11),
-                                    )
-                                  : const Icon(Icons.chevron_right_rounded, color: Colors.white38),
-                              onTap: () => _select(place),
-                            );
-                          },
-                        ),
                       ),
                     ],
                   ),
@@ -514,6 +667,10 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   final _wholeVehicleOffer = TextEditingController();
   final Map<String, _DbRate> _dbRates = {};
   bool _loadingRates = true;
+  List<_PublicVehicle> _availableVehicles = const [];
+  bool _loadingVehicles = true;
+  String? _vehicleLoadError;
+  String? _selectedVehicleId;
   String? _selectedPackageId;
   Timer? _availabilityTimer;
 
@@ -530,31 +687,188 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   }
 
   Future<void> _loadRates() async {
+    final controller = AppControllerScope.of(context);
     try {
-      final controller = AppControllerScope.of(context);
-      final service = widget.serviceType == UDriveServiceType.privateVehicle ? 'PrivateVehicle' : 'City';
-      final response = await controller.apiClient.getJson('/api/v1/catalog/service-rates?serviceType=$service', authenticated: false);
-      final raw = response['data'];
-      if (raw is List) {
-        for (final item in raw.whereType<Map>()) {
+      if (widget.serviceType == UDriveServiceType.tours) {
+        await controller.refreshHomeVehicles(force: true);
+      }
+
+      final service = widget.serviceType == UDriveServiceType.privateVehicle
+          ? 'PrivateVehicle'
+          : widget.serviceType == UDriveServiceType.tours
+              ? 'Tours'
+              : 'City';
+
+      final responses = await Future.wait([
+        controller.apiClient.getJson(
+          '/api/v1/catalog/service-rates?serviceType=${widget.serviceType == UDriveServiceType.privateVehicle ? 'PrivateVehicle' : 'City'}',
+          authenticated: false,
+        ),
+        controller.apiClient.getJson(
+          '/api/v1/catalog/vehicles?serviceType=$service&limit=120',
+          authenticated: false,
+        ),
+      ]);
+
+      final rateRaw = responses[0]['data'];
+      if (rateRaw is List) {
+        for (final item in rateRaw.whereType<Map>()) {
           final map = Map<String, dynamic>.from(item);
-          final category = '${map['vehicleCategory'] ?? ''}'.toLowerCase();
+          final category = _normaliseVehicle('${map['vehicleCategory'] ?? ''}');
           _dbRates[category] = _DbRate(
             (map['perSeatRate'] as num?)?.toDouble() ?? 0,
             (map['wholeVehicleRate'] as num?)?.toDouble() ?? 0,
           );
         }
       }
-      if (widget.serviceType == UDriveServiceType.tours) {
-        final packages = _matchingPackages(controller);
-        if (packages.isNotEmpty) _selectedPackageId ??= packages.first.id;
+
+      final vehicleRaw = responses[1]['data'];
+      final vehicles = <_PublicVehicle>[];
+      if (vehicleRaw is List) {
+        for (final item in vehicleRaw.whereType<Map>()) {
+          vehicles.add(_PublicVehicle.fromJson(Map<String, dynamic>.from(item)));
+        }
       }
+
+      if (!mounted) return;
+      final displayVehicles = _interleaveVehicleCategories(vehicles);
+      setState(() {
+        _availableVehicles = displayVehicles;
+        _loadingVehicles = false;
+        _vehicleLoadError = displayVehicles.isEmpty
+            ? 'No approved vehicles are currently published. Ask admin to add demo data and try again.'
+            : null;
+
+        if (displayVehicles.isNotEmpty) {
+          final preferred = displayVehicles.firstWhere(
+            (vehicle) => vehicle.isOnline,
+            orElse: () => displayVehicles.first,
+          );
+          _selectPublicVehicle(preferred, notify: false);
+        }
+
+        if (widget.serviceType == UDriveServiceType.tours) {
+          final packages = _matchingPackages(controller);
+          if (packages.isNotEmpty) {
+            _selectedPackageId ??= packages.first.id;
+            final packageIndex = _choices.indexWhere(
+              (choice) =>
+                  _normaliseVehicle(choice.name) ==
+                  _normaliseVehicle(packages.first.vehicle),
+            );
+            if (packageIndex >= 0) _selected = packageIndex;
+          }
+        }
+      });
       _applySelectedDefaultRates();
     } catch (_) {
-      // Rates remain editable when the pricing endpoint is temporarily unavailable.
+      if (!mounted) return;
+      setState(() {
+        _loadingVehicles = false;
+        _vehicleLoadError = 'Vehicles could not be loaded from the server. Tap retry after checking the Railway API deployment.';
+      });
+      // Fare fields remain editable when live pricing is temporarily unavailable.
     } finally {
       if (mounted) setState(() => _loadingRates = false);
     }
+  }
+
+  List<_PublicVehicle> _interleaveVehicleCategories(
+    List<_PublicVehicle> vehicles,
+  ) {
+    final buckets = <String, List<_PublicVehicle>>{
+      'bike': <_PublicVehicle>[],
+      'car': <_PublicVehicle>[],
+      'rickshaw': <_PublicVehicle>[],
+      'coster': <_PublicVehicle>[],
+    };
+    for (final vehicle in vehicles) {
+      final type = _normaliseVehicle(
+        '${vehicle.category} ${vehicle.make} ${vehicle.model}',
+      );
+      buckets[type]!.add(vehicle);
+    }
+
+    final ordered = <_PublicVehicle>[];
+    var index = 0;
+    var added = true;
+    while (added) {
+      added = false;
+      for (final type in const ['bike', 'car', 'rickshaw', 'coster']) {
+        final bucket = buckets[type]!;
+        if (index < bucket.length) {
+          ordered.add(bucket[index]);
+          added = true;
+        }
+      }
+      index++;
+    }
+    return ordered;
+  }
+
+  _PublicVehicle? get _selectedPublicVehicle {
+    if (_selectedVehicleId == null) return null;
+    for (final vehicle in _availableVehicles) {
+      if (vehicle.id == _selectedVehicleId) return vehicle;
+    }
+    return null;
+  }
+
+  void _selectPublicVehicle(_PublicVehicle vehicle, {bool notify = true}) {
+    void apply() {
+      _selectedVehicleId = vehicle.id;
+      final type = _normaliseVehicle('${vehicle.category} ${vehicle.make} ${vehicle.model}');
+      final index = _choices.indexWhere(
+        (choice) => _normaliseVehicle(choice.name) == type,
+      );
+      if (index >= 0) _selected = index;
+      _seats = _seats.clamp(1, vehicle.passengerCapacity.clamp(1, 50)).toInt();
+    }
+
+    if (notify) {
+      setState(apply);
+      _applySelectedDefaultRates();
+    } else {
+      apply();
+    }
+  }
+
+  String _publicVehicleAsset(_PublicVehicle vehicle) {
+    final type = _normaliseVehicle('${vehicle.category} ${vehicle.make} ${vehicle.model}');
+    if (type == 'coster') return 'assets/vehicles_photo/coaster_clean.png';
+    if (type == 'bike') return 'assets/vehicles_photo/bike_clean.png';
+    if (type == 'rickshaw') return 'assets/vehicles_photo/rickshaw_clean.png';
+    return widget.serviceType == UDriveServiceType.privateVehicle
+        ? 'assets/vehicles_photo/private_car_clean.png'
+        : 'assets/vehicles_photo/car_clean.png';
+  }
+
+  Widget _publicVehicleImage(_PublicVehicle vehicle) {
+    final fallback = Image.asset(
+      _publicVehicleAsset(vehicle),
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+    );
+    if (vehicle.imageUrl.isEmpty) return fallback;
+    return Image.network(
+      vehicle.imageUrl,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      errorBuilder: (_, __, ___) => fallback,
+      loadingBuilder: (context, child, progress) => progress == null
+          ? child
+          : Stack(
+              alignment: Alignment.center,
+              children: [
+                fallback,
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: _lime),
+                ),
+              ],
+            ),
+    );
   }
 
   void _applySelectedDefaultRates() {
@@ -605,9 +919,12 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   String _normaliseVehicle(String value) {
     final v = value.toLowerCase();
-    if (v.contains('coster') || v.contains('coaster') || v.contains('bus') || v.contains('van')) return 'coster';
-    if (v.contains('bike') || v.contains('motor')) return 'bike';
-    if (v.contains('rickshaw')) return 'rickshaw';
+    if (v.contains('coster') || v.contains('coaster') || v.contains('bus') ||
+        v.contains('hiace') || v.contains('van') || v.contains('mpv')) {
+      return 'coster';
+    }
+    if (v.contains('bike') || v.contains('motorcycle') || v.contains('motor')) return 'bike';
+    if (v.contains('rickshaw') || v.contains('auto')) return 'rickshaw';
     return 'car';
   }
 
@@ -659,6 +976,199 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     if (type == 'bike') return 'assets/vehicles_photo/bike_clean.png';
     if (type == 'rickshaw') return 'assets/vehicles_photo/rickshaw_clean.png';
     return 'assets/vehicles_photo/car_clean.png';
+  }
+
+  List<Widget> _publicVehicleCards() {
+    if (_loadingVehicles) {
+      return [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: const Color(0xFF222522),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: const Row(
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.2, color: _lime),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Loading approved vehicles from the UDrive server…',
+                  style: TextStyle(color: Colors.white70, fontSize: 11.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+
+    if (_availableVehicles.isEmpty) {
+      return [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF222522),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0x55F79009)),
+          ),
+          child: Column(
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.directions_car_filled_rounded, color: Color(0xFFF79009)),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'No customer vehicles were returned by the API.',
+                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _vehicleLoadError ?? 'Add demo data from Admin → Data Management, then retry.',
+                style: const TextStyle(color: Colors.white60, fontSize: 10.5, height: 1.35),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _loadingVehicles = true;
+                      _vehicleLoadError = null;
+                    });
+                    _loadRates();
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry vehicles'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+
+    return _availableVehicles.map((vehicle) {
+      final active = vehicle.id == _selectedVehicleId;
+      final type = _normaliseVehicle('${vehicle.category} ${vehicle.make} ${vehicle.model}');
+      final rate = _dbRates[type];
+      final areas = vehicle.serviceAreas.take(2).join(', ');
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Material(
+          color: active ? const Color(0xFF292C2A) : const Color(0xFF181B19),
+          borderRadius: BorderRadius.circular(18),
+          child: InkWell(
+            onTap: vehicle.isOnline ? () => _selectPublicVehicle(vehicle) : null,
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: active ? _lime.withValues(alpha: .75) : Colors.white10,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 88,
+                    height: 66,
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: active ? .07 : .035),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: _publicVehicleImage(vehicle),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${vehicle.make} ${vehicle.model} ${vehicle.year}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            _StatusBadge(
+                              label: vehicle.isOnline ? 'Online' : 'Offline',
+                              color: vehicle.isOnline
+                                  ? const Color(0xFF8ED12B)
+                                  : const Color(0xFFF79009),
+                            ),
+                            if (vehicle.isDemo) ...[
+                              const SizedBox(width: 4),
+                              const _StatusBadge(label: 'Demo', color: Color(0xFF75B8FF)),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${vehicle.driverName} • ★ ${vehicle.driverRating.toStringAsFixed(1)} • ${vehicle.completedTrips} trips',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white70, fontSize: 10),
+                        ),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 5,
+                          runSpacing: 4,
+                          children: [
+                            _RatePill(label: 'Type', value: vehicle.category),
+                            _RatePill(label: 'Seats', value: '${vehicle.passengerCapacity}'),
+                            _RatePill(label: 'Seat', value: _money(rate?.perSeatRate ?? 0)),
+                            _RatePill(label: 'Full', value: _money(rate?.wholeVehicleRate ?? 0)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${vehicle.registrationNumber}${areas.isEmpty ? '' : ' • $areas'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: _muted, fontSize: 9.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Icon(
+                    active
+                        ? Icons.radio_button_checked_rounded
+                        : vehicle.isOnline
+                            ? Icons.radio_button_off_rounded
+                            : Icons.lock_clock_rounded,
+                    color: active
+                        ? _lime
+                        : vehicle.isOnline
+                            ? Colors.white30
+                            : const Color(0xFFF79009),
+                    size: 23,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }).toList();
   }
 
   double? _typedAmount(TextEditingController controller) {
@@ -717,7 +1227,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         'partyType': requestedSeats > 1 ? 'Group' : 'Individual',
         'familyOnly': false,
         'womenOnly': false,
-        'notes': '${widget.serviceType.title} • ${wholeVehicle ? 'whole vehicle' : 'per seat'}${package == null ? ' • customer fare offer' : ' • published tour rate'}${_autoAccept ? ' • auto-accept enabled' : ''}',
+        'notes': '${widget.serviceType.title} • ${wholeVehicle ? 'whole vehicle' : 'per seat'}${package == null ? ' • customer fare offer' : ' • published tour rate'}${_selectedPublicVehicle == null ? '' : ' • preferred ${_selectedPublicVehicle!.make} ${_selectedPublicVehicle!.model} (${_selectedPublicVehicle!.registrationNumber})'}${_autoAccept ? ' • auto-accept enabled' : ''}',
       });
       if (!mounted) return;
       Navigator.pushReplacement(
@@ -751,8 +1261,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     final destinationPoint = LatLng(widget.destination.latitude, widget.destination.longitude);
     final tourPackages = _matchingPackages(app);
     final selected = _choices[_selected];
+    final selectedVehicle = _selectedPublicVehicle;
     final selectedPackage = _matchingPackage(app, selected);
-    final effectiveCapacity = selectedPackage?.totalSeats ?? selected.capacity;
+    final effectiveCapacity = selectedPackage?.totalSeats ??
+        selectedVehicle?.passengerCapacity ??
+        selected.capacity;
     final selectedPackageBookable = selectedPackage == null || _packageBookable(selectedPackage);
     final center = LatLng(
       (widget.pickupPoint.latitude + destinationPoint.latitude) / 2,
@@ -825,17 +1338,19 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     ]),
                   ],
                   const SizedBox(height: 10),
-                  if (widget.serviceType == UDriveServiceType.tours && tourPackages.isEmpty)
+                  if (widget.serviceType == UDriveServiceType.tours && tourPackages.isEmpty) ...[
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(color: const Color(0xFF222522), borderRadius: BorderRadius.circular(18)),
                       child: const Row(children: [
                         Icon(Icons.directions_bus_filled_rounded, color: _lime),
                         SizedBox(width: 10),
-                        Expanded(child: Text('No scheduled vehicle is currently available for this destination in the next 30 days.', style: TextStyle(color: Colors.white70, fontSize: 11.5, height: 1.35))),
+                        Expanded(child: Text('No fixed tour package is scheduled for this destination in the next 30 days. Choose an approved tour-capable vehicle below and submit your offer.', style: TextStyle(color: Colors.white70, fontSize: 11.5, height: 1.35))),
                       ]),
-                    )
-                  else if (widget.serviceType == UDriveServiceType.tours)
+                    ),
+                    const SizedBox(height: 8),
+                    ..._publicVehicleCards(),
+                  ] else if (widget.serviceType == UDriveServiceType.tours)
                     ...tourPackages.map((package) {
                       final active = package.id == (_selectedPackageId ?? tourPackages.first.id);
                       final bookable = _packageBookable(package);
@@ -896,39 +1411,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                       );
                     })
                   else
-                    ...List.generate(_choices.length, (index) {
-                      final item = _choices[index];
-                      final active = _selected == index;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 7),
-                        child: Material(
-                          color: active ? const Color(0xFF292C2A) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(18),
-                          child: InkWell(
-                            onTap: () { setState(() { _selected = index; _seats = _seats.clamp(1, item.capacity).toInt(); }); _applySelectedDefaultRates(); },
-                            borderRadius: BorderRadius.circular(18),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
-                              decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: active ? Colors.white24 : Colors.white.withValues(alpha: .04))),
-                              child: Row(children: [
-                                Container(width: 84, height: 62, padding: const EdgeInsets.fromLTRB(6, 5, 6, 5), decoration: BoxDecoration(color: Colors.white.withValues(alpha: active ? .06 : .03), borderRadius: BorderRadius.circular(14)), alignment: Alignment.center, child: Image.asset(item.imageAsset, fit: BoxFit.contain, filterQuality: FilterQuality.high)),
-                                const SizedBox(width: 10),
-                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(item.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
-                                  Text('${item.meta}  •  ${item.note}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 10.5)),
-                                  const SizedBox(height: 5),
-                                  Wrap(spacing: 6, runSpacing: 4, children: [
-                                    _RatePill(label: 'Seat', value: _money(_dbRates[_normaliseVehicle(item.name)]?.perSeatRate ?? 0)),
-                                    _RatePill(label: 'Full', value: _money(_dbRates[_normaliseVehicle(item.name)]?.wholeVehicleRate ?? 0)),
-                                  ]),
-                                ])),
-                                Icon(active ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, color: active ? _lime : Colors.white38, size: 24),
-                              ]),
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
+                    ..._publicVehicleCards(),
                   const SizedBox(height: 3),
                   if (selectedPackage == null)
                     TextField(
@@ -982,7 +1465,12 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   SizedBox(
                     height: 52,
                     child: FilledButton(
-                      onPressed: _submitting || (widget.serviceType == UDriveServiceType.tours && (tourPackages.isEmpty || !selectedPackageBookable)) ? null : _submit,
+                      onPressed: _submitting ||
+                              (widget.serviceType == UDriveServiceType.tours &&
+                                  selectedPackage != null &&
+                                  !selectedPackageBookable)
+                          ? null
+                          : _submit,
                       style: FilledButton.styleFrom(backgroundColor: _lime, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                       child: _submitting
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black))
@@ -1138,6 +1626,92 @@ class _PlaceResult {
   final String subtitle;
   final double latitude;
   final double longitude;
+}
+
+class _PublicVehicle {
+  const _PublicVehicle({
+    required this.id,
+    required this.driverProfileId,
+    required this.driverName,
+    required this.driverRating,
+    required this.completedTrips,
+    required this.safetyScore,
+    required this.isOnline,
+    required this.category,
+    required this.make,
+    required this.model,
+    required this.year,
+    required this.registrationNumber,
+    required this.colour,
+    required this.passengerCapacity,
+    required this.luggageCapacity,
+    required this.hasAirConditioning,
+    required this.hasHeating,
+    required this.isFourByFour,
+    required this.mountainReadinessScore,
+    required this.imageUrl,
+    required this.serviceAreas,
+    required this.isDemo,
+  });
+
+  factory _PublicVehicle.fromJson(Map<String, dynamic> json) {
+    final rawAreas = json['serviceAreas'];
+    final areas = rawAreas is List
+        ? rawAreas
+            .map((item) => '$item'.trim())
+            .where((item) => item.isNotEmpty)
+            .toList(growable: false)
+        : const <String>[];
+
+    return _PublicVehicle(
+      id: '${json['id'] ?? ''}',
+      driverProfileId: '${json['driverProfileId'] ?? ''}',
+      driverName: '${json['driverName'] ?? 'Verified driver'}'.trim(),
+      driverRating: (json['driverRating'] as num?)?.toDouble() ?? 0,
+      completedTrips: (json['completedTrips'] as num?)?.toInt() ?? 0,
+      safetyScore: (json['safetyScore'] as num?)?.toInt() ?? 0,
+      isOnline: json['isOnline'] == true,
+      category: '${json['category'] ?? 'Car'}'.trim(),
+      make: '${json['make'] ?? ''}'.trim(),
+      model: '${json['model'] ?? ''}'.trim(),
+      year: (json['year'] as num?)?.toInt() ?? 0,
+      registrationNumber: '${json['registrationNumber'] ?? ''}'.trim(),
+      colour: '${json['colour'] ?? ''}'.trim(),
+      passengerCapacity: (json['passengerCapacity'] as num?)?.toInt() ?? 1,
+      luggageCapacity: (json['luggageCapacity'] as num?)?.toInt() ?? 0,
+      hasAirConditioning: json['hasAirConditioning'] == true,
+      hasHeating: json['hasHeating'] == true,
+      isFourByFour: json['isFourByFour'] == true,
+      mountainReadinessScore:
+          (json['mountainReadinessScore'] as num?)?.toInt() ?? 0,
+      imageUrl: ApiConfig.absoluteUrl(json['imageUrl']?.toString()),
+      serviceAreas: areas,
+      isDemo: json['isDemo'] == true,
+    );
+  }
+
+  final String id;
+  final String driverProfileId;
+  final String driverName;
+  final double driverRating;
+  final int completedTrips;
+  final int safetyScore;
+  final bool isOnline;
+  final String category;
+  final String make;
+  final String model;
+  final int year;
+  final String registrationNumber;
+  final String colour;
+  final int passengerCapacity;
+  final int luggageCapacity;
+  final bool hasAirConditioning;
+  final bool hasHeating;
+  final bool isFourByFour;
+  final int mountainReadinessScore;
+  final String imageUrl;
+  final List<String> serviceAreas;
+  final bool isDemo;
 }
 
 class _VehicleChoiceData {

@@ -21,7 +21,12 @@ VALUES
  ('PrivateVehicle','Car',550,2000),
  ('PrivateVehicle','Rickshaw',350,1000),
  ('PrivateVehicle','Coster',450,9000)
-ON CONFLICT(service_type,vehicle_category) DO NOTHING;
+ON CONFLICT(service_type,vehicle_category) DO UPDATE SET
+ per_seat_rate=EXCLUDED.per_seat_rate,
+ whole_vehicle_rate=EXCLUDED.whole_vehicle_rate,
+ currency='PKR',
+ is_active=true,
+ updated_at=now();
 
 CREATE TABLE IF NOT EXISTS udrive.driver_presence_locations (
     driver_profile_id uuid PRIMARY KEY REFERENCES udrive.driver_profiles(id) ON DELETE CASCADE,

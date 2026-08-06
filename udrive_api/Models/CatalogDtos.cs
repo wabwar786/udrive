@@ -38,3 +38,27 @@ public sealed record PackageDto(
     bool WomenOnly,
     string Status,
     string? CoverImageUrl);
+
+public sealed record PublicVehicleDto(
+    Guid Id,
+    Guid DriverProfileId,
+    string DriverName,
+    decimal DriverRating,
+    int CompletedTrips,
+    int SafetyScore,
+    bool IsOnline,
+    string Category,
+    string Make,
+    string Model,
+    int Year,
+    string RegistrationNumber,
+    string Colour,
+    int PassengerCapacity,
+    int LuggageCapacity,
+    bool HasAirConditioning,
+    bool HasHeating,
+    bool IsFourByFour,
+    int MountainReadinessScore,
+    string? ImageUrl,
+    IReadOnlyList<string> ServiceAreas,
+    bool IsDemo);

@@ -27,6 +27,21 @@ public sealed class CatalogController(CatalogService catalogService, LocalFileSt
         return Ok(ApiResponse<IReadOnlyList<ServiceVehicleRateDto>>.Ok(data));
     }
 
+    [HttpGet("vehicles")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<PublicVehicleDto>>>> GetVehicles(
+        [FromQuery] string serviceType = "City",
+        [FromQuery] string? query = null,
+        [FromQuery] int limit = 80,
+        CancellationToken cancellationToken = default)
+    {
+        var data = await pricingService.GetAvailableVehiclesAsync(
+            serviceType,
+            query,
+            Math.Clamp(limit, 1, 150),
+            cancellationToken);
+        return Ok(ApiResponse<IReadOnlyList<PublicVehicleDto>>.Ok(data));
+    }
+
     [HttpGet("destination-images/{owner}/{fileName}")]
     [ResponseCache(Duration = 3600, Location = ResponseCacheLocation.Client)]
     public IActionResult DestinationImage(string owner, string fileName)

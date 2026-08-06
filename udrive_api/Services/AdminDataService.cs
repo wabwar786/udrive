@@ -126,6 +126,10 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
 
     public async Task<object> AddDemoDataAsync(Guid adminUserId, CancellationToken cancellationToken)
     {
+        // Reset clears operational lookup tables as well. Re-run the idempotent
+        // pricing/presence seed before adding the demo fleet so the customer app
+        // immediately receives vehicle rates and availability again.
+        var pricingSql = await ReadEmbeddedSqlAsync("023_local_pricing_and_driver_presence.sql", cancellationToken);
         var fleetSql = await ReadEmbeddedSqlAsync("010_demo_fleet_kashmir_catalog.sql", cancellationToken);
         var hotelSql = await ReadEmbeddedSqlAsync("demo_hotels.sql", cancellationToken);
 
@@ -135,6 +139,7 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
 
         try
         {
+            await ExecuteSqlAsync(connection, transaction, pricingSql, cancellationToken);
             await ExecuteSqlAsync(connection, transaction, fleetSql, cancellationToken);
             await ExecuteSqlAsync(connection, transaction, hotelSql, cancellationToken);
 
