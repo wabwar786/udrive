@@ -65,7 +65,6 @@ builder.Services.AddScoped<AdminUserManagementService>(_ =>
     new AdminUserManagementService(connectionString));
 builder.Services.AddScoped<TripOperationsService>(_ => new TripOperationsService(connectionString));
 builder.Services.AddScoped<TrackingService>(_ => new TrackingService(connectionString));
-builder.Services.AddScoped<OfflineMapManifestService>(_ => new OfflineMapManifestService(connectionString));
 builder.Services.AddScoped<FinanceService>(_ => new FinanceService(connectionString));
 builder.Services.AddScoped<PaymentService>(_ => new PaymentService(connectionString));
 builder.Services.AddScoped<FeedbackService>(sp => new FeedbackService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
@@ -81,6 +80,7 @@ builder.Services.AddHttpClient<WhatsAppService>(client =>
 builder.Services.AddScoped<SafetyService>(_ => new SafetyService(connectionString));
 builder.Services.AddScoped<Phase18TourService>(_ => new Phase18TourService(connectionString));
 builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(connectionString));
+builder.Services.AddScoped<HotelService>(_ => new HotelService(connectionString));
 builder.Services.AddScoped<VerificationFileLookupService>(serviceProvider =>
     new VerificationFileLookupService(
         connectionString,

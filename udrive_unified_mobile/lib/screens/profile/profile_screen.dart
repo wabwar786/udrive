@@ -49,6 +49,8 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const ModeSwitchCard(targetMode: UserMode.driver),
+          const SizedBox(height: 10),
+          const ModeSwitchCard(targetMode: UserMode.hotel),
           const SizedBox(height: 14),
           _tile(Icons.bookmark_border_rounded, S.of(context, 'savedPlaces'), 'View saved places'),
           _tile(Icons.health_and_safety_outlined, S.of(context, 'safety'), 'Open safety centre'),

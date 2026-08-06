@@ -31,6 +31,7 @@ import 'driver/onboarding/driver_verification_screen.dart';
 import 'maps/live_tracking_screen.dart';
 import 'safety/safety_hub_screen.dart';
 import 'safety/customer_sos_sheet.dart';
+import 'hotel_owner/hotel_owner_shell.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -45,6 +46,9 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
+    if (controller.mode == UserMode.hotel) {
+      return const HotelOwnerShell();
+    }
     final driver = controller.mode == UserMode.driver;
     final driverNeedsVerification = driver && !controller.driverApproved;
     final pageKey = driverNeedsVerification ? 'driverVerification' : (driver ? _driverPage : _customerPage);
@@ -432,6 +436,9 @@ class _PremiumDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
+    if (controller.mode == UserMode.hotel) {
+      return const HotelOwnerShell();
+    }
     final driver = mode == UserMode.driver;
     final entries = driver ? _driverEntries(context) : _customerEntries(context);
     const drawerColor = Color(0xFF202322);

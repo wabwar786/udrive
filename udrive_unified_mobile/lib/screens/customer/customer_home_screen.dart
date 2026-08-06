@@ -23,6 +23,7 @@ import '../operations/live_trip_navigation_screen.dart';
 import '../safety/customer_sos_sheet.dart';
 import 'live_packages_screen.dart';
 import 'live_explore_screen.dart';
+import '../hotels/hotel_list_screen.dart';
 import 'udrive_route_flow_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -641,8 +642,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       onCity: () => _openRouteFlow(UDriveServiceType.city),
                       onTours: () => _openRouteFlow(UDriveServiceType.tours),
                       onPrivate: () => _openRouteFlow(UDriveServiceType.privateVehicle),
-                      onExplore: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveExploreScreen())),
+                      onHotels: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HotelListScreen())),
                     ),
+                    const SizedBox(height: 10),
+                    Material(color: const Color(0xFF252A27),borderRadius: BorderRadius.circular(15),child:InkWell(borderRadius:BorderRadius.circular(15),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const LiveExploreScreen())),child:const Padding(padding:EdgeInsets.symmetric(horizontal:13,vertical:10),child:Row(children:[Icon(Icons.landscape_rounded,color:Color(0xFFB7F20A),size:20),SizedBox(width:9),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Explore Kashmir',style:TextStyle(color:Colors.white,fontSize:12,fontWeight:FontWeight.w900)),Text('Destinations, hotels and complete trip plans',style:TextStyle(color:Colors.white60,fontSize:8.5))])),Icon(Icons.chevron_right_rounded,color:Colors.white70,size:19)])))),
                     const SizedBox(height: 14),
                     Material(
                       color: const Color(0xFF303330),
@@ -2190,48 +2193,47 @@ class _UDriveServicesGrid extends StatelessWidget {
     required this.onCity,
     required this.onTours,
     required this.onPrivate,
-    required this.onExplore,
+    required this.onHotels,
   });
 
   final VoidCallback onCity;
   final VoidCallback onTours;
   final VoidCallback onPrivate;
-  final VoidCallback onExplore;
+  final VoidCallback onHotels;
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        height: 218,
+        height: 194,
         child: GridView.count(
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: 2,
           crossAxisSpacing: 9,
           mainAxisSpacing: 9,
-          childAspectRatio: 1.75,
+          childAspectRatio: 1.88,
           children: [
             _ServiceTile(
               title: 'Tours & Trips',
               subtitle: 'seat or full vehicle',
-              imageAsset: 'assets/vehicles_photo/tour_clean.png',
+              icon: Icons.directions_bus_rounded,
               onTap: onTours,
             ),
             _ServiceTile(
               title: 'Travel within city',
               subtitle: 'car, bike, rickshaw',
-              imageAsset: 'assets/vehicles_photo/car_clean.png',
+              icon: Icons.local_taxi_rounded,
               onTap: onCity,
             ),
             _ServiceTile(
               title: 'Private Vehicle',
               subtitle: 'coster, car, bike',
-              imageAsset: 'assets/vehicles_photo/private_car_clean.png',
+              icon: Icons.directions_car_filled_rounded,
               onTap: onPrivate,
             ),
             _ServiceTile(
-              title: 'Explore Kashmir',
-              subtitle: 'destinations & experiences',
-              imageAsset: 'assets/images/neelum.png',
-              onTap: onExplore,
-              landscape: true,
+              title: 'Hotels & Stays',
+              subtitle: 'rooms, transport, packages',
+              icon: Icons.hotel_rounded,
+              onTap: onHotels,
             ),
           ],
         ),
@@ -2242,16 +2244,14 @@ class _ServiceTile extends StatelessWidget {
   const _ServiceTile({
     required this.title,
     required this.subtitle,
-    required this.imageAsset,
+    required this.icon,
     required this.onTap,
-    this.landscape = false,
   });
 
   final String title;
   final String subtitle;
-  final String imageAsset;
+  final IconData icon;
   final VoidCallback onTap;
-  final bool landscape;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -2287,24 +2287,14 @@ class _ServiceTile extends StatelessWidget {
                   ),
                 ),
                 Positioned(
-                  right: landscape ? -8 : 4,
-                  bottom: landscape ? -5 : 5,
-                  child: SizedBox(
-                    width: landscape ? 108 : 100,
-                    height: landscape ? 72 : 58,
-                    child: ClipRect(
-                      child: Image.asset(
-                        imageAsset,
-                        fit: landscape ? BoxFit.cover : BoxFit.contain,
-                        alignment: Alignment.bottomRight,
-                        filterQuality: FilterQuality.high,
-                        errorBuilder: (_, __, ___) => const Icon(
-                          Icons.directions_car_filled_rounded,
-                          color: Color(0xFF111311),
-                          size: 38,
-                        ),
-                      ),
-                    ),
+                  right: 12,
+                  bottom: 12,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(width: 58,height: 58,decoration: const BoxDecoration(color: Color(0xFFB7F20A),shape: BoxShape.circle)),
+                      Icon(icon,color: const Color(0xFF17242B),size: 34),
+                    ],
                   ),
                 ),
                 Positioned.fill(

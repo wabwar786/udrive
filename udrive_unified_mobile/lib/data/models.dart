@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum UserMode { customer, driver }
+enum UserMode { customer, driver, hotel }
 
 enum VerificationStatus { verified, pending, draft, rejected, suspended, expired }
 

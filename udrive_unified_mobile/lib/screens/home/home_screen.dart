@@ -6,6 +6,7 @@ import '../../core/widgets/udrive_logo.dart';
 import '../../data/dummy_data.dart';
 import '../packages/package_detail_screen.dart';
 import '../ride/create_ride_screen.dart';
+import '../hotels/hotel_list_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -26,15 +27,18 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 22),
-          Text(S.of(context, 'greeting'), style: const TextStyle(fontSize: 16, color: AppColors.muted)),
+          Text(S.of(context, 'greeting'), style: const TextStyle(fontSize: 14, color: AppColors.muted)),
           const SizedBox(height: 6),
-          Text(S.of(context, 'whereTo'), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.8)),
+          Text(S.of(context, 'whereTo'), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.8)),
           const SizedBox(height: 18),
           _SearchCard(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateRideScreen()))),
           const SizedBox(height: 18),
           const _MapPreview(),
           const SizedBox(height: 22),
-          _ServiceGrid(onSelected: (_) => Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateRideScreen()))),
+          _ServiceGrid(onSelected: (service) {
+            if (service == 'Hotels & Stays') { Navigator.push(context, MaterialPageRoute(builder: (_) => const HotelListScreen())); return; }
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateRideScreen()));
+          }),
           const SizedBox(height: 22),
           Card(
             child: Padding(
@@ -59,7 +63,7 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Row(children: [
-            Expanded(child: Text(S.of(context, 'popular'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900))),
+            Expanded(child: Text(S.of(context, 'popular'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900))),
             TextButton(onPressed: () {}, child: Text(S.of(context, 'viewAll'))),
           ]),
           const SizedBox(height: 10),
@@ -89,7 +93,7 @@ class HomeScreen extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.all(14),
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                            Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
                             const SizedBox(height: 6),
                             Text(item.route, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted)),
                             const SizedBox(height: 12),
@@ -127,7 +131,7 @@ class _SearchCard extends StatelessWidget {
         child: Row(children: [
           Container(width: 46, height: 46, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.search_rounded, color: AppColors.primary)),
           const SizedBox(width: 13),
-          Expanded(child: Text(S.of(context, 'whereTo'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
+          Expanded(child: Text(S.of(context, 'whereTo'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
           const Icon(Icons.arrow_forward_rounded),
         ]),
       ),
@@ -157,34 +161,13 @@ class _MapPreview extends StatelessWidget {
 class _ServiceGrid extends StatelessWidget {
   const _ServiceGrid({required this.onSelected});
   final ValueChanged<String> onSelected;
-  @override
-  Widget build(BuildContext context) {
-    final services = [
-      ('localRide', Icons.local_taxi_rounded), ('intercity', Icons.route_rounded), ('fullDay', Icons.schedule_rounded),
-      ('packages', Icons.card_travel_rounded), ('jeep', Icons.terrain_rounded), ('shared', Icons.groups_rounded),
+  @override Widget build(BuildContext context) {
+    const services = [
+      ('Travel within city','Car • Bike • Rickshaw',Icons.local_taxi_rounded),
+      ('Tours & Trips','Coster • Car • Shared seats',Icons.route_rounded),
+      ('Private Vehicle','Car • Coster • Bike',Icons.directions_car_filled_rounded),
+      ('Hotels & Stays','Rooms • Transport • Packages',Icons.hotel_rounded),
     ];
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: .92),
-      itemCount: services.length,
-      itemBuilder: (context, i) {
-        final item = services[i];
-        return InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => onSelected(item.$1),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Container(width: 44, height: 44, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .10), borderRadius: BorderRadius.circular(14)), child: Icon(item.$2, color: AppColors.primary)),
-                const SizedBox(height: 9),
-                Text(S.of(context, item.$1), textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-              ]),
-            ),
-          ),
-        );
-      },
-    );
+    return GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:2,mainAxisSpacing:9,crossAxisSpacing:9,childAspectRatio:1.42),itemCount:services.length,itemBuilder:(context,i){final x=services[i];return InkWell(borderRadius:BorderRadius.circular(16),onTap:()=>onSelected(x.$1),child:Container(padding:const EdgeInsets.all(11),decoration:BoxDecoration(color:const Color(0xFF1D292F),borderRadius:BorderRadius.circular(16)),child:Stack(children:[Positioned(right:-12,bottom:-18,child:Container(width:78,height:78,decoration:const BoxDecoration(color:Color(0xFF9BE43A),shape:BoxShape.circle))),Positioned(right:8,bottom:7,child:Icon(x.$3,size:40,color:const Color(0xFF17242B))),Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(x.$3,size:17,color:const Color(0xFF9BE43A)),const Spacer(),Text(x.$1,maxLines:2,style:const TextStyle(color:Colors.white,fontSize:12,fontWeight:FontWeight.w900,height:1.05)),const SizedBox(height:3),Padding(padding:const EdgeInsets.only(right:48),child:Text(x.$2,maxLines:2,style:const TextStyle(color:Colors.white60,fontSize:8.5,height:1.15)))])])));});
   }
 }

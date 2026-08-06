@@ -229,9 +229,12 @@ class AppController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance()
           .timeout(const Duration(seconds: 5));
       _locale = Locale(prefs.getString('language') ?? 'en');
-      _mode = (prefs.getString('mode') ?? 'customer') == 'driver'
+      final savedMode = prefs.getString('mode') ?? 'customer';
+      _mode = savedMode == 'driver'
           ? UserMode.driver
-          : UserMode.customer;
+          : savedMode == 'hotel'
+              ? UserMode.hotel
+              : UserMode.customer;
       _driverOnline = prefs.getBool('driverOnline') ?? true;
       _liveTrip.shareEnabled = prefs.getBool('liveShareEnabled') ?? false;
       _currentUser = await _sessionStore.readUser();
