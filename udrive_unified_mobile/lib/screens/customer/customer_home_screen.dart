@@ -25,6 +25,7 @@ import 'live_packages_screen.dart';
 import 'live_explore_screen.dart';
 import '../hotels/hotel_list_screen.dart';
 import 'udrive_route_flow_screen.dart';
+import 'service_flow_screens.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({required this.onNavigate, super.key});
@@ -655,9 +656,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ),
                     const SizedBox(height: 16),
                     _UDriveServicesGrid(
-                      onCity: () => _openRouteFlow(UDriveServiceType.city),
-                      onTours: () => _openRouteFlow(UDriveServiceType.tours),
-                      onPrivate: () => _openRouteFlow(UDriveServiceType.privateVehicle),
+                      onCity: () => Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => CityRideScreen(
+                            pickupLabel: _pickup.text.trim().isEmpty ? 'Current location' : _pickup.text.trim(),
+                            pickupPoint: _currentPoint,
+                          ))),
+                      onTours: () => Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => ToursScreen(
+                            pickupLabel: _pickup.text.trim().isEmpty ? 'Current location' : _pickup.text.trim(),
+                            pickupPoint: _currentPoint,
+                          ))),
+                      onPrivate: () => Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => PrivateVehiclesScreen(
+                            pickupLabel: _pickup.text.trim().isEmpty ? 'Current location' : _pickup.text.trim(),
+                            pickupPoint: _currentPoint,
+                          ))),
                       onHotels: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HotelListScreen())),
                     ),
                     const SizedBox(height: 10),
