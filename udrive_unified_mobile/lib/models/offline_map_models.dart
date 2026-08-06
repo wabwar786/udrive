@@ -46,7 +46,7 @@ class OfflineMapLocalRecord {
 }
 
 class OfflineMapResolution {
-  const OfflineMapResolution({required this.source,this.pack,this.localRecord,this.reason});
+  const OfflineMapResolution({required this.source,this.pack,this.localRecord,this.reason = ''});
   final MapSourceKind source;
   final OfflineMapPack? pack;
   final OfflineMapLocalRecord? localRecord;
