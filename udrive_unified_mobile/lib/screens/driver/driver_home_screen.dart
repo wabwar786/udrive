@@ -29,7 +29,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Timer? _acceptedRefreshTimer;
   Timer? _presenceTimer;
   Timer? _marketplaceRefreshTimer;
+  Timer? _uiTickTimer;
   bool _isOnline = true;
+  final Map<String, _RecentFareSent> _recentFares = {};
 
   @override
   void didChangeDependencies() {
@@ -51,6 +53,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
     _presenceTimer = Timer.periodic(const Duration(seconds: 15), (_) => _publishPresence());
     _marketplaceRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) => _refreshNearbyRequests());
+    _uiTickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _recentFares.isEmpty) return;
+      final now = DateTime.now();
+      final expired = _recentFares.entries.where((e) => !e.value.visibleUntil.isAfter(now)).map((e) => e.key).toList();
+      if (expired.isNotEmpty) {
+        setState(() { for (final id in expired) { _recentFares.remove(id); } });
+        _refreshNearbyRequests();
+      } else {
+        setState(() {});
+      }
+    });
   }
 
   @override
@@ -58,6 +71,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _acceptedRefreshTimer?.cancel();
     _presenceTimer?.cancel();
     _marketplaceRefreshTimer?.cancel();
+    _uiTickTimer?.cancel();
     super.dispose();
   }
 
@@ -151,10 +165,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       return status == 'verified' || status == 'approved';
     }).toList(growable: false);
     final requests = controller.liveDriverRideRequests;
-    final myOffers = controller.liveDriverRideOfferStatuses;
-    final pendingOffers = myOffers.where((offer) => offer.isPending).toList(growable: false);
-    final approvedOffers = myOffers.where((offer) => offer.isApproved).toList(growable: false);
-    final closedOffers = myOffers.where((offer) => offer.isClosed).take(3).toList(growable: false);
     final activeTrip = _acceptedTrips.isEmpty ? null : _acceptedTrips.first;
 
     return RefreshIndicator(
@@ -162,50 +172,50 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 30),
         children: [
-          _DriverCommandHeader(
+          _CompactDriverHeader(
             driverName: controller.currentUserName,
-            isOnline: _isOnline,
-            activeTrip: activeTrip,
             requestCount: requests.length,
-            pendingOfferCount: pendingOffers.length,
-            onOnlineChanged: (value) {
-              setState(() => _isOnline = value);
-              if (value) {
-                _publishPresence();
-                _refreshNearbyRequests();
-              }
-            },
+            hasActiveTrip: activeTrip != null,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           if (activeTrip != null) ...[
             _LiveRideHeroCard(
               trip: activeTrip,
               onOpen: () => _openAcceptedRide(activeTrip),
             ),
             const SizedBox(height: 10),
-            const _NextRideUnlockBanner(),
-            const SizedBox(height: 14),
           ],
-          _HomeSectionTitle(
-            icon: Icons.radar_rounded,
-            title: _t('Nearby ride requests', 'قریبی رائیڈ درخواستیں'),
+          if (_recentFares.isNotEmpty) ...[
+            ..._recentFares.values.map((sent) {
+              final approved = controller.liveDriverRideOfferStatuses.any(
+                (offer) => offer.rideRequestId == sent.rideRequestId && offer.isApproved,
+              );
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _RecentFareSentCard(sent: sent, approved: approved),
+              );
+            }),
+            const SizedBox(height: 2),
+          ],
+          _CompactSectionRow(
+            title: activeTrip == null ? 'Nearby rides' : 'Next rides',
             subtitle: activeTrip == null
-                ? _t('Live 5 KM pickup radius · refreshes automatically', 'لائیو 5 کلومیٹر پک اَپ ریڈیئس · خودکار ریفریش')
-                : _t('New rides unlock within 1 KM of your current destination', 'موجودہ منزل سے 1 کلومیٹر پہلے نئی رائیڈز کھل جائیں گی'),
-            trailing: '${requests.length}',
+                ? 'Live requests within 5 KM'
+                : 'Unlock within 1 KM of destination',
+            count: requests.length,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 7),
           if (!_isOnline)
             const _DriverHomeInfoCard(
               icon: Icons.power_settings_new_rounded,
-              title: 'You are offline',
-              message: 'Go online to receive nearby customer requests.',
+              title: 'Driver is offline',
+              message: 'Use the top menu to go online.',
             )
           else if (!controller.driverApproved)
             const _DriverHomeInfoCard(
               icon: Icons.verified_user_outlined,
               title: 'Driver approval required',
-              message: 'Ride requests start automatically after your Driver profile is approved.',
+              message: 'Nearby rides start automatically after approval.',
             )
           else if (verifiedVehicles.isEmpty)
             const _DriverHomeInfoCard(
@@ -214,14 +224,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               message: 'Verify at least one vehicle before sending fares.',
             )
           else if (requests.isEmpty)
-            _WaitingForNearbyRide(
+            _CompactWaitingState(
               hasActiveTrip: activeTrip != null,
               onRefresh: _refreshNearbyRequests,
             )
           else
             ...requests.map(
               (request) => Padding(
-                padding: const EdgeInsets.only(bottom: 9),
+                padding: const EdgeInsets.only(bottom: 8),
                 child: _DashboardRequestCard(
                   request: request,
                   enabled: verifiedVehicles.isNotEmpty && !controller.marketplaceBusy,
@@ -231,50 +241,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 ),
               ),
             ),
-          const SizedBox(height: 15),
-          _HomeSectionTitle(
-            icon: Icons.local_offer_outlined,
-            title: _t('My fare offers', 'میری کرایہ آفرز'),
-            subtitle: _t('Customer approval status updates here automatically', 'کسٹمر منظوری کا اسٹیٹس یہاں خودکار اپڈیٹ ہوگا'),
-            trailing: '${pendingOffers.length + approvedOffers.length}',
-          ),
-          const SizedBox(height: 8),
-          if (pendingOffers.isEmpty && approvedOffers.isEmpty && closedOffers.isEmpty)
-            const _DriverHomeInfoCard(
-              icon: Icons.payments_outlined,
-              title: 'No fare sent yet',
-              message: 'Choose a nearby request and send only the fare you want to drive for.',
-            )
-          else ...[
-            ...approvedOffers.map(
-              (offer) => Padding(
-                padding: const EdgeInsets.only(bottom: 9),
-                child: _DriverFareStatusCard(
-                  offer: offer,
-                  onMap: () => _openOfferMap(offer),
-                  onOpenRide: activeTrip == null ? null : () => _openAcceptedRide(activeTrip),
-                ),
-              ),
-            ),
-            ...pendingOffers.map(
-              (offer) => Padding(
-                padding: const EdgeInsets.only(bottom: 9),
-                child: _DriverFareStatusCard(
-                  offer: offer,
-                  onMap: () => _openOfferMap(offer),
-                ),
-              ),
-            ),
-            ...closedOffers.map(
-              (offer) => Padding(
-                padding: const EdgeInsets.only(bottom: 9),
-                child: _DriverFareStatusCard(
-                  offer: offer,
-                  onMap: () => _openOfferMap(offer),
-                ),
-              ),
-            ),
-          ],
+          const SizedBox(height: 6),
           if (controller.marketplaceError != null) ...[
             const SizedBox(height: 8),
             _DriverHomeInfoCard(
@@ -409,9 +376,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     );
                     if (!mounted) return;
                     Navigator.pop(sheetContext);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Fare sent. Waiting for customer confirmation.')),
-                    );
+                    setState(() {
+                      _recentFares[request.id] = _RecentFareSent(
+                        rideRequestId: request.id,
+                        pickupLabel: request.pickupLabel,
+                        destinationLabel: request.destinationLabel,
+                        amount: parsedAmount,
+                        visibleUntil: DateTime.now().add(const Duration(seconds: 10)),
+                      );
+                    });
                     await _refreshNearbyRequests();
                   } catch (error) {
                     if (mounted) {
@@ -465,6 +438,102 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
 
   static const _closedStatuses = {'Completed', 'Cancelled', 'NoShow'};
+}
+
+
+class _RecentFareSent {
+  const _RecentFareSent({
+    required this.rideRequestId,
+    required this.pickupLabel,
+    required this.destinationLabel,
+    required this.amount,
+    required this.visibleUntil,
+  });
+  final String rideRequestId;
+  final String pickupLabel;
+  final String destinationLabel;
+  final double amount;
+  final DateTime visibleUntil;
+}
+
+class _CompactDriverHeader extends StatelessWidget {
+  const _CompactDriverHeader({required this.driverName, required this.requestCount, required this.hasActiveTrip});
+  final String driverName;
+  final int requestCount;
+  final bool hasActiveTrip;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE5E9ED))),
+    child: Row(children: [
+      Container(width: 38, height: 38, decoration: BoxDecoration(color: const Color(0xFFEAF5F1), borderRadius: BorderRadius.circular(12)), child: Icon(hasActiveTrip ? Icons.navigation_rounded : Icons.local_taxi_rounded, color: AppColors.primaryDark, size: 20)),
+      const SizedBox(width: 10),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Hi ${driverName.split(' ').first}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.navy)),
+        Text(hasActiveTrip ? 'Your active ride is live' : 'Nearby rides update automatically', style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
+      ])),
+      Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: const Color(0xFFF4F7F8), borderRadius: BorderRadius.circular(999)), child: Text('$requestCount nearby', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.navy))),
+    ]),
+  );
+}
+
+class _CompactSectionRow extends StatelessWidget {
+  const _CompactSectionRow({required this.title, required this.subtitle, required this.count});
+  final String title;
+  final String subtitle;
+  final int count;
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.navy)), Text(subtitle, style: const TextStyle(fontSize: 10, color: AppColors.muted))])),
+    if (count > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFEAF5F1), borderRadius: BorderRadius.circular(999)), child: Text('$count', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.primaryDark))),
+  ]);
+}
+
+class _RecentFareSentCard extends StatelessWidget {
+  const _RecentFareSentCard({required this.sent, required this.approved});
+  final _RecentFareSent sent;
+  final bool approved;
+  @override
+  Widget build(BuildContext context) {
+    final seconds = sent.visibleUntil.difference(DateTime.now()).inSeconds.clamp(0, 10);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: const Color(0xFFF0FAF6), borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.success.withValues(alpha: .25))),
+      child: Row(children: [
+        Container(width: 32, height: 32, decoration: BoxDecoration(color: AppColors.success.withValues(alpha: .12), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.check_rounded, color: AppColors.success, size: 19)),
+        const SizedBox(width: 9),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(approved ? 'APPROVED · ride confirmed' : 'Fare sent · waiting for customer', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: AppColors.navy)),
+          Text('${sent.pickupLabel} → ${sent.destinationLabel}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9.5, color: AppColors.muted)),
+        ])),
+        const SizedBox(width: 8),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text('PKR ${NumberFormat('#,###').format(sent.amount)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.navy)),
+          Text(approved ? 'LIVE' : '${seconds}s', style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: AppColors.success)),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _CompactWaitingState extends StatelessWidget {
+  const _CompactWaitingState({required this.hasActiveTrip, required this.onRefresh});
+  final bool hasActiveTrip;
+  final VoidCallback onRefresh;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+    decoration: BoxDecoration(color: const Color(0xFFF8FAFB), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE7ECEF))),
+    child: Row(children: [
+      Icon(hasActiveTrip ? Icons.route_rounded : Icons.radar_rounded, color: AppColors.primaryDark, size: 21),
+      const SizedBox(width: 9),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(hasActiveTrip ? 'Next rides locked for now' : 'No nearby ride right now', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: AppColors.navy)),
+        Text(hasActiveTrip ? 'They unlock within 1 KM of destination.' : 'New 5 KM requests appear here automatically.', style: const TextStyle(fontSize: 9.5, color: AppColors.muted)),
+      ])),
+      IconButton(onPressed: onRefresh, tooltip: 'Refresh', icon: const Icon(Icons.refresh_rounded, size: 20)),
+    ]),
+  );
 }
 
 class _DriverCommandHeader extends StatelessWidget {

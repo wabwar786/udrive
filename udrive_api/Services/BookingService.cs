@@ -235,7 +235,10 @@ public sealed class BookingService(
                   FROM udrive.driver_ride_request_decisions d
                   WHERE d.ride_request_id = rr.id
                     AND d.driver_profile_id = @driverProfileId
-                    AND d.decision IN ('Rejected', 'Offered')
+                    AND (
+                      d.decision = 'Rejected'
+                      OR (d.decision = 'Offered' AND d.updated_at > now() - interval '10 seconds')
+                    )
               )
             ORDER BY rr.pickup_at, rr.created_at DESC
             LIMIT 100;
