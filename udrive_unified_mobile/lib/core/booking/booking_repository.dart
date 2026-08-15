@@ -21,6 +21,11 @@ class BookingRepository {
     return _list(response, LiveRideRequest.fromJson);
   }
 
+  Future<List<LiveDriverRideOfferStatus>> getDriverRideOffers() async {
+    final response = await client.getJson('/api/v1/driver/marketplace/ride-offers');
+    return _list(response, LiveDriverRideOfferStatus.fromJson);
+  }
+
   Future<List<LiveDriverOffer>> getRideOffers(String rideRequestId) async {
     final response = await client.getJson('/api/v1/bookings/ride-requests/$rideRequestId/offers');
     return _list(response, LiveDriverOffer.fromJson);

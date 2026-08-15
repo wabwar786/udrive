@@ -150,95 +150,75 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       final status = vehicle.status.trim().toLowerCase();
       return status == 'verified' || status == 'approved';
     }).toList(growable: false);
-    final activeBookings = controller.liveDriverPackageBookings
-        .where((booking) => !_closedStatuses.contains(booking.status))
-        .toList()
-      ..sort((a, b) => a.pickupAt.compareTo(b.pickupAt));
-    final requests = controller.liveDriverRideRequests.take(5).toList();
-    final packages = controller.liveDriverPackages.take(4).toList();
+    final requests = controller.liveDriverRideRequests;
+    final myOffers = controller.liveDriverRideOfferStatuses;
+    final pendingOffers = myOffers.where((offer) => offer.isPending).toList(growable: false);
+    final approvedOffers = myOffers.where((offer) => offer.isApproved).toList(growable: false);
+    final closedOffers = myOffers.where((offer) => offer.isClosed).take(3).toList(growable: false);
+    final activeTrip = _acceptedTrips.isEmpty ? null : _acceptedTrips.first;
 
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 30),
         children: [
-          _DriverAvailabilityCard(
+          _DriverCommandHeader(
+            driverName: controller.currentUserName,
             isOnline: _isOnline,
-            onChanged: (value) { setState(() => _isOnline = value); if (value) _publishPresence(); },
-            nextTrip: _acceptedTrips.isEmpty ? null : _acceptedTrips.first,
-            onOpenTrip: _acceptedTrips.isEmpty ? null : () => _openAcceptedRide(_acceptedTrips.first),
+            activeTrip: activeTrip,
+            requestCount: requests.length,
+            pendingOfferCount: pendingOffers.length,
+            onOnlineChanged: (value) {
+              setState(() => _isOnline = value);
+              if (value) {
+                _publishPresence();
+                _refreshNearbyRequests();
+              }
+            },
           ),
-          const SizedBox(height: 14),
-          if (_acceptedTrips.isNotEmpty) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _t('Accepted rides', 'قبول شدہ رائیڈز'),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.navy,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${_acceptedTrips.length}',
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 12),
+          if (activeTrip != null) ...[
+            _LiveRideHeroCard(
+              trip: activeTrip,
+              onOpen: () => _openAcceptedRide(activeTrip),
             ),
-            const SizedBox(height: 7),
-            ..._acceptedTrips.take(4).map(
-              (trip) => Padding(
-                padding: const EdgeInsets.only(bottom: 9),
-                child: _AcceptedRideCard(
-                  trip: trip,
-                  onStart: () => _openAcceptedRide(trip),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
+            const _NextRideUnlockBanner(),
+            const SizedBox(height: 14),
           ],
-          if (requests.isEmpty)
-            _EmptyRequests(onRefresh: _refresh)
-          else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _t('Customer requests', 'کسٹمر درخواستیں'),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.navy,
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => widget.onNavigate('requests'),
-                  child: Text(_t('View all', 'سب دیکھیں')),
-                ),
-              ],
-            ),
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEAF7F2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.radar_rounded, size: 16, color: AppColors.primary),
-                  SizedBox(width: 7),
-                  Expanded(child: Text('Live: searching pickup requests within 5 KM · auto refresh', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: AppColors.primaryDark))),
-                ],
-              ),
-            ),
+          _HomeSectionTitle(
+            icon: Icons.radar_rounded,
+            title: _t('Nearby ride requests', 'قریبی رائیڈ درخواستیں'),
+            subtitle: activeTrip == null
+                ? _t('Live 5 KM pickup radius · refreshes automatically', 'لائیو 5 کلومیٹر پک اَپ ریڈیئس · خودکار ریفریش')
+                : _t('New rides unlock within 1 KM of your current destination', 'موجودہ منزل سے 1 کلومیٹر پہلے نئی رائیڈز کھل جائیں گی'),
+            trailing: '${requests.length}',
+          ),
+          const SizedBox(height: 8),
+          if (!_isOnline)
+            const _DriverHomeInfoCard(
+              icon: Icons.power_settings_new_rounded,
+              title: 'You are offline',
+              message: 'Go online to receive nearby customer requests.',
+            )
+          else if (!controller.driverApproved)
+            const _DriverHomeInfoCard(
+              icon: Icons.verified_user_outlined,
+              title: 'Driver approval required',
+              message: 'Ride requests start automatically after your Driver profile is approved.',
+            )
+          else if (verifiedVehicles.isEmpty)
+            const _DriverHomeInfoCard(
+              icon: Icons.directions_car_outlined,
+              title: 'Verified vehicle required',
+              message: 'Verify at least one vehicle before sending fares.',
+            )
+          else if (requests.isEmpty)
+            _WaitingForNearbyRide(
+              hasActiveTrip: activeTrip != null,
+              onRefresh: _refreshNearbyRequests,
+            )
+          else
             ...requests.map(
               (request) => Padding(
                 padding: const EdgeInsets.only(bottom: 9),
@@ -251,129 +231,58 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 ),
               ),
             ),
-          ],
-          if (activeBookings.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            SectionHeader(
-              title: _t('Latest assignment', 'تازہ ترین اسائنمنٹ'),
-              action: _t('Open', 'کھولیں'),
-              onAction: () => widget.onNavigate('activeTrip'),
-            ),
-            const SizedBox(height: 8),
-            _LatestAssignment(
-              booking: activeBookings.first,
-              onTap: () => widget.onNavigate('activeTrip'),
-            ),
-          ],
-          const SizedBox(height: 18),
-          SectionHeader(title: _t('Quick actions', 'فوری اختیارات')),
-          const SizedBox(height: 9),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 1.52,
-            children: [
-              _ToolCard(
-                icon: Icons.notifications_active_rounded,
-                title: _t('Customer requests', 'کسٹمر درخواستیں'),
-                subtitle: _t('Send your fare', 'اپنا کرایہ دیں'),
-                colors: const [Color(0xFF165DFF), Color(0xFF4A86FF)],
-                onTap: () => widget.onNavigate('requests'),
-              ),
-              _ToolCard(
-                icon: Icons.add_road_rounded,
-                title: _t('Create local route', 'لوکل روٹ بنائیں'),
-                subtitle: _t('Daily seat departure', 'روزانہ سیٹ روانگی'),
-                colors: const [Color(0xFF7B3FE4), Color(0xFFA76CF2)],
-                onTap: () => widget.onNavigate('createPackage'),
-              ),
-              _ToolCard(
-                icon: Icons.directions_car_filled_rounded,
-                title: context.tr('vehicles'),
-                subtitle: _t('Manage vehicles', 'گاڑیاں منظم کریں'),
-                colors: const [Color(0xFF0B8F68), Color(0xFF20B88A)],
-                onTap: () => widget.onNavigate('vehicles'),
-              ),
-              _ToolCard(
-                icon: Icons.account_balance_wallet_rounded,
-                title: context.tr('earnings'),
-                subtitle: _t('Wallet & payouts', 'والیٹ اور ادائیگیاں'),
-                colors: const [Color(0xFFE46A25), Color(0xFFF79B4D)],
-                onTap: () => widget.onNavigate('earnings'),
-              ),
-            ],
+          const SizedBox(height: 15),
+          _HomeSectionTitle(
+            icon: Icons.local_offer_outlined,
+            title: _t('My fare offers', 'میری کرایہ آفرز'),
+            subtitle: _t('Customer approval status updates here automatically', 'کسٹمر منظوری کا اسٹیٹس یہاں خودکار اپڈیٹ ہوگا'),
+            trailing: '${pendingOffers.length + approvedOffers.length}',
           ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _t('My tour packages', 'میرے ٹور پیکیجز'),
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.navy,
-                  ),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () => widget.onNavigate('createPackage'),
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: Text(_t('Add package', 'پیکیج شامل کریں')),
-              ),
-            ],
-          ),
-          const SizedBox(height: 7),
-          if (packages.isEmpty)
-            PremiumCard(
-              onTap: () => widget.onNavigate('createPackage'),
-              child: Row(
-                children: [
-                  const Icon(Icons.luggage_rounded, color: AppColors.primary),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _t(
-                        'No package created yet. Add your first tourism package.',
-                        'ابھی کوئی پیکیج نہیں بنایا۔ اپنا پہلا ٹورزم پیکیج شامل کریں۔',
-                      ),
-                      style: const TextStyle(color: AppColors.muted, fontSize: 12),
-                    ),
-                  ),
-                  const Icon(Icons.arrow_forward_ios_rounded, size: 14),
-                ],
-              ),
+          const SizedBox(height: 8),
+          if (pendingOffers.isEmpty && approvedOffers.isEmpty && closedOffers.isEmpty)
+            const _DriverHomeInfoCard(
+              icon: Icons.payments_outlined,
+              title: 'No fare sent yet',
+              message: 'Choose a nearby request and send only the fare you want to drive for.',
             )
-          else
-            ...packages.map(
-              (package) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _PackageCard(
-                  package: package,
-                  onTap: () => widget.onNavigate('driverPackages'),
+          else ...[
+            ...approvedOffers.map(
+              (offer) => Padding(
+                padding: const EdgeInsets.only(bottom: 9),
+                child: _DriverFareStatusCard(
+                  offer: offer,
+                  onMap: () => _openOfferMap(offer),
+                  onOpenRide: activeTrip == null ? null : () => _openAcceptedRide(activeTrip),
                 ),
               ),
             ),
-          if (controller.marketplaceError != null && requests.isEmpty) ...[
-            const SizedBox(height: 10),
-            PremiumCard(
-              color: const Color(0xFFFFF3F2),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline_rounded, color: AppColors.danger),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      controller.marketplaceError!,
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  ),
-                  TextButton(onPressed: _refresh, child: const Text('Retry')),
-                ],
+            ...pendingOffers.map(
+              (offer) => Padding(
+                padding: const EdgeInsets.only(bottom: 9),
+                child: _DriverFareStatusCard(
+                  offer: offer,
+                  onMap: () => _openOfferMap(offer),
+                ),
               ),
+            ),
+            ...closedOffers.map(
+              (offer) => Padding(
+                padding: const EdgeInsets.only(bottom: 9),
+                child: _DriverFareStatusCard(
+                  offer: offer,
+                  onMap: () => _openOfferMap(offer),
+                ),
+              ),
+            ),
+          ],
+          if (controller.marketplaceError != null) ...[
+            const SizedBox(height: 8),
+            _DriverHomeInfoCard(
+              icon: Icons.cloud_off_rounded,
+              title: 'Live refresh issue',
+              message: controller.marketplaceError!,
+              actionLabel: 'Retry',
+              onAction: _refresh,
             ),
           ],
         ],
@@ -385,6 +294,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => _DriverRequestRouteMap(request: request)),
+    );
+  }
+
+  Future<void> _openOfferMap(LiveDriverRideOfferStatus offer) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => _DriverOfferRouteMap(offer: offer)),
     );
   }
 
@@ -496,6 +412,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Fare sent. Waiting for customer confirmation.')),
                     );
+                    await _refreshNearbyRequests();
                   } catch (error) {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
@@ -548,6 +465,222 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
 
   static const _closedStatuses = {'Completed', 'Cancelled', 'NoShow'};
+}
+
+class _DriverCommandHeader extends StatelessWidget {
+  const _DriverCommandHeader({
+    required this.driverName,
+    required this.isOnline,
+    required this.activeTrip,
+    required this.requestCount,
+    required this.pendingOfferCount,
+    required this.onOnlineChanged,
+  });
+
+  final String driverName;
+  final bool isOnline;
+  final MobileTrip? activeTrip;
+  final int requestCount;
+  final int pendingOfferCount;
+  final ValueChanged<bool> onOnlineChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.navy,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Ready to drive, ${driverName.split(' ').first}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 3),
+                      Text(activeTrip == null ? 'Nearby rides arrive automatically' : 'Active ride is live', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                    ],
+                  ),
+                ),
+                Switch.adaptive(value: isOnline, onChanged: onOnlineChanged),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _HeaderMetric(icon: Icons.radar_rounded, value: '$requestCount', label: 'Nearby'),
+                const SizedBox(width: 8),
+                _HeaderMetric(icon: Icons.local_offer_rounded, value: '$pendingOfferCount', label: 'Waiting'),
+                const SizedBox(width: 8),
+                _HeaderMetric(icon: activeTrip == null ? Icons.check_circle_outline_rounded : Icons.navigation_rounded, value: activeTrip == null ? 'READY' : 'LIVE', label: activeTrip == null ? 'Status' : 'Current ride'),
+              ],
+            ),
+          ],
+        ),
+      );
+}
+
+class _HeaderMetric extends StatelessWidget {
+  const _HeaderMetric({required this.icon, required this.value, required this.label});
+  final IconData icon;
+  final String value;
+  final String label;
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9),
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: .09), borderRadius: BorderRadius.circular(13)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 16, color: Colors.white),
+              const SizedBox(height: 5),
+              Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
+              Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white60, fontSize: 9.5)),
+            ],
+          ),
+        ),
+      );
+}
+
+class _HomeSectionTitle extends StatelessWidget {
+  const _HomeSectionTitle({required this.icon, required this.title, required this.subtitle, required this.trailing});
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String trailing;
+  @override
+  Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFE8F5F0), borderRadius: BorderRadius.circular(12)), child: Icon(icon, size: 19, color: AppColors.primaryDark)),
+          const SizedBox(width: 9),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.navy)), const SizedBox(height: 2), Text(subtitle, style: const TextStyle(fontSize: 10.5, color: AppColors.muted))])),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5), decoration: BoxDecoration(color: const Color(0xFFF1F5F8), borderRadius: BorderRadius.circular(999)), child: Text(trailing, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy, fontSize: 11))),
+        ],
+      );
+}
+
+class _LiveRideHeroCard extends StatelessWidget {
+  const _LiveRideHeroCard({required this.trip, required this.onOpen});
+  final MobileTrip trip;
+  final VoidCallback onOpen;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(color: const Color(0xFFEAF7F2), borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.primary.withValues(alpha: .25))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [const Icon(Icons.navigation_rounded, color: AppColors.primaryDark), const SizedBox(width: 8), const Expanded(child: Text('ACTIVE RIDE', style: TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark, fontSize: 12))), StatusPill(label: trip.tripStatus, color: AppColors.primary)]),
+          const SizedBox(height: 10),
+          _RouteLine(icon: Icons.trip_origin_rounded, text: trip.pickupLabel, color: AppColors.primary),
+          const SizedBox(height: 5),
+          _RouteLine(icon: Icons.location_on_rounded, text: trip.destinationLabel, color: AppColors.danger),
+          const SizedBox(height: 10),
+          Row(children: [Expanded(child: Text('${trip.customerName} · ${trip.passengerCount} passenger${trip.passengerCount == 1 ? '' : 's'}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800))), Text('PKR ${NumberFormat('#,###').format(trip.fare)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy))]),
+          const SizedBox(height: 11),
+          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: onOpen, icon: const Icon(Icons.navigation_rounded), label: const Text('Open live ride'))),
+        ]),
+      );
+}
+
+class _NextRideUnlockBanner extends StatelessWidget {
+  const _NextRideUnlockBanner();
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(color: const Color(0xFFFFF7E7), borderRadius: BorderRadius.circular(13)),
+        child: const Row(children: [Icon(Icons.next_plan_rounded, size: 18, color: AppColors.warning), SizedBox(width: 8), Expanded(child: Text('Next rides stay hidden during this trip. They unlock automatically when you are within 1 KM of the destination; the same 5 KM pickup-radius rule then applies.', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.navy)))]),
+      );
+}
+
+class _WaitingForNearbyRide extends StatelessWidget {
+  const _WaitingForNearbyRide({required this.hasActiveTrip, required this.onRefresh});
+  final bool hasActiveTrip;
+  final VoidCallback onRefresh;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE7ECEF))),
+        child: Column(children: [
+          const SizedBox(width: 38, height: 38, child: CircularProgressIndicator(strokeWidth: 3)),
+          const SizedBox(height: 12),
+          Text(hasActiveTrip ? 'Next rides will appear near destination' : 'Searching for nearby rides…', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.navy)),
+          const SizedBox(height: 4),
+          Text(hasActiveTrip ? 'The system unlocks new requests within 1 KM of your current destination.' : 'Only pickups inside your live 5 KM radius are sent here.', textAlign: TextAlign.center, style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
+          const SizedBox(height: 8),
+          TextButton.icon(onPressed: onRefresh, icon: const Icon(Icons.refresh_rounded), label: const Text('Refresh now')),
+        ]),
+      );
+}
+
+class _DriverHomeInfoCard extends StatelessWidget {
+  const _DriverHomeInfoCard({required this.icon, required this.title, required this.message, this.actionLabel, this.onAction});
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: const Color(0xFFF7F9FB), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE5E9ED))),
+        child: Row(children: [Icon(icon, color: AppColors.primaryDark), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy)), const SizedBox(height: 2), Text(message, style: const TextStyle(fontSize: 10.5, color: AppColors.muted))])), if (onAction != null) TextButton(onPressed: onAction, child: Text(actionLabel ?? 'Open'))]),
+      );
+}
+
+class _DriverFareStatusCard extends StatelessWidget {
+  const _DriverFareStatusCard({required this.offer, required this.onMap, this.onOpenRide});
+  final LiveDriverRideOfferStatus offer;
+  final VoidCallback onMap;
+  final VoidCallback? onOpenRide;
+  @override
+  Widget build(BuildContext context) {
+    final approved = offer.isApproved;
+    final pending = offer.isPending;
+    final statusColor = approved ? AppColors.success : pending ? AppColors.warning : AppColors.muted;
+    final statusText = approved ? 'APPROVED' : pending ? 'WAITING FOR CUSTOMER' : 'CLOSED / NOT SELECTED';
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(color: approved ? const Color(0xFFF0FAF6) : Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: approved ? AppColors.success.withValues(alpha: .35) : const Color(0xFFE5E9ED))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [Expanded(child: Text(offer.customerName, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.navy))), StatusPill(label: statusText, color: statusColor)]),
+        const SizedBox(height: 7),
+        _RouteLine(icon: Icons.trip_origin_rounded, text: offer.pickupLabel, color: AppColors.primary),
+        const SizedBox(height: 4),
+        _RouteLine(icon: Icons.location_on_rounded, text: offer.destinationLabel, color: AppColors.danger),
+        const SizedBox(height: 9),
+        Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: offer.isWholeVehicle ? const Color(0xFFFFF3E8) : const Color(0xFFEAF4FF), borderRadius: BorderRadius.circular(999)), child: Text(offer.isWholeVehicle ? 'WHOLE VEHICLE' : '${offer.seatsRequested} SEAT${offer.seatsRequested == 1 ? '' : 'S'}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900))), const Spacer(), Text('Your fare  PKR ${NumberFormat('#,###').format(offer.driverAmount)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy, fontSize: 12))]),
+        const SizedBox(height: 9),
+        Row(children: [OutlinedButton.icon(onPressed: onMap, icon: const Icon(Icons.map_rounded, size: 17), label: const Text('Map')), if (approved && onOpenRide != null) ...[const SizedBox(width: 8), Expanded(child: FilledButton.icon(onPressed: onOpenRide, icon: const Icon(Icons.navigation_rounded, size: 17), label: const Text('Open live ride')))] else const Spacer(), if (pending) const Text('Auto checking approval…', style: TextStyle(fontSize: 9.5, color: AppColors.muted, fontWeight: FontWeight.w700))]),
+      ]),
+    );
+  }
+}
+
+class _DriverOfferRouteMap extends StatelessWidget {
+  const _DriverOfferRouteMap({required this.offer});
+  final LiveDriverRideOfferStatus offer;
+  @override
+  Widget build(BuildContext context) {
+    final pickup = LatLng(offer.pickupLatitude, offer.pickupLongitude);
+    final destination = LatLng(offer.destinationLatitude, offer.destinationLongitude);
+    final center = LatLng((pickup.latitude + destination.latitude) / 2, (pickup.longitude + destination.longitude) / 2);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Ride route')),
+      body: FlutterMap(
+        options: MapOptions(initialCenter: center, initialZoom: 9.5),
+        children: [
+          TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.udrive.mobile'),
+          PolylineLayer(polylines: [Polyline(points: [pickup, destination], strokeWidth: 4, color: AppColors.primary)]),
+          MarkerLayer(markers: [Marker(point: pickup, width: 46, height: 46, child: const Icon(Icons.trip_origin_rounded, color: AppColors.primary, size: 34)), Marker(point: destination, width: 48, height: 48, child: const Icon(Icons.location_on_rounded, color: AppColors.danger, size: 40))]),
+        ],
+      ),
+    );
+  }
 }
 
 class _DriverRequestRouteMap extends StatelessWidget {

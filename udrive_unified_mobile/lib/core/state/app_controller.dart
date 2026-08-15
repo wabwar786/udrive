@@ -29,6 +29,7 @@ class AppController extends ChangeNotifier {
   List<LiveRideRequest> _liveRideRequests = const [];
   List<LiveRideRequest> _liveDriverRideRequests = const [];
   List<LiveDriverOffer> _liveDriverOffers = const [];
+  List<LiveDriverRideOfferStatus> _liveDriverRideOfferStatuses = const [];
   List<LiveBooking> _liveBookings = const [];
   List<LiveTourPackage> _liveMarketplacePackages = const [];
   List<LiveTourPackage> _liveDriverPackages = const [];
@@ -167,6 +168,7 @@ class AppController extends ChangeNotifier {
   List<LiveRideRequest> get liveRideRequests => List.unmodifiable(_liveRideRequests);
   List<LiveRideRequest> get liveDriverRideRequests => List.unmodifiable(_liveDriverRideRequests);
   List<LiveDriverOffer> get liveDriverOffers => List.unmodifiable(_liveDriverOffers);
+  List<LiveDriverRideOfferStatus> get liveDriverRideOfferStatuses => List.unmodifiable(_liveDriverRideOfferStatuses);
   List<LiveBooking> get liveBookings => List.unmodifiable(_liveBookings);
   List<LiveTourPackage> get liveMarketplacePackages => List.unmodifiable(_liveMarketplacePackages);
   List<LiveTourPackage> get liveDriverPackages => List.unmodifiable(_liveDriverPackages);
@@ -373,6 +375,7 @@ class AppController extends ChangeNotifier {
     _liveRideRequests = const [];
     _liveDriverRideRequests = const [];
     _liveDriverOffers = const [];
+    _liveDriverRideOfferStatuses = const [];
     _liveBookings = const [];
     _liveMarketplacePackages = const [];
     _liveDriverPackages = const [];
@@ -582,6 +585,7 @@ class AppController extends ChangeNotifier {
     }
     if (notify) notifyListeners();
 
+    try { _liveDriverRideOfferStatuses = await _bookingRepository.getDriverRideOffers(); } catch (_) {}
     try { _liveDriverPackages = await _bookingRepository.getDriverPackages(); } catch (_) {}
     try { _liveDriverPackageOffers = await _bookingRepository.getDriverPackageOffers(); } catch (_) {}
     try { _liveDriverPackageBookings = await _bookingRepository.getDriverPackageBookings(); } catch (_) {}

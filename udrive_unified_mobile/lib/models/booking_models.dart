@@ -84,6 +84,89 @@ class LiveRideRequest {
       );
 }
 
+class LiveDriverRideOfferStatus {
+  const LiveDriverRideOfferStatus({
+    required this.offerId,
+    required this.rideRequestId,
+    required this.vehicleId,
+    required this.vehicle,
+    required this.registrationNumber,
+    required this.driverAmount,
+    required this.offerStatus,
+    required this.selectedByCustomer,
+    required this.pickupLabel,
+    required this.destinationLabel,
+    required this.pickupLatitude,
+    required this.pickupLongitude,
+    required this.destinationLatitude,
+    required this.destinationLongitude,
+    required this.bookingType,
+    required this.seatsRequested,
+    required this.customerOffer,
+    required this.vehicleCategory,
+    required this.customerName,
+    required this.createdAt,
+    required this.expiresAt,
+    this.bookingId,
+    this.bookingStatus,
+  });
+
+  final String offerId;
+  final String rideRequestId;
+  final String vehicleId;
+  final String vehicle;
+  final String registrationNumber;
+  final double driverAmount;
+  final String offerStatus;
+  final bool selectedByCustomer;
+  final String? bookingId;
+  final String? bookingStatus;
+  final String pickupLabel;
+  final String destinationLabel;
+  final double pickupLatitude;
+  final double pickupLongitude;
+  final double destinationLatitude;
+  final double destinationLongitude;
+  final String bookingType;
+  final int seatsRequested;
+  final double customerOffer;
+  final String vehicleCategory;
+  final String customerName;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  bool get isApproved => selectedByCustomer || bookingId != null;
+  bool get isPending => !isApproved && const {'Pending', 'Countered', 'Accepted'}.contains(offerStatus) && expiresAt.isAfter(DateTime.now());
+  bool get isClosed => !isApproved && !isPending;
+  bool get isWholeVehicle => bookingType.toLowerCase().contains('whole');
+
+  factory LiveDriverRideOfferStatus.fromJson(Map<String, dynamic> json) => LiveDriverRideOfferStatus(
+        offerId: json['offerId'].toString(),
+        rideRequestId: json['rideRequestId'].toString(),
+        vehicleId: json['vehicleId'].toString(),
+        vehicle: json['vehicle']?.toString() ?? '',
+        registrationNumber: json['registrationNumber']?.toString() ?? '',
+        driverAmount: _double(json['driverAmount']),
+        offerStatus: json['offerStatus']?.toString() ?? 'Pending',
+        selectedByCustomer: json['selectedByCustomer'] == true,
+        bookingId: json['bookingId']?.toString(),
+        bookingStatus: json['bookingStatus']?.toString(),
+        pickupLabel: json['pickupLabel']?.toString() ?? '',
+        destinationLabel: json['destinationLabel']?.toString() ?? '',
+        pickupLatitude: _double(json['pickupLatitude']),
+        pickupLongitude: _double(json['pickupLongitude']),
+        destinationLatitude: _double(json['destinationLatitude']),
+        destinationLongitude: _double(json['destinationLongitude']),
+        bookingType: json['bookingType']?.toString() ?? 'PerSeat',
+        seatsRequested: _int(json['seatsRequested']),
+        customerOffer: _double(json['customerOffer']),
+        vehicleCategory: json['vehicleCategory']?.toString() ?? '',
+        customerName: json['customerName']?.toString() ?? 'Customer',
+        createdAt: DateTime.parse(json['createdAt'].toString()).toLocal(),
+        expiresAt: DateTime.parse(json['expiresAt'].toString()).toLocal(),
+      );
+}
+
 class LiveDriverOffer {
   const LiveDriverOffer({
     required this.id,

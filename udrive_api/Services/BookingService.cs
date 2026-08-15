@@ -219,6 +219,19 @@ public sealed class BookingService(
               AND rr.customer_user_id <> @driverUserId
               AND NOT EXISTS (
                   SELECT 1
+                  FROM udrive.bookings active_b
+                  JOIN udrive.trip_operations active_o ON active_o.booking_id = active_b.id
+                  LEFT JOIN udrive.ride_requests active_rr ON active_rr.id = active_b.ride_request_id
+                  WHERE active_b.driver_profile_id = @driverProfileId
+                    AND active_o.trip_status IN ('DriverAccepted','DriverEnRoute','DriverArrived','TripStarted','Emergency')
+                    AND (
+                      active_o.trip_status <> 'TripStarted'
+                      OR active_rr.destination_location IS NULL
+                      OR NOT ST_DWithin(dpl.location, active_rr.destination_location, 1000)
+                    )
+              )
+              AND NOT EXISTS (
+                  SELECT 1
                   FROM udrive.driver_ride_request_decisions d
                   WHERE d.ride_request_id = rr.id
                     AND d.driver_profile_id = @driverProfileId
@@ -241,6 +254,91 @@ public sealed class BookingService(
         }
 
         return ServiceResult<IReadOnlyList<RideRequestDto>>.Ok(result);
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<DriverRideOfferStatusDto>>> GetMyDriverRideOffersAsync(
+        Guid driverUserId,
+        CancellationToken cancellationToken)
+    {
+        await ExpireRideRequestsAsync(cancellationToken);
+        var driver = await GetApprovedDriverAsync(driverUserId, cancellationToken);
+        if (driver is null)
+        {
+            return ServiceResult<IReadOnlyList<DriverRideOfferStatusDto>>.Fail(
+                StatusCodes.Status403Forbidden,
+                "driver_not_approved",
+                "Only approved Drivers can view ride offers.");
+        }
+
+        const string sql = """
+            SELECT o.id, o.ride_request_id, o.vehicle_id,
+                   concat(v.make, ' ', v.model) AS vehicle,
+                   v.registration_number,
+                   COALESCE(o.counter_amount, o.amount) AS driver_amount,
+                   o.status AS offer_status,
+                   (rr.selected_offer_id = o.id OR o.status = 'Selected') AS selected_by_customer,
+                   b.id AS booking_id,
+                   b.status AS booking_status,
+                   rr.pickup_label, rr.destination_label,
+                   ST_Y(rr.pickup_location::geometry) AS pickup_latitude,
+                   ST_X(rr.pickup_location::geometry) AS pickup_longitude,
+                   ST_Y(rr.destination_location::geometry) AS destination_latitude,
+                   ST_X(rr.destination_location::geometry) AS destination_longitude,
+                   rr.booking_type, rr.seats_requested, rr.customer_offer,
+                   rr.vehicle_category,
+                   COALESCE(NULLIF(u.full_name, ''), 'Customer') AS customer_name,
+                   o.created_at, o.expires_at
+            FROM udrive.driver_offers o
+            JOIN udrive.ride_requests rr ON rr.id = o.ride_request_id
+            JOIN udrive.users u ON u.id = rr.customer_user_id
+            JOIN udrive.vehicles v ON v.id = o.vehicle_id
+            LEFT JOIN udrive.bookings b ON b.ride_request_id = rr.id
+                                      AND b.driver_profile_id = o.driver_profile_id
+            WHERE o.driver_profile_id = @driverProfileId
+              AND o.created_at > now() - interval '24 hours'
+            ORDER BY
+              CASE WHEN b.id IS NOT NULL AND b.status NOT IN ('Completed','Cancelled','Rejected') THEN 0
+                   WHEN o.status IN ('Pending','Countered','Accepted') AND o.expires_at > now() THEN 1
+                   ELSE 2 END,
+              o.updated_at DESC
+            LIMIT 50;
+            """;
+
+        var result = new List<DriverRideOfferStatusDto>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(new DriverRideOfferStatusDto(
+                reader.GetGuid(0),
+                reader.GetGuid(1),
+                reader.GetGuid(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetDecimal(5),
+                reader.GetString(6),
+                reader.GetBoolean(7),
+                reader.IsDBNull(8) ? null : reader.GetGuid(8),
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                reader.GetString(10),
+                reader.GetString(11),
+                reader.GetDouble(12),
+                reader.GetDouble(13),
+                reader.GetDouble(14),
+                reader.GetDouble(15),
+                reader.GetString(16),
+                reader.GetInt32(17),
+                reader.GetDecimal(18),
+                reader.GetString(19),
+                reader.GetString(20),
+                reader.GetFieldValue<DateTimeOffset>(21),
+                reader.GetFieldValue<DateTimeOffset>(22)));
+        }
+
+        return ServiceResult<IReadOnlyList<DriverRideOfferStatusDto>>.Ok(result);
     }
 
     public async Task<ServiceResult<DriverRideRequestDecisionDto>> RejectRideRequestAsync(

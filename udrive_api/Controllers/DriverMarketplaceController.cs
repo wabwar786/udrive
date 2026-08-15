@@ -31,6 +31,13 @@ public sealed class DriverMarketplaceController(
             User.GetRequiredUserId(),
             cancellationToken));
 
+    [HttpGet("ride-offers")]
+    public async Task<IActionResult> GetMyRideOffers(
+        CancellationToken cancellationToken) =>
+        ToActionResult(await bookingService.GetMyDriverRideOffersAsync(
+            User.GetRequiredUserId(),
+            cancellationToken));
+
     [HttpPost("ride-requests/{rideRequestId:guid}/reject")]
     public async Task<IActionResult> RejectRequest(
         Guid rideRequestId,

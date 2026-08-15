@@ -52,6 +52,31 @@ public sealed record RideRequestDto(
     DateTimeOffset CreatedAt,
     string CustomerName);
 
+public sealed record DriverRideOfferStatusDto(
+    Guid OfferId,
+    Guid RideRequestId,
+    Guid VehicleId,
+    string Vehicle,
+    string RegistrationNumber,
+    decimal DriverAmount,
+    string OfferStatus,
+    bool SelectedByCustomer,
+    Guid? BookingId,
+    string? BookingStatus,
+    string PickupLabel,
+    string DestinationLabel,
+    double PickupLatitude,
+    double PickupLongitude,
+    double DestinationLatitude,
+    double DestinationLongitude,
+    string BookingType,
+    int SeatsRequested,
+    decimal CustomerOffer,
+    string VehicleCategory,
+    string CustomerName,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt);
+
 public sealed record RejectRideRequestRequest(
     [StringLength(500)] string? Reason);
 
