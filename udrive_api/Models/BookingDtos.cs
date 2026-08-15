@@ -22,7 +22,8 @@ public sealed record CreateRideRequestRequest(
     [Required, StringLength(32)] string PartyType,
     bool FamilyOnly,
     bool WomenOnly,
-    [StringLength(1000)] string? Notes);
+    [StringLength(1000)] string? Notes,
+    bool InstantRide = false);
 
 public sealed record RideRequestDto(
     Guid Id,

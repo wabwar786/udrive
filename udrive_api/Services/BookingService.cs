@@ -98,7 +98,7 @@ public sealed class BookingService(
             null,
             "ReceivingOffers",
             userId,
-            "Customer created an advance ride request.",
+            request.InstantRide ? "Customer created an instant ride request." : "Customer created an advance ride request.",
             "{}",
             cancellationToken);
 
@@ -1379,9 +1379,19 @@ public sealed class BookingService(
 
     private static (string Code, string Message)? ValidateRideRequest(CreateRideRequestRequest request)
     {
-        if (request.PickupAt <= DateTimeOffset.UtcNow.AddMinutes(30))
+        var now = DateTimeOffset.UtcNow;
+        if (request.InstantRide)
+        {
+            // Instant rides are allowed to start immediately. Keep a small clock-skew
+            // tolerance so web/mobile clients do not fail while the request is in transit.
+            if (request.PickupAt < now.AddMinutes(-5))
+                return ("pickup_in_past", "Pickup time cannot be in the past.");
+        }
+        else if (request.PickupAt <= now.AddMinutes(30))
+        {
             return ("pickup_too_soon", "Advance bookings must be at least 30 minutes in the future.");
-        if (request.PickupAt > DateTimeOffset.UtcNow.AddYears(1))
+        }
+        if (request.PickupAt > now.AddYears(1))
             return ("pickup_too_far", "Advance bookings can be created up to one year ahead.");
         if (request.ReturnAt is not null && request.ReturnAt <= request.PickupAt)
             return ("invalid_return_time", "Return time must be after pickup time.");

@@ -1478,7 +1478,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     setState(() => _submitting = true);
     try {
       final pickupAt = package?.departureAt ?? (widget.serviceType == UDriveServiceType.city
-          ? DateTime.now().add(const Duration(minutes: 10))
+          ? DateTime.now()
           : DateTime(_tourDate.year, _tourDate.month, _tourDate.day, 8));
       final capacity = package?.totalSeats ?? choice.capacity;
       final requestedSeats = wholeVehicle ? capacity : _seats.clamp(1, package?.bookableSeats ?? capacity).toInt();
@@ -1500,6 +1500,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         'partyType': requestedSeats > 1 ? 'Group' : 'Individual',
         'familyOnly': false,
         'womenOnly': false,
+        'instantRide': widget.serviceType == UDriveServiceType.city,
         'notes': '${widget.serviceType.title} • ${_routeDistanceKm.toStringAsFixed(1)} km estimated • ${wholeVehicle ? 'whole vehicle' : 'per seat'}${package == null ? ' • customer fare offer' : ' • published tour rate'}${_selectedPublicVehicle == null ? '' : ' • preferred ${_selectedPublicVehicle!.make} ${_selectedPublicVehicle!.model} (${_selectedPublicVehicle!.registrationNumber})'}${_autoAccept ? ' • auto-accept enabled' : ''}',
       });
       if (!mounted) return;
