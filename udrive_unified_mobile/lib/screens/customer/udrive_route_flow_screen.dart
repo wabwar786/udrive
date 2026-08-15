@@ -1198,7 +1198,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   double _wholeVehicleEstimate(_VehicleChoiceData choice, _DbRate? rate) {
     if (rate == null) return 0;
-    final distanceFare = rate.perKmRate > 0 ? rate.perKmRate * _routeDistanceKm : 0;
+    final double distanceFare = rate.perKmRate > 0 ? rate.perKmRate * _routeDistanceKm : 0.0;
     return distanceFare > rate.wholeVehicleRate ? distanceFare : rate.wholeVehicleRate;
   }
 
