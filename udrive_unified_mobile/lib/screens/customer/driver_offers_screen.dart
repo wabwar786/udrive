@@ -17,6 +17,7 @@ class DriverOffersScreen extends StatefulWidget {
     required this.destination,
     required this.customerOffer,
     required this.vehicleName,
+    this.autoMatch = false,
     super.key,
   });
 
@@ -25,6 +26,7 @@ class DriverOffersScreen extends StatefulWidget {
   final String destination;
   final int customerOffer;
   final String vehicleName;
+  final bool autoMatch;
 
   @override
   State<DriverOffersScreen> createState() => _DriverOffersScreenState();
@@ -34,6 +36,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   Timer? _poller;
   String? _selectedOfferId;
   bool _confirming = false;
+  bool _autoMatchStarted = false;
 
   @override
   void initState() {
@@ -52,10 +55,38 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     if (!mounted) return;
     final controller = AppControllerScope.of(context);
     await controller.loadRideOffers(widget.rideRequestId);
-    if (!mounted || silent || controller.marketplaceError == null) return;
+    if (!mounted) return;
+    if (widget.autoMatch) {
+      await _attemptAutoMatch();
+      if (!mounted) return;
+    }
+    if (silent || controller.marketplaceError == null) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(controller.marketplaceError!)),
     );
+  }
+
+  Future<void> _attemptAutoMatch() async {
+    if (_autoMatchStarted || _confirming || !mounted) return;
+    final controller = AppControllerScope.of(context);
+    final offers = controller.liveDriverOffers
+        .where((offer) => offer.rideRequestId == widget.rideRequestId)
+        .toList();
+    if (offers.isEmpty) return;
+
+    offers.sort((a, b) {
+      final safety = b.safetyScore.compareTo(a.safetyScore);
+      if (safety != 0) return safety;
+      final rating = b.driverRating.compareTo(a.driverRating);
+      if (rating != 0) return rating;
+      final eta = a.estimatedArrivalMinutes.compareTo(b.estimatedArrivalMinutes);
+      if (eta != 0) return eta;
+      return a.finalAmount.compareTo(b.finalAmount);
+    });
+
+    _autoMatchStarted = true;
+    _selectedOfferId = offers.first.id;
+    await _confirm();
   }
 
   @override
@@ -72,7 +103,9 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_t(context, 'Live Driver Offers', 'لائیو ڈرائیور آفرز')),
+        title: Text(widget.autoMatch
+            ? _t(context, 'Finding your driver', 'آپ کا ڈرائیور تلاش ہو رہا ہے')
+            : _t(context, 'Live Driver Offers', 'لائیو ڈرائیور آفرز')),
         actions: [
           IconButton(
             tooltip: _t(context, 'Refresh offers', 'آفرز تازہ کریں'),
@@ -96,9 +129,11 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                       StatusPill(
                         label: request?.status == 'NoDriverAccepted'
                             ? _t(context, 'No Driver accepted', 'کسی ڈرائیور نے قبول نہیں کیا')
-                            : offers.isEmpty
-                            ? _t(context, 'Finding drivers', 'ڈرائیور تلاش ہو رہے ہیں')
-                            : _t(context, '${offers.length} offers received', '${offers.length} آفرز موصول'),
+                            : widget.autoMatch
+                                ? _t(context, 'Finding the best verified driver', 'بہترین تصدیق شدہ ڈرائیور تلاش ہو رہا ہے')
+                                : offers.isEmpty
+                                    ? _t(context, 'Finding drivers', 'ڈرائیور تلاش ہو رہے ہیں')
+                                    : _t(context, '${offers.length} offers received', '${offers.length} آفرز موصول'),
                       ),
                       const Spacer(),
                       if (controller.marketplaceBusy)
@@ -134,11 +169,16 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
               ),
             ),
             const SizedBox(height: 18),
-            if (offers.isEmpty) _emptyState(context, request) else ...offers.map(_offerCard),
+            if (widget.autoMatch)
+              _autoMatchState(context, request, offers)
+            else if (offers.isEmpty)
+              _emptyState(context, request)
+            else
+              ...offers.map(_offerCard),
           ],
         ),
       ),
-      bottomSheet: SafeArea(
+      bottomSheet: widget.autoMatch ? null : SafeArea(
         child: Container(
           padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
           decoration: const BoxDecoration(
@@ -160,6 +200,42 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       ),
     );
   }
+
+  Widget _autoMatchState(BuildContext context, LiveRideRequest? request, List<LiveDriverOffer> offers) => Padding(
+        padding: const EdgeInsets.only(top: 48),
+        child: Column(
+          children: [
+            Container(
+              width: 86,
+              height: 86,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: .10),
+                shape: BoxShape.circle,
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(25),
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              request?.status == 'NoDriverAccepted'
+                  ? _t(context, 'No driver is available right now', 'اس وقت کوئی ڈرائیور دستیاب نہیں')
+                  : _t(context, 'Finding your driver…', 'آپ کا ڈرائیور تلاش ہو رہا ہے…'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              offers.isEmpty
+                  ? _t(context, 'We are checking nearby verified drivers. You do not need to compare offers.', 'ہم قریبی تصدیق شدہ ڈرائیورز تلاش کر رہے ہیں۔ آپ کو آفرز compare کرنے کی ضرورت نہیں۔')
+                  : _t(context, 'A verified driver is available. Confirming the best match automatically…', 'تصدیق شدہ ڈرائیور دستیاب ہے۔ بہترین میچ خودکار طور پر confirm کیا جا رہا ہے…'),
+              style: const TextStyle(color: AppColors.muted, height: 1.45),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
 
   Widget _emptyState(BuildContext context, LiveRideRequest? request) => Padding(
         padding: const EdgeInsets.only(top: 58),

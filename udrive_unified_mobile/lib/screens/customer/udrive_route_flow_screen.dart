@@ -1512,6 +1512,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
             destination: request.destinationLabel,
             customerOffer: request.customerOffer.round(),
             vehicleName: request.vehicleCategory,
+            autoMatch: widget.serviceType == UDriveServiceType.city,
           ),
         ),
       );
@@ -1524,6 +1525,230 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _confirmCityRide({
+    required int choiceIndex,
+    required _FareBookingMode mode,
+  }) async {
+    if (_submitting) return;
+    final choice = _choices[choiceIndex];
+    final rate = _dbRates[_normaliseVehicle(choice.name)];
+    final perSeat = _perSeatEstimate(choice, rate);
+    final whole = _wholeVehicleEstimate(choice, rate);
+    final vehicle = _availableVehicles.cast<_PublicVehicle?>().firstWhere(
+      (v) => v != null && _normaliseVehicle(v.category) == _normaliseVehicle(choice.name) && v.isOnline,
+      orElse: () => _availableVehicles.isEmpty ? null : _availableVehicles.first,
+    );
+    final capacity = (vehicle?.passengerCapacity ?? choice.capacity).clamp(1, 50).toInt();
+    int seats = 1;
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final amount = mode == _FareBookingMode.wholeVehicle ? whole : perSeat * seats;
+          return SafeArea(
+            child: Container(
+              margin: const EdgeInsets.all(10),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(color: const Color(0xFFD1D5DB), borderRadius: BorderRadius.circular(99)),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text('Confirm your ride', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: Color(0xFF111827))),
+                  const SizedBox(height: 6),
+                  Text('${widget.pickupLabel}  →  ${widget.destination.title}', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12, height: 1.35)),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: const Color(0xFFF7F8F9), borderRadius: BorderRadius.circular(16)),
+                    child: Column(
+                      children: [
+                        Row(children: [
+                          Icon(_cityVehicleIcon(choice.name), color: const Color(0xFF111827)),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(choice.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15))),
+                          Text(_money(amount), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF365314))),
+                        ]),
+                        const Divider(height: 24),
+                        Row(children: [
+                          const Text('Booking', style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+                          const Spacer(),
+                          Text(mode == _FareBookingMode.wholeVehicle ? 'Full vehicle' : '$seats seat${seats == 1 ? '' : 's'}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                        ]),
+                        if (mode == _FareBookingMode.perSeat) ...[
+                          const SizedBox(height: 10),
+                          Row(children: [
+                            const Text('Seats', style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+                            const Spacer(),
+                            IconButton.filledTonal(
+                              onPressed: seats > 1 ? () => setSheetState(() => seats--) : null,
+                              icon: const Icon(Icons.remove_rounded, size: 18),
+                            ),
+                            SizedBox(width: 34, child: Text('$seats', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),
+                            IconButton.filledTonal(
+                              onPressed: seats < capacity ? () => setSheetState(() => seats++) : null,
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                            ),
+                          ]),
+                        ],
+                        const SizedBox(height: 8),
+                        const Row(children: [
+                          Text('Payment', style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+                          Spacer(),
+                          Icon(Icons.payments_outlined, size: 17, color: Color(0xFF374151)),
+                          SizedBox(width: 5),
+                          Text('Cash', style: TextStyle(fontWeight: FontWeight.w800)),
+                        ]),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton(
+                      onPressed: amount <= 0 ? null : () => Navigator.pop(sheetContext, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF84CC16),
+                        foregroundColor: const Color(0xFF111827),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: const Text('Confirm Ride', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _selected = choiceIndex;
+      _bookingMode = mode;
+      _seats = seats;
+      _selectedVehicleId = vehicle?.id;
+      _perSeatOffer.text = perSeat.round().toString();
+      _wholeVehicleOffer.text = whole.round().toString();
+    });
+    await _submit();
+  }
+
+  Widget _buildCityMinimalResultsScreen(BuildContext context) {
+    final choices = _choices;
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F7F8),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF111827),
+        title: const Text('Choose your ride', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5E7EB))),
+              child: Row(
+                children: [
+                  const Icon(Icons.my_location_rounded, size: 20, color: Color(0xFF16A34A)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(widget.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Icon(Icons.arrow_forward_rounded, size: 18, color: Color(0xFF9CA3AF))),
+                  const Icon(Icons.location_on_rounded, size: 21, color: Color(0xFFF97316)),
+                  const SizedBox(width: 5),
+                  Expanded(child: Text(widget.destination.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12))),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('${_routeDistanceKm.toStringAsFixed(1)} km estimated route', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 15),
+            ...choices.asMap().entries.map((entry) {
+              final index = entry.key;
+              final choice = entry.value;
+              final rate = _dbRates[_normaliseVehicle(choice.name)];
+              final perSeat = _perSeatEstimate(choice, rate);
+              final whole = _wholeVehicleEstimate(choice, rate);
+              final matching = _availableVehicles.where((v) => _normaliseVehicle(v.category) == _normaliseVehicle(choice.name)).toList();
+              final available = matching.where((v) => v.isOnline).length;
+              final availability = available > 0 ? '$available available now' : 'Searching nearby drivers';
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 11),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5E7EB))),
+                child: Column(
+                  children: [
+                    Row(children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(14)),
+                        child: Icon(_cityVehicleIcon(choice.name), color: const Color(0xFF111827), size: 25),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(choice.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF111827))),
+                        const SizedBox(height: 3),
+                        Text('${choice.capacity} seat${choice.capacity == 1 ? '' : 's'} • $availability', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11)),
+                      ])),
+                    ]),
+                    const SizedBox(height: 12),
+                    Row(children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: perSeat <= 0 ? null : () => _confirmCityRide(choiceIndex: index, mode: _FareBookingMode.perSeat),
+                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          child: Text(perSeat <= 0 ? 'Seat fare loading' : '1 Seat  •  ${_money(perSeat)}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: whole <= 0 ? null : () => _confirmCityRide(choiceIndex: index, mode: _FareBookingMode.wholeVehicle),
+                          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF84CC16), foregroundColor: const Color(0xFF111827), padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          child: Text(whole <= 0 ? 'Full fare loading' : 'Full  •  ${_money(whole)}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
+                        ),
+                      ),
+                    ]),
+                  ],
+                ),
+              );
+            }),
+            if (_loadingRates || _loadingVehicles)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 8),
+                  Text('Refreshing live availability…', style: TextStyle(color: Color(0xFF6B7280), fontSize: 11)),
+                ]),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildSafeRouteResultsScreen(BuildContext context) {
@@ -1887,6 +2112,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     // All route blocks use the same guarded first-frame renderer. This removes
     // the old Tours/Private black renderer as a blank-screen failure point.
     try {
+      if (widget.serviceType == UDriveServiceType.city) {
+        return _buildCityMinimalResultsScreen(context);
+      }
       return _buildSafeRouteResultsScreen(context);
     } catch (error) {
       return _buildRouteRenderRecovery(context, error);
