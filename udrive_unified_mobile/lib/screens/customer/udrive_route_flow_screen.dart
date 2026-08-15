@@ -1675,7 +1675,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                             children: [
                               Text(choice.name, style: const TextStyle(color: Color(0xFF111827), fontSize: 14, fontWeight: FontWeight.w900)),
                               const SizedBox(height: 3),
-                              Text('${choice.seats} • ${choice.subtitle}', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10.5)),
+                              Text('${choice.meta} • ${choice.note}', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10.5)),
                               const SizedBox(height: 5),
                               Text(
                                 'Seat ${seatEstimate <= 0 ? 'rate loading' : _money(seatEstimate)}  •  Full ${wholeEstimate <= 0 ? 'rate loading' : _money(wholeEstimate)}',
