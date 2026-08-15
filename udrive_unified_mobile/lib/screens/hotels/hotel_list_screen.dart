@@ -30,16 +30,24 @@ class _HotelListScreenState extends State<HotelListScreen> {
   bool _busy = true;
   String? _loadError;
   List<HotelSummary> _items = const [];
-  late HotelRepository _repo;
+  HotelRepository? _repo;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _repo = HotelRepository(AppControllerScope.of(context).apiClient);
     if (_query.text.isEmpty && widget.destination != null) {
       _query.text = widget.destination!;
     }
-    if (_items.isEmpty) _load();
+    if (_repo != null) return;
+    try {
+      _repo = HotelRepository(AppControllerScope.of(context).apiClient);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    } catch (error) {
+      _busy = false;
+      _loadError = 'Hotels service is not ready yet. Please retry.';
+    }
   }
 
   Future<void> _load() async {
@@ -49,7 +57,11 @@ class _HotelListScreenState extends State<HotelListScreen> {
       _loadError = null;
     });
     try {
-      final loaded = await _repo.search(
+      final repo = _repo;
+      if (repo == null) {
+        throw Exception('Hotels service is not ready yet.');
+      }
+      final loaded = await repo.search(
         query: _query.text,
         checkIn: _checkIn,
         checkOut: _checkOut,

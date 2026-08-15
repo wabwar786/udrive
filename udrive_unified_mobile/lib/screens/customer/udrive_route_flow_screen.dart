@@ -852,25 +852,22 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       _bookingMode = _FareBookingMode.wholeVehicle;
     }
 
-    // City-to-City must have renderable data on the very first frame.
-    // Do not wait for a network request before showing the results screen.
-    if (widget.serviceType == UDriveServiceType.city) {
-      _ensureFallbackRates();
-      _availableVehicles = _interleaveVehicleCategories(_fallbackVehiclesForService());
-      _loadingVehicles = false;
-      _loadingRates = false;
-      if (_availableVehicles.isNotEmpty) {
-        _selectPublicVehicle(_availableVehicles.first, notify: false);
-      }
-      // Never call AppControllerScope.of(context) from initState. Seed the
-      // first-frame fare fields directly from local fallback rates instead.
-      final initialChoice = _choices[_selected];
-      final initialRate = _dbRates[_normaliseVehicle(initialChoice.name)];
-      final initialSeat = _perSeatEstimate(initialChoice, initialRate);
-      final initialWhole = _wholeVehicleEstimate(initialChoice, initialRate);
-      if (initialSeat > 0) _perSeatOffer.text = initialSeat.round().toString();
-      if (initialWhole > 0) _wholeVehicleOffer.text = initialWhole.round().toString();
+    // Every route service must have renderable data on the very first frame.
+    // Do not wait for AppController, marketplace data or a network request; on
+    // Flutter Web a first-frame exception can otherwise look like a blank page.
+    _ensureFallbackRates();
+    _availableVehicles = _interleaveVehicleCategories(_fallbackVehiclesForService());
+    _loadingVehicles = false;
+    _loadingRates = false;
+    if (_availableVehicles.isNotEmpty) {
+      _selectPublicVehicle(_availableVehicles.first, notify: false);
     }
+    final initialChoice = _choices[_selected];
+    final initialRate = _dbRates[_normaliseVehicle(initialChoice.name)];
+    final initialSeat = _perSeatEstimate(initialChoice, initialRate);
+    final initialWhole = _wholeVehicleEstimate(initialChoice, initialRate);
+    if (initialSeat > 0) _perSeatOffer.text = initialSeat.round().toString();
+    if (initialWhole > 0) _wholeVehicleOffer.text = initialWhole.round().toString();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _loadRates();
@@ -881,8 +878,10 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   }
 
   Future<void> _loadRates() async {
-    final controller = AppControllerScope.of(context);
     try {
+      // Inherited application state is intentionally resolved only after the
+      // first frame and inside the guarded block.
+      final controller = AppControllerScope.of(context);
       if (widget.serviceType == UDriveServiceType.tours) {
         await controller.refreshHomeVehicles(force: true);
       }
@@ -1104,7 +1103,14 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   void _applySelectedDefaultRates() {
     final choice = _choices[_selected];
-    final package = _matchingPackage(AppControllerScope.of(context), choice);
+    LiveTourPackage? package;
+    if (widget.serviceType == UDriveServiceType.tours) {
+      try {
+        package = _matchingPackage(AppControllerScope.of(context), choice);
+      } catch (_) {
+        // Live tour marketplace state is optional for rendering and fare input.
+      }
+    }
     final db = _dbRates[_normaliseVehicle(choice.name)];
     final perSeat = package?.pricePerSeat ?? _perSeatEstimate(choice, db);
     final whole = package?.wholeVehiclePrice ?? _wholeVehicleEstimate(choice, db);
@@ -1520,12 +1526,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     }
   }
 
-  Widget _buildCityToCityScreen(BuildContext context) {
-    // This page deliberately uses only basic Material widgets. It is the page
-    // opened directly after a Popular Kashmir Destination is selected.
-    // Keeping the first frame independent from maps, network images and tour
-    // marketplace state prevents a release-web exception from producing a
-    // completely blank page.
+  Widget _buildSafeRouteResultsScreen(BuildContext context) {
+    // Shared safe results screen for City-to-City, Tours & Trips and Private
+    // Vehicle. The first frame uses only local state and basic Material widgets.
+    // Live rates/vehicles/packages may enhance it after rendering, but can never
+    // make the page blank.
     final choices = _choices;
     final safeIndex = (_selected >= 0 && _selected < choices.length) ? _selected : 0;
     final selected = choices[safeIndex];
@@ -1547,9 +1552,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF111827),
-        title: const Text(
-          'City-to-City Ride',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+        title: Text(
+          widget.serviceType.title,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
         ),
         actions: [
           IconButton(
@@ -1631,6 +1636,24 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                 Expanded(child: _cityInfoBox('Estimate', estimatedTotal <= 0 ? 'Loading' : _money(estimatedTotal))),
               ],
             ),
+            if (widget.serviceType == UDriveServiceType.tours) ...[
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: _pickDate,
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE5E7EB))),
+                  child: Row(children: [
+                    const Icon(Icons.calendar_month_rounded, color: Color(0xFF374151)),
+                    const SizedBox(width: 10),
+                    const Expanded(child: Text('Tour date', style: TextStyle(color: Color(0xFF374151), fontWeight: FontWeight.w800))),
+                    Text('${_tourDate.day.toString().padLeft(2, '0')}/${_tourDate.month.toString().padLeft(2, '0')}/${_tourDate.year}', style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w900)),
+                  ]),
+                ),
+              ),
+            ],
             const SizedBox(height: 18),
             const Text('Choose vehicle', style: TextStyle(color: Color(0xFF111827), fontSize: 17, fontWeight: FontWeight.w900)),
             const SizedBox(height: 9),
@@ -1692,36 +1715,44 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               );
             }),
             const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(14)),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => setState(() => _bookingMode = _FareBookingMode.perSeat),
-                      style: FilledButton.styleFrom(
-                        elevation: 0,
-                        backgroundColor: _bookingMode == _FareBookingMode.perSeat ? Colors.white : Colors.transparent,
-                        foregroundColor: const Color(0xFF111827),
+            if (widget.serviceType != UDriveServiceType.privateVehicle)
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(14)),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => setState(() => _bookingMode = _FareBookingMode.perSeat),
+                        style: FilledButton.styleFrom(
+                          elevation: 0,
+                          backgroundColor: _bookingMode == _FareBookingMode.perSeat ? Colors.white : Colors.transparent,
+                          foregroundColor: const Color(0xFF111827),
+                        ),
+                        child: const Text('Per seat', style: TextStyle(fontWeight: FontWeight.w800)),
                       ),
-                      child: const Text('Per seat', style: TextStyle(fontWeight: FontWeight.w800)),
                     ),
-                  ),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => setState(() => _bookingMode = _FareBookingMode.wholeVehicle),
-                      style: FilledButton.styleFrom(
-                        elevation: 0,
-                        backgroundColor: _bookingMode == _FareBookingMode.wholeVehicle ? Colors.white : Colors.transparent,
-                        foregroundColor: const Color(0xFF111827),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => setState(() => _bookingMode = _FareBookingMode.wholeVehicle),
+                        style: FilledButton.styleFrom(
+                          elevation: 0,
+                          backgroundColor: _bookingMode == _FareBookingMode.wholeVehicle ? Colors.white : Colors.transparent,
+                          foregroundColor: const Color(0xFF111827),
+                        ),
+                        child: const Text('Whole vehicle', style: TextStyle(fontWeight: FontWeight.w800)),
                       ),
-                      child: const Text('Whole vehicle', style: TextStyle(fontWeight: FontWeight.w800)),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE5E7EB))),
+                child: const Row(children: [Icon(Icons.directions_car_filled_rounded, color: Color(0xFF65A30D)), SizedBox(width: 9), Text('Complete vehicle booking', style: TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w900))]),
               ),
-            ),
             if (_bookingMode == _FareBookingMode.perSeat) ...[
               const SizedBox(height: 12),
               Container(
@@ -1807,13 +1838,13 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     return Icons.directions_car_filled_rounded;
   }
 
-  Widget _buildCityRenderRecovery(BuildContext context, Object error) {
+  Widget _buildRouteRenderRecovery(BuildContext context, Object error) {
     return Scaffold(
       backgroundColor: const Color(0xFF111312),
       appBar: AppBar(
         backgroundColor: const Color(0xFF111312),
         foregroundColor: Colors.white,
-        title: const Text('City-to-City Ride'),
+        title: Text(widget.serviceType.title),
       ),
       body: SafeArea(
         child: Padding(
@@ -1823,7 +1854,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
             children: [
               const Icon(Icons.directions_car_filled_rounded, color: _lime, size: 42),
               const SizedBox(height: 14),
-              const Text('Ride screen could not finish rendering.', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+              const Text('This booking screen could not finish rendering.', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
               Text('${widget.pickupLabel} → ${widget.destination.title}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(height: 18),
@@ -1853,16 +1884,12 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   @override
   Widget build(BuildContext context) {
-    // City-to-City is intentionally rendered through its own lightweight path.
-    // It must not depend on tour/package marketplace state during the first frame;
-    // a failure in unrelated marketplace data previously caused a blank web page
-    // immediately after tapping a popular destination.
-    if (widget.serviceType == UDriveServiceType.city) {
-      try {
-        return _buildCityToCityScreen(context);
-      } catch (error) {
-        return _buildCityRenderRecovery(context, error);
-      }
+    // All route blocks use the same guarded first-frame renderer. This removes
+    // the old Tours/Private black renderer as a blank-screen failure point.
+    try {
+      return _buildSafeRouteResultsScreen(context);
+    } catch (error) {
+      return _buildRouteRenderRecovery(context, error);
     }
 
     final app = AppControllerScope.of(context);
