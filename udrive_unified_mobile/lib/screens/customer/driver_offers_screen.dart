@@ -90,17 +90,24 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     final now = DateTime.now();
     for (final offer in offers) {
       if (offer.rideRequestId != widget.rideRequestId || _declinedOfferIds.contains(offer.id)) continue;
-      _customerDecisionDeadline.putIfAbsent(offer.id, () {
-        final localTenSeconds = now.add(const Duration(seconds: 10));
-        return offer.expiresAt.isBefore(localTenSeconds) ? offer.expiresAt : localTenSeconds;
-      });
+      // The Customer always gets a full 10-second decision window from the
+      // moment this device first receives the offer. Server-side validity has
+      // an additional hidden network grace period so a visible offer cannot
+      // expire while the Customer is pressing Approve.
+      _customerDecisionDeadline.putIfAbsent(
+        offer.id,
+        () => now.add(const Duration(seconds: 10)),
+      );
     }
   }
 
   void _expireCustomerWindows() {
     final now = DateTime.now();
     final expired = _customerDecisionDeadline.entries
-        .where((e) => !e.value.isAfter(now) && !_declinedOfferIds.contains(e.key))
+        .where((e) =>
+            e.key != _approvingOfferId &&
+            !e.value.isAfter(now) &&
+            !_declinedOfferIds.contains(e.key))
         .map((e) => e.key)
         .toList(growable: false);
     for (final offerId in expired) {

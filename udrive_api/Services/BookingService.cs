@@ -498,8 +498,8 @@ public sealed class BookingService(
         var offerExpiresAt = instantLike
             ? new[]
             {
-                DateTimeOffset.UtcNow.AddSeconds(20),
-                requestExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(20)
+                DateTimeOffset.UtcNow.AddSeconds(35),
+                requestExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(35)
             }.Min()
             : new[]
             {
@@ -793,7 +793,7 @@ public sealed class BookingService(
             offerExpiresAt = reader.GetFieldValue<DateTimeOffset>(4);
         }
 
-        if (offerStatus is not ("Pending" or "Countered" or "Accepted") || offerExpiresAt <= DateTimeOffset.UtcNow)
+        if (offerStatus is not ("Pending" or "Countered" or "Accepted") || offerExpiresAt.AddSeconds(12) <= DateTimeOffset.UtcNow)
         {
             return ServiceResult<BookingDto>.Fail(
                 StatusCodes.Status409Conflict,
