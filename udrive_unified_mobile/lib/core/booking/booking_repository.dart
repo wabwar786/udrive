@@ -60,6 +60,16 @@ class BookingRepository {
     return LiveDriverOffer.fromJson(Map<String, dynamic>.from(response['data'] as Map));
   }
 
+  Future<void> declineDriverOffer({
+    required String rideRequestId,
+    required String offerId,
+  }) async {
+    await client.postJson(
+      '/api/v1/bookings/ride-requests/$rideRequestId/offers/$offerId/decline',
+      const {},
+    );
+  }
+
   Future<LiveBooking> selectDriverOffer({
     required String rideRequestId,
     required String offerId,

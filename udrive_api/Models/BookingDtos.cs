@@ -103,6 +103,7 @@ public sealed record DriverOfferDto(
     string Vehicle,
     string RegistrationNumber,
     string VehicleCategory,
+    double PickupDistanceKm,
     decimal Amount,
     decimal? CounterAmount,
     int EstimatedArrivalMinutes,

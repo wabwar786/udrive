@@ -179,6 +179,7 @@ class LiveDriverOffer {
     required this.vehicle,
     required this.registrationNumber,
     required this.vehicleCategory,
+    required this.pickupDistanceKm,
     required this.amount,
     required this.estimatedArrivalMinutes,
     required this.status,
@@ -197,6 +198,7 @@ class LiveDriverOffer {
   final String vehicle;
   final String registrationNumber;
   final String vehicleCategory;
+  final double pickupDistanceKm;
   final double amount;
   final double? counterAmount;
   final int estimatedArrivalMinutes;
@@ -217,6 +219,7 @@ class LiveDriverOffer {
         vehicle: json['vehicle']?.toString() ?? '',
         registrationNumber: json['registrationNumber']?.toString() ?? '',
         vehicleCategory: json['vehicleCategory']?.toString() ?? '',
+        pickupDistanceKm: _double(json['pickupDistanceKm']),
         amount: _double(json['amount']),
         counterAmount: json['counterAmount'] == null ? null : _double(json['counterAmount']),
         estimatedArrivalMinutes: _int(json['estimatedArrivalMinutes']),

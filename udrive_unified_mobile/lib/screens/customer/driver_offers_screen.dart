@@ -3,10 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/state/app_controller.dart';
 import '../../core/booking/trip_operations_repository.dart';
+import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/common_widgets.dart';
 import '../../models/booking_models.dart';
 import '../operations/live_trip_navigation_screen.dart';
 
@@ -34,21 +33,31 @@ class DriverOffersScreen extends StatefulWidget {
 
 class _DriverOffersScreenState extends State<DriverOffersScreen> {
   Timer? _poller;
-  String? _selectedOfferId;
-  bool _confirming = false;
-  bool _autoMatchStarted = false;
+  Timer? _ticker;
+  bool _loading = true;
   bool _resolved = false;
+  String? _approvingOfferId;
+
+  final Map<String, DateTime> _customerDecisionDeadline = <String, DateTime>{};
+  final Set<String> _declinedOfferIds = <String>{};
+  final Set<String> _declineInFlight = <String>{};
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
-    _poller = Timer.periodic(const Duration(seconds: 6), (_) => _refresh(silent: true));
+    _poller = Timer.periodic(const Duration(seconds: 2), (_) => _refresh(silent: true));
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _resolved) return;
+      _expireCustomerWindows();
+      setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _poller?.cancel();
+    _ticker?.cancel();
     super.dispose();
   }
 
@@ -56,26 +65,113 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     if (!mounted || _resolved) return;
     final controller = AppControllerScope.of(context);
 
-    // Always reconcile the request with the authoritative booking state first.
-    // This prevents the customer from being left on an infinite loader when a
-    // driver was selected by a concurrent poll / retry and the select endpoint
-    // correctly returns HTTP 409 (request already closed).
-    await controller.refreshCustomerRideState();
-    if (!mounted || _resolved) return;
-    if (await _openExistingBookingIfAny(controller)) return;
-
-    await controller.loadRideOffers(widget.rideRequestId);
-    if (!mounted || _resolved) return;
-    if (await _openExistingBookingIfAny(controller)) return;
-
-    if (widget.autoMatch) {
-      await _attemptAutoMatch();
+    try {
+      await controller.refreshCustomerRideState();
       if (!mounted || _resolved) return;
+      if (await _openExistingBookingIfAny(controller)) return;
+
+      await controller.loadRideOffers(widget.rideRequestId);
+      if (!mounted || _resolved) return;
+      _registerDecisionWindows(controller.liveDriverOffers);
+      if (await _openExistingBookingIfAny(controller)) return;
+    } finally {
+      if (mounted && !_resolved && _loading) setState(() => _loading = false);
     }
-    if (silent || controller.marketplaceError == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(controller.marketplaceError!)),
-    );
+
+    if (!silent && controller.marketplaceError != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(controller.marketplaceError!)),
+      );
+    }
+  }
+
+  void _registerDecisionWindows(List<LiveDriverOffer> offers) {
+    final now = DateTime.now();
+    for (final offer in offers) {
+      if (offer.rideRequestId != widget.rideRequestId || _declinedOfferIds.contains(offer.id)) continue;
+      _customerDecisionDeadline.putIfAbsent(offer.id, () {
+        final localTenSeconds = now.add(const Duration(seconds: 10));
+        return offer.expiresAt.isBefore(localTenSeconds) ? offer.expiresAt : localTenSeconds;
+      });
+    }
+  }
+
+  void _expireCustomerWindows() {
+    final now = DateTime.now();
+    final expired = _customerDecisionDeadline.entries
+        .where((e) => !e.value.isAfter(now) && !_declinedOfferIds.contains(e.key))
+        .map((e) => e.key)
+        .toList(growable: false);
+    for (final offerId in expired) {
+      _declineOffer(offerId, automatic: true);
+    }
+  }
+
+  int _secondsLeft(LiveDriverOffer offer) {
+    final deadline = _customerDecisionDeadline[offer.id] ?? offer.expiresAt;
+    final seconds = deadline.difference(DateTime.now()).inSeconds + 1;
+    return seconds.clamp(0, 10);
+  }
+
+  List<LiveDriverOffer> _visibleOffers(AppController controller) {
+    final now = DateTime.now();
+    final offers = controller.liveDriverOffers.where((offer) {
+      if (offer.rideRequestId != widget.rideRequestId) return false;
+      if (_declinedOfferIds.contains(offer.id)) return false;
+      final deadline = _customerDecisionDeadline[offer.id];
+      return deadline == null || deadline.isAfter(now);
+    }).toList();
+    offers.sort((a, b) => a.finalAmount.compareTo(b.finalAmount));
+    return offers;
+  }
+
+  Future<void> _declineOffer(String offerId, {bool automatic = false}) async {
+    if (_declinedOfferIds.contains(offerId) || _declineInFlight.contains(offerId) || _resolved) return;
+    _declinedOfferIds.add(offerId);
+    _declineInFlight.add(offerId);
+    if (mounted) setState(() {});
+    try {
+      await AppControllerScope.of(context).declineLiveDriverOffer(
+        rideRequestId: widget.rideRequestId,
+        offerId: offerId,
+      );
+    } catch (_) {
+      // The server may already have expired the 20-second Driver offer.
+      // For the Customer this offer remains dismissed after the 10-second decision window.
+    } finally {
+      _declineInFlight.remove(offerId);
+      if (mounted && !automatic) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Driver offer declined.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _approveOffer(LiveDriverOffer offer) async {
+    if (_resolved || _approvingOfferId != null || _secondsLeft(offer) <= 0) return;
+    setState(() => _approvingOfferId = offer.id);
+    final controller = AppControllerScope.of(context);
+    try {
+      final booking = await controller.selectLiveDriverOffer(
+        rideRequestId: widget.rideRequestId,
+        offerId: offer.id,
+      );
+      if (!mounted) return;
+      _resolved = true;
+      _poller?.cancel();
+      _ticker?.cancel();
+      await _showBookingConfirmed(booking, etaMinutes: offer.estimatedArrivalMinutes);
+    } catch (_) {
+      await controller.refreshCustomerRideState();
+      if (!mounted) return;
+      if (await _openExistingBookingIfAny(controller)) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(controller.marketplaceError ?? 'This offer is no longer available. Please choose another Driver.')),
+      );
+    } finally {
+      if (mounted && !_resolved) setState(() => _approvingOfferId = null);
+    }
   }
 
   Future<bool> _openExistingBookingIfAny(AppController controller) async {
@@ -88,8 +184,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     }
     if (booking == null || !mounted || _resolved) return false;
 
-    _resolved = true;
-    _poller?.cancel();
+    int? eta;
     String? selectedOfferId;
     for (final request in controller.liveRideRequests) {
       if (request.id == widget.rideRequestId) {
@@ -97,7 +192,6 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
         break;
       }
     }
-    int? eta;
     if (selectedOfferId != null) {
       for (final offer in controller.liveDriverOffers) {
         if (offer.id == selectedOfferId) {
@@ -106,53 +200,27 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
         }
       }
     }
+
+    _resolved = true;
+    _poller?.cancel();
+    _ticker?.cancel();
     await _showBookingConfirmed(booking, etaMinutes: eta);
     return true;
-  }
-
-  Future<void> _attemptAutoMatch() async {
-    if (_autoMatchStarted || _confirming || !mounted) return;
-    final controller = AppControllerScope.of(context);
-    final offers = controller.liveDriverOffers
-        .where((offer) => offer.rideRequestId == widget.rideRequestId)
-        .toList();
-    if (offers.isEmpty) return;
-
-    offers.sort((a, b) {
-      final safety = b.safetyScore.compareTo(a.safetyScore);
-      if (safety != 0) return safety;
-      final rating = b.driverRating.compareTo(a.driverRating);
-      if (rating != 0) return rating;
-      final eta = a.estimatedArrivalMinutes.compareTo(b.estimatedArrivalMinutes);
-      if (eta != 0) return eta;
-      return a.finalAmount.compareTo(b.finalAmount);
-    });
-
-    _autoMatchStarted = true;
-    _selectedOfferId = offers.first.id;
-    await _confirm();
   }
 
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
-    LiveRideRequest? request;
-    for (final item in controller.liveRideRequests) {
-      if (item.id == widget.rideRequestId) { request = item; break; }
-    }
-    final offers = controller.liveDriverOffers
-        .where((offer) => offer.rideRequestId == widget.rideRequestId)
-        .toList()
-      ..sort((a, b) => a.finalAmount.compareTo(b.finalAmount));
+    _registerDecisionWindows(controller.liveDriverOffers);
+    final offers = _visibleOffers(controller);
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text(widget.autoMatch
-            ? _t(context, 'Finding your driver', 'آپ کا ڈرائیور تلاش ہو رہا ہے')
-            : _t(context, 'Live Driver Offers', 'لائیو ڈرائیور آفرز')),
+        title: Text(_t('Choose a driver', 'ڈرائیور منتخب کریں')),
         actions: [
           IconButton(
-            tooltip: _t(context, 'Refresh offers', 'آفرز تازہ کریں'),
+            tooltip: _t('Refresh', 'تازہ کریں'),
             onPressed: controller.marketplaceBusy ? null : _refresh,
             icon: const Icon(Icons.refresh_rounded),
           ),
@@ -161,313 +229,226 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 4, 18, 120),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
           children: [
-            PremiumCard(
-              color: const Color(0xFFF1FAF6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      StatusPill(
-                        label: request?.status == 'NoDriverAccepted'
-                            ? _t(context, 'No Driver accepted', 'کسی ڈرائیور نے قبول نہیں کیا')
-                            : widget.autoMatch
-                                ? _t(context, 'Finding the best verified driver', 'بہترین تصدیق شدہ ڈرائیور تلاش ہو رہا ہے')
-                                : offers.isEmpty
-                                    ? _t(context, 'Finding drivers', 'ڈرائیور تلاش ہو رہے ہیں')
-                                    : _t(context, '${offers.length} offers received', '${offers.length} آفرز موصول'),
-                      ),
-                      const Spacer(),
-                      if (controller.marketplaceBusy)
-                        const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    '${widget.pickup} → ${widget.destination}',
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 8,
-                    children: [
-                      _MiniInfo(icon: Icons.directions_car_rounded, label: widget.vehicleName),
-                      _MiniInfo(
-                        icon: Icons.sell_rounded,
-                        label: 'PKR ${NumberFormat('#,###').format(widget.customerOffer)}',
-                      ),
-                      _MiniInfo(
-                        icon: Icons.lock_clock_rounded,
-                        label: _t(context, 'Offers expire automatically', 'آفرز خودکار ختم ہوں گی'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            if (widget.autoMatch)
-              _autoMatchState(context, request, offers)
+            _routeSummary(offers.length),
+            const SizedBox(height: 12),
+            if (_loading && offers.isEmpty)
+              _waitingCard()
             else if (offers.isEmpty)
-              _emptyState(context, request)
+              _waitingCard()
             else
               ...offers.map(_offerCard),
           ],
         ),
       ),
-      bottomSheet: widget.autoMatch ? null : SafeArea(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: AppColors.border)),
-          ),
-          child: FilledButton.icon(
-            onPressed: _selectedOfferId == null || _confirming ? null : _confirm,
-            icon: _confirming
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.verified_user_rounded),
-            label: Text(_t(context, 'Select verified Driver', 'تصدیق شدہ ڈرائیور منتخب کریں')),
-          ),
-        ),
-      ),
     );
   }
 
-  Widget _autoMatchState(BuildContext context, LiveRideRequest? request, List<LiveDriverOffer> offers) => Padding(
-        padding: const EdgeInsets.only(top: 48),
+  Widget _routeSummary(int offerCount) => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 86,
-              height: 86,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: .10),
-                shape: BoxShape.circle,
-              ),
-              child: const Padding(
-                padding: EdgeInsets.all(25),
-                child: CircularProgressIndicator(strokeWidth: 3),
-              ),
+            Row(
+              children: [
+                const Icon(Icons.verified_user_rounded, size: 18, color: AppColors.primary),
+                const SizedBox(width: 7),
+                Text(
+                  _t('Verified driver offers', 'تصدیق شدہ ڈرائیور آفرز'),
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                ),
+                const Spacer(),
+                Text(
+                  '$offerCount ${offerCount == 1 ? 'offer' : 'offers'}',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 11, fontWeight: FontWeight.w800),
+                ),
+              ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 10),
             Text(
-              request?.status == 'NoDriverAccepted'
-                  ? _t(context, 'No driver is available right now', 'اس وقت کوئی ڈرائیور دستیاب نہیں')
-                  : _t(context, 'Finding your driver…', 'آپ کا ڈرائیور تلاش ہو رہا ہے…'),
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19),
-              textAlign: TextAlign.center,
+              '${widget.pickup}  →  ${widget.destination}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 5),
             Text(
-              offers.isEmpty
-                  ? _t(context, 'We are checking nearby verified drivers. You do not need to compare offers.', 'ہم قریبی تصدیق شدہ ڈرائیورز تلاش کر رہے ہیں۔ آپ کو آفرز compare کرنے کی ضرورت نہیں۔')
-                  : _t(context, 'A verified driver is available. Confirming the best match automatically…', 'تصدیق شدہ ڈرائیور دستیاب ہے۔ بہترین میچ خودکار طور پر confirm کیا جا رہا ہے…'),
-              style: const TextStyle(color: AppColors.muted, height: 1.45),
-              textAlign: TextAlign.center,
+              _t(
+                'Compare fares and arrival time. Each new offer gives you 10 seconds to approve or reject.',
+                'کرایہ اور پہنچنے کا وقت دیکھیں۔ ہر نئی آفر پر آپ کے پاس منظور یا مسترد کرنے کے لیے 10 سیکنڈ ہیں۔',
+              ),
+              style: const TextStyle(color: AppColors.muted, fontSize: 11.5, height: 1.35),
             ),
           ],
         ),
       );
 
-  Widget _emptyState(BuildContext context, LiveRideRequest? request) => Padding(
-        padding: const EdgeInsets.only(top: 58),
+  Widget _waitingCard() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 28),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
         child: Column(
           children: [
-            Container(
-              width: 78,
-              height: 78,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: .10),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.radar_rounded, size: 42, color: AppColors.primaryDark),
-            ),
-            const SizedBox(height: 18),
+            const Icon(Icons.radar_rounded, color: AppColors.primary, size: 34),
+            const SizedBox(height: 10),
             Text(
-              request?.status == 'NoDriverAccepted'
-                  ? _t(context, 'No Driver accepted within 1 hour', 'ایک گھنٹے میں کسی ڈرائیور نے قبول نہیں کیا')
-                  : _t(context, 'Waiting for verified Drivers', 'تصدیق شدہ ڈرائیورز کا انتظار ہے'),
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+              _t('Waiting for driver fares…', 'ڈرائیورز کے کرایوں کا انتظار ہے…'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 5),
             Text(
-              _t(
-                context,
-                request?.status == 'NoDriverAccepted'
-                    ? 'Try again, change the departure time, or increase your offered fare.'
-                    : 'This page refreshes automatically for up to one hour.',
-                request?.status == 'NoDriverAccepted'
-                    ? 'دوبارہ کوشش کریں، وقت تبدیل کریں یا اپنی آفر بڑھائیں۔'
-                    : 'یہ صفحہ ایک گھنٹے تک خودکار تازہ ہوتا ہے۔',
-              ),
+              _t('Nearby Drivers can send their fare. New offers appear here automatically.', 'قریبی ڈرائیور اپنا کرایہ بھیج سکتے ہیں۔ نئی آفر یہاں خودکار ظاہر ہوگی۔'),
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.muted, height: 1.45),
+              style: const TextStyle(color: AppColors.muted, fontSize: 11.5, height: 1.35),
             ),
           ],
         ),
       );
 
   Widget _offerCard(LiveDriverOffer offer) {
-    final selected = _selectedOfferId == offer.id;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: () => setState(() => _selectedOfferId = offer.id),
-        borderRadius: BorderRadius.circular(24),
-        child: Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(
-              color: selected ? AppColors.primary : AppColors.border,
-              width: selected ? 1.8 : 1,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
+    final seconds = _secondsLeft(offer);
+    final busy = _approvingOfferId == offer.id;
+    final distanceText = offer.pickupDistanceKm < 0.1
+        ? '<0.1 km'
+        : '${offer.pickupDistanceKm.toStringAsFixed(1)} km';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E6EA)),
+        boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      radius: 27,
-                      backgroundColor: AppColors.primary.withValues(alpha: .12),
-                      child: Text(
-                        offer.driverName.isEmpty ? 'D' : offer.driverName.characters.first,
-                        style: const TextStyle(
-                          color: AppColors.primaryDark,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 20,
-                        ),
-                      ),
+                    Text(
+                      'PKR ${NumberFormat('#,###').format(offer.finalAmount)}',
+                      style: const TextStyle(fontSize: 28, height: 1, fontWeight: FontWeight.w900, color: Color(0xFF111827)),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  offer.driverName,
-                                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                              const Icon(Icons.verified_rounded, size: 18, color: AppColors.info),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${offer.vehicle} · ${offer.registrationNumber}',
-                            style: const TextStyle(color: AppColors.muted, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    const SizedBox(height: 7),
+                    Row(
                       children: [
+                        const Icon(Icons.schedule_rounded, size: 16, color: AppColors.primary),
+                        const SizedBox(width: 4),
                         Text(
-                          'PKR ${NumberFormat('#,###').format(offer.finalAmount)}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.primaryDark,
-                          ),
+                          '~${offer.estimatedArrivalMinutes} min to pickup',
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
                         ),
-                        Text(
-                          _t(context, '${offer.estimatedArrivalMinutes} min away', '${offer.estimatedArrivalMinutes} منٹ دور'),
-                          style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                        const SizedBox(width: 10),
+                        const Icon(Icons.near_me_rounded, size: 15, color: AppColors.muted),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text('$distanceText away', style: const TextStyle(color: AppColors.muted, fontSize: 11.5)),
                         ),
                       ],
                     ),
                   ],
                 ),
-                const Divider(height: 26),
-                Row(
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                decoration: BoxDecoration(
+                  color: seconds <= 3 ? const Color(0xFFFFE9E7) : const Color(0xFFEAF7F0),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${seconds}s',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
+                    color: seconds <= 3 ? const Color(0xFFB42318) : AppColors.primaryDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 23,
+                backgroundColor: AppColors.primary.withValues(alpha: .12),
+                child: Text(
+                  offer.driverName.isEmpty ? 'D' : offer.driverName.characters.first.toUpperCase(),
+                  style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark, fontSize: 18),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.star_rounded, color: AppColors.accent, size: 18),
-                    Text(' ${offer.driverRating.toStringAsFixed(1)}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                    const SizedBox(width: 12),
-                    const Icon(Icons.route_rounded, color: AppColors.muted, size: 17),
-                    Text(' ${offer.completedTrips}', style: const TextStyle(color: AppColors.muted, fontSize: 11)),
-                    const Spacer(),
-                    const Icon(Icons.shield_rounded, color: AppColors.success, size: 17),
-                    Text(' ${offer.safetyScore}/100', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
-                    if (selected)
-                      const Padding(
-                        padding: EdgeInsets.only(left: 8),
-                        child: Icon(Icons.check_circle_rounded, color: AppColors.primary),
-                      ),
+                    Row(
+                      children: [
+                        Flexible(child: Text(offer.driverName, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5))),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.verified_rounded, color: AppColors.info, size: 16),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      offer.vehicle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF374151)),
+                    ),
+                    if (offer.registrationNumber.isNotEmpty)
+                      Text(offer.registrationNumber, style: const TextStyle(color: AppColors.muted, fontSize: 10.5)),
                   ],
                 ),
-                if (offer.message?.isNotEmpty == true) ...[
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Text(
-                      offer.message!,
-                      style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35),
-                    ),
-                  ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.star_rounded, size: 15, color: Color(0xFFF59E0B)),
+                  Text(' ${offer.driverRating.toStringAsFixed(1)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11.5)),
                 ],
-              ],
-            ),
+              ),
+            ],
           ),
-        ),
+          const SizedBox(height: 13),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: busy || seconds <= 0 ? null : () => _declineOffer(offer.id),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                  child: Text(_t('Reject', 'مسترد کریں')),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: busy || seconds <= 0 || _approvingOfferId != null ? null : () => _approveOffer(offer),
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                  child: busy
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Text(_t('Approve', 'منظور کریں')),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
-  }
-
-  Future<void> _confirm() async {
-    if (_resolved || _selectedOfferId == null) return;
-    setState(() => _confirming = true);
-    final controller = AppControllerScope.of(context);
-    int? etaMinutes;
-    for (final offer in controller.liveDriverOffers) {
-      if (offer.id == _selectedOfferId) {
-        etaMinutes = offer.estimatedArrivalMinutes;
-        break;
-      }
-    }
-
-    try {
-      final booking = await controller.selectLiveDriverOffer(
-        rideRequestId: widget.rideRequestId,
-        offerId: _selectedOfferId!,
-      );
-      if (!mounted) return;
-      _resolved = true;
-      _poller?.cancel();
-      await _showBookingConfirmed(booking, etaMinutes: etaMinutes);
-    } catch (_) {
-      // A 409 here commonly means another concurrent refresh already selected
-      // the same best offer. Re-read the server state instead of showing an
-      // error and leaving the spinner running forever.
-      await controller.refreshCustomerRideState();
-      if (!mounted) return;
-      if (await _openExistingBookingIfAny(controller)) return;
-
-      _autoMatchStarted = false;
-      final message = controller.marketplaceError ??
-          _t(context, 'The ride could not be confirmed. Please retry.', 'رائیڈ کنفرم نہیں ہو سکی۔ دوبارہ کوشش کریں۔');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-    } finally {
-      if (mounted && !_resolved) setState(() => _confirming = false);
-    }
   }
 
   Future<void> _showBookingConfirmed(LiveBooking booking, {int? etaMinutes}) async {
@@ -484,66 +465,39 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 78,
-                height: 78,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: .12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 52),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                _t(context, 'Driver found', 'ڈرائیور مل گیا'),
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                booking.bookingReference,
-                style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 18),
-              const MapPreview(height: 180),
+              const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 58),
+              const SizedBox(height: 12),
+              Text(_t('Driver approved', 'ڈرائیور منظور ہو گیا'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
               const SizedBox(height: 14),
-              PremiumCard(
-                child: Column(
-                  children: [
-                    _ResultLine(label: _t(context, 'Driver', 'ڈرائیور'), value: booking.driverName ?? '-'),
-                    _ResultLine(label: _t(context, 'Vehicle', 'گاڑی'), value: booking.vehicle ?? '-'),
-                    _ResultLine(
-                      label: _t(context, 'Driver arrival', 'ڈرائیور کی آمد'),
-                      value: etaMinutes == null ? _t(context, 'On the way', 'راستے میں') : '$etaMinutes minutes',
-                    ),
-                    _ResultLine(label: _t(context, 'Live location', 'لائیو لوکیشن'), value: 'Updates every 10 seconds'),
-                    _ResultLine(label: _t(context, 'Trip OTP', 'سفر او ٹی پی'), value: booking.tripOtp ?? '-'),
-                    _ResultLine(
-                      label: _t(context, 'Total', 'کل رقم'),
-                      value: 'PKR ${NumberFormat('#,###').format(booking.totalAmount)}',
-                    ),
-                  ],
-                ),
-              ),
+              _ResultLine(label: _t('Driver', 'ڈرائیور'), value: booking.driverName ?? '-'),
+              _ResultLine(label: _t('Vehicle', 'گاڑی'), value: booking.vehicle ?? '-'),
+              _ResultLine(label: _t('Arrival', 'پہنچنے کا وقت'), value: etaMinutes == null ? _t('On the way', 'راستے میں') : '~$etaMinutes min'),
+              _ResultLine(label: _t('Total fare', 'کل کرایہ'), value: 'PKR ${NumberFormat('#,###').format(booking.totalAmount)}'),
+              _ResultLine(label: _t('Trip OTP', 'ٹرپ او ٹی پی'), value: booking.tripOtp ?? '-'),
               const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () async {
-                  final navigator = Navigator.of(context);
-                  final repo = TripOperationsRepository(controller.apiClient);
-                  try {
-                    final trips = await repo.customerTrips();
-                    final trip = trips.firstWhere((x) => x.bookingId == booking.id);
-                    if (!context.mounted) return;
-                    navigator.pop();
-                    navigator.pushReplacement(MaterialPageRoute(
-                      builder: (_) => CustomerFullScreenTrackingScreen(trip: trip, repository: repo),
-                    ));
-                  } catch (_) {
-                    if (!context.mounted) return;
-                    navigator.pop();
-                    navigator.popUntil((route) => route.isFirst);
-                  }
-                },
-                child: Text(_t(context, 'Track Driver Live', 'ڈرائیور کو لائیو دیکھیں')),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final navigator = Navigator.of(context);
+                    final repo = TripOperationsRepository(controller.apiClient);
+                    try {
+                      final trips = await repo.customerTrips();
+                      final trip = trips.firstWhere((x) => x.bookingId == booking.id);
+                      if (!context.mounted) return;
+                      navigator.pop();
+                      navigator.pushReplacement(MaterialPageRoute(
+                        builder: (_) => CustomerFullScreenTrackingScreen(trip: trip, repository: repo),
+                      ));
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      navigator.pop();
+                      navigator.popUntil((route) => route.isFirst);
+                    }
+                  },
+                  icon: const Icon(Icons.navigation_rounded),
+                  label: Text(_t('Track Driver Live', 'ڈرائیور کو لائیو دیکھیں')),
+                ),
               ),
             ],
           ),
@@ -552,24 +506,8 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     );
   }
 
-  String _t(BuildContext context, String en, String ur) =>
+  String _t(String en, String ur) =>
       AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
-}
-
-class _MiniInfo extends StatelessWidget {
-  const _MiniInfo({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 17, color: AppColors.primaryDark),
-          const SizedBox(width: 5),
-          Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 11, fontWeight: FontWeight.w700)),
-        ],
-      );
 }
 
 class _ResultLine extends StatelessWidget {
@@ -582,8 +520,9 @@ class _ResultLine extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
-            Expanded(child: Text(label, style: const TextStyle(color: AppColors.muted))),
-            Flexible(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w900))),
+            Expanded(child: Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 12))),
+            const SizedBox(width: 12),
+            Flexible(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5))),
           ],
         ),
       );

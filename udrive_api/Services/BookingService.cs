@@ -237,7 +237,7 @@ public sealed class BookingService(
                     AND d.driver_profile_id = @driverProfileId
                     AND (
                       d.decision = 'Rejected'
-                      OR (d.decision = 'Offered' AND d.updated_at > now() - interval '10 seconds')
+                      OR (d.decision = 'Offered' AND d.updated_at > now() - interval '20 seconds')
                     )
               )
             ORDER BY rr.pickup_at, rr.created_at DESC
@@ -473,8 +473,8 @@ public sealed class BookingService(
         var offerExpiresAt = instantLike
             ? new[]
             {
-                DateTimeOffset.UtcNow.AddMinutes(15),
-                requestExpiresAt ?? DateTimeOffset.UtcNow.AddMinutes(15)
+                DateTimeOffset.UtcNow.AddSeconds(20),
+                requestExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(20)
             }.Min()
             : new[]
             {
@@ -482,6 +482,31 @@ public sealed class BookingService(
                 pickupAt,
                 requestExpiresAt ?? pickupAt
             }.Min();
+        // ETA is calculated by the server from the Driver's latest GPS position to the pickup point.
+        // The mobile Driver app only submits the fare; it does not need to guess an ETA.
+        var calculatedEtaMinutes = Math.Clamp(request.EstimatedArrivalMinutes, 1, 600);
+        const string etaSql = """
+            SELECT ST_Distance(dpl.location, rr.pickup_location)
+            FROM udrive.driver_presence_locations dpl
+            JOIN udrive.ride_requests rr ON rr.id=@rideRequestId
+            WHERE dpl.driver_profile_id=@driverProfileId
+              AND dpl.server_timestamp > now() - interval '2 minutes'
+            ORDER BY dpl.server_timestamp DESC
+            LIMIT 1;
+            """;
+        await using (var etaCommand = new NpgsqlCommand(etaSql, connection, transaction))
+        {
+            etaCommand.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            etaCommand.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
+            var distanceValue = await etaCommand.ExecuteScalarAsync(cancellationToken);
+            if (distanceValue is not null && distanceValue is not DBNull)
+            {
+                var distanceMeters = Convert.ToDouble(distanceValue);
+                // Practical city estimate: about 30 km/h average including local-road slowing.
+                calculatedEtaMinutes = Math.Clamp((int)Math.Ceiling(distanceMeters / 500d), 1, 60);
+            }
+        }
+
         const string offerSql = """
             INSERT INTO udrive.driver_offers
                 (id, ride_request_id, driver_profile_id, vehicle_id, amount,
@@ -514,7 +539,7 @@ public sealed class BookingService(
             command.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
             command.Parameters.AddWithValue("vehicleId", request.VehicleId);
             command.Parameters.AddWithValue("amount", request.Amount);
-            command.Parameters.AddWithValue("eta", request.EstimatedArrivalMinutes);
+            command.Parameters.AddWithValue("eta", calculatedEtaMinutes);
             command.Parameters.Add(new NpgsqlParameter("message", NpgsqlDbType.Varchar) { Value = (object?)request.Message?.Trim() ?? DBNull.Value });
             command.Parameters.AddWithValue("expiresAt", offerExpiresAt);
             offerId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
@@ -574,6 +599,34 @@ public sealed class BookingService(
 
         var result = await ReadOffersAsync(connection, rideRequestId, cancellationToken);
         return ServiceResult<IReadOnlyList<DriverOfferDto>>.Ok(result);
+    }
+
+    public async Task<ServiceResult<bool>> DeclineDriverOfferAsync(
+        Guid customerUserId,
+        Guid rideRequestId,
+        Guid offerId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE udrive.driver_offers o
+            SET status='Expired', responded_at=now(), updated_at=now(), version=version+1
+            FROM udrive.ride_requests rr
+            WHERE o.id=@offerId
+              AND o.ride_request_id=@rideRequestId
+              AND rr.id=o.ride_request_id
+              AND rr.customer_user_id=@customerUserId
+              AND o.status IN ('Pending','Countered','Accepted')
+            RETURNING o.id;
+            """;
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("offerId", offerId);
+        command.Parameters.AddWithValue("rideRequestId", rideRequestId);
+        command.Parameters.AddWithValue("customerUserId", customerUserId);
+        return await command.ExecuteScalarAsync(cancellationToken) is null
+            ? ServiceResult<bool>.Fail(StatusCodes.Status404NotFound, "offer_not_found", "The Driver offer is no longer available.")
+            : ServiceResult<bool>.Ok(true);
     }
 
     public async Task<ServiceResult<BookingDto>> SelectDriverOfferAsync(
@@ -1173,6 +1226,7 @@ public sealed class BookingService(
                    COALESCE(dp.safety_score, 80),
                    COALESCE(NULLIF(concat_ws(' ', v.make, v.model, v.year::text), ''), 'Verified vehicle'),
                    COALESCE(v.registration_number, ''), COALESCE(v.category, 'Vehicle'),
+                   COALESCE(ST_Distance(dpl.location, rr.pickup_location) / 1000.0, 0)::double precision AS pickup_distance_km,
                    o.amount, o.counter_amount,
                    o.estimated_arrival_minutes, o.message, o.status,
                    o.expires_at, o.created_at
@@ -1180,6 +1234,14 @@ public sealed class BookingService(
             LEFT JOIN udrive.driver_profiles dp ON dp.id=o.driver_profile_id
             LEFT JOIN udrive.users u ON u.id=dp.user_id
             LEFT JOIN udrive.vehicles v ON v.id=o.vehicle_id
+            LEFT JOIN udrive.ride_requests rr ON rr.id=o.ride_request_id
+            LEFT JOIN LATERAL (
+                SELECT location
+                FROM udrive.driver_presence_locations p
+                WHERE p.driver_profile_id=o.driver_profile_id
+                ORDER BY p.server_timestamp DESC
+                LIMIT 1
+            ) dpl ON true
             WHERE o.id=@offerId;
             """;
         await using var connection = new NpgsqlConnection(connectionString);
@@ -1209,6 +1271,7 @@ public sealed class BookingService(
                    COALESCE(dp.safety_score, 80),
                    COALESCE(NULLIF(concat_ws(' ', v.make, v.model, v.year::text), ''), 'Verified vehicle'),
                    COALESCE(v.registration_number, ''), COALESCE(v.category, 'Vehicle'),
+                   COALESCE(ST_Distance(dpl.location, rr.pickup_location) / 1000.0, 0)::double precision AS pickup_distance_km,
                    o.amount, o.counter_amount,
                    o.estimated_arrival_minutes, o.message, o.status,
                    o.expires_at, o.created_at
@@ -1216,8 +1279,17 @@ public sealed class BookingService(
             LEFT JOIN udrive.driver_profiles dp ON dp.id=o.driver_profile_id
             LEFT JOIN udrive.users u ON u.id=dp.user_id
             LEFT JOIN udrive.vehicles v ON v.id=o.vehicle_id
+            LEFT JOIN udrive.ride_requests rr ON rr.id=o.ride_request_id
+            LEFT JOIN LATERAL (
+                SELECT location
+                FROM udrive.driver_presence_locations p
+                WHERE p.driver_profile_id=o.driver_profile_id
+                ORDER BY p.server_timestamp DESC
+                LIMIT 1
+            ) dpl ON true
             WHERE o.ride_request_id=@rideRequestId
               AND o.status IN ('Pending','Countered','Accepted','Selected')
+              AND (o.status='Selected' OR o.expires_at > now())
             ORDER BY COALESCE(o.counter_amount, o.amount),
                      dp.safety_score DESC,
                      o.created_at;
@@ -1453,13 +1525,14 @@ public sealed class BookingService(
         reader.GetString(8),
         reader.GetString(9),
         reader.GetString(10),
-        reader.GetDecimal(11),
-        reader.IsDBNull(12) ? null : reader.GetDecimal(12),
-        reader.GetInt32(13),
-        reader.IsDBNull(14) ? null : reader.GetString(14),
-        reader.GetString(15),
-        reader.GetFieldValue<DateTimeOffset>(16),
-        reader.GetFieldValue<DateTimeOffset>(17));
+        reader.GetDouble(11),
+        reader.GetDecimal(12),
+        reader.IsDBNull(13) ? null : reader.GetDecimal(13),
+        reader.GetInt32(14),
+        reader.IsDBNull(15) ? null : reader.GetString(15),
+        reader.GetString(16),
+        reader.GetFieldValue<DateTimeOffset>(17),
+        reader.GetFieldValue<DateTimeOffset>(18));
 
     private static BookingDto ReadBooking(NpgsqlDataReader reader, string? tripOtp) => new(
         reader.GetGuid(0),

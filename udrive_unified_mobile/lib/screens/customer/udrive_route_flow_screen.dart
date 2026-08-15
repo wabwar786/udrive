@@ -1513,7 +1513,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
             destination: request.destinationLabel,
             customerOffer: request.customerOffer.round(),
             vehicleName: request.vehicleCategory,
-            autoMatch: widget.serviceType == UDriveServiceType.city,
+            autoMatch: false,
           ),
         ),
       );

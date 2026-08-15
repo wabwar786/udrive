@@ -37,6 +37,17 @@ public sealed class BookingsController(BookingService bookingService) : Controll
             rideRequestId,
             cancellationToken));
 
+    [HttpPost("ride-requests/{rideRequestId:guid}/offers/{offerId:guid}/decline")]
+    public async Task<IActionResult> DeclineOffer(
+        Guid rideRequestId,
+        Guid offerId,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await bookingService.DeclineDriverOfferAsync(
+            User.GetRequiredUserId(),
+            rideRequestId,
+            offerId,
+            cancellationToken));
+
     [HttpPost("ride-requests/{rideRequestId:guid}/offers/{offerId:guid}/select")]
     public async Task<IActionResult> SelectOffer(
         Guid rideRequestId,

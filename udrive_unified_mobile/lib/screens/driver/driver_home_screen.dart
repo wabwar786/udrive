@@ -187,12 +187,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           ],
           if (_recentFares.isNotEmpty) ...[
             ..._recentFares.values.map((sent) {
-              final approved = controller.liveDriverRideOfferStatuses.any(
-                (offer) => offer.rideRequestId == sent.rideRequestId && offer.isApproved,
-              );
+              LiveDriverRideOfferStatus? liveStatus;
+              for (final offer in controller.liveDriverRideOfferStatuses) {
+                if (offer.rideRequestId == sent.rideRequestId) {
+                  liveStatus = offer;
+                  break;
+                }
+              }
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _RecentFareSentCard(sent: sent, approved: approved),
+                child: _RecentFareSentCard(sent: sent, status: liveStatus),
               );
             }),
             const SizedBox(height: 2),
@@ -372,7 +376,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       rideRequestId: request.id,
                       vehicleId: selectedVehicle.id as String,
                       amount: parsedAmount,
-                      etaMinutes: 10,
+                      etaMinutes: 1,
                     );
                     if (!mounted) return;
                     Navigator.pop(sheetContext);
@@ -382,7 +386,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         pickupLabel: request.pickupLabel,
                         destinationLabel: request.destinationLabel,
                         amount: parsedAmount,
-                        visibleUntil: DateTime.now().add(const Duration(seconds: 10)),
+                        visibleUntil: DateTime.now().add(const Duration(seconds: 20)),
                       );
                     });
                     await _refreshNearbyRequests();
@@ -490,12 +494,14 @@ class _CompactSectionRow extends StatelessWidget {
 }
 
 class _RecentFareSentCard extends StatelessWidget {
-  const _RecentFareSentCard({required this.sent, required this.approved});
+  const _RecentFareSentCard({required this.sent, required this.status});
   final _RecentFareSent sent;
-  final bool approved;
+  final LiveDriverRideOfferStatus? status;
   @override
   Widget build(BuildContext context) {
-    final seconds = sent.visibleUntil.difference(DateTime.now()).inSeconds.clamp(0, 10);
+    final seconds = sent.visibleUntil.difference(DateTime.now()).inSeconds.clamp(0, 20);
+    final approved = status?.isApproved == true;
+    final rejected = status?.isClosed == true;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(color: const Color(0xFFF0FAF6), borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.success.withValues(alpha: .25))),
@@ -503,13 +509,13 @@ class _RecentFareSentCard extends StatelessWidget {
         Container(width: 32, height: 32, decoration: BoxDecoration(color: AppColors.success.withValues(alpha: .12), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.check_rounded, color: AppColors.success, size: 19)),
         const SizedBox(width: 9),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(approved ? 'APPROVED · ride confirmed' : 'Fare sent · waiting for customer', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: AppColors.navy)),
+          Text(approved ? 'APPROVED · ride confirmed' : rejected ? 'NOT SELECTED' : 'Fare sent · waiting for customer', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: AppColors.navy)),
           Text('${sent.pickupLabel} → ${sent.destinationLabel}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9.5, color: AppColors.muted)),
         ])),
         const SizedBox(width: 8),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text('PKR ${NumberFormat('#,###').format(sent.amount)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.navy)),
-          Text(approved ? 'LIVE' : '${seconds}s', style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: AppColors.success)),
+          Text(approved ? 'LIVE' : rejected ? 'CLOSED' : '${seconds}s', style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: AppColors.success)),
         ]),
       ]),
     );

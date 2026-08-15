@@ -557,6 +557,19 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<void> declineLiveDriverOffer({
+    required String rideRequestId,
+    required String offerId,
+  }) async {
+    await _runMarketplace(() async {
+      await _bookingRepository.declineDriverOffer(
+        rideRequestId: rideRequestId,
+        offerId: offerId,
+      );
+      _liveDriverOffers = _liveDriverOffers.where((offer) => offer.id != offerId).toList(growable: false);
+    });
+  }
+
   Future<LiveBooking> selectLiveDriverOffer({
     required String rideRequestId,
     required String offerId,
