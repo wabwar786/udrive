@@ -1497,10 +1497,219 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     }
   }
 
+  Widget _buildCityToCityScreen(BuildContext context) {
+    final choices = _choices;
+    if (choices.isEmpty) {
+      return _buildCityRenderRecovery(context, 'No vehicle categories configured');
+    }
+
+    // Keep selection in range even if API/category data changes while this page is open.
+    if (_selected < 0 || _selected >= choices.length) _selected = 0;
+    final selected = choices[_selected];
+    final selectedVehicle = _selectedPublicVehicle;
+    final selectedDbRate = _dbRates[_normaliseVehicle(selected.name)];
+    final effectiveCapacity = selectedVehicle?.passengerCapacity ?? selected.capacity;
+    final perSeatAmount = _typedAmount(_perSeatOffer) ?? _perSeatEstimate(selected, selectedDbRate);
+    final wholeAmount = _typedAmount(_wholeVehicleOffer) ?? _wholeVehicleEstimate(selected, selectedDbRate);
+    final totalEstimate = _bookingMode == _FareBookingMode.wholeVehicle
+        ? wholeAmount
+        : perSeatAmount * _seats;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0C0E0D),
+      body: Stack(
+        children: [
+          const Positioned.fill(child: ColoredBox(color: Color(0xFF111312))),
+          Positioned.fill(
+            child: SafeArea(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 72, 16, 28),
+                children: [
+                  const Text(
+                    'Choose your ride',
+                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 5),
+                  const Text(
+                    'Available City-to-City rides and estimated fares',
+                    style: TextStyle(color: _muted, fontSize: 11.5),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF202321),
+                      borderRadius: BorderRadius.circular(17),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(children: [
+                          const Icon(Icons.my_location_rounded, color: _lime, size: 19),
+                          const SizedBox(width: 9),
+                          Expanded(child: Text(widget.pickupLabel, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800))),
+                        ]),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Align(alignment: Alignment.centerLeft, child: Container(width: 2, height: 16, color: Colors.white24)),
+                        ),
+                        Row(children: [
+                          const Icon(Icons.location_on_rounded, color: Color(0xFFF79009), size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(widget.destination.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w900))),
+                        ]),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: [
+                      _RatePill(label: 'Distance', value: '${_routeDistanceKm.toStringAsFixed(1)} km'),
+                      if (selectedDbRate != null && selectedDbRate.perKmRate > 0)
+                        _RatePill(label: 'Rate', value: '${_money(selectedDbRate.perKmRate)} / km'),
+                      _RatePill(label: 'Estimated fare', value: _money(totalEstimate)),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(color: const Color(0xFF252826), borderRadius: BorderRadius.circular(14)),
+                    child: Row(children: [
+                      Expanded(child: _ModeButton(label: 'Per seat', selected: _bookingMode == _FareBookingMode.perSeat, onTap: () => setState(() => _bookingMode = _FareBookingMode.perSeat))),
+                      Expanded(child: _ModeButton(label: 'Whole vehicle', selected: _bookingMode == _FareBookingMode.wholeVehicle, onTap: () => setState(() => _bookingMode = _FareBookingMode.wholeVehicle))),
+                    ]),
+                  ),
+                  if (_bookingMode == _FareBookingMode.perSeat) ...[
+                    const SizedBox(height: 9),
+                    Row(children: [
+                      const Text('Seats', style: TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      const Spacer(),
+                      _RoundMiniButton(icon: Icons.remove, onTap: _seats > 1 ? () => setState(() => _seats--) : null),
+                      Padding(padding: const EdgeInsets.symmetric(horizontal: 13), child: Text('$_seats', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900))),
+                      _RoundMiniButton(icon: Icons.add, onTap: _seats < effectiveCapacity ? () => setState(() => _seats++) : null),
+                    ]),
+                  ],
+                  const SizedBox(height: 15),
+                  Row(children: [
+                    const Expanded(child: Text('Available rides', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900))),
+                    if (_loadingVehicles)
+                      const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: _lime)),
+                  ]),
+                  const SizedBox(height: 8),
+                  ..._publicVehicleCards(),
+                  const SizedBox(height: 5),
+                  TextField(
+                    controller: _bookingMode == _FareBookingMode.perSeat ? _perSeatOffer : _wholeVehicleOffer,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setState(() {}),
+                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
+                    decoration: InputDecoration(
+                      labelText: _bookingMode == _FareBookingMode.perSeat ? 'Fare per seat (PKR)' : 'Whole vehicle fare (PKR)',
+                      labelStyle: const TextStyle(color: _muted, fontSize: 11),
+                      prefixIcon: const Icon(Icons.payments_outlined, color: _lime, size: 20),
+                      filled: true,
+                      fillColor: const Color(0xFF242725),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 52,
+                    child: FilledButton(
+                      onPressed: _submitting ? null : _submit,
+                      style: FilledButton.styleFrom(backgroundColor: _lime, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                      child: _submitting
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black))
+                          : const Text('Book selected ride', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+              child: Row(children: [
+                IconButton.filled(
+                  onPressed: () => Navigator.pop(context),
+                  style: IconButton.styleFrom(backgroundColor: const Color(0x84121413)),
+                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+                ),
+                const Spacer(),
+                IconButton.filled(
+                  onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                  style: IconButton.styleFrom(backgroundColor: const Color(0x84121413)),
+                  icon: const Icon(Icons.home_rounded, color: Colors.white, size: 20),
+                ),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCityRenderRecovery(BuildContext context, Object error) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF111312),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF111312),
+        foregroundColor: Colors.white,
+        title: const Text('City-to-City Ride'),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.directions_car_filled_rounded, color: _lime, size: 42),
+              const SizedBox(height: 14),
+              const Text('Ride screen could not finish rendering.', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 8),
+              Text('${widget.pickupLabel} → ${widget.destination.title}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _selected = 0;
+                      _loadingVehicles = true;
+                      _vehicleLoadError = null;
+                    });
+                    _loadRates();
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Reload rides'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   String _money(double value) => value <= 0 ? 'Not set' : 'PKR ${value.round()}';
 
   @override
   Widget build(BuildContext context) {
+    // City-to-City is intentionally rendered through its own lightweight path.
+    // It must not depend on tour/package marketplace state during the first frame;
+    // a failure in unrelated marketplace data previously caused a blank web page
+    // immediately after tapping a popular destination.
+    if (widget.serviceType == UDriveServiceType.city) {
+      try {
+        return _buildCityToCityScreen(context);
+      } catch (error) {
+        return _buildCityRenderRecovery(context, error);
+      }
+    }
+
     final app = AppControllerScope.of(context);
     final tourPackages = _matchingPackages(app);
     final selected = _choices[_selected];
