@@ -11,7 +11,7 @@ public sealed class MarketplacePricingService(string connectionString)
     {
         const string sql = """
             SELECT service_type, vehicle_category, per_seat_rate,
-                   whole_vehicle_rate, currency
+                   whole_vehicle_rate, per_km_rate, currency
             FROM udrive.service_vehicle_rates
             WHERE is_active = true
               AND lower(service_type) = lower(@service)
@@ -31,7 +31,8 @@ public sealed class MarketplacePricingService(string connectionString)
                 reader.GetString(1),
                 reader.GetDecimal(2),
                 reader.GetDecimal(3),
-                reader.GetString(4)));
+                reader.GetDecimal(4),
+                reader.GetString(5)));
         }
 
         return list;
@@ -128,6 +129,43 @@ public sealed class MarketplacePricingService(string connectionString)
                 reader.GetBoolean(21)));
         }
 
+        return list;
+    }
+
+
+    public async Task<IReadOnlyList<string>> GetAmbulanceCitiesAsync(CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT DISTINCT city FROM udrive.ambulance_services WHERE is_active=true ORDER BY city";
+        var list = new List<string>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) list.Add(reader.GetString(0));
+        return list;
+    }
+
+    public async Task<IReadOnlyList<AmbulanceServiceDto>> GetAmbulancesAsync(string? city, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT id,name,city,phone_number,per_km_fare,currency,NULLIF(image_url,'')
+            FROM udrive.ambulance_services
+            WHERE is_active=true
+              AND (@city='' OR lower(city)=lower(@city))
+            ORDER BY city,name;
+            """;
+        var list = new List<AmbulanceServiceDto>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("city", city?.Trim() ?? string.Empty);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            list.Add(new AmbulanceServiceDto(
+                reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                reader.GetDecimal(4), reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6)));
+        }
         return list;
     }
 

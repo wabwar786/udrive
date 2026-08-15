@@ -42,6 +42,22 @@ public sealed class CatalogController(CatalogService catalogService, LocalFileSt
         return Ok(ApiResponse<IReadOnlyList<PublicVehicleDto>>.Ok(data));
     }
 
+
+    [HttpGet("ambulance-cities")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<string>>>> GetAmbulanceCities(CancellationToken cancellationToken)
+    {
+        var data = await pricingService.GetAmbulanceCitiesAsync(cancellationToken);
+        return Ok(ApiResponse<IReadOnlyList<string>>.Ok(data));
+    }
+
+    [HttpGet("ambulances")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<AmbulanceServiceDto>>>> GetAmbulances(
+        [FromQuery] string? city = null, CancellationToken cancellationToken = default)
+    {
+        var data = await pricingService.GetAmbulancesAsync(city, cancellationToken);
+        return Ok(ApiResponse<IReadOnlyList<AmbulanceServiceDto>>.Ok(data));
+    }
+
     [HttpGet("destination-images/{owner}/{fileName}")]
     [ResponseCache(Duration = 3600, Location = ResponseCacheLocation.Client)]
     public IActionResult DestinationImage(string owner, string fileName)

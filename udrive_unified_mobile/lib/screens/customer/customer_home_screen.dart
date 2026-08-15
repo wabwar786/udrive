@@ -2256,7 +2256,7 @@ class _UDriveServicesGrid extends StatelessWidget {
       ),
       _ServiceTile(
         title: 'Emergency',
-        asset: 'assets/images/home_services/travel_within_city.webp',
+        asset: 'assets/images/home_services/ambulance.png',
         onTap: onEmergency,
         emergency: true,
       ),
@@ -2365,27 +2365,31 @@ class _ServiceTile extends StatelessWidget {
 
   Widget _buildEmergencyCard() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: _titleStyle),
-          const SizedBox(height: 3),
+          const SizedBox(height: 2),
           const Text(
-            'Ambulance • Call 1122',
+            'Find an ambulance',
             style: TextStyle(color: Colors.white60, fontSize: 9.5, fontWeight: FontWeight.w700),
           ),
-          const Spacer(),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: const Color(0xFFB7F20A),
-                borderRadius: BorderRadius.circular(15),
+          Expanded(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Image.asset(
+                asset,
+                width: double.infinity,
+                fit: BoxFit.contain,
+                alignment: Alignment.bottomCenter,
+                filterQuality: FilterQuality.high,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.local_hospital_rounded,
+                  color: Color(0xFFB7F20A),
+                  size: 48,
+                ),
               ),
-              child: const Icon(Icons.emergency_rounded, color: Colors.black, size: 30),
             ),
           ),
         ],

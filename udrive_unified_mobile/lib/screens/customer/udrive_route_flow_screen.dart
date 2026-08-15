@@ -889,6 +889,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
           _dbRates[category] = _DbRate(
             (map['perSeatRate'] as num?)?.toDouble() ?? 0,
             (map['wholeVehicleRate'] as num?)?.toDouble() ?? 0,
+            (map['perKmRate'] as num?)?.toDouble() ?? 0,
           );
         }
       }
@@ -969,15 +970,15 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   void _ensureFallbackRates() {
     if (widget.serviceType == UDriveServiceType.tours) {
-      _dbRates.putIfAbsent('car', () => const _DbRate(2800, 16500));
-      _dbRates.putIfAbsent('coster', () => const _DbRate(2200, 42000));
+      _dbRates.putIfAbsent('car', () => const _DbRate(2800, 16500, 95));
+      _dbRates.putIfAbsent('coster', () => const _DbRate(2200, 42000, 180));
       return;
     }
 
-    _dbRates.putIfAbsent('bike', () => const _DbRate(450, 1200));
-    _dbRates.putIfAbsent('car', () => const _DbRate(1200, 4800));
-    _dbRates.putIfAbsent('rickshaw', () => const _DbRate(650, 2200));
-    _dbRates.putIfAbsent('coster', () => const _DbRate(900, 18000));
+    _dbRates.putIfAbsent('bike', () => const _DbRate(450, 1200, 32));
+    _dbRates.putIfAbsent('car', () => const _DbRate(1200, 4800, 65));
+    _dbRates.putIfAbsent('rickshaw', () => const _DbRate(650, 2200, 40));
+    _dbRates.putIfAbsent('coster', () => const _DbRate(900, 18000, 160));
   }
 
   List<_PublicVehicle> _interleaveVehicleCategories(
@@ -1082,10 +1083,10 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     final choice = _choices[_selected];
     final package = _matchingPackage(AppControllerScope.of(context), choice);
     final db = _dbRates[_normaliseVehicle(choice.name)];
-    final perSeat = package?.pricePerSeat ?? db?.perSeatRate;
-    final whole = package?.wholeVehiclePrice ?? db?.wholeVehicleRate;
-    if (perSeat != null && perSeat > 0) _perSeatOffer.text = perSeat.round().toString();
-    if (whole != null && whole > 0) _wholeVehicleOffer.text = whole.round().toString();
+    final perSeat = package?.pricePerSeat ?? _perSeatEstimate(choice, db);
+    final whole = package?.wholeVehiclePrice ?? _wholeVehicleEstimate(choice, db);
+    if (perSeat > 0) _perSeatOffer.text = perSeat.round().toString();
+    if (whole > 0) _wholeVehicleOffer.text = whole.round().toString();
   }
 
   @override
@@ -1183,6 +1184,35 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     if (type == 'bike') return 'assets/vehicles_photo/bike_clean.png';
     if (type == 'rickshaw') return 'assets/vehicles_photo/rickshaw_clean.png';
     return 'assets/vehicles_photo/car_clean.png';
+  }
+
+  double get _routeDistanceKm {
+    final direct = const Distance().as(
+      LengthUnit.Kilometer,
+      widget.pickupPoint,
+      LatLng(widget.destination.latitude, widget.destination.longitude),
+    );
+    // Approximate road distance until a routing engine is configured.
+    return (direct * 1.18).clamp(1.0, 2000.0).toDouble();
+  }
+
+  double _wholeVehicleEstimate(_VehicleChoiceData choice, _DbRate? rate) {
+    if (rate == null) return 0;
+    final distanceFare = rate.perKmRate > 0 ? rate.perKmRate * _routeDistanceKm : 0;
+    return distanceFare > rate.wholeVehicleRate ? distanceFare : rate.wholeVehicleRate;
+  }
+
+  double _perSeatEstimate(_VehicleChoiceData choice, _DbRate? rate) {
+    if (rate == null) return 0;
+    final whole = _wholeVehicleEstimate(choice, rate);
+    final capacity = choice.capacity <= 0 ? 1 : choice.capacity;
+    final calculated = whole / capacity;
+    return calculated > rate.perSeatRate ? calculated : rate.perSeatRate;
+  }
+
+  double _estimatedAmountForChoice(_VehicleChoiceData choice, {required bool wholeVehicle}) {
+    final rate = _dbRates[_normaliseVehicle(choice.name)];
+    return wholeVehicle ? _wholeVehicleEstimate(choice, rate) : _perSeatEstimate(choice, rate);
   }
 
   List<Widget> _publicVehicleCards() {
@@ -1341,8 +1371,15 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                           children: [
                             _RatePill(label: 'Type', value: vehicle.category),
                             _RatePill(label: 'Seats', value: '${vehicle.passengerCapacity}'),
-                            _RatePill(label: 'Seat', value: _money(rate?.perSeatRate ?? 0)),
-                            _RatePill(label: 'Full', value: _money(rate?.wholeVehicleRate ?? 0)),
+                            _RatePill(label: '/ km', value: _money(rate?.perKmRate ?? 0)),
+                            _RatePill(
+                              label: _bookingMode == _FareBookingMode.wholeVehicle ? 'Est. full' : 'Est. seat',
+                              value: _money(
+                                _bookingMode == _FareBookingMode.wholeVehicle
+                                    ? _wholeVehicleEstimate(_choices.firstWhere((c) => _normaliseVehicle(c.name) == type, orElse: () => _choices.first), rate)
+                                    : _perSeatEstimate(_choices.firstWhere((c) => _normaliseVehicle(c.name) == type, orElse: () => _choices.first), rate),
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -1434,7 +1471,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         'partyType': requestedSeats > 1 ? 'Group' : 'Individual',
         'familyOnly': false,
         'womenOnly': false,
-        'notes': '${widget.serviceType.title} • ${wholeVehicle ? 'whole vehicle' : 'per seat'}${package == null ? ' • customer fare offer' : ' • published tour rate'}${_selectedPublicVehicle == null ? '' : ' • preferred ${_selectedPublicVehicle!.make} ${_selectedPublicVehicle!.model} (${_selectedPublicVehicle!.registrationNumber})'}${_autoAccept ? ' • auto-accept enabled' : ''}',
+        'notes': '${widget.serviceType.title} • ${_routeDistanceKm.toStringAsFixed(1)} km estimated • ${wholeVehicle ? 'whole vehicle' : 'per seat'}${package == null ? ' • customer fare offer' : ' • published tour rate'}${_selectedPublicVehicle == null ? '' : ' • preferred ${_selectedPublicVehicle!.make} ${_selectedPublicVehicle!.model} (${_selectedPublicVehicle!.registrationNumber})'}${_autoAccept ? ' • auto-accept enabled' : ''}',
       });
       if (!mounted) return;
       Navigator.pushReplacement(
@@ -1474,8 +1511,8 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         selected.capacity;
     final selectedPackageBookable = selectedPackage == null || _packageBookable(selectedPackage);
     final selectedDbRate = _dbRates[_normaliseVehicle(selected.name)];
-    final perSeatAmount = _typedAmount(_perSeatOffer) ?? selectedPackage?.pricePerSeat ?? selectedDbRate?.perSeatRate ?? 0;
-    final wholeAmount = _typedAmount(_wholeVehicleOffer) ?? selectedPackage?.wholeVehiclePrice ?? selectedDbRate?.wholeVehicleRate ?? 0;
+    final perSeatAmount = _typedAmount(_perSeatOffer) ?? selectedPackage?.pricePerSeat ?? _perSeatEstimate(selected, selectedDbRate);
+    final wholeAmount = _typedAmount(_wholeVehicleOffer) ?? selectedPackage?.wholeVehiclePrice ?? _wholeVehicleEstimate(selected, selectedDbRate);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0C0E0D),
@@ -1509,13 +1546,26 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                       ],
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: [
+                      _RatePill(label: 'Distance', value: '${_routeDistanceKm.toStringAsFixed(1)} km'),
+                      if (selectedDbRate != null) _RatePill(label: 'Rate', value: '${_money(selectedDbRate.perKmRate)} / km'),
+                      _RatePill(
+                        label: 'Estimated fare',
+                        value: _money(_bookingMode == _FareBookingMode.wholeVehicle ? wholeAmount : perSeatAmount * _seats),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(widget.serviceType.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
                         const SizedBox(height: 2),
-                        Text(widget.serviceType == UDriveServiceType.tours ? 'Published tour rates are shown when available' : 'Choose a vehicle and enter your fare offer', style: const TextStyle(color: _muted, fontSize: 10.5)),
+                        Text(widget.serviceType == UDriveServiceType.tours ? 'Published tour rates are shown when available' : 'Choose a ride, review the fare and book', style: const TextStyle(color: _muted, fontSize: 10.5)),
                       ])),
                       if (widget.serviceType == UDriveServiceType.tours)
                         TextButton.icon(onPressed: _pickDate, icon: const Icon(Icons.calendar_month_rounded, size: 17), label: Text('${_tourDate.day}/${_tourDate.month}', style: const TextStyle(fontSize: 11))),
@@ -1650,7 +1700,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                       const SizedBox(width: 8),
                       Expanded(child: Text(
                         selectedPackage == null
-                            ? 'No fixed local tariff is invented. Your offer is sent to verified drivers, who can accept or send a counter-offer.'
+                            ? 'Fare is calculated from the database per-km rate and estimated route distance. You can keep this fare or adjust your offer before booking.'
                             : 'Per-seat and whole-vehicle prices come directly from the selected tour package.',
                         style: const TextStyle(color: Colors.white60, fontSize: 10.5, height: 1.35),
                       )),
@@ -1677,7 +1727,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                       style: FilledButton.styleFrom(backgroundColor: _lime, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                       child: _submitting
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black))
-                          : Text(widget.serviceType == UDriveServiceType.tours ? 'Find tour vehicle' : 'Find a driver', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                          : Text(widget.serviceType == UDriveServiceType.tours ? 'Find tour vehicle' : 'Book selected ride', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
                     ),
                   ),
                 ],
@@ -1818,9 +1868,10 @@ class _RouteSummary extends StatelessWidget {
 
 
 class _DbRate {
-  const _DbRate(this.perSeatRate, this.wholeVehicleRate);
+  const _DbRate(this.perSeatRate, this.wholeVehicleRate, this.perKmRate);
   final double perSeatRate;
   final double wholeVehicleRate;
+  final double perKmRate;
 }
 class _PlaceResult {
   const _PlaceResult(this.title, this.subtitle, this.latitude, this.longitude);
