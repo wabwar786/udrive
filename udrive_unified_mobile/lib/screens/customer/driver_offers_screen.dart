@@ -552,6 +552,8 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     );
   }
 
+  String _t(BuildContext context, String en, String ur) =>
+      AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
 }
 
 class _MiniInfo extends StatelessWidget {
