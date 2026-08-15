@@ -25,6 +25,7 @@ import 'live_packages_screen.dart';
 import 'live_explore_screen.dart';
 import '../hotels/hotel_list_screen.dart';
 import 'udrive_route_flow_screen.dart';
+import 'emergency_ambulance_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({required this.onNavigate, super.key});
@@ -659,6 +660,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       onTours: () => _openRouteFlow(UDriveServiceType.tours),
                       onPrivate: () => _openRouteFlow(UDriveServiceType.privateVehicle),
                       onHotels: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HotelListScreen())),
+                      onEmergency: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => EmergencyAmbulanceScreen(
+                            pickupLabel: _pickup.text.trim(),
+                            latitude: _currentPoint.latitude,
+                            longitude: _currentPoint.longitude,
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Material(color: const Color(0xFF252A27),borderRadius: BorderRadius.circular(15),child:InkWell(borderRadius:BorderRadius.circular(15),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const LiveExploreScreen())),child:const Padding(padding:EdgeInsets.symmetric(horizontal:13,vertical:10),child:Row(children:[Icon(Icons.landscape_rounded,color:Color(0xFFB7F20A),size:20),SizedBox(width:9),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Explore Kashmir',style:TextStyle(color:Colors.white,fontSize:12,fontWeight:FontWeight.w900)),Text('Destinations, hotels and complete trip plans',style:TextStyle(color:Colors.white60,fontSize:8.5))])),Icon(Icons.chevron_right_rounded,color:Colors.white70,size:19)])))),
@@ -2210,12 +2221,14 @@ class _UDriveServicesGrid extends StatelessWidget {
     required this.onTours,
     required this.onPrivate,
     required this.onHotels,
+    required this.onEmergency,
   });
 
   final VoidCallback onCity;
   final VoidCallback onTours;
   final VoidCallback onPrivate;
   final VoidCallback onHotels;
+  final VoidCallback onEmergency;
 
   @override
   Widget build(BuildContext context) {
@@ -2241,6 +2254,12 @@ class _UDriveServicesGrid extends StatelessWidget {
         onTap: onHotels,
         isPhoto: true,
       ),
+      _ServiceTile(
+        title: 'Emergency',
+        asset: 'assets/images/home_services/travel_within_city.webp',
+        onTap: onEmergency,
+        emergency: true,
+      ),
     ];
 
     // Responsive two-column grid. shrinkWrap + no scroll keeps it fully
@@ -2254,7 +2273,7 @@ class _UDriveServicesGrid extends StatelessWidget {
         crossAxisCount: 2,
         crossAxisSpacing: 11,
         mainAxisSpacing: 11,
-        childAspectRatio: 1.22,
+        childAspectRatio: 1.48,
       ),
       itemBuilder: (context, index) => tiles[index],
     );
@@ -2267,6 +2286,7 @@ class _ServiceTile extends StatelessWidget {
     required this.asset,
     required this.onTap,
     this.isPhoto = false,
+    this.emergency = false,
   });
 
   final String title;
@@ -2276,6 +2296,7 @@ class _ServiceTile extends StatelessWidget {
   /// Photo cards (Hotels & Stays) fill the card with a cover image and a
   /// dark overlay. Vehicle cards contain a transparent composition instead.
   final bool isPhoto;
+  final bool emergency;
 
   static const _card = Color(0xFF151917);
 
@@ -2304,7 +2325,11 @@ class _ServiceTile extends StatelessWidget {
               ),
             ],
           ),
-          child: isPhoto ? _buildPhotoCard() : _buildVehicleCard(),
+          child: emergency
+              ? _buildEmergencyCard()
+              : isPhoto
+                  ? _buildPhotoCard()
+                  : _buildVehicleCard(),
         ),
       ),
     );
@@ -2330,6 +2355,37 @@ class _ServiceTile extends StatelessWidget {
                 filterQuality: FilterQuality.medium,
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildEmergencyCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: _titleStyle),
+          const SizedBox(height: 3),
+          const Text(
+            'Ambulance • Call 1122',
+            style: TextStyle(color: Colors.white60, fontSize: 9.5, fontWeight: FontWeight.w700),
+          ),
+          const Spacer(),
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFFB7F20A),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: const Icon(Icons.emergency_rounded, color: Colors.black, size: 30),
             ),
           ),
         ],

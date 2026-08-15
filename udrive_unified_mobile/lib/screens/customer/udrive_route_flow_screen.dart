@@ -478,91 +478,8 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                           padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                           child: Column(
                             children: [
-                              if (_serviceType ==
-                                  UDriveServiceType.privateVehicle)
-                                Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: _tile,
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: _RouteModeChoice(
-                                    label: 'Private vehicle booking',
-                                    selected: true,
-                                    onTap: () {},
-                                  ),
-                                )
-                              else
-                                Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: _tile,
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: _RouteModeChoice(
-                                          label: 'City-to-city',
-                                          selected: _serviceType ==
-                                              UDriveServiceType.city,
-                                          onTap: () => setState(() =>
-                                              _serviceType =
-                                                  UDriveServiceType.city),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: _RouteModeChoice(
-                                          label: 'Tour booking',
-                                          selected: _serviceType ==
-                                              UDriveServiceType.tours,
-                                          onTap: () => setState(() =>
-                                              _serviceType =
-                                                  UDriveServiceType.tours),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF222522),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: _serviceType ==
-                                        UDriveServiceType.privateVehicle
-                                    ? _RouteModeChoice(
-                                        label: 'Full vehicle',
-                                        selected: true,
-                                        onTap: () {},
-                                      )
-                                    : Row(
-                                        children: [
-                                          Expanded(
-                                            child: _RouteModeChoice(
-                                              label: 'Seat booking',
-                                              selected:
-                                                  !_initialWholeVehicle,
-                                              onTap: () => setState(() =>
-                                                  _initialWholeVehicle =
-                                                      false),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: _RouteModeChoice(
-                                              label: 'Full vehicle',
-                                              selected:
-                                                  _initialWholeVehicle,
-                                              onTap: () => setState(() =>
-                                                  _initialWholeVehicle = true),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                              ),
-                              const SizedBox(height: 12),
+                              // Service/booking mode is chosen from the home card.
+                              // Keep this screen focused only on pickup and destination.
                               TextField(
                                 controller: _from,
                                 focusNode: _fromFocus,
@@ -1548,7 +1465,6 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   @override
   Widget build(BuildContext context) {
     final app = AppControllerScope.of(context);
-    final destinationPoint = LatLng(widget.destination.latitude, widget.destination.longitude);
     final tourPackages = _matchingPackages(app);
     final selected = _choices[_selected];
     final selectedVehicle = _selectedPublicVehicle;
@@ -1557,10 +1473,6 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         selectedVehicle?.passengerCapacity ??
         selected.capacity;
     final selectedPackageBookable = selectedPackage == null || _packageBookable(selectedPackage);
-    final center = LatLng(
-      (widget.pickupPoint.latitude + destinationPoint.latitude) / 2,
-      (widget.pickupPoint.longitude + destinationPoint.longitude) / 2,
-    );
     final selectedDbRate = _dbRates[_normaliseVehicle(selected.name)];
     final perSeatAmount = _typedAmount(_perSeatOffer) ?? selectedPackage?.pricePerSeat ?? selectedDbRate?.perSeatRate ?? 0;
     final wholeAmount = _typedAmount(_wholeVehicleOffer) ?? selectedPackage?.wholeVehiclePrice ?? selectedDbRate?.wholeVehicleRate ?? 0;
@@ -1569,34 +1481,35 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       backgroundColor: const Color(0xFF0C0E0D),
       body: Stack(
         children: [
+          const Positioned.fill(child: ColoredBox(color: Color(0xFF111312))),
           Positioned.fill(
-            child: ColorFiltered(
-              colorFilter: const ColorFilter.matrix([
-                .34, 0, 0, 0, 0,
-                0, .40, 0, 0, 0,
-                0, 0, .54, 0, 0,
-                0, 0, 0, 1, 0,
-              ]),
-              child: FlutterMap(
-                options: MapOptions(initialCenter: center, initialZoom: 11.4),
+            child: SafeArea(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 76, 16, 24),
                 children: [
-                  TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.udrive.mobile'),
-                  PolylineLayer(polylines: [Polyline(points: [widget.pickupPoint, destinationPoint], strokeWidth: 5, color: Colors.white)]),
-                  MarkerLayer(markers: [
-                    Marker(point: widget.pickupPoint, width: 42, height: 42, child: const Icon(Icons.location_pin, color: _lime, size: 40)),
-                    Marker(point: destinationPoint, width: 42, height: 42, child: const Icon(Icons.flag_rounded, color: Colors.white, size: 34)),
-                  ]),
-                ],
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: ColoredBox(
-              color: const Color(0xDC111312),
-              child: SafeArea(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 76, 16, 24),
-                  children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF202321),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.my_location_rounded, color: _lime, size: 20),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            '${widget.pickupLabel}  →  ${widget.destination.title}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1770,7 +1683,6 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                 ],
               ),
             ),
-          ),
           ),
           SafeArea(
             child: Padding(
