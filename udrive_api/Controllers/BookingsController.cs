@@ -41,11 +41,13 @@ public sealed class BookingsController(BookingService bookingService) : Controll
     public async Task<IActionResult> DeclineOffer(
         Guid rideRequestId,
         Guid offerId,
-        CancellationToken cancellationToken) =>
+        [FromQuery] bool countTowardsDriverRejectLimit = true,
+        CancellationToken cancellationToken = default) =>
         ToActionResult(await bookingService.DeclineDriverOfferAsync(
             User.GetRequiredUserId(),
             rideRequestId,
             offerId,
+            countTowardsDriverRejectLimit,
             cancellationToken));
 
     [HttpPost("ride-requests/{rideRequestId:guid}/offers/{offerId:guid}/select")]

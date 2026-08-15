@@ -237,6 +237,7 @@ public sealed class BookingService(
                     AND d.driver_profile_id = @driverProfileId
                     AND (
                       d.decision = 'Rejected'
+                      OR COALESCE(d.customer_reject_count, 0) >= 5
                       OR (d.decision = 'Offered' AND d.updated_at > now() - interval '20 seconds')
                     )
               )
@@ -468,6 +469,30 @@ public sealed class BookingService(
             }
         }
 
+        // Customer can explicitly reject the same Driver up to five times for this ride.
+        const string rejectLimitSql = """
+            SELECT COALESCE(customer_reject_count, 0)
+            FROM udrive.driver_ride_request_decisions
+            WHERE ride_request_id = @rideRequestId
+              AND driver_profile_id = @driverProfileId;
+            """;
+        await using (var rejectLimitCommand = new NpgsqlCommand(rejectLimitSql, connection, transaction))
+        {
+            rejectLimitCommand.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            rejectLimitCommand.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
+            var rejectCountValue = await rejectLimitCommand.ExecuteScalarAsync(cancellationToken);
+            var customerRejectCount = rejectCountValue is null || rejectCountValue is DBNull
+                ? 0
+                : Convert.ToInt32(rejectCountValue);
+            if (customerRejectCount >= 5)
+            {
+                return ServiceResult<DriverOfferDto>.Fail(
+                    StatusCodes.Status409Conflict,
+                    "customer_driver_reject_limit",
+                    "The Customer has rejected this Driver five times for this ride.");
+            }
+        }
+
         var offerId = Guid.NewGuid();
         var instantLike = pickupAt <= DateTimeOffset.UtcNow.AddMinutes(1);
         var offerExpiresAt = instantLike
@@ -605,9 +630,10 @@ public sealed class BookingService(
         Guid customerUserId,
         Guid rideRequestId,
         Guid offerId,
+        bool countTowardsDriverRejectLimit,
         CancellationToken cancellationToken)
     {
-        const string sql = """
+        const string expireSql = """
             UPDATE udrive.driver_offers o
             SET status='Expired', responded_at=now(), updated_at=now(), version=version+1
             FROM udrive.ride_requests rr
@@ -616,17 +642,49 @@ public sealed class BookingService(
               AND rr.id=o.ride_request_id
               AND rr.customer_user_id=@customerUserId
               AND o.status IN ('Pending','Countered','Accepted')
-            RETURNING o.id;
+            RETURNING o.driver_profile_id;
             """;
+
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("offerId", offerId);
-        command.Parameters.AddWithValue("rideRequestId", rideRequestId);
-        command.Parameters.AddWithValue("customerUserId", customerUserId);
-        return await command.ExecuteScalarAsync(cancellationToken) is null
-            ? ServiceResult<bool>.Fail(StatusCodes.Status404NotFound, "offer_not_found", "The Driver offer is no longer available.")
-            : ServiceResult<bool>.Ok(true);
+        await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+
+        Guid driverProfileId;
+        await using (var command = new NpgsqlCommand(expireSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("offerId", offerId);
+            command.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            command.Parameters.AddWithValue("customerUserId", customerUserId);
+            var value = await command.ExecuteScalarAsync(cancellationToken);
+            if (value is null || value is DBNull)
+            {
+                return ServiceResult<bool>.Fail(StatusCodes.Status404NotFound, "offer_not_found", "The Driver offer is no longer available.");
+            }
+            driverProfileId = (Guid)value;
+        }
+
+        // Only an explicit Customer Reject increments the five-rejection limit.
+        // Automatic 10-second timeout does not penalize the Driver.
+        if (countTowardsDriverRejectLimit)
+        {
+            const string incrementSql = """
+                UPDATE udrive.driver_ride_request_decisions
+                SET customer_reject_count = LEAST(customer_reject_count + 1, 5),
+                    last_customer_rejected_at = now(),
+                    -- Explicit rejection releases the request back to this Driver immediately
+                    -- (unless this is rejection #5, which is blocked by the queue filter).
+                    updated_at = now() - interval '21 seconds'
+                WHERE ride_request_id = @rideRequestId
+                  AND driver_profile_id = @driverProfileId;
+                """;
+            await using var incrementCommand = new NpgsqlCommand(incrementSql, connection, transaction);
+            incrementCommand.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            incrementCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            await incrementCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return ServiceResult<bool>.Ok(true);
     }
 
     public async Task<ServiceResult<BookingDto>> SelectDriverOfferAsync(

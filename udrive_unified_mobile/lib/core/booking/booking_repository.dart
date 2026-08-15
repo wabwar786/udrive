@@ -63,9 +63,10 @@ class BookingRepository {
   Future<void> declineDriverOffer({
     required String rideRequestId,
     required String offerId,
+    bool countTowardsDriverRejectLimit = true,
   }) async {
     await client.postJson(
-      '/api/v1/bookings/ride-requests/$rideRequestId/offers/$offerId/decline',
+      '/api/v1/bookings/ride-requests/$rideRequestId/offers/$offerId/decline?countTowardsDriverRejectLimit=$countTowardsDriverRejectLimit',
       const {},
     );
   }

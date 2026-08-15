@@ -134,6 +134,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       await AppControllerScope.of(context).declineLiveDriverOffer(
         rideRequestId: widget.rideRequestId,
         offerId: offerId,
+        countTowardsDriverRejectLimit: !automatic,
       );
     } catch (_) {
       // The server may already have expired the 20-second Driver offer.

@@ -560,11 +560,13 @@ class AppController extends ChangeNotifier {
   Future<void> declineLiveDriverOffer({
     required String rideRequestId,
     required String offerId,
+    bool countTowardsDriverRejectLimit = true,
   }) async {
     await _runMarketplace(() async {
       await _bookingRepository.declineDriverOffer(
         rideRequestId: rideRequestId,
         offerId: offerId,
+        countTowardsDriverRejectLimit: countTowardsDriverRejectLimit,
       );
       _liveDriverOffers = _liveDriverOffers.where((offer) => offer.id != offerId).toList(growable: false);
     });
