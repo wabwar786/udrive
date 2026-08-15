@@ -48,7 +48,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       await _loadAcceptedTrips();
     });
     _acceptedRefreshTimer = Timer.periodic(
-      const Duration(seconds: 10),
+      const Duration(seconds: 3),
       (_) => _loadAcceptedTrips(silent: true),
     );
     _presenceTimer = Timer.periodic(const Duration(seconds: 15), (_) => _publishPresence());

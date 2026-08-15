@@ -5,10 +5,11 @@ using Npgsql;
 using NpgsqlTypes;
 using UDrive.Api.Common;
 using UDrive.Api.Models;
+using UDrive.Api.Security;
 
 namespace UDrive.Api.Services;
 
-public sealed class TripOperationsService(string connectionString)
+public sealed class TripOperationsService(string connectionString, AuthOptions authOptions)
 {
     private static readonly HashSet<string> AdminRoles = ["SuperAdmin","Admin","Manager","Operations"];
     private static readonly Dictionary<string, HashSet<string>> AllowedTransitions = new(StringComparer.OrdinalIgnoreCase)
@@ -108,6 +109,16 @@ from udrive.bookings b join udrive.trip_operations o on o.booking_id=b.id cross 
         if(source=="Driver"&&!await DriverOwnsBookingAsync(cn,tx,actor,bookingId,ct))return ServiceResult<TripOperationsDetailDto>.Fail(403,"not_assigned","You are not the assigned driver.");
         if(source=="Customer"&&!await CustomerOwnsBookingAsync(cn,tx,actor,bookingId,ct))return ServiceResult<TripOperationsDetailDto>.Fail(403,"not_owner","You do not own this booking.");
         if(request.Status=="TripStarted"&&!await HasAcceptedAssignmentAsync(cn,tx,bookingId,ct))return ServiceResult<TripOperationsDetailDto>.Fail(409,"driver_not_accepted","Trip cannot start until the assigned verified driver accepts.");
+        if(source=="Driver"&&request.Status=="TripStarted")
+        {
+            var suppliedOtp=(request.TripOtp??string.Empty).Trim();
+            if(suppliedOtp.Length!=4||!suppliedOtp.All(char.IsDigit))
+                return ServiceResult<TripOperationsDetailDto>.Fail(400,"trip_otp_required","Enter the Customer's 4-digit Trip OTP to start the ride.");
+            var storedHash=await ScalarStringAsync(cn,"select trip_otp_hash from udrive.bookings where id=@id",ct,tx,("id",bookingId));
+            var suppliedHash=SecurityHashing.HashWithSecret(suppliedOtp,authOptions.OtpHashSecret);
+            if(string.IsNullOrWhiteSpace(storedHash)||!string.Equals(storedHash,suppliedHash,StringComparison.Ordinal))
+                return ServiceResult<TripOperationsDetailDto>.Fail(409,"invalid_trip_otp","The Trip OTP is incorrect. Ask the Customer for the code shown in their app.");
+        }
         var timeColumn=request.Status switch{"DriverEnRoute"=>"en_route_at","DriverArrived"=>"arrived_at","TripStarted"=>"started_at","TripCompleted"=>"completed_at","Cancelled"=>"cancelled_at","Emergency"=>"emergency_raised_at",_=>null};
         var sql="update udrive.trip_operations set trip_status=@status,operational_status=@operational,last_activity_at=now(),updated_at=now(),version=version+1"+(timeColumn is null?"":$",{timeColumn}=now()")+" where booking_id=@booking";var operational=request.Status switch{"DriverAccepted"=>"DriverAccepted","Cancelled"=>"Cancelled","TripCompleted"=>"Completed","Emergency"=>"Emergency","Disputed"=>"Disputed","ReassignmentRequired"=>"ReassignmentRequired",_=>current.Value.Operational};await ExecAsync(cn,tx,sql,ct,("status",request.Status),("operational",operational),("booking",bookingId));
         var legacy=request.Status switch{"TripStarted"=>"InProgress","TripCompleted"=>"Completed",_=>request.Status};await ExecAsync(cn,tx,"update udrive.bookings set status=@status,updated_at=now(),version=version+1 where id=@booking",ct,("status",legacy),("booking",bookingId));await HistoryAsync(cn,tx,bookingId,current.Value.Status,request.Status,actor,source,request.Reason,ct);var notification=request.Status switch{"DriverEnRoute"=>("DriverOnTheWay","Your Driver is on the way","Your Driver has started travelling to your pickup location. Open live tracking to follow the vehicle."),"DriverArrived"=>("DriverArrived","Your Driver has arrived","Your Driver is waiting at the pickup location."),"TripStarted"=>("TripStarted","Your trip has started","Your trip is now in progress."),"TripCompleted"=>("TripCompleted","Trip completed","Your trip has been completed successfully."),_=> (request.Status,$"Trip status: {request.Status}",request.Reason??$"Trip status changed to {request.Status}.")};await NotifyBookingPartiesAsync(cn,tx,bookingId,notification.Item1,notification.Item2,notification.Item3,ct);await AuditAsync(cn,tx,actor,"trip.status.changed","Booking",bookingId.ToString(),request,ct);await tx.CommitAsync(ct);return ServiceResult<TripOperationsDetailDto>.Ok((await LoadDetailAsync(cn,bookingId,ct))!);

@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import '../../core/offline_maps/offline_aware_tile_layer.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/services/trip_location_service.dart';
@@ -89,6 +90,72 @@ class _DriverLiveNavigationScreenState
       _fitMap();
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
+    }
+  }
+
+  Future<void> _callCustomer() async {
+    final phone = widget.trip.customerPhone.trim();
+    if (phone.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
+  Future<void> _startTripWithOtp() async {
+    if (_actionBusy) return;
+    final controller = TextEditingController();
+    final otp = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Enter Trip OTP'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Ask the Customer for the 4-digit code shown in their app.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 8),
+              decoration: const InputDecoration(counterText: '', hintText: '0000'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (RegExp(r'^\d{4}$').hasMatch(value)) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Start Ride'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (otp == null || !mounted) return;
+    setState(() => _actionBusy = true);
+    try {
+      await widget.repository.driverStatus(
+        widget.trip.bookingId,
+        'TripStarted',
+        reason: 'Customer boarded and Trip OTP was verified.',
+        tripOtp: otp,
+      );
+      _currentStatus = 'TripStarted';
+      _locationService.updateStatus('TripStarted');
+      await _refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OTP verified. Ride started.')));
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
     }
   }
 
@@ -366,7 +433,12 @@ class _DriverLiveNavigationScreenState
                           ),
                       ],
                     ),
-                    const SizedBox(height: 11),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      Expanded(child: Text('PKR ${widget.trip.fare.toStringAsFixed(0)} · ${widget.trip.bookingType}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12))),
+                      IconButton.filledTonal(onPressed: _callCustomer, icon: const Icon(Icons.call_rounded), tooltip: 'Call Customer'),
+                    ]),
+                    const SizedBox(height: 6),
                     Text(
                       '${_distanceKm?.toStringAsFixed(1) ?? '—'} km to ${_headingToPickup ? 'pickup' : 'destination'} · ${widget.trip.passengerCount} passenger(s)',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
@@ -394,7 +466,7 @@ class _DriverLiveNavigationScreenState
                                 : _currentStatus == 'DriverEnRoute'
                                     ? () => _changeStatus('DriverArrived')
                                     : _currentStatus == 'DriverArrived'
-                                        ? () => _changeStatus('TripStarted')
+                                        ? _startTripWithOtp
                                         : _currentStatus == 'TripStarted'
                                             ? () => _changeStatus('TripCompleted')
                                             : null,
@@ -441,11 +513,13 @@ class CustomerFullScreenTrackingScreen extends StatefulWidget {
   const CustomerFullScreenTrackingScreen({
     required this.trip,
     required this.repository,
+    this.tripOtp,
     super.key,
   });
 
   final MobileTrip trip;
   final TripOperationsRepository repository;
+  final String? tripOtp;
 
   @override
   State<CustomerFullScreenTrackingScreen> createState() =>
@@ -464,7 +538,7 @@ class _CustomerFullScreenTrackingScreenState
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 10), (_) => _load());
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _load());
   }
 
   Future<void> _load() async {
@@ -492,6 +566,48 @@ class _CustomerFullScreenTrackingScreenState
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _callDriver() async {
+    final phone = widget.trip.driverPhone?.trim();
+    if (phone == null || phone.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
+  Future<void> _cancelRide() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this ride?'),
+        content: const Text('The assigned Driver will be notified immediately.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Keep Ride')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Cancel Ride')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.repository.customerStatus(widget.trip.bookingId, 'Cancelled', reason: 'Customer cancelled the ride before trip start.');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ride cancelled.')));
+      Navigator.pop(context);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  String _customerStatusLabel(String? status) {
+    switch (status) {
+      case 'DriverAccepted':
+      case 'DriverEnRoute': return 'Driver is coming to pickup';
+      case 'DriverArrived': return 'Driver has arrived';
+      case 'TripStarted': return 'Ride in progress';
+      case 'TripCompleted': return 'Ride completed';
+      case 'Cancelled': return 'Ride cancelled';
+      default: return 'Driver confirmed';
+    }
   }
 
   @override
@@ -592,7 +708,7 @@ class _CustomerFullScreenTrackingScreenState
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       child: Text(
-                        '${headingToPickup ? 'Driver is on the way' : 'Trip in progress'} · LIVE · ${_mapSource == 'OFFLINE_MAP' ? 'Offline Map' : 'Online Map'}',
+                        '${_customerStatusLabel(t?.tripStatus ?? widget.trip.tripStatus)} · LIVE · ${_mapSource == 'OFFLINE_MAP' ? 'Offline Map' : 'Online Map'}',
                         style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
                     ),
@@ -634,10 +750,43 @@ class _CustomerFullScreenTrackingScreenState
                       ],
                     ),
                     const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                            decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(12)),
+                            child: Text(
+                              'PKR ${widget.trip.fare.toStringAsFixed(0)} · ${widget.trip.bookingType}',
+                              style: const TextStyle(fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                        ),
+                        if ((widget.trip.driverPhone ?? '').trim().isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          IconButton.filledTonal(onPressed: _callDriver, icon: const Icon(Icons.call_rounded), tooltip: 'Call Driver'),
+                        ],
+                      ],
+                    ),
+                    if ((widget.tripOtp ?? '').isNotEmpty && (t?.tripStatus ?? widget.trip.tripStatus) != 'TripStarted' && (t?.tripStatus ?? widget.trip.tripStatus) != 'TripCompleted') ...[
+                      const SizedBox(height: 9),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(color: const Color(0xFFFFF7E6), borderRadius: BorderRadius.circular(13), border: Border.all(color: const Color(0xFFFFD98A))),
+                        child: Row(children: [
+                          const Icon(Icons.password_rounded, size: 20, color: Color(0xFF9A6700)),
+                          const SizedBox(width: 9),
+                          const Expanded(child: Text('Trip OTP · Give this code only when you are inside the vehicle', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
+                          Text(widget.tripOtp!, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 4)),
+                        ]),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
                     Text(
                       driver == null
                           ? 'Waiting for the Driver’s next GPS update.'
-                          : '${distanceKm?.toStringAsFixed(1)} km to ${headingToPickup ? 'pickup' : 'destination'} · updated every 10 seconds',
+                          : '${distanceKm?.toStringAsFixed(1)} km to ${headingToPickup ? 'pickup' : 'destination'} · updated every 5 seconds',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                     if (t?.driverLocation != null)
@@ -649,6 +798,19 @@ class _CustomerFullScreenTrackingScreenState
                         ),
                       ),
                     if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 11)),
+                    const SizedBox(height: 10),
+                    if ((t?.tripStatus ?? widget.trip.tripStatus) == 'TripCompleted')
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: const Color(0xFFEAF8F2), borderRadius: BorderRadius.circular(14)),
+                        child: const Row(children: [Icon(Icons.check_circle_rounded, color: Color(0xFF087654)), SizedBox(width: 8), Expanded(child: Text('Trip completed successfully', style: TextStyle(fontWeight: FontWeight.w900)))]),
+                      )
+                    else if (!const {'TripStarted','Emergency','Cancelled'}.contains(t?.tripStatus ?? widget.trip.tripStatus))
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(onPressed: _cancelRide, icon: const Icon(Icons.close_rounded), label: const Text('Cancel Ride')),
+                      ),
                   ],
                 ),
               ),
