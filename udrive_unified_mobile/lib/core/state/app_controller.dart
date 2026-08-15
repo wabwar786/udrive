@@ -530,6 +530,23 @@ class AppController extends ChangeNotifier {
   Future<void> loadRideOffers(String rideRequestId) async {
     try {
       _liveDriverOffers = await _bookingRepository.getRideOffers(rideRequestId);
+      _marketplaceError = null;
+      notifyListeners();
+    } catch (error) {
+      _marketplaceError = _message(error);
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshCustomerRideState() async {
+    try {
+      final results = await Future.wait([
+        _bookingRepository.getMyRideRequests(),
+        _bookingRepository.getMyBookings(),
+      ]);
+      _liveRideRequests = results[0] as List<LiveRideRequest>;
+      _liveBookings = results[1] as List<LiveBooking>;
+      _marketplaceError = null;
       notifyListeners();
     } catch (error) {
       _marketplaceError = _message(error);

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/localization/app_strings.dart';
@@ -26,6 +28,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   List<MobileTrip> _acceptedTrips = const [];
   Timer? _acceptedRefreshTimer;
   Timer? _presenceTimer;
+  Timer? _marketplaceRefreshTimer;
   bool _isOnline = true;
 
   @override
@@ -36,22 +39,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _refresh();
-      _loadAcceptedTrips();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _publishPresence();
+      if (!mounted) return;
+      await _refresh();
+      await _loadAcceptedTrips();
     });
     _acceptedRefreshTimer = Timer.periodic(
       const Duration(seconds: 10),
       (_) => _loadAcceptedTrips(silent: true),
     );
-    _presenceTimer = Timer.periodic(const Duration(seconds: 30), (_) => _publishPresence());
-    _publishPresence();
+    _presenceTimer = Timer.periodic(const Duration(seconds: 15), (_) => _publishPresence());
+    _marketplaceRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) => _refreshNearbyRequests());
   }
 
   @override
   void dispose() {
     _acceptedRefreshTimer?.cancel();
     _presenceTimer?.cancel();
+    _marketplaceRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -73,10 +79,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     } catch (_) {}
   }
 
+  Future<void> _refreshNearbyRequests() async {
+    if (!_isOnline || !mounted) return;
+    final controller = AppControllerScope.of(context);
+    if (!controller.driverApproved) return;
+    await _publishPresence();
+    if (!mounted) return;
+    await controller.loadDriverMarketplace();
+  }
+
   Future<void> _refresh() async {
     final controller = AppControllerScope.of(context);
     await controller.refreshAccount();
     if (controller.driverApproved) {
+      await _publishPresence();
+      if (!mounted) return;
       await Future.wait([
         controller.loadDriverMarketplace(),
         _loadAcceptedTrips(silent: true),
@@ -207,7 +224,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF7F2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.radar_rounded, size: 16, color: AppColors.primary),
+                  SizedBox(width: 7),
+                  Expanded(child: Text('Live: searching pickup requests within 5 KM · auto refresh', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: AppColors.primaryDark))),
+                ],
+              ),
+            ),
             ...requests.map(
               (request) => Padding(
                 padding: const EdgeInsets.only(bottom: 9),
@@ -215,6 +246,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   request: request,
                   enabled: verifiedVehicles.isNotEmpty && !controller.marketplaceBusy,
                   onAccept: () => _showOffer(request, verifiedVehicles),
+                  onMap: () => _openRequestMap(request),
                   onReject: () => _rejectRequest(request),
                 ),
               ),
@@ -349,134 +381,132 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
   }
 
+  Future<void> _openRequestMap(LiveRideRequest request) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => _DriverRequestRouteMap(request: request)),
+    );
+  }
+
   Future<void> _showOffer(
     LiveRideRequest request,
     List<dynamic> vehicles,
   ) async {
-    if (vehicles.isEmpty) {
+    final compatible = vehicles.where((vehicle) {
+      if (vehicle.passengerCapacity < request.seatsRequested) return false;
+      final requested = request.vehicleCategory.trim().toLowerCase();
+      if (requested.isEmpty || requested == 'any') return true;
+      final category = vehicle.category.toString().trim().toLowerCase();
+      return category == requested || category.contains(requested) || requested.contains(category);
+    }).toList(growable: false);
+    final eligible = compatible.isNotEmpty
+        ? compatible
+        : vehicles.where((vehicle) => vehicle.passengerCapacity >= request.seatsRequested).toList(growable: false);
+
+    if (eligible.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_t('Verify a vehicle before accepting requests.', 'درخواست قبول کرنے سے پہلے گاڑی کی تصدیق کروائیں۔'))),
+        SnackBar(content: Text(_t('No verified vehicle can carry this booking.', 'اس بکنگ کے لیے کوئی موزوں تصدیق شدہ گاڑی موجود نہیں۔'))),
       );
       return;
     }
 
-    dynamic selectedVehicle = vehicles.first;
+    final selectedVehicle = eligible.first;
     final amount = TextEditingController(
-      text: request.customerOffer.round().toString(),
+      text: request.customerOffer > 0 ? request.customerOffer.round().toString() : '',
     );
-    final eta = TextEditingController(text: '20');
-    final message = TextEditingController();
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            18,
-            4,
-            18,
-            MediaQuery.viewInsetsOf(sheetContext).bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _t('Accept & send fare', 'قبول کریں اور کرایہ بھیجیں'),
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          18,
+          4,
+          18,
+          MediaQuery.viewInsetsOf(sheetContext).bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _t('Send your fare', 'اپنا کرایہ بھیجیں'),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              '${request.pickupLabel} → ${request.destinationLabel}',
+              style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+            const SizedBox(height: 9),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4F7FA),
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(height: 4),
-              Text(
-                '${request.pickupLabel} → ${request.destinationLabel}',
-                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.directions_car_rounded, size: 18, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${selectedVehicle.make} ${selectedVehicle.model} · ${selectedVehicle.registrationNumber}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<dynamic>(
-                initialValue: selectedVehicle,
-                decoration: const InputDecoration(
-                  labelText: 'Verified vehicle',
-                  prefixIcon: Icon(Icons.directions_car_rounded),
-                ),
-                items: vehicles
-                    .where((vehicle) => vehicle.passengerCapacity >= request.seatsRequested)
-                    .map<DropdownMenuItem<dynamic>>(
-                      (vehicle) => DropdownMenuItem<dynamic>(
-                        value: vehicle,
-                        child: Text('${vehicle.make} ${vehicle.model} · ${vehicle.registrationNumber}'),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => setSheetState(() => selectedVehicle = value),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: amount,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: _t('Your fare (PKR)', 'آپ کا کرایہ (PKR)'),
+                prefixIcon: const Icon(Icons.payments_rounded),
+                helperText: request.customerOffer > 0
+                    ? 'Customer estimate: PKR ${NumberFormat('#,###').format(request.customerOffer)}'
+                    : null,
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: amount,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: _t('Your fare (PKR)', 'آپ کا کرایہ (PKR)'),
-                  prefixIcon: const Icon(Icons.payments_rounded),
-                  helperText: 'Customer offered PKR ${NumberFormat('#,###').format(request.customerOffer)}',
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: eta,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Pickup ETA (minutes)',
-                  prefixIcon: Icon(Icons.schedule_rounded),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: message,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Optional message',
-                  prefixIcon: Icon(Icons.message_rounded),
-                ),
-              ),
-              const SizedBox(height: 15),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    final parsedAmount = double.tryParse(amount.text.trim());
-                    if (selectedVehicle == null || parsedAmount == null || parsedAmount <= 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Select a vehicle and enter a valid fare.')),
-                      );
-                      return;
+            ),
+            const SizedBox(height: 15),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () async {
+                  final parsedAmount = double.tryParse(amount.text.trim());
+                  if (parsedAmount == null || parsedAmount <= 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Enter a valid fare.')),
+                    );
+                    return;
+                  }
+                  try {
+                    await AppControllerScope.of(context).submitLiveDriverOffer(
+                      rideRequestId: request.id,
+                      vehicleId: selectedVehicle.id as String,
+                      amount: parsedAmount,
+                      etaMinutes: 10,
+                    );
+                    if (!mounted) return;
+                    Navigator.pop(sheetContext);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Fare sent. Waiting for customer confirmation.')),
+                    );
+                  } catch (error) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
                     }
-                    try {
-                      await AppControllerScope.of(context).submitLiveDriverOffer(
-                        rideRequestId: request.id,
-                        vehicleId: selectedVehicle.id as String,
-                        amount: parsedAmount,
-                        etaMinutes: int.tryParse(eta.text.trim()) ?? 20,
-                        message: message.text.trim(),
-                      );
-                      if (!mounted) return;
-                      Navigator.pop(sheetContext);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Fare offer sent to Customer.')),
-                      );
-                    } catch (error) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('$error')),
-                        );
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.check_circle_rounded),
-                  label: Text(_t('Accept & send offer', 'قبول کریں اور آفر بھیجیں')),
-                ),
+                  }
+                },
+                icon: const Icon(Icons.send_rounded),
+                label: Text(_t('Send Fare', 'کرایہ بھیجیں')),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -520,17 +550,81 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   static const _closedStatuses = {'Completed', 'Cancelled', 'NoShow'};
 }
 
+class _DriverRequestRouteMap extends StatelessWidget {
+  const _DriverRequestRouteMap({required this.request});
+  final LiveRideRequest request;
+
+  @override
+  Widget build(BuildContext context) {
+    final pickup = LatLng(request.pickupLatitude, request.pickupLongitude);
+    final destination = LatLng(request.destinationLatitude, request.destinationLongitude);
+    final center = LatLng(
+      (pickup.latitude + destination.latitude) / 2,
+      (pickup.longitude + destination.longitude) / 2,
+    );
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pickup & Destination')),
+      body: Stack(
+        children: [
+          FlutterMap(
+            options: MapOptions(initialCenter: center, initialZoom: 9.5),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.udrive.mobile',
+              ),
+              PolylineLayer(
+                polylines: [
+                  Polyline(points: [pickup, destination], strokeWidth: 4, color: AppColors.primary),
+                ],
+              ),
+              MarkerLayer(
+                markers: [
+                  Marker(point: pickup, width: 48, height: 48, child: const Icon(Icons.trip_origin_rounded, color: AppColors.primary, size: 36)),
+                  Marker(point: destination, width: 48, height: 48, child: const Icon(Icons.location_on_rounded, color: AppColors.danger, size: 42)),
+                ],
+              ),
+            ],
+          ),
+          Positioned(
+            left: 14,
+            right: 14,
+            bottom: 18,
+            child: Card(
+              elevation: 6,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(request.pickupLabel, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 5),
+                    Text('→ ${request.destinationLabel}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DashboardRequestCard extends StatelessWidget {
   const _DashboardRequestCard({
     required this.request,
     required this.enabled,
     required this.onAccept,
+    required this.onMap,
     required this.onReject,
   });
 
   final LiveRideRequest request;
   final bool enabled;
   final VoidCallback onAccept;
+  final VoidCallback onMap;
   final VoidCallback onReject;
 
   @override
@@ -579,9 +673,31 @@ class _DashboardRequestCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 _RouteLine(icon: Icons.location_on_rounded, text: request.destinationLabel, color: AppColors.danger),
                 const SizedBox(height: 7),
-                Text(
-                  '${request.seatsRequested} passenger${request.seatsRequested == 1 ? '' : 's'} · ${request.bookingType}',
-                  style: const TextStyle(color: AppColors.muted, fontSize: 10.5, fontWeight: FontWeight.w700),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: request.bookingType.toLowerCase().contains('whole')
+                            ? const Color(0xFFFFF3E8)
+                            : const Color(0xFFEAF4FF),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        request.bookingType.toLowerCase().contains('whole')
+                            ? 'WHOLE VEHICLE'
+                            : '${request.seatsRequested} SEAT${request.seatsRequested == 1 ? '' : 'S'}',
+                        style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.navy),
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    TextButton.icon(
+                      onPressed: onMap,
+                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), minimumSize: Size.zero),
+                      icon: const Icon(Icons.map_rounded, size: 15),
+                      label: const Text('Map', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+                    ),
+                  ],
                 ),
               ],
             ),

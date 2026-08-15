@@ -4,6 +4,10 @@ class LiveRideRequest {
     required this.pickupLabel,
     required this.destinationLabel,
     required this.pickupAt,
+    required this.pickupLatitude,
+    required this.pickupLongitude,
+    required this.destinationLatitude,
+    required this.destinationLongitude,
     required this.bookingType,
     required this.seatsRequested,
     required this.adults,
@@ -27,6 +31,10 @@ class LiveRideRequest {
   final String pickupLabel;
   final String destinationLabel;
   final DateTime pickupAt;
+  final double pickupLatitude;
+  final double pickupLongitude;
+  final double destinationLatitude;
+  final double destinationLongitude;
   final DateTime? returnAt;
   final String bookingType;
   final int seatsRequested;
@@ -50,6 +58,10 @@ class LiveRideRequest {
         pickupLabel: json['pickupLabel']?.toString() ?? '',
         destinationLabel: json['destinationLabel']?.toString() ?? '',
         pickupAt: DateTime.parse(json['pickupAt'].toString()).toLocal(),
+        pickupLatitude: _double(json['pickupLatitude']),
+        pickupLongitude: _double(json['pickupLongitude']),
+        destinationLatitude: _double(json['destinationLatitude']),
+        destinationLongitude: _double(json['destinationLongitude']),
         returnAt: _date(json['returnAt']),
         bookingType: json['bookingType']?.toString() ?? 'PerSeat',
         seatsRequested: _int(json['seatsRequested']),

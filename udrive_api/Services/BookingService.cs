@@ -214,7 +214,7 @@ public sealed class BookingService(
             WHERE rr.status IN ('Open', 'ReceivingOffers')
               AND dpl.server_timestamp > now() - interval '2 minutes'
               AND ST_DWithin(dpl.location, rr.pickup_location, 5000)
-              AND rr.pickup_at > now()
+              AND rr.pickup_at > now() - interval '15 minutes'
               AND (rr.expires_at IS NULL OR rr.expires_at > now())
               AND rr.customer_user_id <> @driverUserId
               AND NOT EXISTS (
@@ -266,7 +266,7 @@ public sealed class BookingService(
             FROM udrive.ride_requests
             WHERE id = @rideRequestId
               AND status IN ('Open', 'ReceivingOffers')
-              AND pickup_at > now()
+              AND pickup_at > now() - interval '15 minutes'
               AND (expires_at IS NULL OR expires_at > now());
             """;
         await using (var check = new NpgsqlCommand(requestSql, connection))
@@ -358,7 +358,7 @@ public sealed class BookingService(
             var status = reader.GetString(0);
             pickupAt = reader.GetFieldValue<DateTimeOffset>(1);
             requestExpiresAt = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2);
-            if (status is not ("Open" or "ReceivingOffers") || pickupAt <= DateTimeOffset.UtcNow || (requestExpiresAt is not null && requestExpiresAt <= DateTimeOffset.UtcNow))
+            if (status is not ("Open" or "ReceivingOffers") || pickupAt < DateTimeOffset.UtcNow.AddMinutes(-15) || (requestExpiresAt is not null && requestExpiresAt <= DateTimeOffset.UtcNow))
             {
                 return ServiceResult<DriverOfferDto>.Fail(
                     StatusCodes.Status409Conflict,
@@ -368,12 +368,19 @@ public sealed class BookingService(
         }
 
         var offerId = Guid.NewGuid();
-        var offerExpiresAt = new[]
-        {
-            DateTimeOffset.UtcNow.AddMinutes(15),
-            pickupAt,
-            requestExpiresAt ?? pickupAt
-        }.Min();
+        var instantLike = pickupAt <= DateTimeOffset.UtcNow.AddMinutes(1);
+        var offerExpiresAt = instantLike
+            ? new[]
+            {
+                DateTimeOffset.UtcNow.AddMinutes(15),
+                requestExpiresAt ?? DateTimeOffset.UtcNow.AddMinutes(15)
+            }.Min()
+            : new[]
+            {
+                DateTimeOffset.UtcNow.AddMinutes(15),
+                pickupAt,
+                requestExpiresAt ?? pickupAt
+            }.Min();
         const string offerSql = """
             INSERT INTO udrive.driver_offers
                 (id, ride_request_id, driver_profile_id, vehicle_id, amount,
@@ -1177,7 +1184,7 @@ public sealed class BookingService(
             UPDATE udrive.ride_requests
             SET status='Expired', version=version+1, updated_at=now()
             WHERE status IN ('Open','SearchingDrivers','ReceivingOffers')
-              AND pickup_at <= now();
+              AND pickup_at <= now() - interval '15 minutes';
 
             UPDATE udrive.ride_requests rr
             SET status='NoDriverAccepted', version=version+1, updated_at=now()
