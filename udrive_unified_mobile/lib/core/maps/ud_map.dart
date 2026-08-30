@@ -11,6 +11,7 @@ import '../config/app_config.dart';
 import '../offline_maps/offline_aware_tile_layer.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
+import 'map_styles.dart';
 
 /// Which renderer [UdMap] is currently using.
 enum UdMapSource {
@@ -232,6 +233,19 @@ class _UdMapState extends State<UdMap> {
     widget.onSourceChanged?.call(_source);
   }
 
+  /// Nudges the camera by an imperceptible amount and back.
+  ///
+  /// Google only redraws tiles when it thinks the viewport changed. If the map
+  /// element is resized underneath it — a layout change, an orientation change,
+  /// a browser window drag — it can keep tiles for the old viewport and leave
+  /// the rest grey. Moving the camera forces a fresh tile fetch.
+  Future<void> _forceRedraw() async {
+    if (!_online || !_googleController.isCompleted) return;
+    final controller = await _googleController.future;
+    await controller.moveCamera(gmap.CameraUpdate.zoomBy(0.0001));
+    await controller.moveCamera(gmap.CameraUpdate.zoomBy(-0.0001));
+  }
+
   Future<void> _moveTo(LatLng target, {double? zoom}) async {
     final nextZoom = zoom ?? _zoom;
     _center = target;
@@ -339,6 +353,9 @@ class _UdMapState extends State<UdMap> {
   Widget _buildGoogle() {
     return gmap.GoogleMap(
       key: const ValueKey('ud-google-map'),
+      // Dark styling so the map belongs to the app rather than looking like a
+      // pale window cut into it. Also makes the green route stand out.
+      style: MapStyles.dark,
       initialCameraPosition: gmap.CameraPosition(
         target: gmap.LatLng(_center.latitude, _center.longitude),
         zoom: _zoom,
@@ -416,6 +433,9 @@ class _UdMapState extends State<UdMap> {
               polylineId: gmap.PolylineId(line.id),
               color: line.color,
               width: line.width.round(),
+              startCap: gmap.Cap.roundCap,
+              endCap: gmap.Cap.roundCap,
+              jointType: gmap.JointType.round,
               points: line.points
                   .map((point) => gmap.LatLng(point.latitude, point.longitude))
                   .toList(growable: false),
@@ -541,8 +561,25 @@ class _UdMapState extends State<UdMap> {
     );
   }
 
+  Size? _lastLayoutSize;
+
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = constraints.biggest;
+        if (_lastLayoutSize != null && _lastLayoutSize != size) {
+          // The element resized. Google may still be holding tiles for the old
+          // viewport, so ask it to redraw once the frame is committed.
+          WidgetsBinding.instance.addPostFrameCallback((_) => _forceRedraw());
+        }
+        _lastLayoutSize = size;
+        return _buildStack();
+      },
+    );
+  }
+
+  Widget _buildStack() {
     return ColoredBox(
       color: AppTint.mapBackdrop,
       child: Stack(

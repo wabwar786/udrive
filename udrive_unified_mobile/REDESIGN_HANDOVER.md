@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 25)
+# UDrive Redesign — Delivery 1 & 2 (revision 27)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,71 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 27 — the route line, and a dark map
+
+### Why the line looked straight
+
+Routes API returns an **OVERVIEW** polyline by default — heavily simplified, so
+a road that winds through hills is drawn as a near-straight line. That is what
+made it look like the route ignored the roads.
+
+The request now asks for `polylineQuality: HIGH_QUALITY`, which follows the
+actual carriageway.
+
+This was not the decoder. I had verified that against Google's own documented
+test vector and it matched exactly — the data arriving was simply low-detail.
+
+### Dark map
+
+A default Google map is pale grey, which against a near-black app looks like a
+window into a different product, and makes a green route hard to pick out.
+
+`MapStyles.dark` is built from the app's own surfaces. Points of interest and
+transit labels are off: the map exists to show a route and nearby vehicles, and
+every extra label competes with the markers that matter.
+
+Applied through the `style` parameter on the widget rather than
+`setMapStyle`, which is deprecated — and setting it at construction avoids the
+default style flashing before the dark one applies.
+
+### A route you can actually see
+
+The chosen route is drawn twice: a dark casing at width 11 underneath, brand
+green at width 7 on top. A single stroke disappears against roads of a similar
+tone; the casing keeps it legible wherever it runs. Round caps and joints, so
+bends do not show mitred corners.
+
+Alternatives stay behind at width 5 in muted grey — options, not competitors.
+
+## Revision 26 — the grey tiles
+
+Routing is confirmed working: "40 min via GT Rd/Peshawar Rd … and Srinagar Hwy",
+with an alternative offered. The horizontal route line is correct too —
+Islamabad to Rawalpindi runs roughly east–west.
+
+What remained was grey tiles, and the cause was a change I made in revision 24:
+the map grew from 44% to 50% of screen height **when a route appeared**.
+
+On web the map is a DOM element. Resizing it leaves Google holding tiles for the
+old viewport and rendering nothing for the rest — grey, with the route drawn
+over it, appearing at exactly the moment a route arrives.
+
+Three changes:
+
+- **The map height is now constant** (46%, clamped 280–520px). It never changes
+  with content.
+- **The active-trip banner moved into the sheet.** It used to sit between the
+  map and the sheet, so it shifted the map every time a trip started or ended.
+  Inside the scroll view its growth costs the map nothing.
+- **`UdMap` detects a resize and recovers.** A `LayoutBuilder` compares the
+  constraints between builds; on a change it nudges the camera by 0.0001 zoom
+  and back after the frame commits, which forces a fresh tile fetch. Orientation
+  changes and browser window drags are covered by the same path.
+
+Also shortened the alternative-route chips: Google's summary can be a whole
+chain of roads, and the full string is unreadable in a chip. The first road name
+is enough to tell two routes apart.
 
 ## Revision 25 — the 404s were mine
 

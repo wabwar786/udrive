@@ -785,10 +785,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     // white area after picking a destination. Header, chip and locate button
     // therefore live above and below the map rather than on it. Only the pickup
     // pin overlaps, and it ignores pointers entirely.
-    // A route on the map deserves more room than an idle map does.
-    final hasRoute = _routeResult.hasRoute;
-    final mapHeight =
-        (height * (hasRoute ? .50 : .44)).clamp(280.0, 520.0);
+    // Deliberately one fixed height, never changing with content.
+    //
+    // Growing the map when a route appeared looked better and broke it: on web
+    // the map lives in a DOM element, and resizing that element leaves Google
+    // holding tiles for the old viewport — the grey area with a route drawn
+    // across it. The map keeps one size for the life of the screen.
+    final mapHeight = (height * .46).clamp(280.0, 520.0);
 
     return Container(
       color: AppColors.background,
@@ -868,15 +871,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ),
 
-            if (_activeTrip != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                child: _ActiveTripBanner(
-                  trip: _activeTrip!,
-                  onTrack: _openActiveTrip,
-                ),
-              ),
-
             Expanded(child: _buildSheet()),
           ],
         ),
@@ -908,21 +902,33 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ),
       ],
       polylines: [
+        // Alternatives sit behind, thin and muted, so they read as options
+        // rather than competing with the chosen route.
         for (var i = _routeResult.routes.length - 1; i >= 0; i--)
           if (i != _selectedRoute)
             UdPolyline(
               id: 'route-$i',
               points: _routeResult.routes[i].points,
               color: AppText.disabled,
-              width: 4,
+              width: 5,
             ),
-        if (_activeRoute != null)
+        // The chosen route is drawn twice: a dark casing underneath and the
+        // brand green on top. A single stroke disappears against roads of a
+        // similar tone; the casing keeps it legible wherever it runs.
+        if (_activeRoute != null) ...[
+          UdPolyline(
+            id: 'route-casing',
+            points: _activeRoute!.points,
+            color: AppColors.primary,
+            width: 11,
+          ),
           UdPolyline(
             id: 'route-active',
             points: _activeRoute!.points,
             color: AppColors.secondary,
-            width: 6,
+            width: 7,
           ),
+        ],
       ],
       markers: [
         for (final vehicle in vehicles)
@@ -939,7 +945,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             id: 'destination',
             position: _destinationPoint!,
             label: _destination.text.trim(),
-            hue: UdMarkerHue.info,
+            hue: UdMarkerHue.danger,
           ),
         // With a destination set the pin is gone, so pickup needs its own
         // marker again.
@@ -974,6 +980,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (_activeTrip != null) ...[
+                _ActiveTripBanner(
+                  trip: _activeTrip!,
+                  onTrack: _openActiveTrip,
+                ),
+                const SizedBox(height: 14),
+              ],
+
               const Padding(
                 padding: EdgeInsets.only(left: 2, bottom: 12),
                 child: Text(
@@ -2463,7 +2477,7 @@ class _TripSummary extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           'via ${active.summary}',
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 12,
@@ -2512,9 +2526,13 @@ class _TripSummary extends StatelessWidget {
                         ),
                       ),
                       child: Text(
+                        // Google's summary can be a whole chain of roads. The
+                        // first one is enough to tell two routes apart; the
+                        // full list is unreadable in a chip.
                         route.summary.isEmpty
                             ? route.durationLabel
-                            : '${route.summary} · ${route.durationLabel}'
+                            : '${route.summary.split('/').first.trim()} · '
+                                '${route.durationLabel}'
                                 '${extra > 0 ? '  +$extra min' : ''}',
                         style: TextStyle(
                           fontSize: 11.5,

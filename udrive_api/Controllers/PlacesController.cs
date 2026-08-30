@@ -183,6 +183,12 @@ public sealed class PlacesController(
                 },
                 travelMode = "DRIVE",
                 routingPreference = "TRAFFIC_AWARE",
+                // Routes returns an OVERVIEW polyline by default: heavily
+                // simplified, so a road that curves through the hills is drawn
+                // as a near-straight line. HIGH_QUALITY follows the actual
+                // carriageway, which is the whole point of drawing it.
+                polylineQuality = "HIGH_QUALITY",
+                polylineEncoding = "ENCODED_POLYLINE",
                 computeAlternativeRoutes = alternatives,
                 languageCode = "en",
                 regionCode = "PK",
