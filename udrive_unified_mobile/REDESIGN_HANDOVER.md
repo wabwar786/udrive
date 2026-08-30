@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 24)
+# UDrive Redesign — Delivery 1 & 2 (revision 25)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,46 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 25 — the 404s were mine
+
+The console log showed the cause plainly:
+
+```
+/api/v1/catalog/vehicles/nearby%3Flat=34.37&lng=73.4711&radiusKm=5   404
+                             ^^^
+```
+
+`%3F` is an encoded question mark. The query string had been folded into the
+**path**, so the server saw a route ending in `nearby?lat=…` and correctly said
+it did not exist. The endpoint was deployed and fine the whole time.
+
+`ApiConfig.uri()` builds its URL with `base.replace(path: …)`, which
+percent-encodes everything it is handed. Passing `'/endpoint?a=1'` as the path
+therefore produced `/endpoint%3Fa=1`.
+
+Fixed in `ApiConfig.uri()` rather than at the call sites: it now splits any
+inline query string off the path and merges it with the parameter map. That
+repairs four callers at once, including `hotel_repository`, which had the same
+bug before I started — I copied the pattern from it.
+
+Verified against every affected URL; none now contain `%3F`.
+
+### What this explains
+
+- Nearby vehicles never appeared — the request never reached the endpoint
+- `catalog/destinations` 404 — same encoding, not a broken controller
+- Business search on Near Me — same
+- Hotel search — same, and pre-existing
+
+It does not explain the blank map, which was the zoom and camera work in
+revisions 23 and 24. Two unrelated faults overlapping made both look worse than
+they were.
+
+### Also from the log
+
+Location is now resolving: requests carry `lat=33.6605&lng=72.8509` rather than
+the Muzaffarabad fallback. The browser permission is granted.
 
 ## Revision 24 — camera computed, bigger map, both ends editable
 
