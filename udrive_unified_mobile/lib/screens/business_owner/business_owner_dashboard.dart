@@ -179,7 +179,7 @@ class _OwnerListingTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(13, 12, 13, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: AppRadii.all(AppRadii.card),
         border: Border.all(color: AppColors.border),
       ),

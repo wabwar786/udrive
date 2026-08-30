@@ -95,6 +95,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   MobileTrip? _activeTrip;
 
+  /// Drives the red dot on the bell. Cleared once the customer opens the panel.
+  bool _unreadNotifications = true;
+
   /// Trip states that mean a ride is genuinely under way. Matches the set the
   /// previous Home screen used, so banner behaviour is unchanged.
   static const _activeTripStatuses = {
@@ -181,10 +184,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _activeField = RouteFieldKind.pickup;
       } else if (_destinationFocus.hasFocus) {
         _activeField = RouteFieldKind.destination;
-      } else {
-        _activeField = null;
-        _suggestions = const [];
       }
+      // Deliberately NOT cleared on focus loss. Tapping a suggestion removes
+      // focus from the field first, so clearing here would tear the list out of
+      // the widget tree before the tap could register — the suggestions looked
+      // unselectable. The list is dismissed when a suggestion is chosen, when
+      // the query is emptied, or when the customer taps elsewhere on the card.
+    });
+  }
+
+  void _dismissSuggestions() {
+    if (_activeField == null && _suggestions.isEmpty) return;
+    setState(() {
+      _activeField = null;
+      _suggestions = const [];
     });
   }
 
@@ -300,6 +313,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _searching = value.trim().length >= 2;
       if (field == RouteFieldKind.destination) _destinationPoint = null;
     });
+    if (value.trim().isEmpty) {
+      setState(() => _suggestions = const []);
+    }
     _places.searchDebounced(
       value,
       bias: _pickupPoint,
@@ -561,6 +577,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
+  /// Opens the notifications panel as a dismissible popup.
+  ///
+  /// Tapping the backdrop, the close button, or anywhere outside dismisses it —
+  /// the customer never loses their place on Home.
+  Future<void> _openNotifications() async {
+    setState(() => _unreadNotifications = false);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: .62),
+      builder: (_) => const _NotificationsPopup(),
+    );
+  }
+
   Future<void> _shareApp() async {
     await SharePlus.instance.share(
       ShareParams(
@@ -654,7 +684,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFEFF6EA), Color(0xFFE7F0F2)],
+                colors: [Color(0xFF16261C), AppColors.background],
               ),
             ),
           ),
@@ -663,12 +693,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           Positioned(
             top: -70,
             right: -60,
-            child: _Blob(size: 230, color: AppColors.secondary, opacity: .16),
+            child: _Blob(size: 230, color: AppColors.secondary, opacity: .12),
           ),
           Positioned(
             top: topInset + 40,
             left: -80,
-            child: _Blob(size: 190, color: AppColors.navy, opacity: .05),
+            child: _Blob(size: 190, color: AppColors.info, opacity: .07),
           ),
 
           // 3. The illustration itself, cross-fading between services.
@@ -717,8 +747,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     end: Alignment.bottomCenter,
                     stops: [0, .45, 1],
                     colors: [
-                      Color(0x00F6F8FA),
-                      Color(0xCCF6F8FA),
+                      Color(0x000B1417),
+                      Color(0xCC0B1417),
                       AppColors.background,
                     ],
                   ),
@@ -784,9 +814,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _MapIconButton(
-                        icon: Icons.translate_rounded,
-                        semanticLabel: 'Switch language',
+                      _LanguagePill(
+                        isEnglish: controller.locale.languageCode != 'ur',
                         onTap: () => _toggleLanguage(controller),
                       ),
                       const SizedBox(width: 8),
@@ -799,8 +828,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       _MapIconButton(
                         icon: Icons.notifications_none_rounded,
                         semanticLabel: 'Notifications',
-                        showDot: true,
-                        onTap: () => widget.onNavigate('notifications'),
+                        showDot: _unreadNotifications,
+                        onTap: _openNotifications,
                       ),
                     ],
                   ),
@@ -817,7 +846,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: AppRadii.all(AppRadii.panel),
         boxShadow: AppShadows.panel,
       ),
@@ -828,6 +857,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             selected: _service,
             onChanged: (service) {
               FocusScope.of(context).unfocus();
+              _dismissSuggestions();
               setState(() {
                 _service = service;
                 if (service == HomeService.hotel) _tourMode = false;
@@ -881,7 +911,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   : const Icon(Icons.my_location_rounded, size: 17),
               label: Text(_locating ? 'Locating…' : 'Use my location'),
               style: TextButton.styleFrom(
-                foregroundColor: AppColors.navy,
+                foregroundColor: AppColors.secondary,
                 textStyle: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -1057,7 +1087,7 @@ class _LocationControl extends StatelessWidget {
               height: 36,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.navy,
+                color: AppColors.secondary,
                 borderRadius: BorderRadius.circular(9),
               ),
               child: const Text(
@@ -1081,7 +1111,7 @@ class _LocationControl extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: .95),
+                          color: AppColors.surfaceHigh.withValues(alpha: .92),
                           borderRadius: BorderRadius.circular(11),
                           boxShadow: AppShadows.floating,
                         ),
@@ -1149,11 +1179,11 @@ class _MapIconButton extends StatelessWidget {
               height: 40,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: .97),
+                color: AppColors.surfaceHigh.withValues(alpha: .94),
                 borderRadius: BorderRadius.circular(11),
                 boxShadow: AppShadows.floating,
               ),
-              child: Icon(icon, size: 20, color: AppColors.navy),
+              child: Icon(icon, size: 20, color: AppColors.secondary),
             ),
             if (showDot)
               Positioned(
@@ -1197,6 +1227,153 @@ class _HeroArtwork extends StatelessWidget {
       errorBuilder: (_, __, ___) => ServiceIllustration(service: service),
       loadingBuilder: (context, child, progress) =>
           progress == null ? child : ServiceIllustration(service: service),
+    );
+  }
+}
+
+/// Language switch shown as a labelled pill so the current language is
+/// readable at a glance rather than hidden behind a glyph.
+class _LanguagePill extends StatelessWidget {
+  const _LanguagePill({required this.isEnglish, required this.onTap});
+
+  final bool isEnglish;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Switch language. Currently ${isEnglish ? 'English' : 'Urdu'}.',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 5),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceHigh.withValues(alpha: .94),
+            borderRadius: BorderRadius.circular(11),
+            boxShadow: AppShadows.floating,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _LanguageChip(label: 'EN', active: isEnglish),
+              const SizedBox(width: 3),
+              _LanguageChip(label: 'اردو', active: !isEnglish),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LanguageChip extends StatelessWidget {
+  const _LanguageChip({required this.label, required this.active});
+
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: active ? AppColors.secondary : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w900,
+          color: active ? AppText.onBrand : AppText.secondary,
+        ),
+      ),
+    );
+  }
+}
+
+/// Notifications shown as a popup so the customer stays on Home.
+class _NotificationsPopup extends StatelessWidget {
+  const _NotificationsPopup();
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 80),
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadii.all(AppRadii.panel),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 460),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 10, 10),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Notifications',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        color: AppText.primary,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    color: AppText.secondary,
+                    tooltip: 'Close',
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.border),
+            const Expanded(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.notifications_none_rounded,
+                          size: 34, color: AppText.disabled),
+                      SizedBox(height: 12),
+                      Text(
+                        'No notifications yet',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: AppText.primary,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Trip updates, driver messages and offers will appear '
+                        'here.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.45,
+                          color: AppText.secondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1245,7 +1422,7 @@ class _TourToggleRow extends StatelessWidget {
       child: Row(
         children: [
           const Icon(Icons.card_giftcard_rounded,
-              size: 21, color: AppColors.navy),
+              size: 21, color: AppColors.secondary),
           const SizedBox(width: 9),
           const Expanded(
             child: Text(
@@ -1320,7 +1497,7 @@ class _PlainField extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surfaceAlt,
         borderRadius: AppRadii.all(AppRadii.field),
         border: Border.all(color: AppColors.border),
       ),
@@ -1384,7 +1561,7 @@ class _MoneyField extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surfaceAlt,
         borderRadius: AppRadii.all(AppRadii.field),
         border: Border.all(color: AppColors.border),
       ),
@@ -1467,7 +1644,7 @@ class _TapField extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 9),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surfaceAlt,
           borderRadius: AppRadii.all(AppRadii.field),
           border: Border.all(color: AppColors.border),
         ),
@@ -1536,7 +1713,7 @@ class _StickyCta extends StatelessWidget {
       child: SizedBox(
         height: 54,
         child: Material(
-          color: enabled ? AppColors.navy : AppColors.border,
+          color: enabled ? AppColors.secondary : AppColors.border,
           borderRadius: AppRadii.all(AppRadii.cta),
           child: InkWell(
             onTap: enabled ? onTap : null,
@@ -1548,7 +1725,7 @@ class _StickyCta extends StatelessWidget {
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: AppText.onBrand,
                       ),
                     )
                   : Text(
@@ -1556,7 +1733,7 @@ class _StickyCta extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 16.5,
                         fontWeight: FontWeight.w800,
-                        color: enabled ? Colors.white : AppText.disabled,
+                        color: enabled ? AppText.onBrand : AppText.disabled,
                       ),
                     ),
             ),
@@ -1611,8 +1788,9 @@ class _ActiveTripBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(15, 13, 12, 13),
       decoration: BoxDecoration(
-        color: AppColors.navy,
+        color: AppColors.surfaceHigh,
         borderRadius: AppRadii.all(AppRadii.card),
+        border: Border.all(color: AppColors.secondary.withValues(alpha: .35)),
       ),
       child: Row(
         children: [
@@ -1626,7 +1804,7 @@ class _ActiveTripBanner extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white70,
+                    color: AppText.secondary,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -1637,7 +1815,7 @@ class _ActiveTripBanner extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                    color: AppText.primary,
                   ),
                 ),
               ],
@@ -1657,7 +1835,7 @@ class _ActiveTripBanner extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w900,
-                    color: AppColors.navy,
+                    color: AppText.onBrand,
                   ),
                 ),
               ),
@@ -1679,7 +1857,7 @@ class _InviteRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(13, 12, 13, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: AppRadii.all(AppRadii.card),
         border: Border.all(color: AppColors.border),
       ),
@@ -1694,7 +1872,7 @@ class _InviteRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(11),
             ),
             child: const Icon(Icons.ios_share_rounded,
-                size: 18, color: AppColors.navy),
+                size: 18, color: AppColors.secondary),
           ),
           const SizedBox(width: 11),
           const Expanded(
@@ -1725,7 +1903,7 @@ class _InviteRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14.5,
                 fontWeight: FontWeight.w800,
-                color: AppColors.navy,
+                color: AppColors.secondary,
               ),
             ),
           ),

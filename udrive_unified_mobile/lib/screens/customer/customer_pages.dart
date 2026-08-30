@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -77,7 +78,7 @@ class _UpcomingTrips extends StatelessWidget {
           ...advance.map((booking) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: PremiumCard(
-                  color: const Color(0xFFF0FAF6),
+                  color: AppTint.brand,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

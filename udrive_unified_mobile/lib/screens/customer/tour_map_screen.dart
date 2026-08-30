@@ -293,7 +293,7 @@ class _CircleBack extends StatelessWidget {
           height: 38,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             shape: BoxShape.circle,
             boxShadow: AppShadows.floating,
           ),

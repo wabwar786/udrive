@@ -543,7 +543,7 @@ class _CancelReasonSheet extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: AppRadii.sheetTop(),
       ),
       child: SafeArea(

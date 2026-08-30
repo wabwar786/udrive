@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/app_tokens.dart';
 import 'package:intl/intl.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
@@ -132,7 +133,7 @@ class _FamilyTourPlannerScreenState extends State<FamilyTourPlannerScreen> {
           ...plan.itinerary.asMap().entries.map((entry) => Padding(padding: const EdgeInsets.only(bottom: 10), child: PremiumCard(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: 36, height: 36, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(12)), alignment: Alignment.center, child: Text('${entry.key + 1}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))), const SizedBox(width: 12), Expanded(child: Text(entry.value, style: const TextStyle(fontWeight: FontWeight.w800, height: 1.45)))])))),
           const SizedBox(height: 8),
           PremiumCard(
-            color: const Color(0xFFF0FAF6),
+            color: AppTint.brand,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               _PlanInfo(icon: Icons.directions_car_filled_rounded, label: context.tr('recommendedVehicle'), value: plan.vehicle),
               _PlanInfo(icon: Icons.hotel_rounded, label: context.tr('hotelSuggestion'), value: plan.hotelSuggestion),

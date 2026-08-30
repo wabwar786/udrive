@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../core/theme/app_theme.dart';
 import 'package:flutter_map/flutter_map.dart';
 import '../../core/offline_maps/offline_aware_tile_layer.dart';
 import 'package:geolocator/geolocator.dart';
@@ -755,7 +756,7 @@ class _CustomerFullScreenTrackingScreenState
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                            decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(12)),
+                            decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(12)),
                             child: Text(
                               'PKR ${widget.trip.fare.toStringAsFixed(0)} · ${widget.trip.bookingType}',
                               style: const TextStyle(fontWeight: FontWeight.w900),

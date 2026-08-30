@@ -148,7 +148,7 @@ class _RideBookingScreenState extends State<RideBookingScreen> {
         bottomSheet: SafeArea(
           child: Container(
             padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
-            decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppColors.border))),
+            decoration: const BoxDecoration(color: AppColors.surface, border: Border(top: BorderSide(color: AppColors.border))),
             child: FilledButton.icon(onPressed: _submit, icon: const Icon(Icons.send_rounded), label: Text(context.tr('requestRide'))),
           ),
         ),

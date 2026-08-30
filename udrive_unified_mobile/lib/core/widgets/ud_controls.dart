@@ -34,7 +34,7 @@ class UdToggleSwitch extends StatelessWidget {
             height: 26,
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
-              color: value ? AppColors.secondary : const Color(0xFFD7DEE0),
+              color: value ? AppColors.secondary : AppColors.surfaceHigh,
               borderRadius: BorderRadius.circular(99),
             ),
             child: AnimatedAlign(
@@ -91,7 +91,7 @@ class UdStepper extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(13, 9, 9, 9),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surfaceAlt,
         borderRadius: AppRadii.all(AppRadii.field),
         border: Border.all(color: AppColors.border),
       ),
@@ -180,14 +180,14 @@ class _StepButton extends StatelessWidget {
           height: 38,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: enabled ? AppTint.surface : const Color(0xFFF7F9F9),
+            color: enabled ? AppColors.surfaceHigh : AppColors.surface,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: AppColors.border),
           ),
           child: Icon(
             icon,
             size: 19,
-            color: enabled ? AppColors.navy : AppText.disabled,
+            color: enabled ? AppColors.secondary : AppText.disabled,
           ),
         ),
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -153,7 +154,7 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
         bottomNavigationBar: SafeArea(
           child: Container(
             padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
-            decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppColors.border))),
+            decoration: const BoxDecoration(color: AppColors.surface, border: Border(top: BorderSide(color: AppColors.border))),
             child: Row(children: [
               if (_step > 0) Expanded(child: OutlinedButton(onPressed: () => setState(() => _step--), child: Text(context.tr('back')))),
               if (_step > 0) const SizedBox(width: 10),
@@ -418,7 +419,7 @@ class _BookingModeSelector extends StatelessWidget {
             child: Text(
               'Customers will only be offered what you allow here. You can '
               'change it any time.',
-              style: TextStyle(fontSize: 11.5, color: Color(0xFF667085)),
+              style: TextStyle(fontSize: 11.5, color: AppText.secondary),
             ),
           ),
           ...VehicleBookingMode.values.map((mode) {

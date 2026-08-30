@@ -327,7 +327,7 @@ class _SearchField extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 13),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: AppRadii.all(AppRadii.row),
         border: Border.all(color: AppColors.border),
       ),
@@ -497,7 +497,7 @@ class _ListingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: AppRadii.all(AppRadii.card),
         border: Border.all(color: AppColors.border),
       ),
@@ -654,7 +654,7 @@ class _EmptyState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 34, horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: AppRadii.all(AppRadii.card),
         border: Border.all(color: AppColors.border),
       ),

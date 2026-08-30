@@ -10,32 +10,36 @@ import 'app_theme.dart';
 class AppTint {
   const AppTint._();
 
-  /// Selected service tile and active bottom-nav pill.
-  static const brand = Color(0xFFEAF6D8);
+  /// Selected service tile and active bottom-nav pill — a low-opacity wash of
+  /// the brand green rather than a pale tint, so it reads on dark surfaces.
+  static const brand = Color(0xFF23361A);
 
   /// Secondary surface — inset rows such as the tour-booking toggle strip.
-  static const surface = Color(0xFFF1F5F4);
+  static const surface = AppColors.surfaceAlt;
 
-  static const success = Color(0xFFEAF7F1);
-  static const successText = Color(0xFF0F5132);
+  static const success = Color(0xFF11302A);
+  static const successText = Color(0xFF6EE7B0);
 
-  static const danger = Color(0xFFFDECEC);
+  static const danger = Color(0xFF3A1A18);
 
-  static const warning = Color(0xFFFEF3C7);
-  static const warningText = Color(0xFF92600A);
+  static const warning = Color(0xFF3A2E14);
+  static const warningText = Color(0xFFFFC96B);
 
   /// Behind the map while tiles are still loading.
-  static const mapBackdrop = Color(0xFFDCE5E0);
+  static const mapBackdrop = Color(0xFF16242B);
 }
 
 class AppText {
   const AppText._();
 
-  static const primary = Color(0xFF101828);
-  static const secondary = Color(0xFF667085);
+  static const primary = Color(0xFFF1F6F7);
+  static const secondary = Color(0xFF9FB3BB);
 
   /// Disabled labels and unselected icons.
-  static const disabled = Color(0xFF98A2B3);
+  static const disabled = Color(0xFF64808A);
+
+  /// Text placed ON the brand green.
+  static const onBrand = Color(0xFF0B1417);
 }
 
 class AppRadii {
@@ -61,7 +65,7 @@ class AppShadows {
 
   static List<BoxShadow> get card => [
         BoxShadow(
-          color: AppColors.navy.withValues(alpha: .07),
+          color: Colors.black.withValues(alpha: .35),
           blurRadius: 20,
           offset: const Offset(0, 6),
         ),
@@ -69,7 +73,7 @@ class AppShadows {
 
   static List<BoxShadow> get panel => [
         BoxShadow(
-          color: AppColors.navy.withValues(alpha: .12),
+          color: Colors.black.withValues(alpha: .45),
           blurRadius: 30,
           offset: const Offset(0, 12),
         ),
@@ -77,7 +81,7 @@ class AppShadows {
 
   static List<BoxShadow> get floating => [
         BoxShadow(
-          color: AppColors.navy.withValues(alpha: .16),
+          color: Colors.black.withValues(alpha: .50),
           blurRadius: 18,
           offset: const Offset(0, 6),
         ),
@@ -86,7 +90,7 @@ class AppShadows {
   /// Upward shadow for the bottom navigation bar (no border-top).
   static List<BoxShadow> get navBar => [
         BoxShadow(
-          color: AppColors.navy.withValues(alpha: .08),
+          color: Colors.black.withValues(alpha: .40),
           blurRadius: 24,
           offset: const Offset(0, -6),
         ),

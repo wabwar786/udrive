@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/app_tokens.dart';
 import 'package:intl/intl.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
@@ -100,7 +101,7 @@ class SharedTourCard extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(15),
-              decoration: const BoxDecoration(color: Color(0xFFF0FAF6), borderRadius: BorderRadius.vertical(top: Radius.circular(23))),
+              decoration: const BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.vertical(top: Radius.circular(23))),
               child: Row(
                 children: [
                   StatusPill(label: '${tour.matchPercent}% ${context.tr('match')}'),
@@ -183,7 +184,7 @@ class SharedTourCard extends StatelessWidget {
               const SizedBox(height: 18),
               Row(children: [Expanded(child: Text(tour.title, style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900))), StatusPill(label: '${tour.matchPercent}% ${context.tr('match')}')]),
               const SizedBox(height: 14),
-              PremiumCard(color: const Color(0xFFF0FAF6), child: Column(children: [_TourInfo(icon: Icons.trip_origin_rounded, text: tour.pickup), _TourInfo(icon: Icons.location_on_rounded, text: tour.destination), _TourInfo(icon: Icons.schedule_rounded, text: '${tour.departureDate} · ${tour.departureTime}'), _TourInfo(icon: Icons.directions_car_filled_rounded, text: tour.vehicle)])),
+              PremiumCard(color: AppTint.brand, child: Column(children: [_TourInfo(icon: Icons.trip_origin_rounded, text: tour.pickup), _TourInfo(icon: Icons.location_on_rounded, text: tour.destination), _TourInfo(icon: Icons.schedule_rounded, text: '${tour.departureDate} · ${tour.departureTime}'), _TourInfo(icon: Icons.directions_car_filled_rounded, text: tour.vehicle)])),
               const SizedBox(height: 14),
               SectionHeader(title: context.tr('securePassengerSummary')),
               const SizedBox(height: 8),

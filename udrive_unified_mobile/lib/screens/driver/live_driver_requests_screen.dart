@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../core/theme/app_tokens.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/state/app_controller.dart';
@@ -70,7 +71,7 @@ class _LiveDriverRequestsScreenState extends State<LiveDriverRequestsScreen> {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(color: const Color(0xFFE8F5F0), borderRadius: BorderRadius.circular(999)),
+                decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(999)),
                 child: Text('${requests.length} live', style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900, fontSize: 11)),
               ),
             ],
@@ -250,7 +251,7 @@ class _PremiumRequestCard extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 22,
-              backgroundColor: const Color(0xFFE8F5F0),
+              backgroundColor: AppTint.brand,
               child: Text(_initials(request.customerName), style: const TextStyle(color: AppColors.primaryDark, fontSize: 12, fontWeight: FontWeight.w900)),
             ),
             const SizedBox(width: 10),

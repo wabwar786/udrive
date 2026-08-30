@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 6)
+# UDrive Redesign — Delivery 1 & 2 (revision 7)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,67 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 7 — dark theme, auth redesign, suggestion fix
+
+### Suggestion selection bug — fixed
+
+`_onFocusChanged` cleared `_suggestions` whenever a field lost focus. Tapping a
+suggestion removes focus from the text field *first*, so the list was torn out
+of the widget tree before the tap could register — the suggestions looked
+unselectable.
+
+Two changes: focus loss no longer clears the list (it is dismissed on selection,
+on an emptied query, or on switching service), and the suggestion rows use
+`onTapDown`, which fires before the focus change.
+
+### Dark premium theme
+
+One palette for the whole app, in `AppColors` / `AppTint` / `AppText`:
+
+```
+background   #0B1417   deepest layer
+surface      #14232A   cards and panels
+surfaceAlt   #1B2E36   inset rows, inputs, chips
+surfaceHigh  #213741   sheets, dialogs, floating chrome
+border       #233A44
+text         #F1F6F7 / #9FB3BB / #64808A
+brand green  #8ED12B   unchanged — the only saturated colour
+```
+
+Status colours were brightened (`danger #FF5A4E`, `success #3DD68C`,
+`info #5AA9FF`, `warning #FFB84D`) so they stay legible on dark surfaces.
+
+`AppTheme.light` is now an alias for `AppTheme.dark`, so every existing call
+site keeps working.
+
+A global pass remapped the light hexes scattered through 14 screens — including
+driver mode — onto these tokens, and added the missing imports. Nothing
+ambiguous was touched: `Colors.white` was only replaced inside `BoxDecoration`
+fills, never where it might be text on a dark surface.
+
+### Language switch
+
+The translate glyph is replaced by a labelled **EN / اردو** pill on Home,
+matching the toggle already on the login screen. The active side is filled with
+brand green.
+
+### Notifications
+
+The bell now opens a dismissible popup instead of navigating away — tap the
+close button, the backdrop, or outside it. The unread dot clears on open.
+
+### Login and verification screens
+
+**Login:** full-screen vehicle artwork behind a four-stop scrim, with the form
+on a raised sheet. Uses the same vector illustration as the home hero, so it is
+sharp at any size and needs no bundled photograph.
+
+**Verification:** four separate digit boxes instead of one wide letter-spaced
+field, so the customer can see how many digits are expected and which one they
+are on. The real input is offstage, so paste and SMS autofill still work; the
+code auto-submits when the fourth digit lands. Adds a 30-second resend
+countdown.
 
 ## Revision 6 — layout, sticky CTA, per-vehicle booking mode
 

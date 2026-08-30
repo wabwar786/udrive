@@ -333,7 +333,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
         Container(
           padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
-            color: const Color(0xFFF4F7FA),
+            color: AppColors.surfaceAlt,
             borderRadius: BorderRadius.circular(16),
           ),
           child: const Row(
@@ -618,7 +618,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
 
   Widget _bottomActions() => Container(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-        decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppColors.border))),
+        decoration: const BoxDecoration(color: AppColors.surface, border: Border(top: BorderSide(color: AppColors.border))),
         child: Row(
           children: [
             if (_step > 0) ...[
@@ -1033,7 +1033,7 @@ class _SearchVehicleCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
+                decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
                 clipBehavior: Clip.antiAlias,
                 child: image != null && image.isNotEmpty
                     ? Image.network(image, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark))

@@ -187,7 +187,7 @@ class _MapPin extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         width: 43,
         height: 43,
-        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: color.withValues(alpha: .2), blurRadius: 14)]),
+        decoration: BoxDecoration(color: AppColors.surface, shape: BoxShape.circle, boxShadow: [BoxShadow(color: color.withValues(alpha: .2), blurRadius: 14)]),
         child: Icon(icon, color: color),
       );
 }

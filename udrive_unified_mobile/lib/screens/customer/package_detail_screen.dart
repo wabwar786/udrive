@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/app_tokens.dart';
 import 'package:intl/intl.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/theme/app_theme.dart';
@@ -71,7 +72,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                   Text(widget.package.route, style: const TextStyle(color: AppColors.muted, height: 1.4)),
                   const SizedBox(height: 14),
                   PremiumCard(
-                    color: const Color(0xFFF0FAF6),
+                    color: AppTint.brand,
                     child: Column(children: [
                       _DetailLine(icon: Icons.trip_origin_rounded, text: widget.package.pickupPoint),
                       _DetailLine(icon: Icons.schedule_rounded, text: '${widget.package.departureDate} · ${widget.package.departureTime}'),
@@ -132,7 +133,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
         bottomSheet: SafeArea(
           child: Container(
             padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
-            decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppColors.border))),
+            decoration: const BoxDecoration(color: AppColors.surface, border: Border(top: BorderSide(color: AppColors.border))),
             child: Row(children: [Expanded(child: OutlinedButton.icon(onPressed: () => _message(context), icon: const Icon(Icons.chat_bubble_outline_rounded), label: const Text('Message'))), const SizedBox(width: 10), Expanded(flex: 2, child: FilledButton(onPressed: () => _book(context), child: Text(widget.package.allowOffers ? context.tr('sendOffer') : context.tr('bookNow'))))]),
           ),
         ),

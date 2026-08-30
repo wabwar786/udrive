@@ -259,7 +259,7 @@ class _MainShellState extends State<MainShell> {
                       Icon(
                         selected ? activeIcon : icon,
                         size: 20,
-                        color: selected ? AppColors.navy : AppText.disabled,
+                        color: selected ? AppColors.secondary : AppText.disabled,
                       ),
                       const SizedBox(height: 3),
                       Text(
@@ -267,7 +267,7 @@ class _MainShellState extends State<MainShell> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: selected ? AppColors.navy : AppText.disabled,
+                          color: selected ? AppColors.secondary : AppText.disabled,
                           fontSize: 9,
                           fontWeight:
                               selected ? FontWeight.w800 : FontWeight.w600,
@@ -292,7 +292,8 @@ class _MainShellState extends State<MainShell> {
           height: 66,
           padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
+            border: Border.all(color: AppColors.border),
             borderRadius: BorderRadius.circular(23),
             boxShadow: AppShadows.navBar,
           ),
@@ -315,7 +316,7 @@ class _MainShellState extends State<MainShell> {
                         decoration: BoxDecoration(
                           color: AppColors.danger,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
+                          border: Border.all(color: AppColors.surface, width: 3),
                           boxShadow: [
                             BoxShadow(
                               color: AppColors.danger.withValues(alpha: .30),
@@ -463,8 +464,8 @@ class _PremiumDrawer extends StatelessWidget {
     }
     final driver = mode == UserMode.driver;
     final entries = driver ? _driverEntries(context) : _customerEntries(context);
-    const drawerColor = Color(0xFF202322);
-    const lime = Color(0xFFB7F20B);
+    const drawerColor = AppColors.surface;
+    const lime = AppColors.secondary;
 
     return Drawer(
       width: MediaQuery.sizeOf(context).width.clamp(300, 360).toDouble(),

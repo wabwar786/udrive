@@ -162,7 +162,7 @@ class _Field extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surfaceAlt,
         borderRadius: AppRadii.all(AppRadii.field),
         border: Border.all(
           color: focusNode.hasFocus ? AppColors.secondary : AppColors.border,
@@ -228,7 +228,7 @@ class _SuggestionPanel extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(maxHeight: 250),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: AppRadii.all(AppRadii.row),
         border: Border.all(color: AppColors.border),
         boxShadow: AppShadows.card,
@@ -254,7 +254,10 @@ class _SuggestionPanel extends StatelessWidget {
               itemBuilder: (context, index) {
                 final place = suggestions[index];
                 return InkWell(
-                  onTap: () => onSelected(place),
+                  // onTapDown, not onTap: tapping here pulls focus out of the
+                  // text field, and onTapDown fires before that happens.
+                  onTapDown: (_) => onSelected(place),
+                  onTap: () {},
                   child: Padding(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 11),

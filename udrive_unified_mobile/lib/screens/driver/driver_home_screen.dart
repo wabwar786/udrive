@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../core/theme/app_tokens.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -330,7 +331,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
-                color: const Color(0xFFF4F7FA),
+                color: AppColors.surfaceAlt,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -468,15 +469,15 @@ class _CompactDriverHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE5E9ED))),
+    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
     child: Row(children: [
-      Container(width: 38, height: 38, decoration: BoxDecoration(color: const Color(0xFFEAF5F1), borderRadius: BorderRadius.circular(12)), child: Icon(hasActiveTrip ? Icons.navigation_rounded : Icons.local_taxi_rounded, color: AppColors.primaryDark, size: 20)),
+      Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(12)), child: Icon(hasActiveTrip ? Icons.navigation_rounded : Icons.local_taxi_rounded, color: AppColors.primaryDark, size: 20)),
       const SizedBox(width: 10),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Hi ${driverName.split(' ').first}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.navy)),
         Text(hasActiveTrip ? 'Your active ride is live' : 'Nearby rides update automatically', style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
       ])),
-      Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: const Color(0xFFF4F7F8), borderRadius: BorderRadius.circular(999)), child: Text('$requestCount nearby', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.navy))),
+      Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(999)), child: Text('$requestCount nearby', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.navy))),
     ]),
   );
 }
@@ -489,7 +490,7 @@ class _CompactSectionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(children: [
     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.navy)), Text(subtitle, style: const TextStyle(fontSize: 10, color: AppColors.muted))])),
-    if (count > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFEAF5F1), borderRadius: BorderRadius.circular(999)), child: Text('$count', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.primaryDark))),
+    if (count > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(999)), child: Text('$count', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.primaryDark))),
   ]);
 }
 
@@ -504,7 +505,7 @@ class _RecentFareSentCard extends StatelessWidget {
     final rejected = status?.isClosed == true;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(color: const Color(0xFFF0FAF6), borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.success.withValues(alpha: .25))),
+      decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.success.withValues(alpha: .25))),
       child: Row(children: [
         Container(width: 32, height: 32, decoration: BoxDecoration(color: AppColors.success.withValues(alpha: .12), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.check_rounded, color: AppColors.success, size: 19)),
         const SizedBox(width: 9),
@@ -529,7 +530,7 @@ class _CompactWaitingState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-    decoration: BoxDecoration(color: const Color(0xFFF8FAFB), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE7ECEF))),
+    decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
     child: Row(children: [
       Icon(hasActiveTrip ? Icons.route_rounded : Icons.radar_rounded, color: AppColors.primaryDark, size: 21),
       const SizedBox(width: 9),
@@ -632,7 +633,7 @@ class _HomeSectionTitle extends StatelessWidget {
   Widget build(BuildContext context) => Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFE8F5F0), borderRadius: BorderRadius.circular(12)), child: Icon(icon, size: 19, color: AppColors.primaryDark)),
+          Container(width: 36, height: 36, decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(12)), child: Icon(icon, size: 19, color: AppColors.primaryDark)),
           const SizedBox(width: 9),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.navy)), const SizedBox(height: 2), Text(subtitle, style: const TextStyle(fontSize: 10.5, color: AppColors.muted))])),
           Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5), decoration: BoxDecoration(color: const Color(0xFFF1F5F8), borderRadius: BorderRadius.circular(999)), child: Text(trailing, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy, fontSize: 11))),
@@ -679,7 +680,7 @@ class _WaitingForNearbyRide extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE7ECEF))),
+        decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
         child: Column(children: [
           const SizedBox(width: 38, height: 38, child: CircularProgressIndicator(strokeWidth: 3)),
           const SizedBox(height: 12),
@@ -702,7 +703,7 @@ class _DriverHomeInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: const Color(0xFFF7F9FB), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE5E9ED))),
+        decoration: BoxDecoration(color: const Color(0xFFF7F9FB), borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
         child: Row(children: [Icon(icon, color: AppColors.primaryDark), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy)), const SizedBox(height: 2), Text(message, style: const TextStyle(fontSize: 10.5, color: AppColors.muted))])), if (onAction != null) TextButton(onPressed: onAction, child: Text(actionLabel ?? 'Open'))]),
       );
 }
@@ -720,7 +721,7 @@ class _DriverFareStatusCard extends StatelessWidget {
     final statusText = approved ? 'APPROVED' : pending ? 'WAITING FOR CUSTOMER' : 'CLOSED / NOT SELECTED';
     return Container(
       padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(color: approved ? const Color(0xFFF0FAF6) : Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: approved ? AppColors.success.withValues(alpha: .35) : const Color(0xFFE5E9ED))),
+      decoration: BoxDecoration(color: approved ? AppTint.brand : Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: approved ? AppColors.success.withValues(alpha: .35) : AppColors.border)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Expanded(child: Text(offer.customerName, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.navy))), StatusPill(label: statusText, color: statusColor)]),
         const SizedBox(height: 7),
@@ -845,7 +846,7 @@ class _DashboardRequestCard extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 22,
-            backgroundColor: const Color(0xFFE8F5F0),
+            backgroundColor: AppTint.brand,
             child: Text(
               initials,
               style: const TextStyle(

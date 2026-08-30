@@ -260,7 +260,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
+          border: Border.all(color: AppColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -302,7 +302,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
+          border: Border.all(color: AppColors.border),
         ),
         child: Column(
           children: [
@@ -350,7 +350,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                   children: [
                     Text(
                       'PKR ${NumberFormat('#,###').format(offer.finalAmount)}',
-                      style: const TextStyle(fontSize: 28, height: 1, fontWeight: FontWeight.w900, color: Color(0xFF111827)),
+                      style: const TextStyle(fontSize: 28, height: 1, fontWeight: FontWeight.w900, color: AppColors.surface),
                     ),
                     const SizedBox(height: 7),
                     Row(
