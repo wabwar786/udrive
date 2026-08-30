@@ -457,15 +457,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       // reverse-geocode the position we just resolved.
       _lastResolvedCentre = point;
 
-      // With a route on screen, re-frame the route rather than zooming to the
-      // customer. Pressing "use my location" while planning a trip should
-      // update the pickup, not throw away the view of the journey.
-      final route = _activeRoute;
-      if (route != null && route.points.isNotEmpty) {
-        await _mapController.fitBounds(route.points, padding: 70);
-      } else {
-        await _mapController.moveTo(point, zoom: AppConfig.pickupZoom);
-      }
+      await _mapController.moveTo(point, zoom: AppConfig.pickupZoom);
     } catch (_) {
       _setPickupFailure('Could not read your location. Try again, or set a pickup manually.');
     } finally {
@@ -783,21 +775,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final controller = AppControllerScope.of(context);
     final height = MediaQuery.sizeOf(context).height;
 
-    // Nothing interactive sits on top of the map.
-    //
-    // On web the map is a DOM element in its own layer: Flutter widgets drawn
-    // over it do not reliably receive taps, and stacking PointerInterceptors to
-    // fix that turned out to detach the map whenever the tree changed — the
-    // white area after picking a destination. Header, chip and locate button
-    // therefore live above and below the map rather than on it. Only the pickup
-    // pin overlaps, and it ignores pointers entirely.
-    // Deliberately one fixed height, never changing with content.
-    //
-    // Growing the map when a route appeared looked better and broke it: on web
-    // the map lives in a DOM element, and resizing that element leaves Google
-    // holding tiles for the old viewport — the grey area with a route drawn
-    // across it. The map keeps one size for the life of the screen.
-    final mapHeight = (height * .46).clamp(280.0, 520.0);
+    final mapHeight = (height * .52).clamp(320.0, 560.0);
 
     return Container(
       color: AppColors.background,
@@ -842,6 +820,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 fit: StackFit.expand,
                 children: [
                   _buildMap(),
+
                   if (_pinActive)
                     Positioned.fill(
                       child: IgnorePointer(
@@ -854,16 +833,47 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         ),
                       ),
                     ),
-                ],
-              ),
-            ),
 
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-              child: Row(
-                children: [
+                  // Fades the map into the sheet so the join does not read as a
+                  // hard edge between two panels.
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 56,
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              AppColors.surface.withValues(alpha: 0),
+                              AppColors.surface.withValues(alpha: .75),
+                              AppColors.surface,
+                            ],
+                            stops: const [0, .6, 1],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Floats on the map rather than occupying a strip of its own.
+                  Positioned(
+                    right: 14,
+                    bottom: 60,
+                    child: _LocateButton(
+                      busy: _locating,
+                      onTap: _loadLocation,
+                    ),
+                  ),
+
                   if (_service.isVehicle && _pinActive)
-                    Flexible(
+                    Positioned(
+                      left: 14,
+                      bottom: 62,
+                      right: 70,
                       child: _NearbyCountChip(
                         service: _service,
                         count: _visibleVehicles.length,
@@ -871,8 +881,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         offline: _offline,
                       ),
                     ),
-                  const Spacer(),
-                  _LocateButton(busy: _locating, onTap: _loadLocation),
                 ],
               ),
             ),
@@ -894,8 +902,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       myLocation: _pickupPoint,
       onCameraMoveStarted: _onMapDragStart,
       onCameraIdle: _onMapSettled,
-      // Temporary while the map is being stabilised.
-      showDiagnostics: true,
       routeOrigin: _pickupPoint,
       routeDestination: _destinationPoint ?? _pickupPoint,
       circles: [
@@ -958,15 +964,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// happens. Service, booking type and seats are decided on the next screen,
   /// where the route and the real vehicles are known.
   Widget _buildSheet() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+    return ColoredBox(
+      // No rounded top and no shadow: the map fades into this surface, so a
+      // corner radius would draw the seam the fade exists to hide.
+      color: AppColors.surface,
       child: SafeArea(
         top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

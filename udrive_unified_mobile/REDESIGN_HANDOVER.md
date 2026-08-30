@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 37) · build label `rev 37`
+# UDrive Redesign — Delivery 1 & 2 (revision 39) · build label `rev 39`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,52 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 39 — polish, and Kashmir in search
+
+The map works. This round is what you asked for on top of it.
+
+### Dark map, styled at the source
+
+The Map Tiles session now carries a style array, so Google returns dark tiles.
+Darkening them in the client would have dimmed the route and markers along with
+the basemap; styling at the session affects only the map itself.
+
+Points of interest and transit labels are off — the map exists to show a route
+and nearby vehicles, and every extra label competes with the markers that
+matter.
+
+### Layout
+
+- Map grown to 52% of screen height, 320–560px.
+- The bottom 56px fades into the sheet colour, and the sheet lost its rounded
+  top and shadow. A corner radius there would have drawn the seam the fade
+  exists to hide.
+- The locate button floats on the map, bottom right. The strip it used to sit
+  in is gone.
+- The vehicle count chip moved onto the map beside it.
+- The diagnostics overlay is removed, along with the state that fed it.
+
+### Locate behaves as you expect
+
+Tapping it zooms to your current location, full stop. It used to re-frame the
+route when one existed — defensible, but not what the button says it does.
+
+### Kashmir places in search
+
+`KashmirGazetteer` holds 25 towns and valleys across all eight districts, with
+alternative spellings, and they are matched **ahead of** Google's results.
+Someone typing "kel" in this app means the village in Neelum, not a business
+elsewhere with those letters; making them scroll for it would be perverse in an
+app built for Kashmir.
+
+Google still answers for cities, street addresses and businesses — the list only
+guarantees a floor of local coverage where a general geocoder is thin.
+
+It is deliberately short. Every entry is a place whose position is well
+established; an approximate pin on a known valley is useful, an invented one for
+a hamlet sends a driver somewhere wrong. Extend it as real journeys show what is
+missing — it is a plain list in one file.
 
 ## Revision 37 — the polyline decoder, and why this took so long
 

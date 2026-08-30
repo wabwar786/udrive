@@ -138,7 +138,6 @@ class UdMap extends StatefulWidget {
     this.minZoom,
     this.onCameraMoveStarted,
     this.onCameraIdle,
-    this.showDiagnostics = false,
     this.interactive = true,
     this.onTap,
     this.onSourceChanged,
@@ -225,11 +224,6 @@ class _UdMapState extends State<UdMap> {
 
   /// flutter_map only accepts camera commands after `onMapReady`.
   bool _offlineReady = false;
-
-  /// Which tile source answered — Google's proxy or the OpenStreetMap
-  /// fallback. Surfaced in the diagnostics overlay so a misconfigured proxy is
-  /// visible rather than guessed at.
-  String _tileSource = '…';
 
   late LatLng _center;
   late double _zoom;
@@ -560,14 +554,7 @@ class _UdMapState extends State<UdMap> {
       children: [
         // Resolves to a downloaded PMTiles pack when one covers this route,
         // otherwise to online OSM tiles.
-        OfflineAwareTileLayer(
-          origin: origin,
-          destination: destination,
-          onSourceChanged: (source) {
-            if (source == _tileSource || !mounted) return;
-            setState(() => _tileSource = source);
-          },
-        ),
+        OfflineAwareTileLayer(origin: origin, destination: destination),
         if (widget.circles.isNotEmpty)
           fmap.CircleLayer(
             circles: widget.circles
@@ -602,34 +589,6 @@ class _UdMapState extends State<UdMap> {
                 )
                 .toList(growable: false),
           ),
-        if (widget.showDiagnostics)
-          Positioned(
-            left: 8,
-            top: 8,
-            child: IgnorePointer(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                color: const Color(0xCC000000),
-                child: Text(
-                  'cam ${_center.latitude.toStringAsFixed(4)}, '
-                  '${_center.longitude.toStringAsFixed(4)}\n'
-                  'zoom ${_zoom.toStringAsFixed(2)}   '
-                  'ready $_offlineReady\n'
-                  'route pts '
-                  '${widget.polylines.fold<int>(0, (a, l) => a + l.points.length)}'
-                  '   markers ${widget.markers.length}\n'
-                  'tiles $_tileSource',
-                  style: const TextStyle(
-                    fontSize: 9,
-                    height: 1.3,
-                    color: Color(0xFFA6FF2E),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
         // Google's terms require visible attribution on Map Tiles imagery, and
         // OpenStreetMap's licence requires it on the fallback. Naming both
         // covers whichever is actually being served.

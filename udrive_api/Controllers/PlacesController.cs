@@ -84,12 +84,20 @@ public sealed class PlacesController(
             var results = await GoogleSearchAsync(client, query, lat, lng, key!, cancellationToken);
             if (results.Count > 0)
             {
-                return Ok(ApiResponse<object>.Ok(new { results, source = "google" }));
+                return Ok(ApiResponse<object>.Ok(new
+                {
+                    results = MergeLocalPlaces(query, results),
+                    source = "google"
+                }));
             }
         }
 
         var fallback = await NominatimSearchAsync(client, query, country, cancellationToken);
-        return Ok(ApiResponse<object>.Ok(new { results = fallback, source = "osm" }));
+        return Ok(ApiResponse<object>.Ok(new
+        {
+            results = MergeLocalPlaces(query, fallback),
+            source = "osm"
+        }));
     }
 
     [HttpGet("reverse")]
@@ -280,6 +288,51 @@ public sealed class PlacesController(
         return Ok(ApiResponse<object>.Ok(new { routes, reason = "ok" }));
     }
 
+    /// <summary>
+    /// Puts matching Azad Kashmir places at the top of the results.
+    /// </summary>
+    /// <remarks>
+    /// Local places lead rather than trail. Someone typing "kel" in this app
+    /// almost certainly means the village in Neelum, not a business elsewhere
+    /// with those letters in its name, and making them scroll for it would be
+    /// perverse in an app built for Kashmir.
+    ///
+    /// Duplicates are dropped by name so a place Google already returned does
+    /// not appear twice.
+    /// </remarks>
+    private static List<object> MergeLocalPlaces(string query, List<object> remote)
+    {
+        var local = KashmirGazetteer.Search(query, 5).ToList();
+        if (local.Count == 0) return remote;
+
+        var localNames = local
+            .Select(place => place.Name.ToLowerInvariant())
+            .ToHashSet();
+
+        var merged = new List<object>();
+        merged.AddRange(local.Select(place => (object)new
+        {
+            title = place.Name,
+            subtitle = $"{place.District}, Azad Kashmir",
+            latitude = place.Latitude,
+            longitude = place.Longitude
+        }));
+
+        foreach (var item in remote)
+        {
+            // The anonymous types from the search helpers all expose `title`.
+            var title = item.GetType().GetProperty("title")?.GetValue(item) as string;
+            if (title is not null &&
+                localNames.Contains(title.ToLowerInvariant()))
+            {
+                continue;
+            }
+            merged.Add(item);
+        }
+
+        return merged.Take(10).ToList();
+    }
+
     // ------------------------------------------------------------- map tiles
 
     /// <summary>Cached Map Tiles session token, and when it stops being valid.</summary>
@@ -320,9 +373,53 @@ public sealed class PlacesController(
                 mapType = "roadmap",
                 language = "en-US",
                 region = "PK",
-                // Google hosts the styling, so the map matches the app without
-                // shipping a style document with every tile request.
-                overlay = false
+                overlay = false,
+                // Styled at the source. Darkening tiles in the client would dim
+                // the route and markers with them; here only the basemap is
+                // affected.
+                //
+                // Points of interest and transit are dropped: the map exists to
+                // show a route and nearby vehicles, and every extra label
+                // competes with the markers that matter.
+                styles = new object[]
+                {
+                    new { elementType = "geometry",
+                          stylers = new[] { new { color = "#16232D" } } },
+                    new { elementType = "labels.icon",
+                          stylers = new object[] { new { visibility = "off" } } },
+                    new { elementType = "labels.text.fill",
+                          stylers = new[] { new { color = "#9FB3BB" } } },
+                    new { elementType = "labels.text.stroke",
+                          stylers = new[] { new { color = "#0E1A21" } } },
+                    new { featureType = "administrative",
+                          elementType = "geometry",
+                          stylers = new[] { new { color = "#2B3F4C" } } },
+                    new { featureType = "administrative.locality",
+                          elementType = "labels.text.fill",
+                          stylers = new[] { new { color = "#D6E3E8" } } },
+                    new { featureType = "poi",
+                          stylers = new object[] { new { visibility = "off" } } },
+                    new { featureType = "transit",
+                          stylers = new object[] { new { visibility = "off" } } },
+                    new { featureType = "landscape.natural",
+                          elementType = "geometry",
+                          stylers = new[] { new { color = "#18262F" } } },
+                    new { featureType = "road",
+                          elementType = "geometry",
+                          stylers = new[] { new { color = "#2A3D49" } } },
+                    new { featureType = "road.arterial",
+                          elementType = "geometry",
+                          stylers = new[] { new { color = "#324856" } } },
+                    new { featureType = "road.highway",
+                          elementType = "geometry",
+                          stylers = new[] { new { color = "#3C5666" } } },
+                    new { featureType = "road",
+                          elementType = "labels.text.fill",
+                          stylers = new[] { new { color = "#94AAB5" } } },
+                    new { featureType = "water",
+                          elementType = "geometry",
+                          stylers = new[] { new { color = "#0E2833" } } },
+                }
             };
 
             using var request = new HttpRequestMessage(
