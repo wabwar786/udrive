@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 10)
+# UDrive Redesign — Delivery 1 & 2 (revision 11)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,29 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 11 — duplicate code fix
+
+My revision 10 edit script removed blocks by index in a loop, and the ranges
+overlapped. Each pass re-cut an already-shifted file, which left four copies of
+`_refreshNearby`, `_visibleVehicles`, `_showVehicleSheet` and
+`_applyConnectivity`, plus one `if` statement whose body had been deleted.
+
+Removed the three extra copies and repaired the statement.
+
+To stop this recurring, I now run three structural checks after every edit
+instead of only counting braces:
+
+- class-scoped duplicate member declarations
+- `if` / `for` / `while` with an emptied body, and dangling assignments
+- every called private method resolves to a declaration
+
+All three are clean, and the checks confirmed the one remaining brace mismatch
+(`customer_operations_screen.dart`) is present in the original upload too — a
+brace inside a string literal, not a real error.
+
+Also confirmed from the build log: `Maps web key injected.` — the Railway
+Dockerfile wiring works.
 
 ## Revision 10 — search fixed, three travel modes, blue dot
 

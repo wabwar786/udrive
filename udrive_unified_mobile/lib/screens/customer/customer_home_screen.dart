@@ -208,144 +208,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     setState(() => _offline = offline);
   }
 
-  /// Refreshes the vehicles around the customer.
-  ///
-  /// All categories are fetched in one call and filtered client-side, so
-  /// switching service is instant and does not cost an extra request.
-  Future<void> _refreshNearby() async {
-    final repository = _nearbyRepository;
-    if (repository == null || _offline) return;
-    // IndexedStack keeps this screen mounted when another tab is showing.
-    // TickerMode pauses animations but not timers, so check visibility here or
-    // a hidden Home would keep polling in the background.
-    if (!TickerMode.of(context)) return;
-
-    final results = await repository.nearby(
-      latitude: _pickupPoint.latitude,
-      longitude: _pickupPoint.longitude,
-      radiusKm: AppConfig.nearbyVehiclesRadiusKm,
-    );
-    if (!mounted) return;
-    setState(() {
-      _nearby = results;
-      _nearbyLoading = false;
-    });
-  }
-
-  List<NearbyVehicle> get _visibleVehicles {
-    if (!_service.isVehicle) return const [];
-    return _nearby
-        .where((vehicle) => vehicle.service == _service)
-        .toList(growable: false);
-  }
-
-  void _showVehicleSheet(NearbyVehicle vehicle) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _VehicleMarkerSheet(vehicle: vehicle),
-    );
-  }
-
-  void _applyConnectivity(List<ConnectivityResult> results) {
-    if (!mounted) return;
-    final offline = results.every((value) => value == ConnectivityResult.none);
-    if (offline == _offline) return;
-    setState(() => _offline = offline);
-  }
-
-  /// Refreshes the vehicles around the customer.
-  ///
-  /// All categories are fetched in one call and filtered client-side, so
-  /// switching service is instant and does not cost an extra request.
-  Future<void> _refreshNearby() async {
-    final repository = _nearbyRepository;
-    if (repository == null || _offline) return;
-    // IndexedStack keeps this screen mounted when another tab is showing.
-    // TickerMode pauses animations but not timers, so check visibility here or
-    // a hidden Home would keep polling in the background.
-    if (!TickerMode.of(context)) return;
-
-    final results = await repository.nearby(
-      latitude: _pickupPoint.latitude,
-      longitude: _pickupPoint.longitude,
-      radiusKm: AppConfig.nearbyVehiclesRadiusKm,
-    );
-    if (!mounted) return;
-    setState(() {
-      _nearby = results;
-      _nearbyLoading = false;
-    });
-  }
-
-  List<NearbyVehicle> get _visibleVehicles {
-    if (!_service.isVehicle) return const [];
-    return _nearby
-        .where((vehicle) => vehicle.service == _service)
-        .toList(growable: false);
-  }
-
-  void _showVehicleSheet(NearbyVehicle vehicle) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _VehicleMarkerSheet(vehicle: vehicle),
-    );
-  }
-
-  void _applyConnectivity(List<ConnectivityResult> results) {
-    if (!mounted) return;
-    final offline = results.every((value) => value == ConnectivityResult.none);
-    if (offline == _offline) return;
-    setState(() => _offline = offline);
-  }
-
-  /// Refreshes the vehicles around the customer.
-  ///
-  /// All categories are fetched in one call and filtered client-side, so
-  /// switching service is instant and does not cost an extra request.
-  Future<void> _refreshNearby() async {
-    final repository = _nearbyRepository;
-    if (repository == null || _offline) return;
-    // IndexedStack keeps this screen mounted when another tab is showing.
-    // TickerMode pauses animations but not timers, so check visibility here or
-    // a hidden Home would keep polling in the background.
-    if (!TickerMode.of(context)) return;
-
-    final results = await repository.nearby(
-      latitude: _pickupPoint.latitude,
-      longitude: _pickupPoint.longitude,
-      radiusKm: AppConfig.nearbyVehiclesRadiusKm,
-    );
-    if (!mounted) return;
-    setState(() {
-      _nearby = results;
-      _nearbyLoading = false;
-    });
-  }
-
-  List<NearbyVehicle> get _visibleVehicles {
-    if (!_service.isVehicle) return const [];
-    return _nearby
-        .where((vehicle) => vehicle.service == _service)
-        .toList(growable: false);
-  }
-
-  void _showVehicleSheet(NearbyVehicle vehicle) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _VehicleMarkerSheet(vehicle: vehicle),
-    );
-  }
-
-  void _applyConnectivity(List<ConnectivityResult> results) {
-    if (!mounted) return;
-    final offline = results.every((value) => value == ConnectivityResult.none);
-    if (offline == _offline) return;
-    setState(() => _offline = offline);
-  }
-
   // ----------------------------------------------------------------- location
 
   Future<void> _loadLocation() async {
@@ -449,8 +311,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
     if (mounted) await _refreshActiveTrip();
   }
-
-  // -------------------------------------------------------------- suggestions
 
   // ------------------------------------------------------------------ actions
 
@@ -907,7 +767,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               FocusScope.of(context).unfocus();
               setState(() {
                 _service = service;
-                if (service == HomeService.hotel) 
+                // Hotels are not a vehicle, so per-seat and tour do not apply.
+                if (service == HomeService.hotel) {
+                  _travelMode = TravelMode.wholeVehicle;
+                }
               });
             },
           ),
