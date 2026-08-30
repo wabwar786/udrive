@@ -924,9 +924,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              AppColors.surface.withValues(alpha: 0),
-                              AppColors.surface.withValues(alpha: .75),
-                              AppColors.surface,
+                              AppColors.background.withValues(alpha: 0),
+                              AppColors.background.withValues(alpha: .75),
+                              AppColors.background,
                             ],
                             stops: const [0, .6, 1],
                           ),
@@ -1056,115 +1056,140 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// happens. Service, booking type and seats are decided on the next screen,
   /// where the route and the real vehicles are known.
   Widget _buildSheet() {
+    final hotel = _service == HomeService.hotel;
+
+    // Hotel asks for a city and dates, not a destination, so it opens its own
+    // panel straight away. Previously it waited on a destination it never
+    // used, which left the product selectable and then apparently inert.
+    final planning = hotel || _destination.text.trim().isNotEmpty;
+
     return ColoredBox(
-      // No rounded top and no shadow: the map fades into this surface, so a
-      // corner radius would draw the seam the fade exists to hide.
-      color: AppColors.surface,
+      // The page behind the panels, not the panels themselves. Two dark greys
+      // one step apart is what gives the layout its depth; a single flat
+      // surface made every block run into the next.
+      color: AppColors.background,
       child: SafeArea(
         top: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Sits above "Where to?" and outside the scroll view, so it stays
-            // reachable however far down the card the customer has scrolled.
+            // Outside the scroll view, so it stays reachable however far down
+            // the card the customer has scrolled.
             _SheetHandle(lifted: _sheetLifted, onToggle: _toggleSheet),
             Expanded(
               child: SingleChildScrollView(
                 controller: _sheetScroll,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_activeTrip != null) ...[
-                _ActiveTripBanner(
-                  trip: _activeTrip!,
-                  onTrack: _openActiveTrip,
-                ),
-                const SizedBox(height: 14),
-              ],
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_activeTrip != null) ...[
+                      _ActiveTripBanner(
+                        trip: _activeTrip!,
+                        onTrack: _openActiveTrip,
+                      ),
+                      const SizedBox(height: 10),
+                    ],
 
-              const Padding(
-                padding: EdgeInsets.only(left: 2, bottom: 12),
-                child: Text(
-                  'Where to?',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -.2,
-                    color: AppText.primary,
-                  ),
-                ),
-              ),
+                    // What you are booking.
+                    _SheetPanel(
+                      child: _ServiceCards(
+                        selected: _service,
+                        onSelect: _selectService,
+                        nearbyCount: _visibleVehicles.length,
+                      ),
+                    ),
 
-              _ServiceCards(
-                selected: _service,
-                onSelect: _selectService,
-                nearbyCount: _visibleVehicles.length,
-              ),
+                    const SizedBox(height: 10),
 
-              const SizedBox(height: 14),
+                    // Where you are going, and — once that is known —
+                    // everything needed to send the request.
+                    _SheetPanel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_locationError != null) ...[
+                            _LocationErrorBanner(
+                              message: _locationError!,
+                              busy: _locating,
+                              onRetry: _loadLocation,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
 
-              // Both ends are always visible and always editable. Hiding pickup
-              // until a destination existed meant a wrong pickup could not be
-              // corrected, which is exactly when it matters.
-              _RouteSummaryFields(
-                pickupLabel: _pickup.text,
-                destinationLabel: _destination.text,
-                locating: _locating || _resolvingPin,
-                onUseMyLocation: _loadLocation,
-                onEditPickup: () => _openSearch(RouteFieldKind.pickup),
-                onEditDestination: () =>
-                    _openSearch(RouteFieldKind.destination),
-              ),
-
-              if (_locationError != null) ...[
-                const SizedBox(height: 10),
-                _LocationErrorBanner(
-                  message: _locationError!,
-                  busy: _locating,
-                  onRetry: _loadLocation,
-                ),
-              ],
-
-              // The trip panel only appears once there is a trip to describe.
-              if (_destination.text.trim().isNotEmpty) ...[
-                _TripSummary(
-                  loading: _routeLoading,
-                  result: _routeResult,
-                  selected: _selectedRoute,
-                  hasDestination: true,
-                ),
-                const SizedBox(height: 12),
-                AnimatedSize(
-                  duration: AppConfig.panelSwitch,
-                  curve: Curves.easeOut,
-                  alignment: Alignment.topCenter,
-                  child: _service == HomeService.hotel
-                      ? _buildHotelPanel()
-                      : _buildVehiclePanel(),
-                ),
-                const SizedBox(height: 14),
-                _StickyCta(
-                  label: _ctaLabel,
-                  enabled: _ctaEnabled,
-                  busy: _submitting,
-                  onTap: _submit,
-                ),
-              ] else if (_recent.isNotEmpty) ...[
-                // No destination yet: offer where they went last time. Most
-                // rides repeat, so this is the fastest path for a regular.
-                const SizedBox(height: 8),
-                const Divider(height: 1, color: AppColors.border),
-                ..._recent.map(
-                  (place) => _RecentRow(
-                    place: place,
-                    onTap: () => _useRecent(place),
-                  ),
-                ),
-              ],
+                          if (!planning) ...[
+                            // One control, one question, and it is the question
+                            // this app actually asks: where, and for how much.
+                            // A separate pickup row above it was two fields to
+                            // read before the customer could start.
+                            _SearchPill(
+                              onTap: () =>
+                                  _openSearch(RouteFieldKind.destination),
+                            ),
+                            const SizedBox(height: 10),
+                            _PickupRow(
+                              label: _pickup.text,
+                              busy: _locating || _resolvingPin,
+                              onTap: () => _openSearch(RouteFieldKind.pickup),
+                            ),
+                            if (_recent.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              // Most trips repeat, so the fastest path for a
+                              // regular is the one they took last time.
+                              ..._recent.map(
+                                (place) => _RecentRow(
+                                  place: place,
+                                  onTap: () => _useRecent(place),
+                                ),
+                              ),
+                            ],
+                          ] else ...[
+                            if (!hotel) ...[
+                              // Both ends stay visible and editable. Hiding
+                              // pickup once a destination existed meant a wrong
+                              // pickup could not be corrected, which is exactly
+                              // when it matters.
+                              _RouteSummaryFields(
+                                pickupLabel: _pickup.text,
+                                destinationLabel: _destination.text,
+                                locating: _locating || _resolvingPin,
+                                onUseMyLocation: _loadLocation,
+                                onEditPickup: () =>
+                                    _openSearch(RouteFieldKind.pickup),
+                                onEditDestination: () =>
+                                    _openSearch(RouteFieldKind.destination),
+                              ),
+                              _TripSummary(
+                                loading: _routeLoading,
+                                result: _routeResult,
+                                selected: _selectedRoute,
+                                hasDestination: true,
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            AnimatedSize(
+                              duration: AppConfig.panelSwitch,
+                              curve: Curves.easeOut,
+                              alignment: Alignment.topCenter,
+                              child: hotel
+                                  ? _buildHotelPanel()
+                                  : _buildVehiclePanel(),
+                            ),
+                            const SizedBox(height: 14),
+                            _StickyCta(
+                              label: _ctaLabel,
+                              enabled: _ctaEnabled,
+                              busy: _submitting,
+                              onTap: _submit,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1217,6 +1242,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _destinationPoint = place.point;
     });
     await _refreshRoute();
+
+    // A recent is a destination the customer has already been to and has just
+    // named again. Stopping here to make them press a second button would be
+    // asking them to confirm something they have already said.
+    if (!mounted) return;
+    if (_destinationPoint != null && _service != HomeService.hotel) {
+      await _openVehicleSelection();
+    }
   }
 
   Widget _buildVehiclePanel() {
@@ -1503,6 +1536,146 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 /// does the same, because a bar that looks draggable and is not reads as a
 /// broken control. The label states which way the next press goes rather than
 /// showing a bare chevron nobody has to guess about.
+/// A rounded block on the page.
+///
+/// The sheet is two of these — what you are booking, then where you are going.
+/// Grouping them this way is what makes the screen readable at a glance: one
+/// long column of controls all on the same surface gave the eye nowhere to
+/// stop.
+class _SheetPanel extends StatelessWidget {
+  const _SheetPanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadii.all(AppRadii.panel),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// The one question the app asks.
+///
+/// "Where to & for how much?" rather than "Where to?" because naming the price
+/// is the whole model — a customer who does not know that until the next screen
+/// is being asked to discover it.
+class _SearchPill extends StatelessWidget {
+  const _SearchPill({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surfaceAlt,
+      borderRadius: AppRadii.all(AppRadii.largeCard),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadii.all(AppRadii.largeCard),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+          child: Row(
+            children: [
+              Icon(Icons.search_rounded, size: 24, color: AppText.primary),
+              SizedBox(width: 13),
+              Expanded(
+                child: Text(
+                  'Where to & for how much?',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -.2,
+                    color: AppText.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pickup as one quiet line under the search control.
+///
+/// The map already shows the pickup on its own pin, so repeating it as a full
+/// field competed with the question above it. It stays tappable because a
+/// wrong pickup has to be fixable without first choosing a destination.
+class _PickupRow extends StatelessWidget {
+  const _PickupRow({
+    required this.label,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = label.trim();
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadii.all(AppRadii.row),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 9,
+              height: 9,
+              decoration: const BoxDecoration(
+                color: AppColors.secondary,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text.isEmpty ? 'Set a pickup point' : text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppText.secondary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (busy)
+              const SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              const Text(
+                'Change',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.secondary,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SheetHandle extends StatelessWidget {
   const _SheetHandle({required this.lifted, required this.onToggle});
 
@@ -2329,11 +2502,9 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Unselected cards drop to the neutral surface and muted ink, so the
-    // chosen product is unmistakable rather than one of three bright boxes.
+    // Unselected tiles drop to the neutral surface and muted ink, so the chosen
+    // product is unmistakable rather than one of three bright boxes.
     final background = selected ? surface : AppColors.surfaceAlt;
-    final iconChip = selected ? accent : AppColors.surfaceHigh;
-    final iconInk = selected ? AppProduct.rideInk : accent;
 
     return Semantics(
       button: true,
@@ -2355,59 +2526,47 @@ class _ProductCard extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: Stack(
             children: [
-              // Oversized artwork bleeding off the corner gives the card weight
-              // without adding another thing to read.
+              // Oversized artwork bleeding off the bottom corner, with the
+              // label reading from the top. The eye lands on the word first
+              // and the picture only confirms it — the other way round, four
+              // tiles read as four pictures with captions.
               Positioned(
-                right: large ? -14 : -8,
-                bottom: large ? -12 : -8,
+                right: large ? -18 : -10,
+                bottom: large ? -16 : -10,
                 child: Icon(
                   icon,
-                  size: large ? 92 : 52,
-                  color: accent.withValues(alpha: selected ? .34 : .13),
+                  size: large ? 104 : 58,
+                  color: accent.withValues(alpha: selected ? .38 : .16),
                 ),
               ),
               Padding(
-                padding: EdgeInsets.all(large ? 15 : 12),
+                padding: EdgeInsets.all(large ? 14 : 11),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: large ? 34 : 28,
-                      height: large ? 34 : 28,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: iconChip,
-                        borderRadius: BorderRadius.circular(large ? 11 : 9),
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: large ? 17 : 13.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.3,
+                        color: selected ? titleInk : AppText.primary,
                       ),
-                      child: Icon(icon, size: large ? 19 : 16, color: iconInk),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: large ? 15 : 13.5,
-                            fontWeight: FontWeight.w700,
-                            color: selected ? titleInk : AppText.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: large ? 11.5 : 10.5,
-                            fontWeight: FontWeight.w600,
-                            color: selected ? subInk : AppText.secondary,
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: large ? 2 : 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: large ? 11.5 : 10.5,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? subInk : AppText.secondary,
+                      ),
                     ),
                   ],
                 ),
@@ -2420,11 +2579,6 @@ class _ProductCard extends StatelessWidget {
   }
 }
 
-/// Shown when the device location could not be read.
-///
-/// Deliberately offers a retry and says the pickup can be set by hand: a dead
-/// end here blocks the whole booking, and location failures on the web are
-/// common and often temporary.
 class _LocationErrorBanner extends StatelessWidget {
   const _LocationErrorBanner({
     required this.message,
@@ -2485,63 +2639,54 @@ class _RecentRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(
-              children: [
-                const Icon(Icons.history_rounded,
-                    size: 19, color: AppText.disabled),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        place.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppText.primary,
-                        ),
-                      ),
-                      if (place.subtitle.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          place.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            color: AppText.secondary,
-                          ),
-                        ),
-                      ],
-                    ],
+      borderRadius: AppRadii.all(AppRadii.row),
+      child: Padding(
+        // No divider and no trailing chevron. Inside a panel the rows already
+        // read as a list, and two extra marks per row on the busiest part of
+        // the screen bought nothing.
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 11),
+        child: Row(
+          children: [
+            const Icon(Icons.history_rounded,
+                size: 21, color: AppText.disabled),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    place.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppText.primary,
+                    ),
                   ),
-                ),
-                const Icon(Icons.north_west_rounded,
-                    size: 17, color: AppText.disabled),
-              ],
+                  if (place.subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      place.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppText.secondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
-          Container(height: 1, color: AppColors.surfaceAlt),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Distance, travel time and the road the trip takes.
-///
-/// Shown only once a destination exists. When Directions cannot answer, this
-/// says so plainly rather than falling back to straight-line distance — a
-/// straight line through Kashmir's mountains can be a third of the real road,
-/// so a made-up figure would misprice the trip and mislead about arrival.
 class _TripSummary extends StatelessWidget {
   const _TripSummary({
     required this.loading,

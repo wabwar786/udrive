@@ -135,6 +135,45 @@ The client ignores the result. The request expires on its own, so a route an
 older API does not have must never trap the customer on a screen they have asked
 to leave.
 
+## 4. Home laid out to the reference screenshot
+
+`customer_home_screen.dart`
+
+The sheet is now two rounded panels on a near-black page rather than one flat
+surface: **what you are booking**, then **where you are going**. Two greys one
+step apart is what gives the layout depth — a single surface ran every block
+into the next, and the map fade now resolves to the page colour rather than to
+the old panel colour.
+
+**One question instead of two fields.** The pickup and destination rows are
+replaced, before a trip exists, by a single large control reading **"Where to &
+for how much?"**. Naming the price is the whole model; a customer who does not
+learn that until the next screen is being asked to discover it. Pickup drops to
+one quiet tappable line underneath, because the map already shows it on its own
+pin — but it stays tappable, since a wrong pickup has to be fixable without
+first choosing a destination.
+
+**Product tiles read label-first.** Title and subtitle at the top, oversized
+artwork bleeding off the bottom corner, no icon chip. The eye lands on the word
+and the picture confirms it; the other way round, the tiles read as pictures
+with captions.
+
+**Three products, not eight.** The reference carries City Rides, City to City,
+Couriers, Freight, Flights, Hotels, Car Rental, Events and Buses. UDrive has
+Ride now, Tour and Hotel, and adding rows of tiles for things that do not exist
+yet would be advertising them.
+
+**Recents book in one tap.** Tapping a recent destination now goes straight to
+the vehicle picker. It is a place the customer has already been to and has just
+named again; a confirm button after that asks them to agree with themselves. The
+rows lost their dividers and trailing chevrons — inside a panel they already
+read as a list.
+
+**Hotel works from the home screen.** It was gated behind a destination it never
+used, so selecting it and then finding nothing happened was the only outcome
+unless a destination happened to be set. Hotel now opens its own city/dates/
+guests panel immediately, and the route rows stay hidden for it.
+
 ---
 
 ## Not done
@@ -154,4 +193,4 @@ cd udrive_unified_mobile && python3 tool/audit_structure.py
 
 Clean as of this ZIP. Push, wait for the Actions run to go green, then deploy
 **both** `udrive-api` and `udrive Mobile`. Hard refresh afterwards and check the
-build label reads `rev 51`.
+build label reads `rev 52`.
