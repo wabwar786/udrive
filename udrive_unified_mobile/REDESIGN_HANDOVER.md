@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 39) · build label `rev 39`
+# UDrive Redesign — Delivery 1 & 2 (revision 41) · build label `rev 41`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,83 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 41 — build fix, and the check that would have caught it
+
+Removing the diagnostics overlay took the constructor parameter but left the
+field:
+
+```dart
+final bool showDiagnostics;   // no initialiser, no constructor entry
+```
+
+A `final` field with no initialiser must be set by every constructor, so the
+class stopped compiling.
+
+The audit missed it because it looked at duplicate declarations and undeclared
+calls, not at fields the constructor no longer sets. That check now exists, and
+is narrow enough to be trustworthy: it flags `final X name;` with no `=` whose
+name appears in no constructor. **I verified it by putting the exact bug back
+and confirming it was caught**, then removing it again — rather than assuming a
+new check works.
+
+### Docker warning resolved
+
+The build log carried:
+
+```
+SecretsUsedInArgOrEnv: Do not use ARG or ENV for sensitive data (ARG "MAPS_WEB_KEY")
+```
+
+Fair warning: `ARG` values are recorded in the image history, so a key passed
+that way is readable by anyone who pulls the image. The declaration is gone —
+the web build no longer uses a Google key at all. Tiles come from the API, which
+holds the key server-side.
+
+The `MAPS_WEB_KEY` variable can be deleted from the Railway service.
+
+### Worth doing before the next deploy
+
+The repository's GitHub Actions workflow runs `flutter analyze` as its first
+job. Every build failure today — the duplicate class, the missing import, the
+missing fields, this one — would have surfaced there in about a minute, instead
+of after a Railway build. Push, let Actions run, deploy once it is green.
+
+## Revision 40 — admin-managed map places
+
+Your idea, and it is better than the hard-coded list it replaces: you can add
+places yourself, without waiting on a build.
+
+**Admin portal → Map places.** Add a name, coordinates, district, alternative
+spellings and an optional note. It is searchable on the next search — no cache,
+no redeploy.
+
+Paste a Google Maps link or a coordinate pair and the two fields fill
+themselves. Four link formats are handled, plus a plain `34.5822, 73.8992`.
+Asking someone to pull two numbers out of a URL by hand is how transposed
+coordinates happen. Short `maps.app.goo.gl` links cannot be resolved in the
+browser, so those say so rather than failing quietly.
+
+Coordinates are checked against Pakistan's bounds on save. Wide enough that a
+legitimate pin just outside AJK is accepted, tight enough that swapped latitude
+and longitude are caught before a driver is sent to the wrong continent.
+
+Migration 031 creates the table and seeds it with the 25 places that were
+hard-coded, so nothing is lost. `KashmirGazetteer.cs` is deleted — the list
+lives in the database now.
+
+### The limit worth being clear about
+
+A pin makes a place **findable**. The route to it still comes from Google.
+
+Where the last stretch is an unpaved track Google has never mapped, the route
+will stop at the nearest mapped road. The customer and driver both see the right
+destination and the right name; they agree the last part between themselves.
+
+This is stated on the admin page too, so whoever adds places knows what a pin
+does and does not do. Building around it — driver-drawn tracks, or offline
+route hints — is possible, but it is a separate piece of work and should be
+decided on its own merits rather than assumed.
 
 ## Revision 39 — polish, and Kashmir in search
 

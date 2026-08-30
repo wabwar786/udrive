@@ -1,17 +1,20 @@
 FROM ghcr.io/cirruslabs/flutter:stable AS builder
 WORKDIR /app
 
-# Kept for compatibility with the existing Railway service variable, but no
-# longer used: the web build renders maps with flutter_map and never loads the
-# Google Maps JavaScript API. The variable can be deleted from Railway.
-ARG MAPS_WEB_KEY=""
+# No build arguments are needed.
+#
+# MAPS_WEB_KEY used to be declared here and was flagged by Docker's
+# SecretsUsedInArgOrEnv rule — ARG values are recorded in the image history, so
+# a key passed that way is readable by anyone who pulls the image. It is gone
+# because the web build no longer uses a Google key at all: maps render through
+# flutter_map, and tiles come from the API, which holds the key server-side.
+#
+# The MAPS_WEB_KEY variable can be deleted from the Railway service.
 
 COPY pubspec.yaml analysis_options.yaml ./
 COPY assets ./assets
 COPY lib ./lib
 COPY web ./web
-
-RUN echo "Web build uses flutter_map; no Google Maps key required."
 
 
 RUN flutter config --enable-web \

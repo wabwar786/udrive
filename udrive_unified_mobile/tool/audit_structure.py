@@ -58,6 +58,24 @@ def audit(path):
         if c != '_list':
             issues.append(f'UNDECLARED {c}')
 
+    # Uninitialised final fields.
+    #
+    # A `final` field with no initialiser must be set by every constructor. When
+    # a constructor parameter is removed and the field is left behind, the class
+    # stops compiling — twice now, on `showDiagnostics`. This is narrow enough
+    # to be reliable: it only looks at `final X name;` with no `=`, and only
+    # complains when the name appears in no constructor parameter list.
+    for match in re.finditer(r'^  final\s+[\w<>,\?\s\(\)]+?\s(\w+);\s*$', s, flags=re.M):
+        field = match.group(1)
+        line = s[:match.start()].count('\n') + 1
+        in_ctor = re.search(
+            r'(?:this\.' + re.escape(field) + r'\b)'
+            r'|(?:required\s+this\.' + re.escape(field) + r'\b)'
+            r'|(?:\b' + re.escape(field) + r'\s*[:=])',
+            s)
+        if not in_ctor:
+            issues.append(f'UNINITIALISED FINAL {field} @{line}')
+
     # Undeclared *fields* are deliberately not checked here.
     #
     # Two attempts produced dozens of false positives, and a check that cries

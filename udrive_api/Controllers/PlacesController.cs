@@ -86,7 +86,8 @@ public sealed class PlacesController(
             {
                 return Ok(ApiResponse<object>.Ok(new
                 {
-                    results = MergeLocalPlaces(query, results),
+                    results = await MergeLocalPlacesAsync(
+                        query, results, cancellationToken),
                     source = "google"
                 }));
             }
@@ -95,7 +96,8 @@ public sealed class PlacesController(
         var fallback = await NominatimSearchAsync(client, query, country, cancellationToken);
         return Ok(ApiResponse<object>.Ok(new
         {
-            results = MergeLocalPlaces(query, fallback),
+            results = await MergeLocalPlacesAsync(
+                query, fallback, cancellationToken),
             source = "osm"
         }));
     }
@@ -300,22 +302,27 @@ public sealed class PlacesController(
     /// Duplicates are dropped by name so a place Google already returned does
     /// not appear twice.
     /// </remarks>
-    private static List<object> MergeLocalPlaces(string query, List<object> remote)
+    private async Task<List<object>> MergeLocalPlacesAsync(
+        string query,
+        List<object> remote,
+        CancellationToken cancellationToken)
     {
-        var local = KashmirGazetteer.Search(query, 5).ToList();
+        var local = await LocalPlacesAsync(query, cancellationToken);
         if (local.Count == 0) return remote;
 
         var localNames = local
-            .Select(place => place.Name.ToLowerInvariant())
+            .Select(place => place.name.ToLowerInvariant())
             .ToHashSet();
 
         var merged = new List<object>();
         merged.AddRange(local.Select(place => (object)new
         {
-            title = place.Name,
-            subtitle = $"{place.District}, Azad Kashmir",
-            latitude = place.Latitude,
-            longitude = place.Longitude
+            title = place.name,
+            subtitle = string.IsNullOrWhiteSpace(place.note)
+                ? place.district
+                : $"{place.district} · {place.note}",
+            latitude = place.latitude,
+            longitude = place.longitude
         }));
 
         foreach (var item in remote)
@@ -331,6 +338,71 @@ public sealed class PlacesController(
         }
 
         return merged.Take(10).ToList();
+    }
+
+    /// <summary>Admin-pinned places matching the query.</summary>
+    /// <remarks>
+    /// Matching happens in SQL so an admin adding a place takes effect on the
+    /// next search, with no cache to wait on and no redeploy.
+    ///
+    /// `position(... in ...)` rather than a prefix match: someone searching
+    /// "kel" expects Arang Kel, and "neelum" expects the valley.
+    /// </remarks>
+    private async Task<List<(string name, string district, string note,
+        double latitude, double longitude)>> LocalPlacesAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<(string, string, string, double, double)>();
+        var needle = query.Trim().ToLowerInvariant();
+        if (needle.Length < 2) return results;
+
+        const string sql = """
+            SELECT name, district, note, latitude, longitude
+            FROM udrive.custom_places
+            WHERE is_active = true
+              AND (
+                    position(@needle in lower(name)) > 0
+                 OR EXISTS (
+                        SELECT 1 FROM unnest(aliases) AS alias
+                        WHERE position(@needle in alias) > 0
+                    )
+              )
+            ORDER BY
+                CASE
+                    WHEN lower(btrim(name)) = @needle THEN 0
+                    WHEN lower(name) LIKE @prefix THEN 1
+                    ELSE 2
+                END,
+                length(name)
+            LIMIT 5;
+            """;
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("needle", needle);
+            command.Parameters.AddWithValue("prefix", needle + "%");
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                results.Add((
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetDouble(3),
+                    reader.GetDouble(4)));
+            }
+        }
+        catch
+        {
+            // Search must still work if this table is missing or unreachable.
+        }
+
+        return results;
     }
 
     // ------------------------------------------------------------- map tiles

@@ -173,10 +173,6 @@ class UdMap extends StatefulWidget {
   final VoidCallback? onCameraMoveStarted;
   final ValueChanged<LatLng>? onCameraIdle;
 
-  /// Draws the camera position, zoom, polyline point count and readiness over
-  /// the map. Temporary: reading the real numbers off the screen beats
-  /// inferring them from how the map looks, which has cost several rounds.
-  final bool showDiagnostics;
   final bool interactive;
   final ValueChanged<LatLng>? onTap;
   final ValueChanged<UdMapSource>? onSourceChanged;

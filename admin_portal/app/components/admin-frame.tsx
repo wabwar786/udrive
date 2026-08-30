@@ -86,6 +86,7 @@ const groups = [
       ['/diagnostics', 'Diagnostics', Stethoscope],
       ['/help', 'Help / How to use', CircleHelp],
       ['/appearance', 'Address search', ImageIcon],
+      ['/places', 'Map places', MapPinned],
       ['/settings', 'Settings', Settings],
       ['/data-management', 'Data management', Database],
     ],
