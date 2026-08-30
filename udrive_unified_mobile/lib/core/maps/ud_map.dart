@@ -246,13 +246,25 @@ class _UdMapState extends State<UdMap> {
     await controller.moveCamera(gmap.CameraUpdate.zoomBy(-0.0001));
   }
 
+  /// A camera move requested before the map existed.
+  ///
+  /// Dropping these was the bug behind "the route is drawn but the map is
+  /// zoomed into a street": a route arrives in a few hundred milliseconds,
+  /// the map takes longer to create, and the fit was discarded with no error.
+  /// The camera then sat wherever the initial position put it.
+  ({LatLng target, double zoom})? _pendingCamera;
+
   Future<void> _moveTo(LatLng target, {double? zoom}) async {
     final nextZoom = zoom ?? _zoom;
     _center = target;
     _zoom = nextZoom;
 
     if (_online) {
-      if (!_googleController.isCompleted) return;
+      if (!_googleController.isCompleted) {
+        // Remember it and apply once the map reports itself created.
+        _pendingCamera = (target: target, zoom: nextZoom);
+        return;
+      }
       final controller = await _googleController.future;
       await controller.animateCamera(
         gmap.CameraUpdate.newCameraPosition(
@@ -363,6 +375,22 @@ class _UdMapState extends State<UdMap> {
       onMapCreated: (controller) {
         if (!_googleController.isCompleted) {
           _googleController.complete(controller);
+        }
+        // Apply anything requested while the map was still being created.
+        final pending = _pendingCamera;
+        if (pending != null) {
+          _pendingCamera = null;
+          controller.moveCamera(
+            gmap.CameraUpdate.newCameraPosition(
+              gmap.CameraPosition(
+                target: gmap.LatLng(
+                  pending.target.latitude,
+                  pending.target.longitude,
+                ),
+                zoom: pending.zoom,
+              ),
+            ),
+          );
         }
       },
       myLocationEnabled: widget.showMyLocation,

@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 27)
+# UDrive Redesign — Delivery 1 & 2 (revision 28) · build label `rev 28`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,55 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 28 — the camera move that was thrown away
+
+The dark map in your screenshot confirmed a recent build was live, so the
+straight line had to be something else. It was.
+
+`_moveTo` began with:
+
+```dart
+if (!_googleController.isCompleted) return;
+```
+
+A camera move requested before the map finished creating was **silently
+discarded**. A route arrives in a few hundred milliseconds; the map takes
+longer. So `fitBounds` ran, found no controller, and gave up — leaving the
+camera at its initial position, which is the pickup at zoom 16.2. Street level.
+
+At street level a 21 km route shows one near-horizontal slice of an east–west
+road. Nothing was wrong with the line: I decoded the polyline you sent and it
+spans 8 km of latitude and 18 km of longitude across 538 points. It was never
+straight; you were looking at 400 metres of it.
+
+Pending camera moves are now stored and applied in `onMapCreated`.
+
+A second cause, fixed alongside: **"Use my location" re-frames the route** when
+one exists, instead of zooming to the customer at 16.2. Pressing it while
+planning a trip should correct the pickup, not discard the view of the journey.
+
+## Verifying which build is live
+
+Open **Notifications** (the bell). The build label sits at the bottom of the
+panel. If it does not say `rev 28`, the deployed app predates these fixes and
+any conclusion drawn from testing it is about old code.
+
+Two visual tells that give the same answer instantly:
+
+- **A pale grey map** means the build is older than rev 27 — the dark style
+  arrived with it.
+- **Blank map tiles** mean older than rev 26.
+
+### The API is confirmed correct
+
+The `/places/directions` response you sent decodes to **538 points** with a path
+length of 21.48 km against the 21.475 km the API reported — a winding ratio of
+1.10 over the straight line. That is real road geometry. `HIGH_QUALITY` is
+working and the backend is deployed.
+
+So a straight-looking line on screen is now a client-side or deployment
+question, not an API one.
 
 ## Revision 27 — the route line, and a dark map
 

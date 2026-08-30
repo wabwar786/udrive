@@ -452,14 +452,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _resolvedPlaceName = label;
       });
 
-      // Centre on the customer. This was lost in an earlier refactor, which is
-      // why the map opened showing half of Central Asia.
-      //
-      // Seed the pin's guard with this point too: the camera move that follows
-      // will fire an idle event, and without the seed the pin would immediately
+      // Seed the pin's guard with this point: the camera move that follows
+      // fires an idle event, and without the seed the pin would immediately
       // reverse-geocode the position we just resolved.
       _lastResolvedCentre = point;
-      await _mapController.moveTo(point, zoom: AppConfig.pickupZoom);
+
+      // With a route on screen, re-frame the route rather than zooming to the
+      // customer. Pressing "use my location" while planning a trip should
+      // update the pickup, not throw away the view of the journey.
+      final route = _activeRoute;
+      if (route != null && route.points.isNotEmpty) {
+        await _mapController.fitBounds(route.points, padding: 70);
+      } else {
+        await _mapController.moveTo(point, zoom: AppConfig.pickupZoom);
+      }
     } catch (_) {
       _setPickupFailure('Could not read your location. Try again, or set a pickup manually.');
     } finally {
@@ -1878,6 +1884,19 @@ class _NotificationsPopup extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+              ),
+            ),
+            // Which build is actually running. Checking this first turns "the
+            // fix did not work" into "the fix is not deployed" in one glance.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+              child: Text(
+                AppConfig.buildLabel,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  color: AppText.disabled,
                 ),
               ),
             ),
