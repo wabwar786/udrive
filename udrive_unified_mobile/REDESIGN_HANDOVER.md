@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 49) · build label `rev 49`
+# UDrive Redesign — Delivery 1 & 2 (revision 50) · build label `rev 50`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,46 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 50 — booking in three taps
+
+### Why tapping a route did nothing
+
+My hit-test measured the distance to each polyline's **vertices**. A straight
+stretch of motorway has vertices kilometres apart, so the middle of it — where
+anyone would aim — matched nothing.
+
+It now measures the perpendicular distance to each **segment**, with a 22-pixel
+tolerance converted to degrees at the live zoom, and a cosine correction so a
+tap does not need to be more accurate horizontally than vertically.
+
+### Why double tap did nothing
+
+`InteractiveFlag` listed only `pinchZoom` and `drag`. flutter_map honours
+exactly the flags it is given, so double-tap zoom was never enabled. Added,
+along with double-tap-drag, scroll wheel and fling.
+
+### Three taps to a booking
+
+The flow was: tap a service, scroll, tap the destination field, search, pick,
+return to Home, then tap "Find a Car". Seven actions to say where you are going.
+
+Now:
+
+1. **Tap a service** — the sheet scrolls itself and the search opens
+2. **Pick a destination** — this goes straight to the vehicle screen
+3. **Find offers**
+
+Picking a destination *is* the customer saying where they want to go. Asking
+them to press another button afterwards was asking them to confirm something
+they had just done.
+
+Hotels are excluded from both: that flow needs dates and guests before a
+destination means anything.
+
+A guard stops a fast double tap stacking two copies of the vehicle screen. The
+"Find a Car" button stays as a fallback for anyone who typed an address the
+geocoder could not place.
 
 ## Revision 49 — type back down, and the logo goes home
 

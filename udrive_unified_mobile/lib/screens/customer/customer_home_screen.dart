@@ -70,6 +70,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   TripOperationsRepository? _tripRepository;
   NearbyVehicleRepository? _nearbyRepository;
   final _mapController = UdMapController();
+
+  /// Scrolls the sheet so the addresses are in view.
+  ///
+  /// Choosing a service should move the customer forward without them having
+  /// to find the next field themselves.
+  final _sheetScroll = ScrollController();
   Timer? _nearbyTimer;
 
   /// Vehicles currently online inside the radius. Filtered by service when
@@ -202,6 +208,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _tripTimer?.cancel();
     _nearbyTimer?.cancel();
     _mapController.dispose();
+    _sheetScroll.dispose();
     _connectivity?.cancel();
     _pickup.dispose();
     _destination.dispose();
@@ -612,7 +619,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   /// Non-tour: hand straight to the existing route/vehicle flow. The
   /// route-entry step is skipped when we have coordinates for both ends.
+  /// True while a push is in flight, so a fast double tap cannot stack two
+  /// copies of the vehicle screen.
+  bool _openingVehicles = false;
+
   Future<void> _openVehicleSelection() async {
+    if (_openingVehicles) return;
+    _openingVehicles = true;
+    try {
+      await _pushVehicleSelection();
+    } finally {
+      _openingVehicles = false;
+    }
+  }
+
+  Future<void> _pushVehicleSelection() async {
     final destinationPoint = await _resolveDestination();
     if (!mounted) return;
 
@@ -1018,6 +1039,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       child: SafeArea(
         top: false,
         child: SingleChildScrollView(
+          controller: _sheetScroll,
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Column(
@@ -1129,6 +1151,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     });
     // Tour queries a different vehicle set, so the map has to refetch.
     _refreshNearby();
+
+    // Carry them to the next step rather than leaving them to scroll and hunt
+    // for it. Hotels ask for dates instead of a destination, so they are left
+    // where they are.
+    if (service != HomeService.hotel && _destination.text.trim().isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_sheetScroll.hasClients) {
+          _sheetScroll.animateTo(
+            _sheetScroll.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOut,
+          );
+        }
+        _openSearch(RouteFieldKind.destination);
+      });
+    }
   }
 
   Future<void> _useRecent(RecentPlace place) async {
@@ -1244,6 +1283,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
     // A route needs both ends; _refreshRoute clears itself when one is missing.
     await _refreshRoute();
+
+    // Picking a destination is the customer saying where they want to go, so
+    // carry them straight to choosing a vehicle. Requiring a separate button
+    // afterwards was a step that asked them to confirm something they had just
+    // done.
+    //
+    // Hotels are excluded: that flow needs dates and guests first.
+    if (!wasPickup &&
+        mounted &&
+        _destinationPoint != null &&
+        _service != HomeService.hotel) {
+      await _openVehicleSelection();
+    }
   }
 
   Widget _buildTourPanel() {

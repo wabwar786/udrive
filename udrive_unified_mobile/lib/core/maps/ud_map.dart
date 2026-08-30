@@ -384,24 +384,48 @@ class _UdMapState extends State<UdMap> {
 
   /// The tappable polyline closest to [point], if one is within reach.
   ///
-  /// The threshold scales with zoom: at street level a tap must land almost on
-  /// the line, while on a zoomed-out view of a 100 km route the same tolerance
-  /// in degrees would be metres on screen and impossible to hit.
+  /// Measures the distance to each *segment*, not to the vertices. A long
+  /// straight stretch of motorway has vertices kilometres apart, so comparing
+  /// against vertices alone made the middle of that stretch untappable — which
+  /// is exactly where someone aims.
+  ///
+  /// The tolerance is in screen pixels converted to degrees at the live zoom,
+  /// so it stays the same physical target whether the map shows a street or a
+  /// whole valley.
   UdPolyline? _polylineNear(LatLng point) {
     final tappable =
         widget.polylines.where((line) => line.onTap != null).toList();
     if (tappable.isEmpty) return null;
 
-    // Roughly 12 screen pixels expressed in degrees at the current zoom.
-    final tolerance = 12 * 360 / (256 * math.pow(2, _zoom));
+    // Read the zoom from the map rather than the cached field: the customer may
+    // have pinched since the last programmatic move.
+    var zoom = _zoom;
+    if (!_useGoogle) {
+      try {
+        zoom = _offlineController.camera.zoom;
+      } catch (_) {
+        // Controller not attached yet; the cached value is close enough.
+      }
+    }
+
+    // 22 logical pixels — a comfortable thumb target, and roughly what map
+    // apps allow for tapping a route.
+    final tolerance = 22 * 360 / (256 * math.pow(2, zoom));
+    // Longitude degrees shrink towards the poles; without this a tap north of
+    // the equator needs to be more accurate horizontally than vertically.
+    final lngScale = math.max(math.cos(point.latitude * math.pi / 180), 0.1);
 
     UdPolyline? best;
     var bestDistance = double.infinity;
 
     for (final line in tappable) {
-      for (final vertex in line.points) {
-        final distance = (vertex.latitude - point.latitude).abs() +
-            (vertex.longitude - point.longitude).abs();
+      for (var i = 0; i < line.points.length - 1; i++) {
+        final distance = _distanceToSegment(
+          point,
+          line.points[i],
+          line.points[i + 1],
+          lngScale,
+        );
         if (distance < bestDistance) {
           bestDistance = distance;
           best = line;
@@ -410,6 +434,31 @@ class _UdMapState extends State<UdMap> {
     }
 
     return bestDistance <= tolerance ? best : null;
+  }
+
+  /// Perpendicular distance from [p] to the segment [a]–[b], in degrees.
+  static double _distanceToSegment(
+    LatLng p,
+    LatLng a,
+    LatLng b,
+    double lngScale,
+  ) {
+    final px = (p.longitude - a.longitude) * lngScale;
+    final py = p.latitude - a.latitude;
+    final bx = (b.longitude - a.longitude) * lngScale;
+    final by = b.latitude - a.latitude;
+
+    final lengthSquared = bx * bx + by * by;
+    // Degenerate segment: fall back to the distance to the point itself.
+    if (lengthSquared == 0) return math.sqrt(px * px + py * py);
+
+    // Where along the segment the perpendicular lands, clamped to its ends so
+    // a tap beyond either end measures to that end rather than to the
+    // infinite line.
+    final t = ((px * bx + py * by) / lengthSquared).clamp(0.0, 1.0);
+    final dx = px - t * bx;
+    final dy = py - t * by;
+    return math.sqrt(dx * dx + dy * dy);
   }
 
   // --------------------------------------------------------------- rendering
@@ -552,7 +601,15 @@ class _UdMapState extends State<UdMap> {
         initialZoom: _zoom,
         interactionOptions: fmap.InteractionOptions(
           flags: widget.interactive
-              ? fmap.InteractiveFlag.pinchZoom | fmap.InteractiveFlag.drag
+              // Double tap and the two-finger gestures were missing, which is
+              // why double tapping did nothing: flutter_map only honours the
+              // flags it is given, and these were never listed.
+              ? fmap.InteractiveFlag.pinchZoom |
+                  fmap.InteractiveFlag.drag |
+                  fmap.InteractiveFlag.doubleTapZoom |
+                  fmap.InteractiveFlag.doubleTapDragZoom |
+                  fmap.InteractiveFlag.scrollWheelZoom |
+                  fmap.InteractiveFlag.flingAnimation
               : fmap.InteractiveFlag.none,
         ),
         // No minZoom, maxZoom or cameraConstraint here.
