@@ -2,20 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../network/api_config.dart';
+
 /// Raster tiles for the web build.
 ///
-/// OpenStreetMap's own tile server is used because it is the one source that
-/// needs no key and cannot start needing one. CARTO's basemaps were tried first
-/// and now require an API key; a map that stops working when someone else
-/// changes their pricing is not a foundation to build on.
+/// These are **Google's own map tiles**, served through the UDrive API rather
+/// than fetched directly. Google's Map Tiles API returns the same cartography
+/// the Maps SDK draws, as plain raster images, which flutter_map renders on
+/// Flutter's own canvas — so the map looks like Google's without the platform
+/// view that made `google_maps_flutter_web` unreliable here.
 ///
-/// OSM tiles are light, so they are darkened here rather than swapped for a
-/// dark provider — see [_darkFilter].
+/// Proxying keeps the key on the server. A tile URL built in the browser would
+/// carry the key in plain sight of anyone who opens devtools.
 ///
-/// OSM's tile usage policy covers development and modest production traffic. If
-/// UDrive's web traffic ever grows past that, the options are a paid tile
-/// provider or Google's Map Tiles API, both of which drop straight into this
-/// widget without touching anything else.
+/// If the proxy cannot serve a tile — no key configured, Map Tiles API not
+/// enabled, quota reached — OpenStreetMap is used instead. A usable map beats a
+/// blank one, and the difference is visible enough that a misconfiguration will
+/// not go unnoticed.
 class OfflineAwareTileLayer extends StatelessWidget {
   const OfflineAwareTileLayer({
     super.key,
@@ -28,32 +31,25 @@ class OfflineAwareTileLayer extends StatelessWidget {
   final LatLng destination;
   final ValueChanged<String>? onSourceChanged;
 
-  /// Invert combined with a 180° hue rotation — the same pair CSS dark-map
-  /// filters use. Inverting alone turns land grey and water white; rotating the
-  /// hue back afterwards restores something close to the original colours at
-  /// dark luminance, so roads stay pale against dark land and water stays blue.
-  static const ColorFilter _darkFilter = ColorFilter.matrix(<double>[
-    0.5740, -1.4300, -0.1440, 0.0000, 255.0000,
-    -0.4260, -0.4300, -0.1440, 0.0000, 255.0000,
-    -0.4260, -1.4300, 0.8560, 0.0000, 255.0000,
-    0.0000, 0.0000, 0.0000, 1.0000, 0.0000,
-  ]);
-
   @override
   Widget build(BuildContext context) {
     WidgetsBinding.instance
-        .addPostFrameCallback((_) => onSourceChanged?.call('ONLINE_OSM'));
+        .addPostFrameCallback((_) => onSourceChanged?.call('GOOGLE_TILES'));
+
+    // Built by concatenation, not through ApiConfig.uri: that percent-encodes
+    // the path, which would turn {z}/{x}/{y} into %7Bz%7D and leave flutter_map
+    // with no placeholders to substitute.
+    final googleTiles =
+        '${ApiConfig.baseUrl}/api/v1/places/tiles/{z}/{x}/{y}';
 
     return TileLayer(
-      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      urlTemplate: googleTiles,
       userAgentPackageName: 'com.udrive.mobile',
-      maxNativeZoom: 19,
-      // Applied per tile rather than over the whole layer, so markers, the
-      // route and the pin stay their true colours.
-      tileBuilder: (context, tileWidget, tile) => ColorFiltered(
-        colorFilter: _darkFilter,
-        child: tileWidget,
-      ),
+      maxNativeZoom: 22,
+      // Shown while a tile loads and if it fails. Without it a slow tile leaves
+      // a transparent hole that reads as a broken map.
+      errorTileCallback: (tile, error, stackTrace) {},
+      fallbackUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     );
   }
 }

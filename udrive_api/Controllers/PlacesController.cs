@@ -280,6 +280,153 @@ public sealed class PlacesController(
         return Ok(ApiResponse<object>.Ok(new { routes, reason = "ok" }));
     }
 
+    // ------------------------------------------------------------- map tiles
+
+    /// <summary>Cached Map Tiles session token, and when it stops being valid.</summary>
+    /// <remarks>
+    /// Google issues session tokens valid for two weeks and expects them to be
+    /// reused. Creating one per tile request would be both slow and abusive, so
+    /// one is held here and refreshed a day before it lapses.
+    ///
+    /// Static because the token belongs to the key, not to a request. The lock
+    /// stops a burst of tile requests on a cold start from creating a dozen
+    /// sessions at once.
+    /// </remarks>
+    private static string? _tileSession;
+    private static DateTimeOffset _tileSessionExpiry = DateTimeOffset.MinValue;
+    private static readonly SemaphoreSlim TileSessionLock = new(1, 1);
+
+    private async Task<string?> TileSessionAsync(
+        HttpClient client,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        if (_tileSession is not null && DateTimeOffset.UtcNow < _tileSessionExpiry)
+        {
+            return _tileSession;
+        }
+
+        await TileSessionLock.WaitAsync(cancellationToken);
+        try
+        {
+            // Re-check: another request may have created one while we waited.
+            if (_tileSession is not null && DateTimeOffset.UtcNow < _tileSessionExpiry)
+            {
+                return _tileSession;
+            }
+
+            var payload = new
+            {
+                mapType = "roadmap",
+                language = "en-US",
+                region = "PK",
+                // Google hosts the styling, so the map matches the app without
+                // shipping a style document with every tile request.
+                overlay = false
+            };
+
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"https://tile.googleapis.com/v1/createSession?key={Uri.EscapeDataString(key)}")
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(payload),
+                    System.Text.Encoding.UTF8,
+                    "application/json")
+            };
+
+            using var response = await client.SendAsync(request, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+
+            using var document = JsonDocument.Parse(body);
+            if (!document.RootElement.TryGetProperty("session", out var session))
+            {
+                return null;
+            }
+
+            _tileSession = session.GetString();
+
+            // "expiry" is seconds since the epoch, as a string.
+            if (document.RootElement.TryGetProperty("expiry", out var expiry) &&
+                long.TryParse(expiry.GetString(), out var epoch))
+            {
+                _tileSessionExpiry =
+                    DateTimeOffset.FromUnixTimeSeconds(epoch).AddDays(-1);
+            }
+            else
+            {
+                _tileSessionExpiry = DateTimeOffset.UtcNow.AddDays(7);
+            }
+
+            return _tileSession;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            TileSessionLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Serves a Google map tile.
+    /// </summary>
+    /// <remarks>
+    /// Proxied rather than fetched directly by the app so the key stays on the
+    /// server. A tile URL built in the browser would carry the key in plain
+    /// sight of anyone opening devtools.
+    ///
+    /// Tiles are immutable for practical purposes, so they are cached hard.
+    /// After the first visit to an area the browser stops asking.
+    /// </remarks>
+    [HttpGet("tiles/{z:int}/{x:int}/{y:int}")]
+    [ResponseCache(Duration = 604800, Location = ResponseCacheLocation.Any)]
+    public async Task<IActionResult> Tile(
+        int z,
+        int x,
+        int y,
+        CancellationToken cancellationToken = default)
+    {
+        if (z is < 0 or > 22) return NotFound();
+
+        var key = await GoogleKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(key)) return NotFound();
+
+        var client = httpClientFactory.CreateClient("places");
+        var session = await TileSessionAsync(client, key!, cancellationToken);
+        if (session is null) return NotFound();
+
+        try
+        {
+            var url =
+                $"https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}" +
+                $"?session={Uri.EscapeDataString(session)}" +
+                $"&key={Uri.EscapeDataString(key!)}";
+
+            using var response = await client.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                // A missing tile is normal at the edges of coverage; do not log
+                // it as an error or the log fills with noise.
+                return NotFound();
+            }
+
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            var contentType =
+                response.Content.Headers.ContentType?.MediaType ?? "image/png";
+
+            Response.Headers.CacheControl = "public, max-age=604800, immutable";
+            return File(bytes, contentType);
+        }
+        catch
+        {
+            return NotFound();
+        }
+    }
+
     // ------------------------------------------------------------------ google
 
     /// <summary>

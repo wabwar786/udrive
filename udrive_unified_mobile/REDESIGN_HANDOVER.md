@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 32) · build label `rev 32`
+# UDrive Redesign — Delivery 1 & 2 (revision 33) · build label `rev 33`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,62 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 33 — Google's map, without the platform view
+
+You were right to push back. Dropping Google because `google_maps_flutter_web`
+was unreliable threw away the wrong thing — the plugin was the problem, not
+Google.
+
+Web now uses **Google's Map Tiles API**. It returns the same cartography the
+Maps SDK draws, as plain raster tiles, which flutter_map renders on Flutter's
+own canvas. Google's map, no DOM element, none of the failures of the last two
+days.
+
+### Enable it first
+
+```
+Console → APIs & Services → Library → Map Tiles API → Enable
+```
+
+Then add **Map Tiles API** to the `udrive-server` key's API restrictions,
+alongside Places, Geocoding and Routes.
+
+### How it works
+
+```
+GET /api/v1/places/tiles/{z}/{x}/{y}
+```
+
+The server creates a Map Tiles session (Google issues these for two weeks and
+expects reuse — one is cached and refreshed a day before it lapses), fetches the
+tile, and returns it. A semaphore stops a cold start creating a dozen sessions
+at once.
+
+Proxied rather than fetched directly so the key stays on the server; a tile URL
+built in the browser would carry the key in plain sight.
+
+Tiles are cached for a week at both the API and the browser, so after the first
+visit to an area nothing is re-fetched.
+
+### If the proxy cannot serve
+
+OpenStreetMap is used as a fallback — no key configured, Map Tiles not enabled,
+quota reached. A usable map beats a blank one, and the two look different enough
+that a misconfiguration will be obvious rather than silent.
+
+### A bug avoided
+
+`ApiConfig.uri()` percent-encodes the path, which would have turned
+`{z}/{x}/{y}` into `%7Bz%7D/%7Bx%7D/%7By%7D` and left flutter_map with no
+placeholders — the same class of fault as the `%3F` 404s. The tile template is
+built by concatenation instead. I checked this before shipping rather than
+after.
+
+### Android and iOS
+
+Unchanged. They use the native Google Maps SDK, which has never been part of
+this problem.
 
 ## Revision 32 — tiles that cannot start requiring a key
 

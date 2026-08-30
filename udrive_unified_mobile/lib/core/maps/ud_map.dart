@@ -559,11 +559,12 @@ class _UdMapState extends State<UdMap> {
                 )
                 .toList(growable: false),
           ),
-        // Required by the OpenStreetMap licence. Small and out of the way, but
-        // it has to be present and legible.
+        // Google's terms require visible attribution on Map Tiles imagery, and
+        // OpenStreetMap's licence requires it on the fallback. Naming both
+        // covers whichever is actually being served.
         const fmap.SimpleAttributionWidget(
           source: Text(
-            '© OpenStreetMap',
+            'Google · © OpenStreetMap',
             style: TextStyle(fontSize: 9, color: AppText.disabled),
           ),
           backgroundColor: Color(0xCC0B1417),
