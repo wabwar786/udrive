@@ -895,6 +895,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       myLocation: _pickupPoint,
       onCameraMoveStarted: _onMapDragStart,
       onCameraIdle: _onMapSettled,
+      // Temporary while the map is being stabilised.
+      showDiagnostics: true,
       routeOrigin: _pickupPoint,
       routeDestination: _destinationPoint ?? _pickupPoint,
       circles: [

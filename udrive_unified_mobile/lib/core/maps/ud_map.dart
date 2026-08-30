@@ -138,6 +138,7 @@ class UdMap extends StatefulWidget {
     this.minZoom,
     this.onCameraMoveStarted,
     this.onCameraIdle,
+    this.showDiagnostics = false,
     this.interactive = true,
     this.onTap,
     this.onSourceChanged,
@@ -172,6 +173,11 @@ class UdMap extends StatefulWidget {
   /// settles. Together they drive the centre pickup pin.
   final VoidCallback? onCameraMoveStarted;
   final ValueChanged<LatLng>? onCameraIdle;
+
+  /// Draws the camera position, zoom, polyline point count and readiness over
+  /// the map. Temporary: reading the real numbers off the screen beats
+  /// inferring them from how the map looks, which has cost several rounds.
+  final bool showDiagnostics;
   final bool interactive;
   final ValueChanged<LatLng>? onTap;
   final ValueChanged<UdMapSource>? onSourceChanged;
@@ -533,14 +539,10 @@ class _UdMapState extends State<UdMap> {
         ),
         minZoom: widget.minZoom ?? 3,
         maxZoom: 21,
-        // Keeps the camera on the map rather than letting a drag fling it into
-        // empty space beyond the tile coverage.
-        cameraConstraint: fmap.CameraConstraint.contain(
-          bounds: fmap.LatLngBounds(
-            const LatLng(85, -180),
-            const LatLng(-85, 180),
-          ),
-        ),
+        // No cameraConstraint. `contain` repositions the camera itself to keep
+        // the viewport inside the bounds, and with world-sized bounds it moved
+        // the map somewhere unrelated. The guards in _moveTo already stop
+        // impossible coordinates.
         onPositionChanged: (position, hasGesture) {
           _cameraTarget = position.center;
           if (hasGesture) widget.onCameraMoveStarted?.call();
@@ -602,6 +604,31 @@ class _UdMapState extends State<UdMap> {
                 )
                 .toList(growable: false),
           ),
+        if (widget.showDiagnostics)
+          Positioned(
+            left: 8,
+            top: 8,
+            child: IgnorePointer(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                color: const Color(0xCC000000),
+                child: Text(
+                  'cam ${_center.latitude.toStringAsFixed(4)}, '
+                  '${_center.longitude.toStringAsFixed(4)}  z'
+                  '${_zoom.toStringAsFixed(1)}\n'
+                  'pts ${widget.polylines.fold<int>(0, (a, l) => a + l.points.length)}'
+                  '  ready $_offlineReady',
+                  style: const TextStyle(
+                    fontSize: 9,
+                    height: 1.3,
+                    color: Color(0xFFA6FF2E),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
         // Google's terms require visible attribution on Map Tiles imagery, and
         // OpenStreetMap's licence requires it on the fallback. Naming both
         // covers whichever is actually being served.
