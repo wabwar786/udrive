@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 29) · build label `rev 29`
+# UDrive Redesign — Delivery 1 & 2 (revision 30) · build label `rev 30`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,50 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 30 — web stops using Google Maps
+
+I have chased the map problem through seven explanations and each fix moved the
+symptom rather than removing it: a zoom floor I added, PointerInterceptor
+stacking I added, a dynamic height I added, a discarded camera move, a cache
+pinning old builds. Three of those faults were mine. The rest were
+`google_maps_flutter_web`.
+
+That plugin renders the map as a DOM element composited beside Flutter's canvas.
+Blank tiles, a tile grid showing through, a route drawn as straight segments,
+styling that applied on one load and not the next — all of it lives in that
+seam.
+
+**Web now renders with `flutter_map` instead.** Everything is drawn on Flutter's
+own canvas: no platform view, no separate compositing layer, and a polyline that
+cannot do anything other than follow the points it is handed.
+
+```dart
+bool get _useGoogle => _online && !kIsWeb;
+```
+
+Android and iOS keep Google Maps. There the SDK is native and none of these
+problems exist.
+
+### What changes on web
+
+- Tiles come from CARTO's dark basemap (OpenStreetMap data), which matches the
+  app palette. Free for reasonable use.
+- Attribution for OpenStreetMap and CARTO is now drawn — Google supplied its
+  own, flutter_map does not, and both licences require it.
+- The route keeps its dark border and round caps, so it reads the same.
+
+### The trade-off, stated plainly
+
+Web loses Google's cartography: less detail in Pakistan, and place labels that
+are sometimes sparser. It gains a map that works.
+
+Web is the testing surface. Customers will be on Android, where Google Maps is
+still what they see. If web ever becomes a product surface, Google's Map Tiles
+API can feed flutter_map raster tiles — same architecture, Google's imagery,
+no platform view.
+
+**No new Google API is needed for any of this.**
 
 ## Revision 29 — why a deployed build kept showing rev 28
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmap;
@@ -188,6 +189,23 @@ class _UdMapState extends State<UdMap> {
 
   bool _online = true;
 
+  /// Google Maps is used on mobile only.
+  ///
+  /// `google_maps_flutter_web` renders the map as a DOM element composited
+  /// alongside Flutter's canvas, and that arrangement proved unreliable here:
+  /// blank tiles, a tile grid showing through, a route drawn as straight
+  /// segments, and styling that applied on one load and not the next. Days went
+  /// into it and each fix moved the symptom rather than removing it.
+  ///
+  /// flutter_map draws everything on Flutter's own canvas. No platform view, no
+  /// separate compositing layer, and a polyline that is guaranteed to follow the
+  /// points it is given. On Android and iOS the Google SDK is native and has
+  /// none of these problems, so it stays.
+  ///
+  /// The trade-off is that web shows OpenStreetMap rather than Google's
+  /// cartography. Web is the testing surface; customers will be on Android.
+  bool get _useGoogle => _online && !kIsWeb;
+
   /// Where the camera currently points. Tracked so the idle callback can report
   /// it — Google gives the position during the move, not at the end.
   LatLng? _cameraTarget;
@@ -240,7 +258,7 @@ class _UdMapState extends State<UdMap> {
   /// a browser window drag — it can keep tiles for the old viewport and leave
   /// the rest grey. Moving the camera forces a fresh tile fetch.
   Future<void> _forceRedraw() async {
-    if (!_online || !_googleController.isCompleted) return;
+    if (!_useGoogle || !_googleController.isCompleted) return;
     final controller = await _googleController.future;
     await controller.moveCamera(gmap.CameraUpdate.zoomBy(0.0001));
     await controller.moveCamera(gmap.CameraUpdate.zoomBy(-0.0001));
@@ -259,7 +277,7 @@ class _UdMapState extends State<UdMap> {
     _center = target;
     _zoom = nextZoom;
 
-    if (_online) {
+    if (_useGoogle) {
       if (!_googleController.isCompleted) {
         // Remember it and apply once the map reports itself created.
         _pendingCamera = (target: target, zoom: nextZoom);
@@ -531,10 +549,26 @@ class _UdMapState extends State<UdMap> {
                     points: line.points,
                     color: line.color,
                     strokeWidth: line.width,
+                    // A dark border keeps the route legible over pale streets,
+                    // the same job the casing does on the Google renderer.
+                    borderColor: AppColors.primary,
+                    borderStrokeWidth: 2,
+                    strokeCap: StrokeCap.round,
+                    strokeJoin: StrokeJoin.round,
                   ),
                 )
                 .toList(growable: false),
           ),
+        // Required by the OpenStreetMap licence and CARTO's terms. Small and
+        // out of the way, but it must be present and readable.
+        const fmap.SimpleAttributionWidget(
+          source: Text(
+            '© OpenStreetMap · CARTO',
+            style: TextStyle(fontSize: 9, color: AppText.disabled),
+          ),
+          backgroundColor: Color(0xCC0B1417),
+          alignment: Alignment.bottomLeft,
+        ),
         if (widget.showMyLocation && widget.myLocation != null)
           fmap.CircleLayer(
             circles: [
@@ -616,7 +650,7 @@ class _UdMapState extends State<UdMap> {
           // Painted under the platform view so a slow or failed map area reads
           // as part of the dark app rather than a white hole in it.
           const ColoredBox(color: AppTint.mapBackdrop),
-          if (_online) _buildGoogle() else _buildOffline(),
+          if (_useGoogle) _buildGoogle() else _buildOffline(),
           if (!_online)
             const Positioned(
               left: 12,
