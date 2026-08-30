@@ -8,6 +8,7 @@ import '../../core/routing/route_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/vehicles/vehicle_options_repository.dart';
 import '../../core/widgets/home_service.dart';
 import 'driver_offers_screen.dart';
@@ -61,6 +62,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
 
   late int _seats = widget.seats;
   int _fare = 0;
+
+  /// Admin-supplied photographs, keyed by setting name.
+  Map<String, String> _images = const {};
+
   bool _loading = true;
   bool _submitting = false;
   String? _error;
@@ -98,11 +103,21 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         ? (distanceKm / 25 * 60).round()
         : (route.durationSeconds / 60).round();
 
+    final images = VehicleImageRepository(controller.apiClient);
+    // Paint from cache immediately, then refresh in the background. Waiting on
+    // the network to show a picture the customer has already seen would be a
+    // poor trade.
+    final cachedImages = await images.cached();
+
     final options = await repository.optionsFor(
       distanceKm: distanceKm,
       durationMinutes: minutes,
     );
     if (!mounted) return;
+
+    images.refresh().then((fresh) {
+      if (mounted && fresh.isNotEmpty) setState(() => _images = fresh);
+    });
 
     // Open on the vehicle matching the service chosen on Home, so this screen
     // continues that decision rather than restarting it.
@@ -116,6 +131,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     setState(() {
       _options = options;
       _selected = preferred;
+      _images = cachedImages;
       _loading = false;
       if (preferred == null) {
         _error = 'No vehicles are available for this trip right now.';
@@ -295,10 +311,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         // Vehicle types as pills. They stay in place and in order whichever is
         // chosen — nothing is promoted out of the row.
         SizedBox(
-          height: 44,
+          height: 50,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
             itemCount: _options.length,
             separatorBuilder: (_, __) => const SizedBox(width: 7),
             itemBuilder: (context, index) {
@@ -318,8 +334,14 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   children: [
-                    _VehicleHero(option: selected),
-                    const SizedBox(height: 18),
+                    _VehicleHero(
+                      option: selected,
+                      imageUrl: _images[
+                          VehicleImageRepository.settingKeyFor(
+                              selected.category) ??
+                          ''],
+                    ),
+                    const SizedBox(height: 22),
 
                     // Only a vehicle with seats to spare can be sold by the
                     // seat. For everything else the row is absent rather than
@@ -388,7 +410,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                               'Fare does not include tolls, parking or entry '
                               'fees. Settle those with your driver.',
                               style: TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 13,
                                 height: 1.45,
                                 color: AppText.secondary,
                               ),
@@ -496,7 +518,7 @@ class _RouteHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 16.5,
                     fontWeight: FontWeight.w700,
                     color: AppText.primary,
                   ),
@@ -512,7 +534,7 @@ class _RouteHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 16.5,
                     fontWeight: FontWeight.w700,
                     color: AppText.primary,
                   ),
@@ -527,7 +549,7 @@ class _RouteHeader extends StatelessWidget {
                       Text(
                         '${route!.durationLabel}  ·  ${route!.distanceLabel}',
                         style: const TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 14,
                           fontWeight: FontWeight.w700,
                           color: AppColors.secondary,
                         ),
@@ -590,7 +612,7 @@ class _VehiclePill extends StatelessWidget {
           child: Text(
             option.label,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 15,
               fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
               color: selected ? AppText.onBrand : AppText.secondary,
             ),
@@ -602,65 +624,79 @@ class _VehiclePill extends StatelessWidget {
 }
 
 /// The chosen vehicle, shown large.
+///
+/// This is the only picture on the screen and there is room for it, so it gets
+/// real size — a small image floating in empty space reads as a placeholder
+/// nobody finished.
 class _VehicleHero extends StatelessWidget {
-  const _VehicleHero({required this.option});
+  const _VehicleHero({required this.option, this.imageUrl});
 
   final VehicleOption option;
 
+  /// Admin-supplied photograph. Falls back to the bundled illustration, and
+  /// then to an icon, so an unset or broken URL never leaves a hole.
+  final String? imageUrl;
+
   @override
   Widget build(BuildContext context) {
+    final url = imageUrl?.trim() ?? '';
+
     return Column(
       children: [
         SizedBox(
-          height: 96,
-          child: Image.asset(
-            option.asset,
-            fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => Icon(
-              option.icon,
-              size: 76,
-              color: AppColors.secondary,
-            ),
-          ),
+          height: 168,
+          child: url.isEmpty
+              ? _bundled()
+              : Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => _bundled(),
+                  loadingBuilder: (context, child, progress) =>
+                      progress == null ? child : _bundled(),
+                ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         Text(
           option.label,
+          textAlign: TextAlign.center,
           style: const TextStyle(
-            fontSize: 21,
+            fontSize: 30,
             fontWeight: FontWeight.w900,
-            letterSpacing: -.3,
+            letterSpacing: -.6,
             color: AppText.primary,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 7),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(Icons.person_rounded,
-                size: 15, color: AppText.secondary),
-            const SizedBox(width: 4),
+                size: 18, color: AppText.secondary),
+            const SizedBox(width: 5),
             Text(
               '${option.seats}',
               style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
                 color: AppText.secondary,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Text(
               '·',
-              style: TextStyle(color: AppText.disabled.withValues(alpha: .8)),
+              style: TextStyle(
+                fontSize: 16,
+                color: AppText.disabled.withValues(alpha: .8),
+              ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Flexible(
               child: Text(
                 option.description,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 12.5,
+                  fontSize: 15,
                   color: AppText.secondary,
                 ),
               ),
@@ -670,6 +706,16 @@ class _VehicleHero extends StatelessWidget {
       ],
     );
   }
+
+  Widget _bundled() => Image.asset(
+        option.asset,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Icon(
+          option.icon,
+          size: 110,
+          color: AppColors.secondary,
+        ),
+      );
 }
 
 /// Per seat or whole vehicle. Only shown for vehicles with seats to spare.
@@ -718,7 +764,7 @@ class _BookingTypeToggle extends StatelessWidget {
                       Text(
                         type.label,
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 15,
                           fontWeight:
                               selected ? FontWeight.w900 : FontWeight.w600,
                           color:
@@ -768,7 +814,7 @@ class _SeatStepper extends StatelessWidget {
                 Text(
                   '$seats ${seats == 1 ? 'seat' : 'seats'}',
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
                     color: AppText.primary,
                   ),
@@ -777,7 +823,7 @@ class _SeatStepper extends StatelessWidget {
                 Text(
                   'About PKR $perSeatFare each',
                   style: const TextStyle(
-                    fontSize: 11.5,
+                    fontSize: 13.5,
                     color: AppText.secondary,
                   ),
                 ),
@@ -821,11 +867,11 @@ class _SmallStep extends StatelessWidget {
         onTap: enabled ? onTap : null,
         customBorder: const CircleBorder(),
         child: SizedBox(
-          width: 40,
-          height: 40,
+          width: 44,
+          height: 44,
           child: Icon(
             icon,
-            size: 20,
+            size: 22,
             color: enabled ? AppText.primary : AppText.disabled,
           ),
         ),
@@ -907,9 +953,9 @@ class _FarePanel extends StatelessWidget {
                         Text(
                           'PKR ${grouped(fare)}',
                           style: const TextStyle(
-                            fontSize: 29,
+                            fontSize: 38,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: -.7,
+                            letterSpacing: -1.1,
                             color: AppText.primary,
                           ),
                         ),
@@ -918,7 +964,7 @@ class _FarePanel extends StatelessWidget {
                           _caption,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 11.5,
+                            fontSize: 13.5,
                             color: AppText.secondary,
                           ),
                         ),
@@ -931,7 +977,7 @@ class _FarePanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             SizedBox(
-              height: 54,
+              height: 58,
               width: double.infinity,
               child: Material(
                 color: AppColors.secondary,
@@ -952,7 +998,7 @@ class _FarePanel extends StatelessWidget {
                         : const Text(
                             'Find offers',
                             style: TextStyle(
-                              fontSize: 16.5,
+                              fontSize: 18,
                               fontWeight: FontWeight.w800,
                               color: AppText.onBrand,
                             ),
@@ -984,9 +1030,9 @@ class _StepButton extends StatelessWidget {
         onTap: onTap,
         customBorder: const CircleBorder(),
         child: SizedBox(
-          width: 52,
-          height: 52,
-          child: Icon(icon, size: 24, color: AppText.primary),
+          width: 58,
+          height: 58,
+          child: Icon(icon, size: 26, color: AppText.primary),
         ),
       ),
     );

@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 45) · build label `rev 45`
+# UDrive Redesign — Delivery 1 & 2 (revision 46) · build label `rev 46`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,43 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 46 — bigger type, and vehicle pictures you control
+
+### Real photographs — admin portal → Vehicle pictures
+
+I cannot supply real photographs; that is photography, not code. So the app now
+reads them from a setting you control.
+
+Paste a direct image URL for each vehicle type and customers see it the next
+time they open the picker. No app update, no redeploy. Empty keeps the built-in
+illustration, and a broken URL falls back to it too — a generic picture is a
+small loss, a missing one is a visible defect.
+
+The page states what works: three-quarter angle, plain or transparent
+background, roughly 800×500, no watermark. It is shown at 168px against a dark
+panel, so a white background will read as a bright rectangle — worth knowing
+before you commission a set.
+
+Migration 032 seeds the five keys as **public** settings, since the app reads
+them before sign-in and an image URL is not a secret.
+
+URLs are cached on the device and refreshed in the background, so the picker
+never waits on the network for a picture the customer has already seen.
+
+### Larger throughout
+
+The vehicle image went from 96px to **168px**, and the icon fallback to 110px.
+A small picture floating in empty space reads as a placeholder nobody finished.
+
+Type went up a step across the screen: vehicle name 21 → **30**, fare 29 →
+**38**, pills 13 → **15**, seat count 15 → **18**, the footnote 11.5 → **13**.
+Controls followed — fare steppers 52 → 58px, seat steppers 40 → 44px, the
+button 54 → 58px.
+
+The old sizes were a phone-sized version of a desktop scale. This screen has
+room and only a few things to read, so the things that matter should be large
+enough to read at arm's length.
 
 ## Revision 45 — the tabs picker, and per-seat where it belongs
 

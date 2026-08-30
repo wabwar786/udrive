@@ -87,6 +87,7 @@ const groups = [
       ['/help', 'Help / How to use', CircleHelp],
       ['/appearance', 'Address search', ImageIcon],
       ['/places', 'Map places', MapPinned],
+      ['/vehicles', 'Vehicle pictures', ImageIcon],
       ['/settings', 'Settings', Settings],
       ['/data-management', 'Data management', Database],
     ],

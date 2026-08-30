@@ -14,7 +14,7 @@ class AppConfig {
   /// Exists so "is this build actually deployed?" is a question with an answer.
   /// Several hours were lost to fixes that looked ineffective because the build
   /// carrying them had not reached the server. Visible under Notifications.
-  static const String buildLabel = 'rev 45 · 2026-08-30';
+  static const String buildLabel = 'rev 46 · 2026-08-30';
   static const String referralShareUrl = 'https://udrive.pk/app';
 
   // ------------------------------------------------------------- tour policy
