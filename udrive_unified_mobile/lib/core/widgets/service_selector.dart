@@ -25,15 +25,6 @@ extension HomeServiceInfo on HomeService {
         HomeService.hotel => Icons.apartment_rounded,
       };
 
-  /// Large illustration shown on Home so the customer can see at a glance
-  /// which service they picked.
-  String get heroAsset => switch (this) {
-        HomeService.bus => 'assets/vehicles_photo/coaster_photo.png',
-        HomeService.car => 'assets/vehicles_photo/car_photo.png',
-        HomeService.bike => 'assets/vehicles_photo/bike_photo.png',
-        HomeService.hotel => 'assets/images/home_services/hotel_room.webp',
-      };
-
   /// Caption under the illustration.
   String get heroTitle => switch (this) {
         HomeService.bus => 'Coaster / Bus',

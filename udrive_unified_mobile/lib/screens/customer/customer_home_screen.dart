@@ -15,6 +15,7 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/route_fields.dart';
+import '../../core/widgets/service_illustration.dart';
 import '../../core/widgets/service_selector.dart';
 import '../../core/widgets/ud_controls.dart';
 import '../../data/models.dart';
@@ -566,8 +567,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
           _buildServiceHero(controller),
-          Transform.translate(
-            offset: const Offset(0, -24),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
             child: Column(
               children: [
                 Padding(
@@ -600,79 +601,177 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  /// Service hero. Replaces the map: the customer sees a large picture of
-  /// whatever service is selected, so the choice is unmistakable.
+  /// Full-bleed service hero.
+  ///
+  /// Fills the entire top of the screen with an illustration of whatever
+  /// service is selected, so the choice is unmistakable. The artwork fades into
+  /// the page background at the bottom, so the booking card sits on a smooth
+  /// colour with no visible cut line.
   Widget _buildServiceHero(AppController controller) {
     final topInset = MediaQuery.paddingOf(context).top;
+    final heroHeight = topInset + 330;
 
-    return Container(
-      padding: EdgeInsets.fromLTRB(16, topInset + 12, 16, 34),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppTint.surface, AppColors.background],
-        ),
-      ),
-      child: Column(
+    return SizedBox(
+      height: heroHeight,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          // Header row. Everything is centred on one axis so the location
-          // control and the three icon buttons line up regardless of height.
-          SizedBox(
-            height: 40,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: _LocationControl(
-                    expanded: _locationExpanded,
-                    placeName: _resolvedPlaceName,
-                    onTap: () =>
-                        setState(() => _locationExpanded = !_locationExpanded),
+          // 1. Background wash.
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFEFF6EA), Color(0xFFE7F0F2)],
+              ),
+            ),
+          ),
+
+          // 2. Soft brand blobs for depth. Purely decorative.
+          Positioned(
+            top: -70,
+            right: -60,
+            child: _Blob(size: 230, color: AppColors.secondary, opacity: .16),
+          ),
+          Positioned(
+            top: topInset + 40,
+            left: -80,
+            child: _Blob(size: 190, color: AppColors.navy, opacity: .05),
+          ),
+
+          // 3. The illustration itself, cross-fading between services.
+          Positioned(
+            top: topInset + 54,
+            left: 0,
+            right: 0,
+            bottom: 78,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(.10, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              ),
+              child: Padding(
+                key: ValueKey(_service),
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                child: ServiceIllustration(service: _service),
+              ),
+            ),
+          ),
+
+          // 4. Bottom fade into the page background. This is what hides the
+          //    edge of the artwork — no hard cut is ever visible.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 150,
+            child: const IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: [0, .45, 1],
+                    colors: [
+                      Color(0x00F6F8FA),
+                      Color(0xCCF6F8FA),
+                      AppColors.background,
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    _MapIconButton(
-                      icon: Icons.translate_rounded,
-                      semanticLabel: 'Switch language',
-                      onTap: () => _toggleLanguage(controller),
-                    ),
-                    const SizedBox(width: 8),
-                    _MapIconButton(
-                      icon: Icons.swap_horiz_rounded,
-                      semanticLabel: 'Switch to driver mode',
-                      onTap: () => controller.switchMode(UserMode.driver),
-                    ),
-                    const SizedBox(width: 8),
-                    _MapIconButton(
-                      icon: Icons.notifications_none_rounded,
-                      semanticLabel: 'Notifications',
-                      showDot: true,
-                      onTap: () => widget.onNavigate('notifications'),
-                    ),
-                  ],
+              ),
+            ),
+          ),
+
+          // 5. Service name, sitting over the fade so it stays readable.
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 42,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _service.heroTitle,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    color: AppText.primary,
+                    height: 1.1,
+                    letterSpacing: -.3,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _service.heroSubtitle,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppText.secondary,
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
-            switchInCurve: Curves.easeOut,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: .94, end: 1).animate(animation),
-                child: child,
+
+          // 6. Header controls, overlaid on the artwork.
+          Positioned(
+            top: topInset + 10,
+            left: 16,
+            right: 16,
+            child: SizedBox(
+              height: 40,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: _LocationControl(
+                      expanded: _locationExpanded,
+                      placeName: _resolvedPlaceName,
+                      onTap: () => setState(
+                        () => _locationExpanded = !_locationExpanded,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _MapIconButton(
+                        icon: Icons.translate_rounded,
+                        semanticLabel: 'Switch language',
+                        onTap: () => _toggleLanguage(controller),
+                      ),
+                      const SizedBox(width: 8),
+                      _MapIconButton(
+                        icon: Icons.swap_horiz_rounded,
+                        semanticLabel: 'Switch to driver mode',
+                        onTap: () => controller.switchMode(UserMode.driver),
+                      ),
+                      const SizedBox(width: 8),
+                      _MapIconButton(
+                        icon: Icons.notifications_none_rounded,
+                        semanticLabel: 'Notifications',
+                        showDot: true,
+                        onTap: () => widget.onNavigate('notifications'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ),
-            child: _ServiceHeroArt(
-              key: ValueKey(_service),
-              service: _service,
             ),
           ),
         ],
@@ -1086,52 +1185,29 @@ class _MapIconButton extends StatelessWidget {
   }
 }
 
-/// Large illustration of the currently selected service.
-class _ServiceHeroArt extends StatelessWidget {
-  const _ServiceHeroArt({required this.service, super.key});
+/// Soft decorative circle behind the hero artwork.
+class _Blob extends StatelessWidget {
+  const _Blob({
+    required this.size,
+    required this.color,
+    required this.opacity,
+  });
 
-  final HomeService service;
+  final double size;
+  final Color color;
+  final double opacity;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          height: 168,
-          child: Image.asset(
-            service.heroAsset,
-            fit: BoxFit.contain,
-            // If an asset is ever missing the screen still works: a large
-            // outline icon stands in rather than a broken-image box.
-            errorBuilder: (_, __, ___) => Center(
-              child: Icon(service.icon, size: 96, color: AppText.disabled),
-            ),
+  Widget build(BuildContext context) => IgnorePointer(
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withValues(alpha: opacity),
           ),
         ),
-        const SizedBox(height: 10),
-        Text(
-          service.heroTitle,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: AppText.primary,
-            height: 1.1,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          service.heroSubtitle,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppText.secondary,
-          ),
-        ),
-      ],
-    );
-  }
+      );
 }
 
 // --------------------------------------------------------------- card pieces

@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 2)
+# UDrive Redesign — Delivery 1 & 2 (revision 3)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,41 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 3 — full-bleed hero + correct artwork
+
+**Bug found:** `assets/vehicles_photo/car_photo.png` actually contains a
+motorbike, and `coaster_photo.png` is a marketing banner with text baked in.
+That is why selecting Car showed a bike. The filenames do not match their
+contents.
+
+**Fix:** the four service illustrations are now drawn as vectors in
+`lib/core/widgets/service_illustration.dart` (`CustomPainter`) instead of
+loading PNGs. Reasons:
+
+- Sharp at any size. The bundled art is 400x240; a full-bleed hero on a modern
+  phone is roughly 1100px wide, so the bitmaps would visibly blur.
+- No baked-in background, so the bottom fade blends perfectly.
+- Colours come from `AppColors`, so the artwork follows the brand.
+- No filename/content mismatch is possible — each painter is the service.
+
+I cannot generate photographs, so these are flat vector illustrations in the
+same style as your existing `assets/vehicles/` set. If you want photorealistic
+renders instead, commission them and drop them in — the hero takes any widget.
+
+**Hero layout** (`_buildServiceHero`): fills the whole top of the screen,
+`topInset + 330` tall.
+
+1. Diagonal background wash `#EFF6EA → #E7F0F2`
+2. Two soft decorative blobs for depth
+3. The illustration, cross-fading and sliding on service change (320ms)
+4. **Bottom fade** — a 150px gradient from transparent to `#F6F8FA` at three
+   stops, so the artwork dissolves into the page and no cut edge is visible
+5. Service name (26px) and subtitle over the fade
+6. Header controls overlaid on top
+
+The booking card's `-24px` overlap was removed: with the fade doing the
+blending there is nothing left to cover.
 
 ## Revision 2 — what changed after your feedback
 
