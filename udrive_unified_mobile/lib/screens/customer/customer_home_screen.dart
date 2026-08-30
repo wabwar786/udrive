@@ -17,13 +17,14 @@ import '../../core/booking/trip_operations_repository.dart';
 import '../../core/booking/booking_options.dart';
 import '../../core/booking/vehicle_booking_mode.dart';
 import '../../core/config/app_config.dart';
+import '../../core/places/recent_places_store.dart';
 import '../../core/services/place_search_service.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/brand.dart';
 import '../../core/widgets/route_fields.dart';
-import '../../core/widgets/service_selector.dart';
+import '../../core/widgets/home_service.dart';
 import '../../core/widgets/ud_controls.dart';
 import '../../data/models.dart';
 import '../../models/trip_operations_models.dart';
@@ -73,6 +74,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// drawn, so switching Car → Bike changes the markers without a refetch.
   List<NearbyVehicle> _nearby = const [];
   bool _nearbyLoading = true;
+
+  /// Destinations used before, newest first. Shown until a destination is
+  /// chosen, because most trips repeat.
+  List<RecentPlace> _recent = const [];
 
   /// Driving routes for the current pickup → destination pair.
   TripRouteResult _routeResult = const TripRouteResult();
@@ -139,6 +144,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         Connectivity().onConnectivityChanged.listen(_applyConnectivity);
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadLocation());
+    RecentPlacesStore.load().then((places) {
+      if (mounted) setState(() => _recent = places);
+    });
   }
 
   @override
@@ -855,19 +863,25 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   /// The panel that rides on top of the map.
+  ///
+  /// Search-first: one question ("where are you going?") and a weighted set of
+  /// services, rather than four controls the customer must fill before anything
+  /// happens. Service, booking type and seats are decided on the next screen,
+  /// where the route and the real vehicles are known.
   Widget _buildSheet() {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
         boxShadow: [
-          BoxShadow(color: Color(0x66000000), blurRadius: 26, offset: Offset(0, -6)),
+          BoxShadow(
+              color: Color(0x66000000), blurRadius: 26, offset: Offset(0, -6)),
         ],
       ),
       child: SafeArea(
         top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -884,49 +898,74 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              const Text(
-                'Where to?',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -.4,
-                  color: AppText.primary,
-                ),
+
+              _SearchBar(
+                value: _destination.text.trim(),
+                onTap: () => _openSearch(RouteFieldKind.destination),
               ),
               const SizedBox(height: 13),
-              ServiceSelector(
+
+              _ServiceCards(
                 selected: _service,
-                onChanged: (service) {
-                  FocusScope.of(context).unfocus();
-                  setState(() {
-                    _service = service;
-                    // Hotels are not a vehicle, so per-seat and tour do not apply.
-                    if (service == HomeService.hotel) {
-                      _bookingType = BookingType.wholeVehicle;
-                    }
-                  });
-                },
+                onSelect: _selectService,
               ),
-              const SizedBox(height: 13),
-              if (_offline) ...[
-                const _OfflineNotice(),
+
+              // Once a destination exists the trip takes over: route summary,
+              // booking type, seats and the action.
+              if (_destination.text.trim().isNotEmpty) ...[
+                const SizedBox(height: 14),
+                _RouteSummaryFields(
+                  pickupLabel: _pickup.text,
+                  destinationLabel: _destination.text,
+                  locating: _locating,
+                  onUseMyLocation: _loadLocation,
+                  onEditPickup: () => _openSearch(RouteFieldKind.pickup),
+                  onEditDestination: () =>
+                      _openSearch(RouteFieldKind.destination),
+                ),
+                _TripSummary(
+                  loading: _routeLoading,
+                  result: _routeResult,
+                  selected: _selectedRoute,
+                  hasDestination: true,
+                  onSelect: (index) {
+                    setState(() => _selectedRoute = index);
+                    _mapController.fitBounds(
+                      _routeResult.routes[index].points,
+                      padding: 70,
+                    );
+                  },
+                ),
                 const SizedBox(height: 12),
+                AnimatedSize(
+                  duration: AppConfig.panelSwitch,
+                  curve: Curves.easeOut,
+                  alignment: Alignment.topCenter,
+                  child: _service == HomeService.hotel
+                      ? _buildHotelPanel()
+                      : _buildVehiclePanel(),
+                ),
+                const SizedBox(height: 14),
+                _StickyCta(
+                  label: _ctaLabel,
+                  enabled: _ctaEnabled,
+                  busy: _submitting,
+                  onTap: _submit,
+                ),
+              ] else ...[
+                // Nothing chosen yet: offer where they went last time. Most
+                // rides repeat, so this is the fastest path for a regular.
+                if (_recent.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  const Divider(height: 1, color: AppColors.border),
+                  ..._recent.map(
+                    (place) => _RecentRow(
+                      place: place,
+                      onTap: () => _useRecent(place),
+                    ),
+                  ),
+                ],
               ],
-              AnimatedSize(
-                duration: AppConfig.panelSwitch,
-                curve: Curves.easeOut,
-                alignment: Alignment.topCenter,
-                child: _service == HomeService.hotel
-                    ? _buildHotelPanel()
-                    : _buildVehiclePanel(),
-              ),
-              const SizedBox(height: 14),
-              _StickyCta(
-                label: _ctaLabel,
-                enabled: _ctaEnabled,
-                busy: _submitting,
-                onTap: _submit,
-              ),
             ],
           ),
         ),
@@ -934,42 +973,36 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
+  void _selectService(HomeService service) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _service = service;
+      if (service == HomeService.hotel) {
+        _bookingType = BookingType.wholeVehicle;
+      }
+      _clampBookingType();
+    });
+    // Tour queries a different vehicle set, so the map has to refetch.
+    _refreshNearby();
+  }
+
+  Future<void> _useRecent(RecentPlace place) async {
+    setState(() {
+      _destination.text = place.title;
+      _destinationPoint = place.point;
+    });
+    await _refreshRoute();
+  }
+
   Widget _buildVehiclePanel() {
     return Column(
       key: const ValueKey('vehicle-panel'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // The three travel modes sit above the addresses because they change
-        // what the customer is buying, not just a detail of it.
         _BookingTypeSelector(
           value: _bookingType,
           available: _availableBookingTypes,
           onChanged: (mode) => setState(() => _bookingType = mode),
-        ),
-        const SizedBox(height: 13),
-        _RouteSummaryFields(
-          pickupLabel: _pickup.text,
-          destinationLabel: _destination.text,
-          locating: _locating,
-          onUseMyLocation: _loadLocation,
-          onEditPickup: () => _openSearch(RouteFieldKind.pickup),
-          onEditDestination: () => _openSearch(RouteFieldKind.destination),
-        ),
-        AnimatedSize(
-          duration: AppConfig.panelSwitch,
-          curve: Curves.easeOut,
-          alignment: Alignment.topCenter,
-          child: _TripSummary(
-            loading: _routeLoading,
-            result: _routeResult,
-            selected: _selectedRoute,
-            hasDestination: _destination.text.trim().isNotEmpty,
-            onSelect: (index) {
-              setState(() => _selectedRoute = index);
-              final points = _routeResult.routes[index].points;
-              _mapController.fitBounds(points, padding: 70);
-            },
-          ),
         ),
         AnimatedSize(
           duration: AppConfig.panelSwitch,
@@ -990,6 +1023,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             BookingType.wholeVehicle => const SizedBox.shrink(),
           },
         ),
+        // Tour adds its own dates, days, passengers and offer.
+        if (_service.isTour) _buildTourPanel(),
       ],
     );
   }
@@ -1039,6 +1074,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _destinationPoint = result.point;
       }
     });
+
+    // Only remember places with coordinates — a name we cannot place again is
+    // no use as a shortcut.
+    if (field == RouteFieldKind.destination && result.point != null) {
+      await RecentPlacesStore.remember(
+        RecentPlace(
+          title: result.label,
+          subtitle: '',
+          latitude: result.point!.latitude,
+          longitude: result.point!.longitude,
+        ),
+      );
+      final refreshed = await RecentPlacesStore.load();
+      if (mounted) setState(() => _recent = refreshed);
+    }
 
     if (field == RouteFieldKind.pickup && result.point != null) {
       await _refreshNearby();
@@ -1737,6 +1787,380 @@ class _NotificationsPopup extends StatelessWidget {
 /// seats or fewer there is nothing to share, so per seat is hidden rather than
 /// shown-and-rejected — a disabled control the customer cannot use is worse
 /// than one that was never there.
+/// The one question the home screen asks.
+///
+/// A button, not a text field: typing happens on the dedicated search screen
+/// where results have room. Sized and coloured to be the obvious first thing to
+/// touch.
+class _SearchBar extends StatelessWidget {
+  const _SearchBar({required this.value, required this.onTap});
+
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final empty = value.isEmpty;
+
+    return Semantics(
+      button: true,
+      label: 'Set destination',
+      child: Material(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+            child: Row(
+              children: [
+                const Icon(Icons.search_rounded,
+                    size: 21, color: AppColors.secondary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    empty ? 'Where are you going?' : value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      color: empty ? AppText.secondary : AppText.primary,
+                    ),
+                  ),
+                ),
+                if (!empty)
+                  const Icon(Icons.edit_rounded,
+                      size: 17, color: AppText.disabled),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ride, Tour and Hotel, weighted by how often each is used.
+///
+/// Ride gets a large card with its own artwork because it is most of the
+/// traffic; Tour and Hotel stack beside it at half height. Equal tiles would
+/// make the common case as slow as the rare one.
+class _ServiceCards extends StatelessWidget {
+  const _ServiceCards({required this.selected, required this.onSelect});
+
+  final HomeService selected;
+  final ValueChanged<HomeService> onSelect;
+
+  /// Ride covers the three vehicle services; the card selects Car and the next
+  /// screen narrows it further.
+  bool get _rideSelected =>
+      selected == HomeService.car ||
+      selected == HomeService.bus ||
+      selected == HomeService.bike;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 148,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 27,
+            child: _BigCard(
+              title: 'Ride now',
+              subtitle: 'Car, coaster or bike',
+              icon: Icons.directions_car_rounded,
+              selected: _rideSelected,
+              onTap: () => onSelect(HomeService.car),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 20,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _SmallCard(
+                    title: 'Tour',
+                    subtitle: 'Multi-day',
+                    icon: Icons.terrain_rounded,
+                    selected: selected == HomeService.tour,
+                    onTap: () => onSelect(HomeService.tour),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: _SmallCard(
+                    title: 'Hotel',
+                    subtitle: 'Stays',
+                    icon: Icons.apartment_rounded,
+                    selected: selected == HomeService.hotel,
+                    onTap: () => onSelect(HomeService.hotel),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BigCard extends StatelessWidget {
+  const _BigCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: title,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF1F3324) : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? AppColors.secondary : Colors.transparent,
+              width: 1.4,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              // Oversized artwork bleeding off the corner gives the card weight
+              // without adding another element to read.
+              Positioned(
+                right: -14,
+                bottom: -12,
+                child: Icon(
+                  icon,
+                  size: 92,
+                  color: AppColors.secondary.withValues(
+                    alpha: selected ? .38 : .16,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppColors.secondary
+                            : AppColors.surfaceHigh,
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: Icon(
+                        icon,
+                        size: 19,
+                        color: selected
+                            ? AppText.onBrand
+                            : AppColors.secondary,
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            color: AppText.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: AppText.secondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SmallCard extends StatelessWidget {
+  const _SmallCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: title,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF1F3324) : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected ? AppColors.secondary : Colors.transparent,
+              width: 1.4,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              Positioned(
+                right: -8,
+                bottom: -8,
+                child: Icon(
+                  icon,
+                  size: 52,
+                  color: AppColors.secondary.withValues(
+                    alpha: selected ? .34 : .14,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppText.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        color: AppText.secondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A destination used before. One tap sets it and plots the route.
+class _RecentRow extends StatelessWidget {
+  const _RecentRow({required this.place, required this.onTap});
+
+  final RecentPlace place;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                const Icon(Icons.history_rounded,
+                    size: 19, color: AppText.disabled),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        place.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppText.primary,
+                        ),
+                      ),
+                      if (place.subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          place.subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: AppText.secondary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const Icon(Icons.north_west_rounded,
+                    size: 17, color: AppText.disabled),
+              ],
+            ),
+          ),
+          Container(height: 1, color: AppColors.surfaceAlt),
+        ],
+      ),
+    );
+  }
+}
+
 /// Distance, travel time and the road the trip takes.
 ///
 /// Shown only once a destination exists. When Directions cannot answer, this

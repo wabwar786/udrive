@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 15)
+# UDrive Redesign — Delivery 1 & 2 (revision 16)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,52 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 16 — search-first home, and two fixes
+
+### Home is now search-first
+
+The sheet asks one question instead of four. Before a destination exists it
+shows: a large search button, three service cards, and recent destinations.
+Once a destination is set it becomes the trip panel — route summary, booking
+type, seats, and the action.
+
+**Service cards are weighted, not equal.** Ride gets a 148px card with oversized
+artwork bleeding off the corner; Tour and Hotel stack beside it at half height.
+Equal tiles would make the common case as slow as the rare one — most customers
+want a car, and they should not have to hunt for it.
+
+Selection state is a filled icon chip, a green border and brighter artwork, so
+which service is active is readable at a glance rather than from a subtle tint.
+
+**Recent destinations** come from `RecentPlacesStore`, which deliberately shares
+the storage key the route flow screen already writes to. Two separate histories
+would look like the app had forgotten where the customer went. Only places with
+coordinates are stored — a name that cannot be resolved again is no use as a
+shortcut.
+
+### Map moving behind the sheet — the real fix
+
+Revision 13's `gestureRecognizers` only covers Android and iOS. On web the
+Google Map is a DOM element in its own layer, so pointer events reach it
+regardless of what Flutter draws on top.
+
+Added the `pointer_interceptor` package, which exists for exactly this, and
+wrapped the sheet, the header chrome and the status chips. **Run
+`flutter pub get`** — this is a new dependency.
+
+### Route errors now say what went wrong
+
+"Could not work out the route. Check your connection." sent you to debug the
+wrong thing. The proxy already captured Google's own message; it now travels
+through to the UI in a `detail` line. `REQUEST_DENIED`, `Routes API has not been
+used in project…` and referrer errors each point straight at the fix.
+
+### Removed
+
+`ServiceSelector` and `AppearanceRepository` are gone — the new cards replaced
+one, and the hero-image settings the other reads have been unused since Home
+became a map.
 
 ## Revision 15 — pickup is editable, Routes API
 
