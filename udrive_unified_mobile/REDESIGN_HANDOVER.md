@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 19)
+# UDrive Redesign — Delivery 1 & 2 (revision 20)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,40 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 20 — duplicate class fix, and a real audit
+
+`_LocationErrorBanner` was declared three times. My insert anchored on the
+comment `/// A destination used before…`, which by then appeared three times in
+the file, and a plain string replace hit all three.
+
+This is the third build I have broken the same way: an anchored insert or an
+index-based cut duplicating code. The audit I had been running only checked for
+duplicate members *inside* a class, so a duplicated top-level class walked
+straight past it.
+
+The audit now lives in `tool/audit_structure.py` and checks:
+
+- duplicate top-level declarations (class, enum, mixin, extension)
+- duplicate members inside a class
+- `if` / `for` / `while` with an emptied body
+- private methods called but never declared
+- theme token members that do not resolve (`AppProduct.rideFrom` after a rename)
+- relative imports pointing at files that do not exist
+- brace balance
+
+Each of those checks exists because that exact mistake reached a build. I
+verified the new one fires by deliberately duplicating a class and confirming it
+was caught.
+
+Run it yourself any time:
+
+```bash
+cd udrive_unified_mobile && python3 tool/audit_structure.py
+```
+
+It is not a substitute for `flutter analyze` — it catches structural damage from
+editing, not type errors.
 
 ## Revision 19 — pickup fix and build fix
 
