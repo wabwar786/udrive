@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 48) · build label `rev 48`
+# UDrive Redesign — Delivery 1 & 2 (revision 49) · build label `rev 49`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,45 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 49 — type back down, and the logo goes home
+
+### Smaller type, one exception
+
+You were right that I overdid it. Uniformly large text reads as a low-vision
+mode rather than a considered hierarchy.
+
+Everything came back down. The scale on the vehicle screen is now 11–16 for
+body text, 22 for the vehicle name, and **46 for the fare** — the one thing the
+customer is actually deciding, and the only thing that should be large.
+
+Controls followed: fare steppers 58 → 48px, the image 168 → 132px, the button
+58 → 52px. The Home screen came down with it.
+
+### Route chips gone
+
+Alternatives are selected by tapping the road on the map, which is more direct
+and how every taxi app works. The chip row below was a second way to do the same
+thing, and a second thing to keep in step with the map.
+
+A one-line hint replaces it — "2 other routes — tap one on the map" — because
+tappable lines are not obviously tappable until someone tries.
+
+### The logo goes home
+
+Tapping the U now returns to Home, clearing anything stacked above it. Every app
+with a logo in the corner behaves this way, so people try it whether or not it
+is documented; leaving it inert was a small broken promise on every screen it
+appears.
+
+### Back buttons
+
+Audited every screen for a way back: an `AppBar`, a `SliverAppBar`, or an
+explicit control. Five came up without one, and all five are correct — login and
+splash are roots, the hotel shell and driver packages are bottom-nav tabs, and
+the package detail screen has a `SliverAppBar` that supplies one automatically.
+
+No screen you can push is missing a way out.
 
 ## Revision 48 — search breadth, route choice, order, spelling
 

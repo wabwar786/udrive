@@ -311,7 +311,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         // Vehicle types as pills. They stay in place and in order whichever is
         // chosen — nothing is promoted out of the row.
         SizedBox(
-          height: 50,
+          height: 44,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -410,7 +410,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                               'Fare does not include tolls, parking or entry '
                               'fees. Settle those with your driver.',
                               style: TextStyle(
-                                fontSize: 13,
+                                fontSize: 11.5,
                                 height: 1.45,
                                 color: AppText.secondary,
                               ),
@@ -518,8 +518,8 @@ class _RouteHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 16.5,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                     color: AppText.primary,
                   ),
                 ),
@@ -549,7 +549,7 @@ class _RouteHeader extends StatelessWidget {
                       Text(
                         '${route!.durationLabel}  ·  ${route!.distanceLabel}',
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: AppColors.secondary,
                         ),
@@ -612,8 +612,8 @@ class _VehiclePill extends StatelessWidget {
           child: Text(
             option.label,
             style: TextStyle(
-              fontSize: 15,
-              fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               color: selected ? AppText.onBrand : AppText.secondary,
             ),
           ),
@@ -644,7 +644,7 @@ class _VehicleHero extends StatelessWidget {
     return Column(
       children: [
         SizedBox(
-          height: 168,
+          height: 132,
           child: url.isEmpty
               ? _bundled()
               : Image.network(
@@ -660,9 +660,9 @@ class _VehicleHero extends StatelessWidget {
           option.label,
           textAlign: TextAlign.center,
           style: const TextStyle(
-            fontSize: 30,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -.6,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -.2,
             color: AppText.primary,
           ),
         ),
@@ -676,8 +676,8 @@ class _VehicleHero extends StatelessWidget {
             Text(
               '${option.seats}',
               style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
                 color: AppText.secondary,
               ),
             ),
@@ -696,7 +696,7 @@ class _VehicleHero extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 15,
+                  fontSize: 12.5,
                   color: AppText.secondary,
                 ),
               ),
@@ -712,7 +712,7 @@ class _VehicleHero extends StatelessWidget {
         fit: BoxFit.contain,
         errorBuilder: (_, __, ___) => Icon(
           option.icon,
-          size: 110,
+          size: 88,
           color: AppColors.secondary,
         ),
       );
@@ -764,9 +764,9 @@ class _BookingTypeToggle extends StatelessWidget {
                       Text(
                         type.label,
                         style: TextStyle(
-                          fontSize: 15,
+                          fontSize: 13,
                           fontWeight:
-                              selected ? FontWeight.w900 : FontWeight.w600,
+                              selected ? FontWeight.w700 : FontWeight.w500,
                           color:
                               selected ? AppText.onBrand : AppText.secondary,
                         ),
@@ -814,8 +814,8 @@ class _SeatStepper extends StatelessWidget {
                 Text(
                   '$seats ${seats == 1 ? 'seat' : 'seats'}',
                   style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                     color: AppText.primary,
                   ),
                 ),
@@ -823,7 +823,7 @@ class _SeatStepper extends StatelessWidget {
                 Text(
                   'About PKR $perSeatFare each',
                   style: const TextStyle(
-                    fontSize: 13.5,
+                    fontSize: 11.5,
                     color: AppText.secondary,
                   ),
                 ),
@@ -867,11 +867,11 @@ class _SmallStep extends StatelessWidget {
         onTap: enabled ? onTap : null,
         customBorder: const CircleBorder(),
         child: SizedBox(
-          width: 44,
-          height: 44,
+          width: 38,
+          height: 38,
           child: Icon(
             icon,
-            size: 22,
+            size: 19,
             color: enabled ? AppText.primary : AppText.disabled,
           ),
         ),
@@ -964,7 +964,7 @@ class _FarePanel extends StatelessWidget {
                           _caption,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 13.5,
+                            fontSize: 11.5,
                             color: AppText.secondary,
                           ),
                         ),
@@ -977,7 +977,7 @@ class _FarePanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             SizedBox(
-              height: 58,
+              height: 52,
               width: double.infinity,
               child: Material(
                 color: AppColors.secondary,
@@ -998,8 +998,8 @@ class _FarePanel extends StatelessWidget {
                         : const Text(
                             'Find offers',
                             style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
                               color: AppText.onBrand,
                             ),
                           ),
@@ -1030,9 +1030,9 @@ class _StepButton extends StatelessWidget {
         onTap: onTap,
         customBorder: const CircleBorder(),
         child: SizedBox(
-          width: 58,
-          height: 58,
-          child: Icon(icon, size: 26, color: AppText.primary),
+          width: 48,
+          height: 48,
+          child: Icon(icon, size: 22, color: AppText.primary),
         ),
       ),
     );

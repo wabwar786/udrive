@@ -815,7 +815,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const UDriveMark(size: 38),
+                    UDriveMark(
+                      size: 38,
+                      // Already home, so this clears anything stacked on top
+                      // rather than pushing another copy of it.
+                      onTap: () => Navigator.of(context)
+                          .popUntil((route) => route.isFirst),
+                    ),
                     const Spacer(),
                     _LanguagePill(
                       isEnglish: controller.locale.languageCode != 'ur',
@@ -1031,9 +1037,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 child: Text(
                   'Where to?',
                   style: TextStyle(
-                    fontSize: 23,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -.4,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -.2,
                     color: AppText.primary,
                   ),
                 ),
@@ -1076,13 +1082,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   result: _routeResult,
                   selected: _selectedRoute,
                   hasDestination: true,
-                  onSelect: (index) {
-                    setState(() => _selectedRoute = index);
-                    _mapController.fitBounds(
-                      _routeResult.routes[index].points,
-                      padding: 70,
-                    );
-                  },
                 ),
                 const SizedBox(height: 12),
                 AnimatedSize(
@@ -2231,8 +2230,8 @@ class _ProductCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: large ? 17 : 14.5,
-                            fontWeight: FontWeight.w900,
+                            fontSize: large ? 15 : 13.5,
+                            fontWeight: FontWeight.w700,
                             color: selected ? titleInk : AppText.primary,
                           ),
                         ),
@@ -2388,14 +2387,12 @@ class _TripSummary extends StatelessWidget {
     required this.result,
     required this.selected,
     required this.hasDestination,
-    required this.onSelect,
   });
 
   final bool loading;
   final TripRouteResult result;
   final int selected;
   final bool hasDestination;
-  final ValueChanged<int> onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -2519,8 +2516,8 @@ class _TripSummary extends StatelessWidget {
                       Text(
                         '${active.durationLabel}  ·  ${active.distanceLabel}',
                         style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
                           color: AppText.primary,
                         ),
                       ),
@@ -2543,61 +2540,31 @@ class _TripSummary extends StatelessWidget {
             ),
           ),
 
-          // Alternatives, when Google offered any. One line each: road name and
-          // how much slower it is than the fastest.
+          // No chips for the alternatives.
+          //
+          // They are chosen by tapping the road on the map, which is more
+          // direct and how every taxi app works. A duplicate list here would be
+          // a second way to do the same thing, and a second thing to keep in
+          // step with the map.
           if (result.routes.length > 1) ...[
             const SizedBox(height: 8),
-            SizedBox(
-              height: 34,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: result.routes.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 7),
-                itemBuilder: (context, index) {
-                  final route = result.routes[index];
-                  final isSelected = index == selected;
-                  final slower =
-                      route.durationSeconds - result.routes.first.durationSeconds;
-                  final extra = (slower / 60).round();
-
-                  return GestureDetector(
-                    onTap: () => onSelect(index),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.surfaceHigh
-                            : AppColors.surfaceAlt,
-                        borderRadius: BorderRadius.circular(99),
-                        border: Border.all(
-                          color: isSelected
-                              ? AppColors.secondary
-                              : Colors.transparent,
-                        ),
-                      ),
-                      child: Text(
-                        // Google's summary can be a whole chain of roads. The
-                        // first one is enough to tell two routes apart; the
-                        // full list is unreadable in a chip.
-                        route.summary.isEmpty
-                            ? route.durationLabel
-                            : '${route.summary.split('/').first.trim()} · '
-                                '${route.durationLabel}'
-                                '${extra > 0 ? '  +$extra min' : ''}',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight:
-                              isSelected ? FontWeight.w800 : FontWeight.w600,
-                          color: isSelected
-                              ? AppText.primary
-                              : AppText.secondary,
-                        ),
-                      ),
+            Row(
+              children: [
+                const Icon(Icons.alt_route_rounded,
+                    size: 14, color: AppText.disabled),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    '${result.routes.length - 1} other '
+                    '${result.routes.length == 2 ? 'route' : 'routes'} — tap '
+                    'one on the map',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppText.disabled,
                     ),
-                  );
-                },
-              ),
+                  ),
+                ),
+              ],
             ),
           ],
         ],
@@ -2842,8 +2809,8 @@ class _RouteRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
                 color: empty ? AppText.disabled : AppText.primary,
               ),
             ),

@@ -1,12 +1,40 @@
 import 'package:flutter/material.dart';
 
 class UDriveMark extends StatelessWidget {
-  const UDriveMark({this.size = 56, this.showBackground = true, super.key});
+  const UDriveMark({
+    this.size = 56,
+    this.showBackground = true,
+    this.onTap,
+    super.key,
+  });
+
   final double size;
   final bool showBackground;
 
+  /// Tapping the logo returns to Home.
+  ///
+  /// Every app with a logo in the corner behaves this way, so people try it
+  /// whether or not it is documented. Leaving it inert is a small broken
+  /// promise on every screen it appears.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
+    final mark = _buildMark();
+    if (onTap == null) return mark;
+
+    return Semantics(
+      button: true,
+      label: 'Go to home',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(size * .22),
+        child: mark,
+      ),
+    );
+  }
+
+  Widget _buildMark() {
     final image = ClipRRect(
       borderRadius: BorderRadius.circular(size * .22),
       child: Image.asset(
