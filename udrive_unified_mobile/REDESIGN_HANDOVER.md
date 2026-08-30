@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 17)
+# UDrive Redesign — Delivery 1 & 2 (revision 18)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,49 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 18 — colour-coded cards, both ends editable
+
+### Design A, not the gradient version
+
+Swapped the gradients for flat tinted surfaces. Each product owns a hue:
+
+```
+Ride    #1F3A1B surface, #A6FF2E accent
+Tour    #3A2A12 surface, #FFB84D accent
+Hotel   #12293D surface, #5AA9FF accent
+```
+
+Unselected cards drop to the neutral surface with muted ink, so the chosen
+product is unmistakable rather than one of three bright boxes competing with
+each other and with the map behind.
+
+Ride keeps the tall card on the left with its nearby count in the subtitle;
+Tour and Hotel stack beside it. **Seats is not a card** — it is how you buy a
+ride, not a separate product, so it stays in the booking-type row once a
+destination is set.
+
+### Both ends always editable
+
+The route rows used to appear only after a destination was chosen, which meant
+a wrong pickup could not be corrected — exactly when it matters most. From and
+To are now always visible and always tappable.
+
+The separate search bar is gone with them. It and the To row did the same job,
+and two controls for one action is a decision the customer should not have to
+make.
+
+### Pickup defaults to the current location
+
+Already the behaviour, but two things made it unreliable:
+
+- The field read "Detecting current address…" and could sit there looking
+  broken. It now says "Finding your location…", which describes what is
+  happening.
+- The opening camera move fires a map-idle event, and the centre pin would
+  immediately reverse-geocode the same point it had just resolved — one wasted
+  billed request, and a label that could differ from the GPS one. The pin's
+  distance guard is now seeded with the fix, so the first settle is ignored.
 
 ## Revision 17 — centre pin, zoom fix, bold colour
 

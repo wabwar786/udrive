@@ -45,32 +45,37 @@ class AppText {
 /// Per-product colours.
 ///
 /// Each service owns a hue so the four products read as four different things
-/// rather than four shades of the brand. Colour carries meaning here, not
-/// decoration — the same hue follows a product through the app.
+/// rather than four shades of the brand. Flat tinted surfaces rather than
+/// gradients: a gradient per card looks striking on a monitor but reads as busy
+/// on a phone outdoors, and four of them compete with the map behind.
+///
+/// Each product carries a surface, an accent for its icon and border, a title
+/// ink and a subdued ink. Colour means something here, so the same hue follows
+/// a product wherever it appears.
 class AppProduct {
   const AppProduct._();
 
   // Ride — the brand green.
-  static const rideFrom = Color(0xFFA6FF2E);
-  static const rideMid = Color(0xFF5FBF16);
-  static const rideTo = Color(0xFF2E7A14);
+  static const rideSurface = Color(0xFF1F3A1B);
+  static const rideAccent = Color(0xFFA6FF2E);
+  static const rideTitle = Color(0xFFEAF7D6);
+  static const rideSub = Color(0xFFA8C98A);
   static const rideInk = Color(0xFF07120A);
-  static const rideSub = Color(0xFF1B3D08);
 
-  // Seats — violet.
-  static const seatsFrom = Color(0xFF8B5CF6);
-  static const seatsTo = Color(0xFF331B77);
-  static const seatsSub = Color(0xFFDCCFFF);
+  // Tour — amber.
+  static const tourSurface = Color(0xFF3A2A12);
+  static const tourAccent = Color(0xFFFFB84D);
+  static const tourTitle = Color(0xFFFFD79A);
+  static const tourSub = Color(0xFFC99C56);
 
-  // Tour — orange.
-  static const tourFrom = Color(0xFFFF9F1A);
-  static const tourTo = Color(0xFF8A2F0E);
-  static const tourSub = Color(0xFFFFE0BC);
+  // Hotel — blue.
+  static const hotelSurface = Color(0xFF12293D);
+  static const hotelAccent = Color(0xFF5AA9FF);
+  static const hotelTitle = Color(0xFFB8DCFF);
+  static const hotelSub = Color(0xFF6FA3CE);
 
-  // Hotel — cyan.
-  static const hotelFrom = Color(0xFF22D3EE);
-  static const hotelTo = Color(0xFF0F4570);
-  static const hotelSub = Color(0xFFC7EEFF);
+  // Seats — violet. Used by the per-seat control rather than a card.
+  static const seatsAccent = Color(0xFF8B5CF6);
 }
 
 class AppRadii {
