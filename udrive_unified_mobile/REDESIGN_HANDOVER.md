@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 4)
+# UDrive Redesign — Delivery 1 & 2 (revision 5)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,26 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 5 — blank screen fix
+
+**Cause:** `ServiceSelector` used `Row(crossAxisAlignment: CrossAxisAlignment.stretch)`.
+A `Row` inside a `Column` gets an unbounded vertical constraint, and `stretch`
+forces every child to take that height — infinity. Layout threw, and the
+exception took the entire booking card subtree with it, leaving the area below
+the hero blank.
+
+**Fix:** the stretch is removed. Each block already declares `height: 104`, so
+the row sizes itself correctly from its children. This was my mistake in
+revision 4 — the stretch was never needed.
+
+**Hardening:** `ServiceIllustration` now checks `constraints.hasBoundedWidth` /
+`hasBoundedHeight` and falls back to the 400x240 design ratio instead of passing
+an infinite size to `CustomPaint`. A similar layout mistake anywhere else will
+now degrade the artwork rather than blank a screen.
+
+Note: `route_fields.dart` also uses `stretch`, but there the `Row` is wrapped in
+`IntrinsicHeight`, which bounds it. That one is correct and was left alone.
 
 ## Revision 4 — service blocks, admin artwork, vehicle filtering
 

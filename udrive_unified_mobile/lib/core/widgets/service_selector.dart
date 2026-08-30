@@ -20,7 +20,6 @@ class ServiceSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: HomeService.values
           .map((service) => Expanded(
                 child: _ServiceColumn(

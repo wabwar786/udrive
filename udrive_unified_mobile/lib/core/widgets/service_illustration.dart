@@ -21,15 +21,28 @@ class ServiceIllustration extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, constraints) => CustomPaint(
-        size: Size(constraints.maxWidth, constraints.maxHeight),
-        painter: switch (service) {
-          HomeService.car => _CarPainter(),
-          HomeService.bus => _CoasterPainter(),
-          HomeService.bike => _BikePainter(),
-          HomeService.hotel => _HotelPainter(),
-        },
-      ),
+      builder: (context, constraints) {
+        // CustomPaint cannot be given an infinite size. If either axis is
+        // unbounded we fall back to the design ratio instead of throwing, so a
+        // stray unbounded parent degrades the artwork rather than blanking the
+        // screen.
+        final width = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : _designWidth;
+        final height = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : width * (_designHeight / _designWidth);
+
+        return CustomPaint(
+          size: Size(width, height),
+          painter: switch (service) {
+            HomeService.car => _CarPainter(),
+            HomeService.bus => _CoasterPainter(),
+            HomeService.bike => _BikePainter(),
+            HomeService.hotel => _HotelPainter(),
+          },
+        );
+      },
     );
   }
 }
