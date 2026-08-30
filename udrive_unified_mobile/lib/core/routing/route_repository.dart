@@ -106,10 +106,19 @@ enum RouteFailure {
 }
 
 class TripRouteResult {
-  const TripRouteResult({this.routes = const [], this.failure});
+  const TripRouteResult({
+    this.routes = const [],
+    this.failure,
+    this.detail,
+  });
 
   final List<TripRoute> routes;
   final RouteFailure? failure;
+
+  /// Google's own error text, passed through by the proxy. Shown to the user
+  /// because a real message ("API not enabled", "referer restriction") points
+  /// straight at the fix, whereas a generic one wastes an afternoon.
+  final String? detail;
 
   bool get hasRoute => routes.isNotEmpty;
   TripRoute? get best => routes.isEmpty ? null : routes.first;
@@ -146,7 +155,10 @@ class RouteRepository {
       final response =
           await _client.get(uri).timeout(AppConfig.networkTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        return const TripRouteResult(failure: RouteFailure.unavailable);
+        return TripRouteResult(
+          failure: RouteFailure.unavailable,
+          detail: 'HTTP ${response.statusCode}',
+        );
       }
 
       final decoded = jsonDecode(response.body);
@@ -165,15 +177,20 @@ class RouteRepository {
 
       if (routes.isNotEmpty) return TripRouteResult(routes: routes);
 
+      final detail = payload['detail']?.toString();
       return TripRouteResult(
         failure: switch (reason) {
           'no_key' => RouteFailure.noKey,
           'ZERO_RESULTS' => RouteFailure.notFound,
           _ => RouteFailure.unavailable,
         },
+        detail: detail == null || detail.isEmpty ? reason : detail,
       );
-    } catch (_) {
-      return const TripRouteResult(failure: RouteFailure.unavailable);
+    } catch (error) {
+      return TripRouteResult(
+        failure: RouteFailure.unavailable,
+        detail: '$error',
+      );
     }
   }
 

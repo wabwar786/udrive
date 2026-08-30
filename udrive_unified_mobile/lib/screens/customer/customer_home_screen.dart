@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/maps/ud_map.dart';
@@ -685,7 +686,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             top: topInset + 10,
             left: 16,
             right: 16,
-            child: SizedBox(
+            child: PointerInterceptor(
+              child: SizedBox(
               height: 40,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -726,6 +728,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ],
               ),
             ),
+            ),
           ),
 
           // Status strip, sitting just above the sheet.
@@ -733,8 +736,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             left: 16,
             right: 16,
             bottom: sheetMaxHeight * .5 + 12,
-            child: IgnorePointer(
-              ignoring: false,
+            child: PointerInterceptor(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
@@ -774,13 +776,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             alignment: Alignment.bottomCenter,
             child: ConstrainedBox(
               constraints: BoxConstraints(maxHeight: sheetMaxHeight),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onVerticalDragStart: (_) {},
-                onVerticalDragUpdate: (_) {},
-                onHorizontalDragStart: (_) {},
-                onHorizontalDragUpdate: (_) {},
-                child: _buildSheet(),
+              // PointerInterceptor stops web pointer events reaching the map's
+              // DOM element; the GestureDetector claims drags on mobile, where
+              // the platform view can otherwise win the gesture arena.
+              child: PointerInterceptor(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragStart: (_) {},
+                  onVerticalDragUpdate: (_) {},
+                  onHorizontalDragStart: (_) {},
+                  onHorizontalDragUpdate: (_) {},
+                  child: _buildSheet(),
+                ),
               ),
             ),
           ),
@@ -1792,7 +1799,7 @@ class _TripSummary extends StatelessWidget {
           'Travel time is unavailable until an admin adds the Google key.',
         RouteFailure.notFound =>
           'No driving route found between these two points.',
-        _ => 'Could not work out the route. Check your connection.',
+        _ => 'Could not work out the route.',
       };
       return Padding(
         padding: const EdgeInsets.only(top: 12),
@@ -1808,14 +1815,34 @@ class _TripSummary extends StatelessWidget {
                   size: 16, color: AppTint.warningText),
               const SizedBox(width: 9),
               Expanded(
-                child: Text(
-                  message,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    height: 1.4,
-                    fontWeight: FontWeight.w600,
-                    color: AppTint.warningText,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      message,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
+                        color: AppTint.warningText,
+                      ),
+                    ),
+                    if (result.detail != null &&
+                        result.detail!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        result.detail!,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          height: 1.35,
+                          color: AppText.disabled,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ],
