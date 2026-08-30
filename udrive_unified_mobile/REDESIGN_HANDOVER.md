@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 20)
+# UDrive Redesign — Delivery 1 & 2 (revision 21)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,31 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 21 — the map going white
+
+`gestureRecognizers` was built inline in `_buildGoogle()`, so every rebuild
+allocated a new `Set` containing new `Factory` instances. `google_maps_flutter`
+reads that as a configuration change and tears down the platform view. On web a
+recreated view renders as a blank white div until it reinitialises — which is
+why it went white exactly when a route arrived, since that is when rebuilds come
+thick and fast.
+
+The set is now a `static final` built once, with a `const` empty set for the
+non-interactive case, and the map carries a stable `ValueKey`.
+
+Two supporting changes:
+
+- The sheet cap moved from 62% of screen height to 55%, clamped between 320 and
+  560px. With a route, booking type and CTA all present the sheet was hitting
+  its cap and leaving the map a sliver. The sheet scrolls internally, so capping
+  it costs nothing.
+- The dark backdrop is now painted inside the stack as well as behind it, so if
+  the map area is ever slow or fails it reads as part of the app rather than a
+  white hole.
+
+Routing itself is confirmed working — "41 min · 34 km via Srinagar Hwy and
+Islamabad Expy" came back from the Routes API.
 
 ## Revision 20 — duplicate class fix, and a real audit
 

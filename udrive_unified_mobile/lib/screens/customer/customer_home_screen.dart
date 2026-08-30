@@ -779,10 +779,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final topInset = MediaQuery.paddingOf(context).top;
     final height = MediaQuery.sizeOf(context).height;
 
-    // The sheet is capped so a slice of map is always visible above it. Without
-    // the cap a tall tour panel would cover the map entirely and the screen
-    // would stop reading as map-first.
-    final sheetMaxHeight = height * .62;
+    // The sheet is capped so a real amount of map stays visible. Without the
+    // cap a tall tour panel covers the map entirely and the screen stops being
+    // map-first; with too generous a cap the map becomes a sliver.
+    //
+    // The sheet scrolls internally, so capping it costs nothing — it just means
+    // the customer scrolls the panel rather than losing the map.
+    final sheetMaxHeight = (height * .55).clamp(320.0, 560.0);
 
     return Container(
       color: AppColors.background,

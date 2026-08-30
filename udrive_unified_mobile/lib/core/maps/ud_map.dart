@@ -180,6 +180,20 @@ class UdMap extends StatefulWidget {
 }
 
 class _UdMapState extends State<UdMap> {
+  /// Created once and reused.
+  ///
+  /// These must be identical across rebuilds. Allocating a new Set of new
+  /// Factory instances each build looks like a configuration change to
+  /// google_maps_flutter, which recreates the platform view — and a recreated
+  /// view on web renders as a blank white area until it reinitialises.
+  static final Set<Factory<OneSequenceGestureRecognizer>> _mapGestures = {
+    Factory<OneSequenceGestureRecognizer>(() => PanGestureRecognizer()),
+    Factory<OneSequenceGestureRecognizer>(() => ScaleGestureRecognizer()),
+    Factory<OneSequenceGestureRecognizer>(() => TapGestureRecognizer()),
+  };
+
+  static const Set<Factory<OneSequenceGestureRecognizer>> _noGestures = {};
+
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
   final Completer<gmap.GoogleMapController> _googleController =
       Completer<gmap.GoogleMapController>();
@@ -326,6 +340,7 @@ class _UdMapState extends State<UdMap> {
 
   Widget _buildGoogle() {
     return gmap.GoogleMap(
+      key: const ValueKey('ud-google-map'),
       initialCameraPosition: gmap.CameraPosition(
         target: gmap.LatLng(_center.latitude, _center.longitude),
         zoom: _zoom,
@@ -367,19 +382,7 @@ class _UdMapState extends State<UdMap> {
       // which is why dragging the booking sheet used to pan the map underneath.
       // Declaring the recognisers keeps the map to gestures that begin on the
       // map itself and lets Flutter's own widgets claim the rest.
-      gestureRecognizers: widget.interactive
-          ? <Factory<OneSequenceGestureRecognizer>>{
-              Factory<OneSequenceGestureRecognizer>(
-                () => PanGestureRecognizer(),
-              ),
-              Factory<OneSequenceGestureRecognizer>(
-                () => ScaleGestureRecognizer(),
-              ),
-              Factory<OneSequenceGestureRecognizer>(
-                () => TapGestureRecognizer(),
-              ),
-            }
-          : const <Factory<OneSequenceGestureRecognizer>>{},
+      gestureRecognizers: widget.interactive ? _mapGestures : _noGestures,
       markers: widget.markers
           .map(
             (marker) => gmap.Marker(
@@ -548,6 +551,9 @@ class _UdMapState extends State<UdMap> {
       child: Stack(
         fit: StackFit.expand,
         children: [
+          // Painted under the platform view so a slow or failed map area reads
+          // as part of the dark app rather than a white hole in it.
+          const ColoredBox(color: AppTint.mapBackdrop),
           if (_online) _buildGoogle() else _buildOffline(),
           if (!_online)
             const Positioned(
