@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 28) · build label `rev 28`
+# UDrive Redesign — Delivery 1 & 2 (revision 29) · build label `rev 29`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,41 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 29 — why a deployed build kept showing rev 28
+
+`nginx.conf` cached every `.js` file for seven days as `immutable`:
+
+```
+location ~* \.(js|css|png|…)$ {
+  expires 7d;
+  add_header Cache-Control "public, max-age=604800, immutable";
+}
+```
+
+Flutter emits the same filenames on every build — `main.dart.js` is always
+`main.dart.js`. `immutable` tells the browser not to even ask whether it
+changed. So a deploy replaced the file on the server and the browser carried on
+running the old one. That is how a build labelled `rev 28` survived two
+releases of `rev 29`, and it means some of today's testing was against code that
+had already been replaced.
+
+`main.dart.js`, `flutter.js`, `flutter_bootstrap.js` and `version.json` now use
+`no-cache, must-revalidate`. Nginx still answers 304 when nothing changed, so
+the cost is a conditional request, not a re-download. Content-hashed assets
+(canvaskit, fonts, images) keep the seven-day immutable cache — their filenames
+change when their contents do.
+
+**For the deploy after this one**, force a refresh once so the browser drops the
+pinned copy: Ctrl+Shift+R on Windows, Cmd+Shift+R on Mac. After that the header
+handles it.
+
+### Project cleanup
+
+- 99 patch notes moved from the repository root into `docs/archive/`. Moved, not
+  deleted — they are your history. Eleven durable documents stay at the root.
+- `patch_payload/` removed: four files, all duplicates of live source.
+- `tool/validate_project.py` removed, superseded by `tool/audit_structure.py`.
 
 ## Revision 28 — the camera move that was thrown away
 
