@@ -92,6 +92,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// of real distance is worth a request — each one is billed.
   LatLng? _lastResolvedCentre;
 
+  /// The pin writes the pickup only after the customer has actually dragged the
+  /// map.
+  ///
+  /// Without this, the very first camera idle — which happens at the fallback
+  /// centre before GPS has resolved — reverse-geocoded that fallback and wrote
+  /// a Kashmir address into the pickup field. The real location arrived a
+  /// moment later but the label was already wrong.
+  bool _userMovedMap = false;
+
+  /// Set when the device location could not be read. Shown as a banner with a
+  /// retry, rather than leaving an instruction sitting in the pickup field
+  /// where it reads like an address.
+  String? _locationError;
+
   /// Driving routes for the current pickup → destination pair.
   TripRouteResult _routeResult = const TripRouteResult();
   int _selectedRoute = 0;
@@ -204,7 +218,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   bool get _pinActive => _destination.text.trim().isEmpty;
 
   void _onMapDragStart() {
-    if (!_pinActive || _draggingMap) return;
+    if (!_pinActive) return;
+    _userMovedMap = true;
+    if (_draggingMap) return;
     setState(() => _draggingMap = true);
   }
 
@@ -212,6 +228,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Future<void> _onMapSettled(LatLng centre) async {
     if (!_pinActive) return;
     if (mounted && _draggingMap) setState(() => _draggingMap = false);
+
+    // Camera moves the app made itself — opening, centring on GPS, framing a
+    // route — must never rewrite the pickup.
+    if (!_userMovedMap) return;
 
     // Ignore settles that barely moved: a few metres is not a new pickup, and
     // every lookup costs money.
@@ -373,12 +393,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   Future<void> _loadLocation() async {
     if (_locating) return;
-    if (mounted) setState(() => _locating = true);
+    if (mounted) {
+      setState(() {
+        _locating = true;
+        _locationError = null;
+      });
+    }
     _pickup.text = 'Finding your location…';
 
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
-        _setPickupFailure('Turn on location to use current address');
+        _setPickupFailure('Location services are off. Turn them on, or set a pickup manually.');
         return;
       }
 
@@ -387,11 +412,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.deniedForever) {
-        _setPickupFailure('Allow location from app settings');
+        _setPickupFailure('Location permission is blocked. Allow it in your browser or device settings.');
         return;
       }
       if (permission == LocationPermission.denied) {
-        _setPickupFailure('Allow location to detect pickup');
+        _setPickupFailure('Allow location access to use your current position.');
         return;
       }
 
@@ -408,7 +433,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       }
 
       if (position == null) {
-        _setPickupFailure('Tap the locate button to try again');
+        _setPickupFailure('Could not read your location. Try again, or set a pickup manually.');
         return;
       }
 
@@ -437,7 +462,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _lastResolvedCentre = point;
       await _mapController.moveTo(point, zoom: AppConfig.pickupZoom);
     } catch (_) {
-      _setPickupFailure('Tap the locate button to try again');
+      _setPickupFailure('Could not read your location. Try again, or set a pickup manually.');
     } finally {
       if (mounted) setState(() => _locating = false);
     }
@@ -446,8 +471,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void _setPickupFailure(String message) {
     if (!mounted) return;
     setState(() {
-      _pickup.text = message;
-      _resolvedPlaceName = message;
+      _locationError = message;
+      // Leave the field empty rather than filling it with an instruction. An
+      // empty pickup is honestly empty; a sentence there looks like an address
+      // the customer might accept without reading.
+      _pickup.text = '';
+      _resolvedPlaceName = 'Location unavailable';
     });
   }
 
@@ -1035,6 +1064,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 onEditDestination: () =>
                     _openSearch(RouteFieldKind.destination),
               ),
+
+              if (_locationError != null) ...[
+                const SizedBox(height: 10),
+                _LocationErrorBanner(
+                  message: _locationError!,
+                  busy: _locating,
+                  onRetry: _loadLocation,
+                ),
+              ],
 
               // The trip panel only appears once there is a trip to describe.
               if (_destination.text.trim().isNotEmpty) ...[
@@ -1981,11 +2019,7 @@ class _CentrePin extends StatelessWidget {
           alignment: Alignment.center,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AppProduct.rideFrom, AppProduct.rideMid],
-            ),
+            color: AppProduct.rideAccent,
           ),
           child: const Icon(Icons.place_rounded,
               size: 19, color: AppProduct.rideInk),
@@ -2214,7 +2248,169 @@ class _ProductCard extends StatelessWidget {
   }
 }
 
-/// A destination used before. One tap sets it and plots the route./// A destination used before. One tap sets it and plots the route./// A destination used before. One tap sets it and plots the route.
+/// Shown when the device location could not be read.
+///
+/// Deliberately offers a retry and says the pickup can be set by hand: a dead
+/// end here blocks the whole booking, and location failures on the web are
+/// common and often temporary.
+class _LocationErrorBanner extends StatelessWidget {
+  const _LocationErrorBanner({
+    required this.message,
+    required this.busy,
+    required this.onRetry,
+  });
+
+  final String message;
+  final bool busy;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(13, 11, 9, 11),
+      decoration: BoxDecoration(
+        color: AppTint.warning,
+        borderRadius: AppRadii.all(AppRadii.row),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.location_off_rounded,
+              size: 17, color: AppTint.warningText),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+                color: AppTint.warningText,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: busy ? null : onRetry,
+            style: TextButton.styleFrom(
+              foregroundColor: AppTint.warningText,
+              minimumSize: const Size(0, 34),
+            ),
+            child: Text(busy ? '…' : 'Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A destination used before. One tap sets it and plots the route./// Shown when the device location could not be read.
+///
+/// Deliberately offers a retry and says the pickup can be set by hand: a dead
+/// end here blocks the whole booking, and location failures on the web are
+/// common and often temporary.
+class _LocationErrorBanner extends StatelessWidget {
+  const _LocationErrorBanner({
+    required this.message,
+    required this.busy,
+    required this.onRetry,
+  });
+
+  final String message;
+  final bool busy;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(13, 11, 9, 11),
+      decoration: BoxDecoration(
+        color: AppTint.warning,
+        borderRadius: AppRadii.all(AppRadii.row),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.location_off_rounded,
+              size: 17, color: AppTint.warningText),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+                color: AppTint.warningText,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: busy ? null : onRetry,
+            style: TextButton.styleFrom(
+              foregroundColor: AppTint.warningText,
+              minimumSize: const Size(0, 34),
+            ),
+            child: Text(busy ? '…' : 'Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A destination used before. One tap sets it and plots the route./// Shown when the device location could not be read.
+///
+/// Deliberately offers a retry and says the pickup can be set by hand: a dead
+/// end here blocks the whole booking, and location failures on the web are
+/// common and often temporary.
+class _LocationErrorBanner extends StatelessWidget {
+  const _LocationErrorBanner({
+    required this.message,
+    required this.busy,
+    required this.onRetry,
+  });
+
+  final String message;
+  final bool busy;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(13, 11, 9, 11),
+      decoration: BoxDecoration(
+        color: AppTint.warning,
+        borderRadius: AppRadii.all(AppRadii.row),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.location_off_rounded,
+              size: 17, color: AppTint.warningText),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+                color: AppTint.warningText,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: busy ? null : onRetry,
+            style: TextButton.styleFrom(
+              foregroundColor: AppTint.warningText,
+              minimumSize: const Size(0, 34),
+            ),
+            child: Text(busy ? '…' : 'Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A destination used before. One tap sets it and plots the route.
 class _RecentRow extends StatelessWidget {
   const _RecentRow({required this.place, required this.onTap});
 
@@ -2659,6 +2855,9 @@ class _RouteSummaryFields extends StatelessWidget {
                   _RouteRow(
                     caption: 'From',
                     value: pickupLabel,
+                    placeholder: locating
+                        ? 'Finding your location…'
+                        : 'Set a pickup point',
                     onTap: onEditPickup,
                   ),
                   Container(height: 1, color: AppColors.border),

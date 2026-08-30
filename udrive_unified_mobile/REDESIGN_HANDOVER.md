@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 18)
+# UDrive Redesign — Delivery 1 & 2 (revision 19)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,42 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 19 — pickup fix and build fix
+
+### Why pickup showed a Kashmir address
+
+`_onMapSettled` ran on the **first** camera idle. That idle happens at the
+fallback centre — Muzaffarabad — before GPS has resolved, so the pin
+reverse-geocoded the fallback and wrote a Kashmir address into the pickup field.
+The real location arrived a moment later, but the label was already written.
+
+The pin now only claims the pickup after `_userMovedMap` is set, which happens
+in the drag handler. Camera moves the app makes itself — opening, centring on
+GPS, framing a route — never rewrite the pickup.
+
+### Location failures are no longer silent
+
+`_setPickupFailure` used to put its message *into* the pickup field, so "Allow
+location to detect pickup" sat there looking like an address someone might
+accept without reading.
+
+Now the field is left genuinely empty with a placeholder, and the reason appears
+as a banner with a **Retry** and a note that a pickup can be set by hand. A dead
+end here blocks the entire booking, and location failures on the web are common
+and often temporary.
+
+Messages also say what to do: "Location permission is blocked. Allow it in your
+browser or device settings." rather than "Allow location from app settings",
+which is wrong on web.
+
+### Build fix
+
+`_CentrePin` still referenced `AppProduct.rideFrom` and `rideMid` — gradient
+stops I removed when switching to the flat palette. My token audit only checked
+that classes existed, not that every member did. It now resolves every
+`AppProduct` / `AppTint` / `AppText` / `AppColors` reference against its
+definition.
 
 ## Revision 18 — colour-coded cards, both ends editable
 
