@@ -28,6 +28,13 @@ class AppConfig {
   static const double defaultMapZoom = 14.8;
   static const double focusedMapZoom = 15.8;
 
+  /// Street level. The home map never zooms out past this, because below it
+  /// road names disappear and the map stops helping anyone.
+  static const double homeMinZoom = 11.0;
+
+  /// Zoom used when the app first fixes the customer's position.
+  static const double pickupZoom = 16.2;
+
   // ------------------------------------------------------------------- maps
   /// The Maps SDK key CANNOT be supplied at runtime — Google requires it in
   /// AndroidManifest.xml / AppDelegate.swift at build time. Pass it in with:

@@ -79,6 +79,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// chosen, because most trips repeat.
   List<RecentPlace> _recent = const [];
 
+  /// True while the customer is dragging the map. The centre pin lifts and its
+  /// label hides, the way a dropped pin behaves in every map app.
+  bool _draggingMap = false;
+
+  /// Set while the address under the pin is being looked up.
+  bool _resolvingPin = false;
+
+  /// Guards against reverse-geocoding on every tiny camera settle. Only a move
+  /// of real distance is worth a request — each one is billed.
+  LatLng? _lastResolvedCentre;
+
   /// Driving routes for the current pickup → destination pair.
   TripRouteResult _routeResult = const TripRouteResult();
   int _selectedRoute = 0;
@@ -183,6 +194,57 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _places.dispose();
     _routes.dispose();
     super.dispose();
+  }
+
+  /// The centre pin only sets pickup while no destination is chosen. Once a
+  /// trip is being planned the map is showing a route, and moving it must not
+  /// silently rewrite where the customer is starting from.
+  bool get _pinActive => _destination.text.trim().isEmpty;
+
+  void _onMapDragStart() {
+    if (!_pinActive || _draggingMap) return;
+    setState(() => _draggingMap = true);
+  }
+
+  /// Reverse-geocodes whatever the pin is now over and makes it the pickup.
+  Future<void> _onMapSettled(LatLng centre) async {
+    if (!_pinActive) return;
+    if (mounted && _draggingMap) setState(() => _draggingMap = false);
+
+    // Ignore settles that barely moved: a few metres is not a new pickup, and
+    // every lookup costs money.
+    final previous = _lastResolvedCentre;
+    if (previous != null) {
+      final moved = (previous.latitude - centre.latitude).abs() +
+          (previous.longitude - centre.longitude).abs();
+      if (moved < 0.0004) return; // roughly 40 m
+    }
+    _lastResolvedCentre = centre;
+
+    setState(() {
+      _pickupPoint = centre;
+      _resolvingPin = true;
+    });
+
+    final address = await _places.reverseGeocode(
+      centre.latitude,
+      centre.longitude,
+    );
+    if (!mounted) return;
+
+    final label = address.isNotEmpty
+        ? address
+        : '${centre.latitude.toStringAsFixed(5)}, '
+            '${centre.longitude.toStringAsFixed(5)}';
+
+    setState(() {
+      _pickup.text = label;
+      _resolvedPlaceName = label;
+      _resolvingPin = false;
+    });
+
+    // Nearby vehicles are measured from the pickup, so they follow the pin.
+    await _refreshNearby();
   }
 
   /// Fetches the driving route once both ends are known, then frames it.
@@ -363,6 +425,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _pickup.text = label;
         _resolvedPlaceName = label;
       });
+
+      // Centre on the customer. This was lost in an earlier refactor, which is
+      // why the map opened showing half of Central Asia.
+      await _mapController.moveTo(point, zoom: AppConfig.pickupZoom);
     } catch (_) {
       _setPickupFailure('Tap the locate button to try again');
     } finally {
@@ -689,6 +755,25 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         children: [
           _buildMap(),
 
+          // Centre pickup pin. Ignores pointers so the drag underneath reaches
+          // the map — the pin is an indicator, not a control.
+          if (_pinActive)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: sheetMaxHeight * .52,
+              child: IgnorePointer(
+                child: Center(
+                  child: _CentrePin(
+                    lifted: _draggingMap,
+                    label: _pickup.text.trim(),
+                    resolving: _resolvingPin,
+                  ),
+                ),
+              ),
+            ),
+
           // Header chrome floats directly on the map.
           Positioned(
             top: topInset + 10,
@@ -810,8 +895,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return UdMap(
       controller: _mapController,
       initialCenter: _pickupPoint,
-      zoom: 13.4,
+      zoom: AppConfig.pickupZoom,
+      minZoom: AppConfig.homeMinZoom,
       myLocation: _pickupPoint,
+      onCameraMoveStarted: _onMapDragStart,
+      onCameraIdle: _onMapSettled,
       routeOrigin: _pickupPoint,
       routeDestination: _destinationPoint ?? _pickupPoint,
       circles: [
@@ -857,6 +945,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             position: _destinationPoint!,
             label: _destination.text.trim(),
             hue: UdMarkerHue.info,
+          ),
+        // With a destination set the pin is gone, so pickup needs its own
+        // marker again.
+        if (!_pinActive)
+          UdMarker(
+            id: 'pickup',
+            position: _pickupPoint,
+            label: _pickup.text.trim(),
           ),
       ],
     );
@@ -908,6 +1004,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               _ServiceCards(
                 selected: _service,
                 onSelect: _selectService,
+                nearbyCount: _visibleVehicles.length,
               ),
 
               // Once a destination exists the trip takes over: route summary,
@@ -1787,6 +1884,110 @@ class _NotificationsPopup extends StatelessWidget {
 /// seats or fewer there is nothing to share, so per seat is hidden rather than
 /// shown-and-rejected — a disabled control the customer cannot use is worse
 /// than one that was never there.
+/// Pickup pin fixed at the centre of the map.
+///
+/// The map moves beneath it, the pin does not — the same interaction every
+/// major map app uses, because it lets someone place a pickup precisely without
+/// having to hit a small target with their thumb.
+///
+/// While dragging, the pin lifts and its label hides: the address underneath is
+/// unknown until the map settles, and showing a stale one would be a lie.
+class _CentrePin extends StatelessWidget {
+  const _CentrePin({
+    required this.lifted,
+    required this.label,
+    required this.resolving,
+  });
+
+  final bool lifted;
+  final String label;
+  final bool resolving;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedOpacity(
+          duration: const Duration(milliseconds: 150),
+          opacity: lifted ? 0 : 1,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 210),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(
+                color: AppColors.secondary.withValues(alpha: .45),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Pickup point',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.secondary,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                resolving
+                    ? const SizedBox(
+                        height: 15,
+                        width: 15,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        label.isEmpty ? 'Move the map' : label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppText.primary,
+                        ),
+                      ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 5),
+        // The head lifts on drag; the dot below stays on the ground point, so
+        // the customer can see exactly which spot will be used.
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          transform: Matrix4.translationValues(0, lifted ? -7 : 0, 0),
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppProduct.rideFrom, AppProduct.rideMid],
+            ),
+          ),
+          child: const Icon(Icons.place_rounded,
+              size: 19, color: AppProduct.rideInk),
+        ),
+        Container(width: 2, height: 13, color: AppColors.secondary),
+        Container(
+          width: 9,
+          height: 9,
+          decoration: const BoxDecoration(
+            color: AppColors.secondary,
+            shape: BoxShape.circle,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// The one question the home screen asks.
 ///
 /// A button, not a text field: typing happens on the dedicated search screen
@@ -1842,19 +2043,25 @@ class _SearchBar extends StatelessWidget {
   }
 }
 
-/// Ride, Tour and Hotel, weighted by how often each is used.
+/// Ride hero plus a rail of the other products.
 ///
-/// Ride gets a large card with its own artwork because it is most of the
-/// traffic; Tour and Hotel stack beside it at half height. Equal tiles would
-/// make the common case as slow as the rare one.
+/// Ride keeps the full width because it is most of the traffic; Seats, Tour and
+/// Hotel sit in a scrolling rail beneath so all four are visible on the first
+/// screen without competing. Each carries its own gradient — four products
+/// reading as four things, rather than four shades of the brand.
+///
+/// The rail scrolls, so a service added later is one more card, not a redesign.
 class _ServiceCards extends StatelessWidget {
-  const _ServiceCards({required this.selected, required this.onSelect});
+  const _ServiceCards({
+    required this.selected,
+    required this.onSelect,
+    required this.nearbyCount,
+  });
 
   final HomeService selected;
   final ValueChanged<HomeService> onSelect;
+  final int nearbyCount;
 
-  /// Ride covers the three vehicle services; the card selects Car and the next
-  /// screen narrows it further.
   bool get _rideSelected =>
       selected == HomeService.car ||
       selected == HomeService.bus ||
@@ -1862,68 +2069,70 @@ class _ServiceCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 148,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            flex: 27,
-            child: _BigCard(
-              title: 'Ride now',
-              subtitle: 'Car, coaster or bike',
-              icon: Icons.directions_car_rounded,
-              selected: _rideSelected,
-              onTap: () => onSelect(HomeService.car),
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _RideHero(
+          selected: _rideSelected,
+          nearbyCount: nearbyCount,
+          onTap: () => onSelect(HomeService.car),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 100,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.zero,
+            children: [
+              _RailCard(
+                title: 'Seats',
+                subtitle: 'Share a ride',
+                icon: Icons.groups_rounded,
+                from: AppProduct.seatsFrom,
+                to: AppProduct.seatsTo,
+                subColour: AppProduct.seatsSub,
+                selected: false,
+                onTap: () => onSelect(HomeService.bus),
+              ),
+              const SizedBox(width: 10),
+              _RailCard(
+                title: 'Tour',
+                subtitle: 'Multi-day',
+                icon: Icons.terrain_rounded,
+                from: AppProduct.tourFrom,
+                to: AppProduct.tourTo,
+                subColour: AppProduct.tourSub,
+                selected: selected == HomeService.tour,
+                onTap: () => onSelect(HomeService.tour),
+              ),
+              const SizedBox(width: 10),
+              _RailCard(
+                title: 'Hotel',
+                subtitle: 'Stays',
+                icon: Icons.apartment_rounded,
+                from: AppProduct.hotelFrom,
+                to: AppProduct.hotelTo,
+                subColour: AppProduct.hotelSub,
+                selected: selected == HomeService.hotel,
+                onTap: () => onSelect(HomeService.hotel),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            flex: 20,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _SmallCard(
-                    title: 'Tour',
-                    subtitle: 'Multi-day',
-                    icon: Icons.terrain_rounded,
-                    selected: selected == HomeService.tour,
-                    onTap: () => onSelect(HomeService.tour),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: _SmallCard(
-                    title: 'Hotel',
-                    subtitle: 'Stays',
-                    icon: Icons.apartment_rounded,
-                    selected: selected == HomeService.hotel,
-                    onTap: () => onSelect(HomeService.hotel),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _BigCard extends StatelessWidget {
-  const _BigCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
+class _RideHero extends StatelessWidget {
+  const _RideHero({
     required this.selected,
+    required this.nearbyCount,
     required this.onTap,
   });
 
-  final String title;
-  final String subtitle;
-  final IconData icon;
   final bool selected;
+  final int nearbyCount;
   final VoidCallback onTap;
 
   @override
@@ -1931,80 +2140,115 @@ class _BigCard extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: title,
+      label: 'Ride now',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
+          height: 118,
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFF1F3324) : AppColors.surfaceAlt,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppProduct.rideFrom,
+                AppProduct.rideMid,
+                AppProduct.rideTo,
+              ],
+              stops: [0, .55, 1],
+            ),
             border: Border.all(
-              color: selected ? AppColors.secondary : Colors.transparent,
-              width: 1.4,
+              color: selected
+                  ? AppColors.secondary
+                  : Colors.transparent,
+              width: 2,
             ),
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(
             children: [
-              // Oversized artwork bleeding off the corner gives the card weight
-              // without adding another element to read.
               Positioned(
-                right: -14,
-                bottom: -12,
+                right: -16,
+                top: -20,
                 child: Icon(
-                  icon,
-                  size: 92,
-                  color: AppColors.secondary.withValues(
-                    alpha: selected ? .38 : .16,
-                  ),
+                  Icons.directions_car_rounded,
+                  size: 112,
+                  color: AppProduct.rideInk.withValues(alpha: .16),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(15),
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      width: 34,
-                      height: 34,
+                      width: 36,
+                      height: 36,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: selected
-                            ? AppColors.secondary
-                            : AppColors.surfaceHigh,
-                        borderRadius: BorderRadius.circular(11),
+                        color: AppProduct.rideInk.withValues(alpha: .28),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(
-                        icon,
-                        size: 19,
-                        color: selected
-                            ? AppText.onBrand
-                            : AppColors.secondary,
-                      ),
+                      child: const Icon(Icons.directions_car_rounded,
+                          size: 20, color: AppProduct.rideInk),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+                    const Spacer(),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                            color: AppText.primary,
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Ride now',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -.3,
+                                  color: AppProduct.rideInk,
+                                ),
+                              ),
+                              SizedBox(height: 1),
+                              Text(
+                                'Car · Coaster · Bike',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppProduct.rideSub,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          subtitle,
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            color: AppText.secondary,
+                        if (nearbyCount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 13, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: AppProduct.rideInk,
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '$nearbyCount nearby',
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.secondary,
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                const Icon(Icons.arrow_forward_rounded,
+                                    size: 14, color: AppColors.secondary),
+                              ],
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ],
@@ -2018,11 +2262,14 @@ class _BigCard extends StatelessWidget {
   }
 }
 
-class _SmallCard extends StatelessWidget {
-  const _SmallCard({
+class _RailCard extends StatelessWidget {
+  const _RailCard({
     required this.title,
     required this.subtitle,
     required this.icon,
+    required this.from,
+    required this.to,
+    required this.subColour,
     required this.selected,
     required this.onTap,
   });
@@ -2030,6 +2277,9 @@ class _SmallCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
+  final Color from;
+  final Color to;
+  final Color subColour;
   final bool selected;
   final VoidCallback onTap;
 
@@ -2044,48 +2294,64 @@ class _SmallCard extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
+          width: 100,
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFF1F3324) : AppColors.surfaceAlt,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(19),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [from, to],
+            ),
             border: Border.all(
-              color: selected ? AppColors.secondary : Colors.transparent,
-              width: 1.4,
+              color: selected ? Colors.white : Colors.transparent,
+              width: 2,
             ),
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(
             children: [
               Positioned(
-                right: -8,
-                bottom: -8,
+                right: -10,
+                top: -8,
                 child: Icon(
                   icon,
-                  size: 52,
-                  color: AppColors.secondary.withValues(
-                    alpha: selected ? .34 : .14,
-                  ),
+                  size: 58,
+                  color: Colors.black.withValues(alpha: .28),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: .28),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Icon(icon, size: 16, color: Colors.white),
+                    ),
+                    const Spacer(),
                     Text(
                       title,
                       style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppText.primary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        color: AppText.secondary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w700,
+                        color: subColour,
                       ),
                     ),
                   ],
@@ -2099,7 +2365,7 @@ class _SmallCard extends StatelessWidget {
   }
 }
 
-/// A destination used before. One tap sets it and plots the route.
+/// A destination used before. One tap sets it and plots the route./// A destination used before. One tap sets it and plots the route.
 class _RecentRow extends StatelessWidget {
   const _RecentRow({required this.place, required this.onTap});
 

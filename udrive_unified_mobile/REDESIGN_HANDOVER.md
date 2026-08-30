@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 16)
+# UDrive Redesign — Delivery 1 & 2 (revision 17)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,70 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 17 — centre pin, zoom fix, bold colour
+
+### Why the map showed half of Central Asia
+
+`_loadLocation` stopped moving the camera. I removed that line in an earlier
+refactor and never put it back, so the map sat at its initial position and any
+`fitBounds` fallback swung it out to continent scale. At that zoom Google draws
+a terrain atlas rather than streets, which is why it looked like the wrong map
+style — it was the right style at the wrong scale.
+
+Three fixes:
+
+- The camera moves to the customer on the first GPS fix, at zoom 16.2
+- `UdMap` takes a `minZoom`; Home passes 11, so the map can never zoom out past
+  street level again
+- `fitBounds` centres instead of fitting when the two points are under ~400 m
+  apart, because fitting a tiny bounds with padding produces absurd zooms
+
+### Centre pickup pin
+
+The pin is fixed at the centre of the map and the map moves beneath it. Lifting
+your finger reverse-geocodes whatever is underneath and makes it the pickup,
+then refreshes the nearby vehicles, which are measured from the pickup.
+
+Details that matter:
+
+- While dragging, the pin lifts and its label hides. The address underneath is
+  unknown until the map settles, and showing a stale one would be a lie.
+- A settle that moved less than about 40 m is ignored. Every lookup is billed,
+  and a few metres is not a new pickup.
+- The pin only works while no destination is set. Once a route is drawn, moving
+  the map must not silently rewrite where the trip starts.
+- `IgnorePointer` on the pin, so the drag underneath reaches the map.
+
+### Colour
+
+Each product owns a hue, in `AppProduct`:
+
+```
+Ride    lime → deep green    (brand)
+Seats   violet
+Tour    orange
+Hotel   cyan
+```
+
+Full gradients, not tints, so four products read as four things. Ride keeps the
+full-width hero with a live nearby count; the others sit in a scrolling rail, so
+adding a service later is one more card rather than a redesign.
+
+The brand green moved from `#8ED12B` to `#A6FF2E`. The old value was mixed for
+light surfaces and sat flat against near-black. Backgrounds went a step deeper
+to match.
+
+**Worth checking on a real phone.** Four saturated gradients on one screen looks
+striking on a monitor and may read as busy outdoors. Dialling back is one value
+per card.
+
+### Still your side: the 403
+
+`"error": { "code": 403 }` is `PERMISSION_DENIED` — Routes API is enabled on the
+project but not allowed on the key. Add it under the key's API restrictions.
+Changing restrictions does not change the key's value, so nothing needs
+re-entering in the admin portal.
 
 ## Revision 16 — search-first home, and two fixes
 

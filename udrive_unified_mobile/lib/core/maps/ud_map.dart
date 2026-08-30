@@ -134,6 +134,9 @@ class UdMap extends StatefulWidget {
     this.routeDestination,
     this.showMyLocation = true,
     this.myLocation,
+    this.minZoom,
+    this.onCameraMoveStarted,
+    this.onCameraIdle,
     this.interactive = true,
     this.onTap,
     this.onSourceChanged,
@@ -158,6 +161,16 @@ class UdMap extends StatefulWidget {
   /// active. Google draws its own dot from [showMyLocation], so this is only
   /// used by flutter_map — pass it anyway and both paths look the same.
   final LatLng? myLocation;
+
+  /// Floor for the camera. Home passes a street-level value so the map can
+  /// never end up showing half a continent — at that scale road names vanish
+  /// and the screen stops being useful.
+  final double? minZoom;
+
+  /// Fired when the customer starts dragging, and again when the camera
+  /// settles. Together they drive the centre pickup pin.
+  final VoidCallback? onCameraMoveStarted;
+  final ValueChanged<LatLng>? onCameraIdle;
   final bool interactive;
   final ValueChanged<LatLng>? onTap;
   final ValueChanged<UdMapSource>? onSourceChanged;
@@ -173,6 +186,11 @@ class _UdMapState extends State<UdMap> {
   final fmap.MapController _offlineController = fmap.MapController();
 
   bool _online = true;
+
+  /// Where the camera currently points. Tracked so the idle callback can report
+  /// it — Google gives the position during the move, not at the end.
+  LatLng? _cameraTarget;
+
   late LatLng _center;
   late double _zoom;
 
@@ -255,6 +273,16 @@ class _UdMapState extends State<UdMap> {
 
     _center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
 
+    // Two points a few hundred metres apart produce a bounds so small that
+    // fitting it with padding can swing the camera to an absurd zoom. Below
+    // this span, centring is both simpler and more predictable.
+    const minimumSpanDegrees = 0.004; // roughly 400 m
+    if ((maxLat - minLat) < minimumSpanDegrees &&
+        (maxLng - minLng) < minimumSpanDegrees) {
+      await _moveTo(_center, zoom: AppConfig.focusedMapZoom);
+      return;
+    }
+
     if (_online) {
       if (!_googleController.isCompleted) return;
       final controller = await _googleController.future;
@@ -308,6 +336,18 @@ class _UdMapState extends State<UdMap> {
         }
       },
       myLocationEnabled: widget.showMyLocation,
+      minMaxZoomPreference: widget.minZoom == null
+          ? gmap.MinMaxZoomPreference.unbounded
+          : gmap.MinMaxZoomPreference(widget.minZoom, null),
+      onCameraMoveStarted: widget.onCameraMoveStarted,
+      onCameraMove: (position) => _cameraTarget = LatLng(
+        position.target.latitude,
+        position.target.longitude,
+      ),
+      onCameraIdle: () {
+        final target = _cameraTarget;
+        if (target != null) widget.onCameraIdle?.call(target);
+      },
       // The redesign supplies its own floating "locate me" button.
       myLocationButtonEnabled: false,
       zoomControlsEnabled: false,
@@ -399,6 +439,18 @@ class _UdMapState extends State<UdMap> {
               ? fmap.InteractiveFlag.pinchZoom | fmap.InteractiveFlag.drag
               : fmap.InteractiveFlag.none,
         ),
+        minZoom: widget.minZoom,
+        onPositionChanged: (position, hasGesture) {
+          _cameraTarget = position.center;
+          if (hasGesture) widget.onCameraMoveStarted?.call();
+        },
+        onMapEvent: (event) {
+          if (event is fmap.MapEventMoveEnd ||
+              event is fmap.MapEventFlingAnimationEnd) {
+            final target = _cameraTarget;
+            if (target != null) widget.onCameraIdle?.call(target);
+          }
+        },
         onTap: widget.onTap == null
             ? null
             : (_, point) => widget.onTap!(point),

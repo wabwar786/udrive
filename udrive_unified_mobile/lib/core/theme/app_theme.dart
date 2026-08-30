@@ -8,25 +8,27 @@ import 'package:google_fonts/google_fonts.dart';
 class AppColors {
   /// Brand green. The only saturated colour in the system; it carries every
   /// primary action, so it stays loud against the dark surfaces.
-  static const secondary = Color(0xFF8ED12B);
-  static const accent = Color(0xFF8ED12B);
+  /// Brightened from #8ED12B. The old value was mixed for light surfaces and
+  /// sat flat against the dark theme; this lifts without leaving the family.
+  static const secondary = Color(0xFFA6FF2E);
+  static const accent = Color(0xFFA6FF2E);
 
   /// Deepest layer — the app background behind everything.
-  static const background = Color(0xFF0B1417);
+  static const background = Color(0xFF080F12);
 
   /// Cards and panels sit one step above the background.
-  static const surface = Color(0xFF14232A);
+  static const surface = Color(0xFF0E1A21);
 
   /// Inset rows, chips and pressed states sit one step above [surface].
-  static const surfaceAlt = Color(0xFF1B2E36);
+  static const surfaceAlt = Color(0xFF182833);
 
   /// Elevated sheets and dialogs.
   static const surfaceHigh = Color(0xFF213741);
 
   /// Kept as the dark ink used for text ON the brand green.
-  static const primary = Color(0xFF0B1417);
+  static const primary = Color(0xFF07120A);
   static const primaryDark = Color(0xFF060E11);
-  static const navy = Color(0xFF0B1417);
+  static const navy = Color(0xFF07120A);
 
   static const muted = Color(0xFF9FB3BB);
   static const border = Color(0xFF233A44);

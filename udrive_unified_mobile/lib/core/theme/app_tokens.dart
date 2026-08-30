@@ -12,7 +12,7 @@ class AppTint {
 
   /// Selected service tile and active bottom-nav pill — a low-opacity wash of
   /// the brand green rather than a pale tint, so it reads on dark surfaces.
-  static const brand = Color(0xFF23361A);
+  static const brand = Color(0xFF1F3A1B);
 
   /// Secondary surface — inset rows such as the tour-booking toggle strip.
   static const surface = AppColors.surfaceAlt;
@@ -39,7 +39,38 @@ class AppText {
   static const disabled = Color(0xFF64808A);
 
   /// Text placed ON the brand green.
-  static const onBrand = Color(0xFF0B1417);
+  static const onBrand = Color(0xFF07120A);
+}
+
+/// Per-product colours.
+///
+/// Each service owns a hue so the four products read as four different things
+/// rather than four shades of the brand. Colour carries meaning here, not
+/// decoration — the same hue follows a product through the app.
+class AppProduct {
+  const AppProduct._();
+
+  // Ride — the brand green.
+  static const rideFrom = Color(0xFFA6FF2E);
+  static const rideMid = Color(0xFF5FBF16);
+  static const rideTo = Color(0xFF2E7A14);
+  static const rideInk = Color(0xFF07120A);
+  static const rideSub = Color(0xFF1B3D08);
+
+  // Seats — violet.
+  static const seatsFrom = Color(0xFF8B5CF6);
+  static const seatsTo = Color(0xFF331B77);
+  static const seatsSub = Color(0xFFDCCFFF);
+
+  // Tour — orange.
+  static const tourFrom = Color(0xFFFF9F1A);
+  static const tourTo = Color(0xFF8A2F0E);
+  static const tourSub = Color(0xFFFFE0BC);
+
+  // Hotel — cyan.
+  static const hotelFrom = Color(0xFF22D3EE);
+  static const hotelTo = Color(0xFF0F4570);
+  static const hotelSub = Color(0xFFC7EEFF);
 }
 
 class AppRadii {
