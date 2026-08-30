@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 34) · build label `rev 34`
+# UDrive Redesign — Delivery 1 & 2 (revision 37) · build label `rev 37`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,55 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 37 — the polyline decoder, and why this took so long
+
+The on-map readout ended it in one screenshot:
+
+```
+cam 8353745.0653, 1245613.4962   z5.0
+pts 772  ready true
+```
+
+Latitude 8,353,745. The camera was fine, the tiles were fine, the map was fine.
+**The polyline decoder was producing values that are not coordinates**, and the
+camera was dutifully flying to them.
+
+### The mechanism
+
+The textbook polyline decoder uses `<<`, `&` and `~`. On the web, Dart ints
+compile to JavaScript numbers and those operators work on **32 bits**:
+
+```
+31 << 30  →  -1073741824      (should be 33285996544)
+1  << 31  →  -2147483648      (should be 2147483648)
+```
+
+On Android, Dart ints are 64-bit and the same code is correct. So the decoder
+worked on mobile and produced garbage on web — which is the surface I was
+testing on.
+
+The decoder is now written with multiplication and division only. No bitwise
+operators, so both platforms carry full precision. It is verified against
+Google's documented test vector.
+
+A range guard was added alongside: a decoded point outside ±90/±180 means the
+stream has lost alignment and everything after it is meaningless, so decoding
+stops there rather than handing a corrupt tail to the map.
+
+### Why I did not find this sooner
+
+I verified the decoder in Python, which has arbitrary-precision integers. It
+matched Google's test vector perfectly and I treated that as proof. It proved
+the algorithm, not the implementation — and the bug lived entirely in the
+difference between the two number systems.
+
+That mistake cost several rounds. Each screenshot showed a different symptom of
+this one fault, and I proposed a different cause for each: gesture recognisers,
+platform view stacking, a zoom floor, a dynamic height, a camera constraint. Four
+of those were problems I had introduced myself while chasing it.
+
+The readout that solved it should have been the first thing I built.
 
 ## Revision 34 — the same camera bug, on the other renderer
 

@@ -51,43 +51,67 @@ class TripRoute {
 
   /// Decodes Google's encoded polyline format.
   ///
-  /// Implemented here rather than pulling in a package: it is about twenty
-  /// lines, and the algorithm has not changed in fifteen years.
+  /// Written with arithmetic rather than bitwise operators, deliberately.
   ///
-  /// Values are stored as differences from the previous point, each split into
-  /// 5-bit chunks with the high bit marking "more chunks follow", then offset
-  /// by 63 to keep them printable.
+  /// On the web, Dart ints compile to JavaScript numbers and `<<`, `&` and `~`
+  /// operate on 32 bits. The textbook implementation shifts a 5-bit chunk left
+  /// by up to 30 places, and `31 << 30` evaluates to -1073741824 in a browser
+  /// instead of 33285996544. Long polylines therefore decoded into enormous
+  /// coordinates — a camera centred at latitude 8353745 was this bug — while
+  /// the identical code was correct on Android, where ints are 64-bit.
+  ///
+  /// Multiplication and division carry full precision on both, so the same
+  /// source now produces the same result everywhere.
+  ///
+  /// The format itself: each value is a difference from the previous point,
+  /// split into 5-bit chunks with the high bit marking "more chunks follow",
+  /// then offset by 63 to stay printable. The low bit of the assembled value is
+  /// a sign flag.
   static List<LatLng> decodePolyline(String encoded) {
     if (encoded.isEmpty) return const [];
 
     final points = <LatLng>[];
     var index = 0;
-    var latitude = 0;
-    var longitude = 0;
+    var latitude = 0.0;
+    var longitude = 0.0;
+
+    double readValue() {
+      var result = 0.0;
+      var factor = 1.0;
+
+      while (index < encoded.length) {
+        final byte = encoded.codeUnitAt(index) - 63;
+        index++;
+        // (byte & 0x1f) without the bitwise and.
+        result += (byte % 32) * factor;
+        factor *= 32;
+        if (byte < 0x20) break;
+      }
+
+      // Odd means negative, and the magnitude is the value shifted right once.
+      final negative = result % 2 == 1;
+      final magnitude = (result - (negative ? 1 : 0)) / 2;
+      return negative ? -magnitude - 1 : magnitude;
+    }
 
     while (index < encoded.length) {
-      int shift = 0;
-      int result = 0;
-      int byte;
+      latitude += readValue();
+      if (index > encoded.length) break;
+      longitude += readValue();
 
-      do {
-        byte = encoded.codeUnitAt(index++) - 63;
-        result |= (byte & 0x1f) << shift;
-        shift += 5;
-      } while (byte >= 0x20 && index < encoded.length);
-      // The low bit is a sign flag, inverted for negatives.
-      latitude += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      final lat = latitude / 1e5;
+      final lng = longitude / 1e5;
 
-      shift = 0;
-      result = 0;
-      do {
-        byte = encoded.codeUnitAt(index++) - 63;
-        result |= (byte & 0x1f) << shift;
-        shift += 5;
-      } while (byte >= 0x20 && index < encoded.length);
-      longitude += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      // A coordinate outside these ranges means the stream has gone out of
+      // step, and every point after it is meaningless. Stopping here keeps
+      // whatever was decoded correctly and prevents a corrupt tail reaching
+      // the map — a route centred at latitude 8353745 came from letting one
+      // bad value through.
+      if (lat.isNaN || lng.isNaN || lat.abs() > 90 || lng.abs() > 180) {
+        break;
+      }
 
-      points.add(LatLng(latitude / 1e5, longitude / 1e5));
+      points.add(LatLng(lat, lng));
     }
 
     return points;
