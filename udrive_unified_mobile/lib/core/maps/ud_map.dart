@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -252,16 +253,16 @@ class _UdMapState extends State<UdMap> {
     }
   }
 
+  /// Frames a set of points by computing the camera directly.
+  ///
+  /// Google's `newLatLngBounds` is not used. It has to be given a viewport it
+  /// can satisfy, it interacts badly with a zoom floor, and on web a request it
+  /// cannot fulfil leaves the camera in a state that renders no tiles — which
+  /// is what produced the blank map. Working out the zoom from the span and the
+  /// widget's own size is deterministic and behaves identically on both
+  /// renderers.
   Future<void> _fitBounds(List<LatLng> points, {double padding = 60}) async {
     if (points.isEmpty) return;
-
-    // Padding larger than the map itself leaves Google no room to place the
-    // camera. Clamp it to a fraction of the smaller side.
-    final size = context.size;
-    if (size != null) {
-      final limit = (size.shortestSide / 5).clamp(8.0, 80.0);
-      if (padding > limit) padding = limit;
-    }
     if (points.length == 1) {
       await _moveTo(points.first, zoom: AppConfig.focusedMapZoom);
       return;
@@ -278,56 +279,46 @@ class _UdMapState extends State<UdMap> {
       if (point.longitude > maxLng) maxLng = point.longitude;
     }
 
-    _center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+    final centre = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+    _center = centre;
 
-    // Two points a few hundred metres apart produce a bounds so small that
-    // fitting it with padding can swing the camera to an absurd zoom. Below
-    // this span, centring is both simpler and more predictable.
+    // Two points a few hundred metres apart do not need framing; centring is
+    // simpler and avoids an absurd zoom.
     const minimumSpanDegrees = 0.004; // roughly 400 m
     if ((maxLat - minLat) < minimumSpanDegrees &&
         (maxLng - minLng) < minimumSpanDegrees) {
-      await _moveTo(_center, zoom: AppConfig.focusedMapZoom);
+      await _moveTo(centre, zoom: AppConfig.focusedMapZoom);
       return;
     }
 
-    if (_online) {
-      if (!_googleController.isCompleted) return;
-      final controller = await _googleController.future;
-      try {
-        await controller.animateCamera(
-          gmap.CameraUpdate.newLatLngBounds(
-            gmap.LatLngBounds(
-              southwest: gmap.LatLng(minLat, minLng),
-              northeast: gmap.LatLng(maxLat, maxLng),
-            ),
-            padding,
-          ),
+    final size = context.size ?? const Size(360, 320);
+    // Leave room around the route so it does not touch the edges.
+    final usableWidth = math.max(size.width - padding * 2, 64.0);
+    final usableHeight = math.max(size.height - padding * 2, 64.0);
+
+    // At zoom z the world is 256 * 2^z pixels wide. Find the largest zoom at
+    // which the span still fits both axes. Longitude is compared against a
+    // 360-degree world; latitude against 180, with a cosine correction for the
+    // Mercator stretch away from the equator.
+    final latSpan = math.max(maxLat - minLat, 1e-6);
+    final lngSpan = math.max(maxLng - minLng, 1e-6);
+    final latRadians = centre.latitude * math.pi / 180;
+    final mercatorFactor = math.max(math.cos(latRadians).abs(), 0.05);
+
+    final zoomForLng = _log2(usableWidth * 360 / (256 * lngSpan));
+    final zoomForLat =
+        _log2(usableHeight * 360 * mercatorFactor / (256 * latSpan));
+
+    final zoom = math.min(zoomForLng, zoomForLat).clamp(
+          widget.minZoom ?? 3.0,
+          AppConfig.focusedMapZoom,
         );
-      } catch (_) {
-        // If the camera cannot satisfy the bounds for any reason, centre
-        // instead. A map showing roughly the right area beats a map showing
-        // nothing, which is what a failed camera update leaves behind.
-        await controller.animateCamera(
-          gmap.CameraUpdate.newCameraPosition(
-            gmap.CameraPosition(
-              target: gmap.LatLng(_center.latitude, _center.longitude),
-              zoom: 10,
-            ),
-          ),
-        );
-      }
-    } else {
-      _offlineController.fitCamera(
-        fmap.CameraFit.bounds(
-          bounds: fmap.LatLngBounds(
-            LatLng(maxLat, minLng),
-            LatLng(minLat, maxLng),
-          ),
-          padding: EdgeInsets.all(padding),
-        ),
-      );
-    }
+
+    await _moveTo(centre, zoom: zoom);
   }
+
+  static double _log2(double value) =>
+      value <= 0 ? 0 : math.log(value) / math.ln2;
 
   // --------------------------------------------------------------- rendering
 

@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 23)
+# UDrive Redesign — Delivery 1 & 2 (revision 24)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,47 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 24 — camera computed, bigger map, both ends editable
+
+### The blank map, and the "wrong" route line
+
+Both came from the same place.
+
+`newLatLngBounds` was still being used. It has to be handed a viewport it can
+satisfy; when it cannot — because of a zoom floor, padding larger than the map,
+or web quirks — it leaves the camera in a state that renders no tiles. Lowering
+the floor in revision 23 was not enough.
+
+The camera is now computed directly from the span and the widget's own size:
+find the largest zoom at which the route still fits both axes, with a cosine
+correction for Mercator stretch, then move there. Deterministic, and identical
+on both renderers.
+
+Verified against real journeys, at a 392x340 map:
+
+```
+Islamabad → Murree    50 km    zoom 10.0
+Islamabad → Dhirkot  145 km    zoom  9.1
+Muzaffarabad → Kel   150 km    zoom  8.7
+Two points 300 m apart         zoom 15.8
+```
+
+The route line looked like it ignored roads because the map was at street zoom
+on a 50 km route — any route looks straight when you are that far in. The
+polyline itself is fine: I ran the decoder against Google's own documented test
+vector and it matched exactly. Framing the route makes the shape visible.
+
+### Bigger map
+
+44% of screen height when idle, 50% once a route is drawn, clamped 280–520px. A
+route on the map is carrying the most information, so it gets the most room.
+
+### Both ends editable from one screen
+
+The search screen opened on one end and the other was dead text. Now either row
+switches the editor, and `PlacePickResult` reports which end was actually
+chosen — the caller can no longer assume it got back what it asked for.
 
 ## Revision 23 — the blank map, actually solved
 

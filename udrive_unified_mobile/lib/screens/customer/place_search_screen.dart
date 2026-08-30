@@ -11,6 +11,7 @@ class PlacePickResult {
     required this.label,
     required this.point,
     this.useCurrentLocation = false,
+    this.forPickup = false,
   });
 
   final String label;
@@ -19,6 +20,10 @@ class PlacePickResult {
   /// Set when the customer chose "Use my current location" rather than an
   /// address. The caller re-reads GPS instead of using [label].
   final bool useCurrentLocation;
+
+  /// Which end the customer ended up choosing. They can switch ends inside the
+  /// screen, so the caller cannot assume it got back what it asked for.
+  final bool forPickup;
 }
 
 /// Full-screen address entry.
@@ -64,6 +69,11 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
   late final TextEditingController _query =
       TextEditingController(text: widget.initialQuery);
   final _focus = FocusNode();
+
+  /// Which end is being edited. Starts where the caller pointed it, but the
+  /// customer can switch without leaving the screen — having to go back just to
+  /// fix the other end is needless.
+  late bool _editingPickup = widget.editingPickup;
 
   List<PlaceSuggestion> _results = const [];
   bool _searching = false;
@@ -113,10 +123,28 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
     );
   }
 
+  void _switchTo(bool pickup) {
+    if (_editingPickup == pickup) return;
+    setState(() {
+      _editingPickup = pickup;
+      _query.text = pickup
+          ? widget.pickupLabel.trim()
+          : widget.destinationLabel.trim();
+      _results = const [];
+      _searched = false;
+    });
+    _focus.requestFocus();
+    if (_query.text.trim().length >= 2) _run(_query.text);
+  }
+
   void _pick(PlaceSuggestion place) {
     Navigator.pop(
       context,
-      PlacePickResult(label: place.title, point: place.point),
+      PlacePickResult(
+        label: place.title,
+        point: place.point,
+        forPickup: _editingPickup,
+      ),
     );
   }
 
@@ -126,7 +154,10 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
   void _useTyped() {
     final text = _query.text.trim();
     if (text.isEmpty) return;
-    Navigator.pop(context, PlacePickResult(label: text, point: null));
+    Navigator.pop(
+      context,
+      PlacePickResult(label: text, point: null, forPickup: _editingPickup),
+    );
   }
 
   Widget _endRow({
@@ -134,9 +165,12 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
     required bool editable,
     required String staticValue,
     required String hint,
+    required VoidCallback onSwitch,
   }) {
     if (!editable) {
-      return Padding(
+      return InkWell(
+        onTap: onSwitch,
+        child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,20 +181,29 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
               style: const TextStyle(fontSize: 11, color: AppText.disabled),
             ),
             const SizedBox(height: 2),
-            Text(
-              staticValue.isEmpty ? 'Not set' : staticValue,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: staticValue.isEmpty
-                    ? AppText.disabled
-                    : AppText.primary,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    staticValue.isEmpty ? 'Tap to set' : staticValue,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: staticValue.isEmpty
+                          ? AppText.disabled
+                          : AppText.primary,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.edit_rounded,
+                    size: 15, color: AppText.disabled),
+              ],
             ),
           ],
         ),
+      ),
       );
     }
 
@@ -291,16 +334,18 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                       children: [
                         _endRow(
                           caption: 'From',
-                          editable: widget.editingPickup,
+                          editable: _editingPickup,
                           staticValue: widget.pickupLabel,
                           hint: 'Search a pickup point',
+                          onSwitch: () => _switchTo(true),
                         ),
                         Container(height: 1, color: AppColors.border),
                         _endRow(
                           caption: 'To',
-                          editable: !widget.editingPickup,
+                          editable: !_editingPickup,
                           staticValue: widget.destinationLabel,
                           hint: 'Search any address or landmark',
+                          onSwitch: () => _switchTo(false),
                         ),
                       ],
                     ),
@@ -367,7 +412,7 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                       ),
                     ),
 
-                  if (widget.editingPickup)
+                  if (_editingPickup)
                     _ActionRow(
                       icon: Icons.my_location_rounded,
                       label: 'Use my current location',
@@ -377,6 +422,7 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                           label: '',
                           point: null,
                           useCurrentLocation: true,
+                          forPickup: true,
                         ),
                       ),
                     ),

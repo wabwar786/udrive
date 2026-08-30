@@ -785,7 +785,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     // white area after picking a destination. Header, chip and locate button
     // therefore live above and below the map rather than on it. Only the pickup
     // pin overlaps, and it ignores pointers entirely.
-    final mapHeight = (height * .36).clamp(210.0, 380.0);
+    // A route on the map deserves more room than an idle map does.
+    final hasRoute = _routeResult.hasRoute;
+    final mapHeight =
+        (height * (hasRoute ? .50 : .44)).clamp(280.0, 520.0);
 
     return Container(
       color: AppColors.background,
@@ -1152,8 +1155,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       return;
     }
 
+    // The search screen lets the customer switch ends, so use what it reports
+    // rather than the field we opened it for.
+    final wasPickup = result.forPickup;
+
     setState(() {
-      if (field == RouteFieldKind.pickup) {
+      if (wasPickup) {
         _pickup.text = result.label;
         _resolvedPlaceName = result.label;
         if (result.point != null) _pickupPoint = result.point!;
@@ -1168,7 +1175,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
     // Only remember places with coordinates — a name we cannot place again is
     // no use as a shortcut.
-    if (field == RouteFieldKind.destination && result.point != null) {
+    if (!wasPickup && result.point != null) {
       await RecentPlacesStore.remember(
         RecentPlace(
           title: result.label,
@@ -1181,7 +1188,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (mounted) setState(() => _recent = refreshed);
     }
 
-    if (field == RouteFieldKind.pickup && result.point != null) {
+    if (wasPickup && result.point != null) {
       await _refreshNearby();
     }
     // A route needs both ends; _refreshRoute clears itself when one is missing.
