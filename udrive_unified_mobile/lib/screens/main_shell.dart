@@ -57,7 +57,7 @@ class _MainShellState extends State<MainShell> {
     final pageKey = driverNeedsVerification ? 'driverVerification' : (driver ? _driverPage : _customerPage);
     final page = driverNeedsVerification
         ? const DriverVerificationScreen()
-        : (driver ? _driverContent(pageKey) : _customerContent(pageKey));
+        : (driver ? _driverContent(pageKey) : _customerBody(pageKey));
     final title = driverNeedsVerification
         ? (controller.locale.languageCode == 'ur' ? 'ڈرائیور کی تصدیق' : 'Driver verification')
         : _titleFor(pageKey, driver);
@@ -65,7 +65,7 @@ class _MainShellState extends State<MainShell> {
     final driverHome = driver && pageKey == 'dashboard';
 
     return Scaffold(
-      backgroundColor: customerHome ? const Color(0xFFF7FAFB) : null,
+      backgroundColor: customerHome ? AppColors.background : null,
       extendBody: customerHome,
       drawer: _PremiumDrawer(
         mode: controller.mode,
@@ -388,6 +388,29 @@ class _MainShellState extends State<MainShell> {
       return AppControllerScope.of(context).locale.languageCode == 'ur' ? 'مدد / استعمال کا طریقہ' : 'Help / How to use';
     }
     return context.tr(mapping[key] ?? (driver ? 'driverDashboard' : 'home'));
+  }
+
+  /// Bottom-nav destinations, kept mounted so their state survives tab
+  /// switches. Home holds a Google map, and Google charges per map load — a
+  /// fresh build on every tab change would be a fresh charge each time.
+  static const _keptAliveKeys = ['home', 'explore', 'nearMe', 'profile'];
+
+  Widget _customerBody(String key) {
+    final index = _keptAliveKeys.indexOf(key);
+    if (index < 0) return _customerContent(key);
+
+    return IndexedStack(
+      index: index,
+      children: [
+        for (final alive in _keptAliveKeys)
+          // Offstage children still build, but their tickers and timers are
+          // paused by TickerMode, so a backgrounded Home stops polling.
+          TickerMode(
+            enabled: alive == key,
+            child: _customerContent(alive),
+          ),
+      ],
+    );
   }
 
   Widget _customerContent(String key) => switch (key) {

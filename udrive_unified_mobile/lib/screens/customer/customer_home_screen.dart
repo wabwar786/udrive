@@ -8,7 +8,9 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../core/appearance/appearance_repository.dart';
+import '../../core/maps/ud_map.dart';
+import '../../core/vehicles/nearby_repository.dart';
+import '../../core/vehicles/nearby_vehicle.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/config/app_config.dart';
 import '../../core/services/place_search_service.dart';
@@ -16,7 +18,6 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/route_fields.dart';
-import '../../core/widgets/service_illustration.dart';
 import '../../core/widgets/service_selector.dart';
 import '../../core/widgets/ud_controls.dart';
 import '../../data/models.dart';
@@ -59,11 +60,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Timer? _tripTimer;
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
   TripOperationsRepository? _tripRepository;
-  AppearanceRepository? _appearance;
+  NearbyVehicleRepository? _nearbyRepository;
+  final _mapController = UdMapController();
+  Timer? _nearbyTimer;
 
-  /// Admin-configured hero images, keyed by service. Empty means "use the
-  /// built-in illustration", which is also the fallback on any load error.
-  Map<HomeService, String> _heroImages = const {};
+  /// Vehicles currently online inside the radius. Filtered by service when
+  /// drawn, so switching Car → Bike changes the markers without a refetch.
+  List<NearbyVehicle> _nearby = const [];
+  bool _nearbyLoading = true;
 
   // ------------------------------------------------------------------- state
   HomeService _service = HomeService.car;
@@ -126,9 +130,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     super.didChangeDependencies();
     _tripRepository ??=
         TripOperationsRepository(AppControllerScope.of(context).apiClient);
-    if (_appearance == null) {
-      _appearance = AppearanceRepository(AppControllerScope.of(context).apiClient);
-      _loadHeroImages();
+    if (_nearbyRepository == null) {
+      _nearbyRepository =
+          NearbyVehicleRepository(AppControllerScope.of(context).apiClient);
+      _refreshNearby();
+      _nearbyTimer = Timer.periodic(
+        AppConfig.nearbyVehiclesPoll,
+        (_) => _refreshNearby(),
+      );
     }
     _refreshActiveTrip();
     _tripTimer ??= Timer.periodic(
@@ -140,6 +149,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void dispose() {
     _tripTimer?.cancel();
+    _nearbyTimer?.cancel();
+    _mapController.dispose();
     _connectivity?.cancel();
     _pickupFocus.removeListener(_onFocusChanged);
     _destinationFocus.removeListener(_onFocusChanged);
@@ -153,21 +164,43 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     super.dispose();
   }
 
-  /// Paints from cache first, then refreshes in the background so a change made
-  /// in the admin portal shows up without the customer waiting on a request.
-  Future<void> _loadHeroImages() async {
-    final repository = _appearance;
-    if (repository == null) return;
+  /// Refreshes the vehicles around the customer.
+  ///
+  /// All categories are fetched in one call and filtered client-side, so
+  /// switching service is instant and does not cost an extra request.
+  Future<void> _refreshNearby() async {
+    final repository = _nearbyRepository;
+    if (repository == null || _offline) return;
+    // IndexedStack keeps this screen mounted when another tab is showing.
+    // TickerMode pauses animations but not timers, so check visibility here or
+    // a hidden Home would keep polling in the background.
+    if (!TickerMode.of(context)) return;
 
-    final cached = await repository.cached();
-    if (mounted && cached.isNotEmpty) {
-      setState(() => _heroImages = cached);
-    }
+    final results = await repository.nearby(
+      latitude: _pickupPoint.latitude,
+      longitude: _pickupPoint.longitude,
+      radiusKm: AppConfig.nearbyVehiclesRadiusKm,
+    );
+    if (!mounted) return;
+    setState(() {
+      _nearby = results;
+      _nearbyLoading = false;
+    });
+  }
 
-    final live = await repository.refresh();
-    if (mounted && live.isNotEmpty) {
-      setState(() => _heroImages = live);
-    }
+  List<NearbyVehicle> get _visibleVehicles {
+    if (!_service.isVehicle) return const [];
+    return _nearby
+        .where((vehicle) => vehicle.service == _service)
+        .toList(growable: false);
+  }
+
+  void _showVehicleSheet(NearbyVehicle vehicle) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _VehicleMarkerSheet(vehicle: vehicle),
+    );
   }
 
   void _applyConnectivity(List<ConnectivityResult> results) {
@@ -635,7 +668,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       padding: EdgeInsets.zero,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
-        _buildServiceHero(controller),
+        _buildMapHero(controller),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: _buildBookingCard(),
@@ -662,135 +695,60 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  /// Full-bleed service hero.
+  /// Live map hero.
   ///
-  /// Fills the entire top of the screen with an illustration of whatever
-  /// service is selected, so the choice is unmistakable. The artwork fades into
-  /// the page background at the bottom, so the booking card sits on a smooth
-  /// colour with no visible cut line.
-  Widget _buildServiceHero(AppController controller) {
+  /// Shows the customer's position, a ring at the search radius and every
+  /// online vehicle of the selected service inside it. Markers carry no driver
+  /// identity — tapping one opens a sheet with type, distance and ETA only.
+  Widget _buildMapHero(AppController controller) {
     final topInset = MediaQuery.paddingOf(context).top;
-    final heroHeight = topInset + 268;
+    final vehicles = _visibleVehicles;
 
     return SizedBox(
-      height: heroHeight,
+      height: topInset + 300,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Background wash.
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF16261C), AppColors.background],
+          UdMap(
+            controller: _mapController,
+            initialCenter: _pickupPoint,
+            zoom: 13.4,
+            routeOrigin: _pickupPoint,
+            routeDestination: _destinationPoint ?? _pickupPoint,
+            circles: [
+              UdCircle(
+                id: 'radius',
+                centre: _pickupPoint,
+                radiusMetres: AppConfig.nearbyVehiclesRadiusKm * 1000,
               ),
-            ),
-          ),
-
-          // 2. Soft brand blobs for depth. Purely decorative.
-          Positioned(
-            top: -70,
-            right: -60,
-            child: _Blob(size: 230, color: AppColors.secondary, opacity: .12),
-          ),
-          Positioned(
-            top: topInset + 40,
-            left: -80,
-            child: _Blob(size: 190, color: AppColors.info, opacity: .07),
-          ),
-
-          // 3. The illustration itself, cross-fading between services.
-          Positioned(
-            top: topInset + 54,
-            left: 0,
-            right: 0,
-            bottom: 74,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 320),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeIn,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(.10, 0),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
+            ],
+            markers: [
+              UdMarker(
+                id: 'me',
+                position: _pickupPoint,
+                label: 'You are here',
               ),
-              child: Padding(
-                key: ValueKey('$_service|${_heroImages[_service] ?? ''}'),
-                padding: const EdgeInsets.symmetric(horizontal: 22),
-                child: _HeroArtwork(
-                  service: _service,
-                  imageUrl: _heroImages[_service],
+              for (final vehicle in vehicles)
+                UdMarker(
+                  id: vehicle.id,
+                  position: vehicle.point,
+                  label: '${vehicle.category} · '
+                      '${vehicle.distanceKm.toStringAsFixed(1)} km',
+                  hue: UdMarkerHue.navy,
+                  onTap: () => _showVehicleSheet(vehicle),
                 ),
-              ),
-            ),
+              if (_destinationPoint != null)
+                UdMarker(
+                  id: 'destination',
+                  position: _destinationPoint!,
+                  label: _destination.text.trim(),
+                  hue: UdMarkerHue.info,
+                ),
+            ],
           ),
 
-          // 4. Bottom fade into the page background. This is what hides the
-          //    edge of the artwork — no hard cut is ever visible.
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 130,
-            child: const IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    stops: [0, .45, 1],
-                    colors: [
-                      Color(0x000B1417),
-                      Color(0xCC0B1417),
-                      AppColors.background,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // 5. Service name, sitting over the fade so it stays readable.
-          Positioned(
-            left: 20,
-            right: 20,
-            bottom: 26,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _service.heroTitle,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 23,
-                    fontWeight: FontWeight.w900,
-                    color: AppText.primary,
-                    height: 1.1,
-                    letterSpacing: -.3,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  _service.heroSubtitle,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppText.secondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 6. Header controls, overlaid on the artwork.
+          // Top chrome.
           Positioned(
             top: topInset + 10,
             left: 16,
@@ -835,6 +793,28 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   ),
                 ],
               ),
+            ),
+          ),
+
+          // Count chip and locate button.
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 16,
+            child: Row(
+              children: [
+                if (_service.isVehicle)
+                  Flexible(
+                    child: _NearbyCountChip(
+                      service: _service,
+                      count: vehicles.length,
+                      loading: _nearbyLoading,
+                      offline: _offline,
+                    ),
+                  ),
+                const Spacer(),
+                _LocateButton(busy: _locating, onTap: _loadLocation),
+              ],
             ),
           ),
         ],
@@ -1205,33 +1185,252 @@ class _MapIconButton extends StatelessWidget {
   }
 }
 
-/// Hero artwork: the admin-configured picture when one is set, otherwise the
-/// built-in vector illustration. A failed or slow image never leaves a blank
-/// hero — the illustration stands in.
-class _HeroArtwork extends StatelessWidget {
-  const _HeroArtwork({required this.service, this.imageUrl});
+/// "6 cars within 5 km" chip over the map.
+class _NearbyCountChip extends StatelessWidget {
+  const _NearbyCountChip({
+    required this.service,
+    required this.count,
+    required this.loading,
+    required this.offline,
+  });
 
   final HomeService service;
-  final String? imageUrl;
+  final int count;
+  final bool loading;
+  final bool offline;
+
+  String get _label {
+    if (offline) return 'Offline — vehicles unavailable';
+    if (loading) return 'Looking for vehicles…';
+
+    final noun = switch (service) {
+      HomeService.bus => count == 1 ? 'coaster' : 'coasters',
+      HomeService.car => count == 1 ? 'car' : 'cars',
+      HomeService.bike => count == 1 ? 'bike' : 'bikes',
+      HomeService.hotel => 'hotels',
+    };
+    if (count == 0) return 'No $noun nearby right now';
+    return '$count $noun within '
+        '${AppConfig.nearbyVehiclesRadiusKm.toStringAsFixed(0)} km';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final url = imageUrl;
-    if (url == null || url.isEmpty) {
-      return ServiceIllustration(service: service);
-    }
-
-    return Image.network(
-      url,
-      fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => ServiceIllustration(service: service),
-      loadingBuilder: (context, child, progress) =>
-          progress == null ? child : ServiceIllustration(service: service),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: .95),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.secondary.withValues(alpha: .40),
+        ),
+        boxShadow: AppShadows.floating,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (loading)
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Icon(service.icon, size: 17, color: AppColors.secondary),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              _label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: AppText.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-/// Language switch shown as a labelled pill so the current language is
+class _LocateButton extends StatelessWidget {
+  const _LocateButton({required this.busy, required this.onTap});
+
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Centre the map on my location',
+      child: GestureDetector(
+        onTap: busy ? null : onTap,
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            shape: BoxShape.circle,
+            boxShadow: AppShadows.floating,
+          ),
+          child: busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.my_location_rounded,
+                  size: 19, color: AppColors.secondary),
+        ),
+      ),
+    );
+  }
+}
+
+/// Opened by tapping a vehicle marker.
+///
+/// Shows what the customer needs to judge availability and nothing more. The
+/// driver's name, plate and phone stay private until a booking is confirmed.
+class _VehicleMarkerSheet extends StatelessWidget {
+  const _VehicleMarkerSheet({required this.vehicle});
+
+  final NearbyVehicle vehicle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadii.sheetTop(),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppTint.brand,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    vehicle.service?.icon ?? Icons.directions_car_rounded,
+                    size: 24,
+                    color: AppColors.secondary,
+                  ),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        vehicle.category,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: AppText.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${vehicle.distanceKm.toStringAsFixed(1)} km away  ·  '
+                        'about ${vehicle.etaMinutes} min',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppText.secondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (vehicle.rating > 0)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.star_rounded,
+                          size: 17, color: Color(0xFFF5B942)),
+                      const SizedBox(width: 4),
+                      Text(
+                        vehicle.rating.toStringAsFixed(1),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: AppText.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: AppRadii.all(AppRadii.field),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      size: 15, color: AppText.disabled),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      vehicle.bookingMode.allowsPerSeat &&
+                              !vehicle.bookingMode.allowsWholeVehicle
+                          ? 'Offered per seat.'
+                          : vehicle.bookingMode.allowsWholeVehicle &&
+                                  !vehicle.bookingMode.allowsPerSeat
+                              ? 'Booked as a whole vehicle.'
+                              : 'Per seat or whole vehicle.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppText.secondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Driver details are shared once your booking is confirmed.',
+              style: TextStyle(fontSize: 11.5, color: AppText.disabled),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Language switch shown as a labelled pill/// Language switch shown as a labelled pill so the current language is
 /// readable at a glance rather than hidden behind a glyph.
 class _LanguagePill extends StatelessWidget {
   const _LanguagePill({required this.isEnglish, required this.onTap});
@@ -1377,33 +1576,6 @@ class _NotificationsPopup extends StatelessWidget {
     );
   }
 }
-
-/// Soft decorative circle behind the hero artwork.
-class _Blob extends StatelessWidget {
-  const _Blob({
-    required this.size,
-    required this.color,
-    required this.opacity,
-  });
-
-  final double size;
-  final Color color;
-  final double opacity;
-
-  @override
-  Widget build(BuildContext context) => IgnorePointer(
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color.withValues(alpha: opacity),
-          ),
-        ),
-      );
-}
-
-// --------------------------------------------------------------- card pieces
 
 class _TourToggleRow extends StatelessWidget {
   const _TourToggleRow({required this.value, required this.onChanged});

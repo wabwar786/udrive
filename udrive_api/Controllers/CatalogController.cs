@@ -27,6 +27,51 @@ public sealed class CatalogController(CatalogService catalogService, LocalFileSt
         return Ok(ApiResponse<IReadOnlyList<ServiceVehicleRateDto>>.Ok(data));
     }
 
+    /// <summary>
+    /// Vehicles online near a point, for the customer home-screen map.
+    /// </summary>
+    /// <remarks>
+    /// Unauthenticated on purpose — the home map loads before a customer signs
+    /// in. The response carries no driver identity and coordinates are rounded,
+    /// so there is nothing here worth harvesting.
+    /// </remarks>
+    [HttpGet("vehicles/nearby")]
+    [ResponseCache(Duration = 5, Location = ResponseCacheLocation.Any)]
+    public async Task<ActionResult<object>> GetNearbyVehicles(
+        [FromQuery] double lat,
+        [FromQuery] double lng,
+        [FromQuery] double radiusKm = 5,
+        [FromQuery] string? category = null,
+        [FromQuery] int limit = 40,
+        CancellationToken cancellationToken = default)
+    {
+        if (lat is < -90 or > 90 || lng is < -180 or > 180)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                code = "invalid_coordinates",
+                message = "Latitude and longitude are out of range."
+            });
+        }
+
+        var clampedRadius = Math.Clamp(radiusKm, 0.5, 25);
+        var items = await pricingService.GetNearbyVehiclesAsync(
+            lat,
+            lng,
+            clampedRadius,
+            category,
+            Math.Clamp(limit, 1, 100),
+            cancellationToken);
+
+        return Ok(ApiResponse<object>.Ok(new
+        {
+            items,
+            total = items.Count,
+            radiusKm = clampedRadius
+        }));
+    }
+
     [HttpGet("vehicles")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<PublicVehicleDto>>>> GetVehicles(
         [FromQuery] string serviceType = "City",

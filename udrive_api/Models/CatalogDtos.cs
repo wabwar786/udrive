@@ -65,3 +65,26 @@ public sealed record PublicVehicleDto(
     // How this vehicle may be booked: WholeVehicle, PerSeat or Both.
     // The customer app offers only the modes the driver enabled.
     string BookingMode);
+
+/// <summary>
+/// A vehicle currently online near the customer, for the home-screen map.
+/// </summary>
+/// <remarks>
+/// Deliberately carries no driver identity — no name, phone, plate or driver id.
+/// Anyone can call this endpoint, so exposing who is where would let a stranger
+/// track an individual driver in a small town. Identity is released only once a
+/// booking is confirmed, through the existing booking endpoints.
+///
+/// <see cref="Latitude"/> and <see cref="Longitude"/> are rounded to roughly
+/// 100 m for the same reason: enough for "there are cars around here", not
+/// enough to follow one vehicle down a street.
+/// </remarks>
+public sealed record NearbyVehicleDto(
+    string Id,
+    string Category,
+    double Latitude,
+    double Longitude,
+    double DistanceKm,
+    int EtaMinutes,
+    string BookingMode,
+    decimal Rating);

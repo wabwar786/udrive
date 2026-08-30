@@ -171,6 +171,112 @@ public sealed class MarketplacePricingService(string connectionString)
         return list;
     }
 
+
+    /// <summary>
+    /// Vehicles that are online and within <paramref name="radiusKm"/> of the
+    /// customer, for the home-screen map.
+    /// </summary>
+    /// <remarks>
+    /// Freshness matters more than volume here: a driver who closed the app ten
+    /// minutes ago must not appear as an available vehicle, or the customer
+    /// books something that was never there. Presence older than
+    /// <c>PresenceFreshness</c> is excluded.
+    ///
+    /// Coordinates are rounded to about 100 m before leaving the server. This
+    /// endpoint needs no authentication, so precise live positions would let
+    /// anyone follow an individual driver.
+    /// </remarks>
+    public async Task<IReadOnlyList<NearbyVehicleDto>> GetNearbyVehiclesAsync(
+        double latitude,
+        double longitude,
+        double radiusKm,
+        string? category,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT v.id,
+                   v.category,
+                   ST_Y(dpl.location::geometry) AS lat,
+                   ST_X(dpl.location::geometry) AS lng,
+                   ST_Distance(
+                       dpl.location,
+                       ST_SetSRID(ST_MakePoint(@lng, @lat), 4326)::geography
+                   ) / 1000.0 AS distance_km,
+                   COALESCE(NULLIF(v.booking_mode, ''), 'WholeVehicle'),
+                   COALESCE(dp.average_rating, 0)
+            FROM udrive.driver_presence_locations dpl
+            JOIN udrive.driver_profiles dp ON dp.id = dpl.driver_profile_id
+            JOIN udrive.users u ON u.id = dp.user_id
+            JOIN udrive.vehicles v ON v.driver_profile_id = dp.id
+            WHERE ST_DWithin(
+                      dpl.location,
+                      ST_SetSRID(ST_MakePoint(@lng, @lat), 4326)::geography,
+                      @radiusMeters
+                  )
+              AND dpl.server_timestamp > now() - @freshness
+              AND dp.is_online = true
+              AND dp.verification_status = 'Approved'
+              AND u.status = 'Approved'
+              AND v.status = 'Verified'
+              AND (@category = '' OR lower(v.category) = lower(@category))
+            ORDER BY distance_km
+            LIMIT @limit;
+            """;
+
+        var list = new List<NearbyVehicleDto>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("lat", latitude);
+        command.Parameters.AddWithValue("lng", longitude);
+        command.Parameters.AddWithValue("radiusMeters", radiusKm * 1000.0);
+        command.Parameters.AddWithValue("freshness", PresenceFreshness);
+        command.Parameters.AddWithValue("category", category?.Trim() ?? string.Empty);
+        command.Parameters.AddWithValue("limit", limit);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var distanceKm = reader.GetDouble(4);
+
+            list.Add(new NearbyVehicleDto(
+                reader.GetGuid(0).ToString(),
+                reader.GetString(1),
+                FuzzCoordinate(reader.GetDouble(2)),
+                FuzzCoordinate(reader.GetDouble(3)),
+                Math.Round(distanceKm, 1),
+                EstimateEtaMinutes(distanceKm),
+                reader.GetString(5),
+                reader.GetDecimal(6)));
+        }
+
+        return list;
+    }
+
+    /// <summary>Presence older than this is treated as offline.</summary>
+    private static readonly TimeSpan PresenceFreshness = TimeSpan.FromSeconds(90);
+
+    /// <summary>
+    /// Rounds to 3 decimal places — roughly 100 m at Kashmir's latitude.
+    /// </summary>
+    private static double FuzzCoordinate(double value) => Math.Round(value, 3);
+
+    /// <summary>
+    /// Rough arrival estimate from straight-line distance.
+    /// </summary>
+    /// <remarks>
+    /// Mountain roads are far longer than the straight line, so this multiplies
+    /// by 1.6 before applying an average 25 km/h. It is a hint on a map pin, not
+    /// a promise — a real figure needs the Distance Matrix API.
+    /// </remarks>
+    private static int EstimateEtaMinutes(double distanceKm)
+    {
+        var roadKm = distanceKm * 1.6;
+        var minutes = (int)Math.Ceiling(roadKm / 25.0 * 60.0);
+        return Math.Clamp(minutes, 1, 180);
+    }
+
     public async Task<bool> UpdatePresenceAsync(
         Guid userId,
         DriverPresenceUpdateRequest request,

@@ -14,6 +14,18 @@
   <link rel="icon" type="image/png" href="favicon-v2.png?v=20260730"/>
   <link rel="manifest" href="manifest.json">
   <title>Udrive</title>
+
+  <!-- Google Maps JavaScript API.
+       Required for google_maps_flutter on the WEB build only. The Android APK
+       reads its key from AndroidManifest.xml instead; see REDESIGN_HANDOVER.md.
+
+       Replace YOUR_WEB_MAPS_API_KEY below with your Maps JavaScript API key,
+       then restrict that key in Google Cloud Console to your site's domains
+       (HTTP referrers) so nobody else can spend your quota.
+
+       Until the key is filled in, map screens fall back to the offline
+       OpenStreetMap layer rather than breaking. -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_WEB_MAPS_API_KEY"></script>
 </head>
 <body>
   <script>

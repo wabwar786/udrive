@@ -1,4 +1,4 @@
-name: Build UDrive Android APK
+name: Build UDrive
 
 on:
   workflow_dispatch:
@@ -13,37 +13,108 @@ permissions:
   contents: read
 
 jobs:
-  build-apk:
-    name: Build Android APK
+  # Runs first and fastest. If the code does not compile, this fails in about a
+  # minute instead of waiting on a full APK build to discover the same thing.
+  analyze:
+    name: Analyze
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Show Flutter version
-        run: flutter --version
+      - name: Install dependencies
+        working-directory: udrive_unified_mobile
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: udrive_unified_mobile
+        run: flutter analyze --no-fatal-infos
+
+  build-web:
+    name: Build web
+    runs-on: ubuntu-latest
+    needs: analyze
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: udrive_unified_mobile
+        run: flutter pub get
+
+      # The Maps JavaScript key lives in a repository secret, never in git.
+      # Settings -> Secrets and variables -> Actions -> New repository secret
+      #   Name:  MAPS_WEB_KEY
+      # If the secret is unset the placeholder stays and the map area is blank,
+      # but the rest of the app still builds and runs.
+      - name: Inject Maps web key
+        working-directory: udrive_unified_mobile
+        env:
+          MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
+        run: |
+          if [ -n "$MAPS_WEB_KEY" ]; then
+            sed -i "s|YOUR_WEB_MAPS_API_KEY|$MAPS_WEB_KEY|g" web/index.html
+            echo "Maps web key injected."
+          else
+            echo "MAPS_WEB_KEY secret not set - map will render blank."
+          fi
+
+      - name: Build web
+        working-directory: udrive_unified_mobile
+        run: flutter build web --release
+
+      - name: Upload web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: udrive-web
+          path: udrive_unified_mobile/build/web
+          if-no-files-found: error
+          retention-days: 30
+
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    needs: analyze
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
       - name: Generate Android project files when missing
         working-directory: udrive_unified_mobile
         run: |
           if [ ! -d "android" ]; then
-            flutter create .               --platforms=android               --project-name=udrive_mobile               --org=com.udrive
+            flutter create . \
+              --platforms=android \
+              --project-name=udrive_mobile \
+              --org=com.udrive
           fi
 
       - name: Install dependencies
         working-directory: udrive_unified_mobile
         run: flutter pub get
 
+      # Repository secret MAPS_ANDROID_KEY, read by the manifestPlaceholder in
+      # android/app/build.gradle.kts. Absent key still builds; map stays blank.
       - name: Build release APK
         working-directory: udrive_unified_mobile
-        run: flutter build apk --release --dart-define=DEFAULT_MODE=customer
+        env:
+          MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
+        run: |
+          flutter build apk --release \
+            --dart-define=DEFAULT_MODE=customer \
+            -Pmaps_key="$MAPS_ANDROID_KEY"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

@@ -53,6 +53,21 @@ class AppConfig {
   static const Duration searchDebounce = Duration(milliseconds: 350);
   static const Duration networkTimeout = Duration(seconds: 12);
 
+  // ------------------------------------------------- nearby vehicles (home)
+  /// Radius of the "vehicles around you" ring on Home.
+  static const double nearbyVehiclesRadiusKm = 5;
+
+  /// How often the home map refreshes vehicle positions.
+  ///
+  /// Ten seconds is a deliberate balance: fast enough that the map feels live,
+  /// slow enough that a phone left open on Home does not drain battery or
+  /// hammer the API. Google does not bill for this — Maps charges per map load,
+  /// not per marker update — so the cost here is ours, not theirs.
+  static const Duration nearbyVehiclesPoll = Duration(seconds: 10);
+
+  /// Markers to draw before the map stops adding more.
+  static const int nearbyVehiclesLimit = 40;
+
   // ------------------------------------------------------------- near me
   static const List<double> nearMeRadiiKm = [1, 3, 5, 10];
   static const double nearMeDefaultRadiusKm = 3;

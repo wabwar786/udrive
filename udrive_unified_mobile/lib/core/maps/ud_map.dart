@@ -54,6 +54,29 @@ class UdPolyline {
   final double width;
 }
 
+/// A translucent circle, used for the "vehicles within N km" ring on Home.
+class UdCircle {
+  const UdCircle({
+    required this.id,
+    required this.centre,
+    required this.radiusMetres,
+    this.fill = AppColors.secondary,
+    this.fillOpacity = .09,
+    this.stroke = AppColors.secondary,
+    this.strokeOpacity = .42,
+    this.strokeWidth = 1.5,
+  });
+
+  final String id;
+  final LatLng centre;
+  final double radiusMetres;
+  final Color fill;
+  final double fillOpacity;
+  final Color stroke;
+  final double strokeOpacity;
+  final double strokeWidth;
+}
+
 /// Imperative handle so callers can recentre the map without caring which
 /// renderer is active.
 class UdMapController {
@@ -96,6 +119,7 @@ class UdMap extends StatefulWidget {
     this.zoom = AppConfig.defaultMapZoom,
     this.markers = const [],
     this.polylines = const [],
+    this.circles = const [],
     this.routeOrigin,
     this.routeDestination,
     this.showMyLocation = true,
@@ -110,6 +134,7 @@ class UdMap extends StatefulWidget {
   final double zoom;
   final List<UdMarker> markers;
   final List<UdPolyline> polylines;
+  final List<UdCircle> circles;
 
   /// Used to pick the right offline pack when connectivity drops. Defaults to
   /// [initialCenter] for both ends when not supplied.
@@ -252,6 +277,20 @@ class _UdMapState extends State<UdMap> {
             ),
           )
           .toSet(),
+      circles: widget.circles
+          .map(
+            (circle) => gmap.Circle(
+              circleId: gmap.CircleId(circle.id),
+              center:
+                  gmap.LatLng(circle.centre.latitude, circle.centre.longitude),
+              radius: circle.radiusMetres,
+              fillColor: circle.fill.withValues(alpha: circle.fillOpacity),
+              strokeColor:
+                  circle.stroke.withValues(alpha: circle.strokeOpacity),
+              strokeWidth: circle.strokeWidth.round(),
+            ),
+          )
+          .toSet(),
       polylines: widget.polylines
           .map(
             (line) => gmap.Polyline(
@@ -289,6 +328,22 @@ class _UdMapState extends State<UdMap> {
         // Resolves to a downloaded PMTiles pack when one covers this route,
         // otherwise to online OSM tiles.
         OfflineAwareTileLayer(origin: origin, destination: destination),
+        if (widget.circles.isNotEmpty)
+          fmap.CircleLayer(
+            circles: widget.circles
+                .map(
+                  (circle) => fmap.CircleMarker(
+                    point: circle.centre,
+                    radius: circle.radiusMetres,
+                    useRadiusInMeter: true,
+                    color: circle.fill.withValues(alpha: circle.fillOpacity),
+                    borderColor:
+                        circle.stroke.withValues(alpha: circle.strokeOpacity),
+                    borderStrokeWidth: circle.strokeWidth,
+                  ),
+                )
+                .toList(growable: false),
+          ),
         if (widget.polylines.isNotEmpty)
           fmap.PolylineLayer(
             polylines: widget.polylines

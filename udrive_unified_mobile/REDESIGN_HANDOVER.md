@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 7)
+# UDrive Redesign — Delivery 1 & 2 (revision 8)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,70 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 8 — live vehicles on the home map
+
+### What it does
+
+Home's hero is now a Google map showing every online vehicle of the selected
+service inside a 5 km ring. Switching Car → Bike changes the markers instantly
+(one fetch covers all categories, filtering happens client-side).
+
+### Backend
+
+```
+GET /api/v1/catalog/vehicles/nearby?lat=&lng=&radiusKm=5&category=Car
+```
+
+Runs `ST_DWithin` against `udrive.driver_presence_locations`, which already has
+a GIST index and is already written every 15 seconds by the driver app. No new
+table, no new migration.
+
+Filters: driver `Approved`, user `Approved`, vehicle `Verified`, `is_online`,
+and presence newer than 90 seconds. That last one matters — a driver who closed
+the app ten minutes ago must not show as available, or the customer books
+something that was never there.
+
+**Privacy, as approved:** the response carries no driver name, phone, plate or
+driver id, and coordinates are rounded to 3 decimals (~100 m). The endpoint is
+unauthenticated because the home map loads before sign-in, so there must be
+nothing there worth harvesting. Identity is released only on a confirmed
+booking, through the existing endpoints.
+
+ETA is a straight-line estimate × 1.6 (mountain roads) at 25 km/h. It is a hint
+on a pin, not a promise — a real figure needs the Distance Matrix API.
+
+### Mobile
+
+- `UdMap` gained `UdCircle` — renders as `gmap.Circle` online, `CircleMarker`
+  offline, so the ring works in both modes.
+- Polling every 10 s (`AppConfig.nearbyVehiclesPoll`). Google does not bill for
+  this — Maps charges per map *load*, not per marker update.
+- Tapping a marker opens a sheet with type, distance, ETA, rating and how the
+  vehicle can be booked. Nothing identifying.
+- Count chip over the map: "6 cars within 5 km", or "No cars nearby right now",
+  or "Offline — vehicles unavailable".
+
+### Map-load cost: IndexedStack
+
+`MainShell` rebuilt the whole screen on every tab change, so returning to Home
+would have instantiated a new map — and Google bills each instantiation. The
+four bottom-nav destinations now live in an `IndexedStack` and stay mounted.
+
+`TickerMode` marks the hidden ones inactive, and `_refreshNearby` checks
+`TickerMode.of(context)` before fetching, so a Home tab sitting in the
+background stops polling. (TickerMode pauses animations, not timers — the
+explicit check is what actually stops the requests.)
+
+### Admin hero images are now unused
+
+The `home.hero.*.imageUrl` settings, `AppearanceRepository` and the admin
+"Home screen artwork" page were built when Home showed a large illustration.
+Home is a map now, so nothing reads them. I left the backend and admin page in
+place rather than deleting work you might want for another screen — say the
+word and they go.
+
+The service blocks still use the vector illustrations, so those stay.
 
 ## Revision 7 — dark theme, auth redesign, suggestion fix
 
