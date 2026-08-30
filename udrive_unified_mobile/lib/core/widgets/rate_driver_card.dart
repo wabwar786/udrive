@@ -79,7 +79,7 @@ class RateDriverCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 22,
+                    fontSize: 24,
                     fontWeight: FontWeight.w900,
                     color: AppText.primary,
                     height: 1.1,
@@ -91,7 +91,7 @@ class RateDriverCard extends StatelessWidget {
                 Text(
                   etaLabel!,
                   style: const TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w700,
                     color: AppText.secondary,
                   ),
@@ -120,7 +120,7 @@ class RateDriverCard extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 14,
+                              fontSize: 15.5,
                               fontWeight: FontWeight.w800,
                               color: AppText.primary,
                             ),
@@ -143,7 +143,7 @@ class RateDriverCard extends StatelessWidget {
                           Text(
                             rating!.toStringAsFixed(1),
                             style: const TextStyle(
-                              fontSize: 12,
+                              fontSize: 13.5,
                               fontWeight: FontWeight.w800,
                               color: AppText.primary,
                             ),
@@ -159,7 +159,7 @@ class RateDriverCard extends StatelessWidget {
                           Text(
                             '$rideCount rides',
                             style: const TextStyle(
-                              fontSize: 12,
+                              fontSize: 13.5,
                               color: AppText.secondary,
                             ),
                           ),
@@ -174,7 +174,7 @@ class RateDriverCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 11.5,
+                          fontSize: 12.5,
                           color: AppText.secondary,
                         ),
                       ),
@@ -242,8 +242,8 @@ class _DriverAvatar extends StatelessWidget {
     // normal case rather than an error state.
     if (photoUrl == null || photoUrl!.isEmpty) {
       return Container(
-        width: 42,
-        height: 42,
+        width: 48,
+        height: 48,
         alignment: Alignment.center,
         decoration: const BoxDecoration(
           color: AppTint.brand,
@@ -263,8 +263,8 @@ class _DriverAvatar extends StatelessWidget {
     return ClipOval(
       child: Image.network(
         photoUrl!,
-        width: 42,
-        height: 42,
+        width: 48,
+        height: 48,
         fit: BoxFit.cover,
         errorBuilder: (context, _, __) =>
             _DriverAvatar(name: name, photoUrl: null),
@@ -281,7 +281,7 @@ class _CapacityChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 44,
+      height: 48,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: AppTint.surface,
@@ -292,7 +292,7 @@ class _CapacityChip extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
-          fontSize: 12,
+          fontSize: 13,
           fontWeight: FontWeight.w700,
           color: AppText.secondary,
         ),
@@ -310,7 +310,7 @@ class _NeutralButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 44,
+      height: 48,
       child: Material(
         color: AppTint.surface,
         borderRadius: BorderRadius.circular(12),
@@ -321,7 +321,7 @@ class _NeutralButton extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w800,
                 color: onTap == null ? AppText.disabled : AppText.secondary,
               ),
@@ -347,7 +347,7 @@ class _AcceptButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 44,
+      height: 48,
       child: Material(
         color: onTap == null && !busy
             ? AppColors.border
@@ -369,7 +369,7 @@ class _AcceptButton extends StatelessWidget {
                 : Text(
                     label,
                     style: const TextStyle(
-                      fontSize: 13.5,
+                      fontSize: 15,
                       fontWeight: FontWeight.w900,
                       color: AppColors.navy,
                     ),

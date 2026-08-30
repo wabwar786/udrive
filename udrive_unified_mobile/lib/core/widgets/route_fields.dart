@@ -20,7 +20,7 @@ class RouteFields extends StatelessWidget {
     this.searching = false,
     this.pickupCaption = 'Pickup',
     this.destinationCaption = 'Destination',
-    this.destinationHint = 'Where are you going?',
+    this.destinationHint = 'Type any address, area or landmark',
     this.onPickupChanged,
     this.onDestinationChanged,
     super.key,
@@ -85,6 +85,13 @@ class RouteFields extends StatelessWidget {
             searching: searching,
             suggestions: suggestions,
             onSelected: (place) => onSuggestionSelected(activeField!, place),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              'Suggestions are optional — you can type any address.',
+              style: TextStyle(fontSize: 11.5, color: AppText.disabled),
+            ),
           ),
         ],
       ],
@@ -169,7 +176,7 @@ class _Field extends StatelessWidget {
           Text(
             caption,
             style: const TextStyle(
-              fontSize: 10.5,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
               color: AppText.secondary,
             ),
@@ -180,7 +187,7 @@ class _Field extends StatelessWidget {
             onChanged: onChanged,
             textInputAction: TextInputAction.search,
             style: const TextStyle(
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w800,
               color: AppText.primary,
             ),
@@ -193,7 +200,7 @@ class _Field extends StatelessWidget {
               focusedBorder: InputBorder.none,
               hintText: hint,
               hintStyle: const TextStyle(
-                fontSize: 14,
+                fontSize: 15,
                 fontWeight: FontWeight.w600,
                 color: AppText.disabled,
               ),
@@ -219,7 +226,7 @@ class _SuggestionPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(maxHeight: 232),
+      constraints: const BoxConstraints(maxHeight: 250),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: AppRadii.all(AppRadii.row),
@@ -266,7 +273,7 @@ class _SuggestionPanel extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontSize: 13,
+                                  fontSize: 14.5,
                                   fontWeight: FontWeight.w800,
                                   color: AppText.primary,
                                 ),
@@ -277,7 +284,7 @@ class _SuggestionPanel extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 12.5,
                                     color: AppText.secondary,
                                   ),
                                 ),

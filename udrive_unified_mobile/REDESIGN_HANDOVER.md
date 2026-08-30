@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2
+# UDrive Redesign — Delivery 1 & 2 (revision 2)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,30 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 2 — what changed after your feedback
+
+1. **Map removed from Home.** The map band is replaced by a large illustration
+   of the selected service, so the customer sees exactly what they picked.
+   Selecting Coaster/Car/Bike/Hotel cross-fades the picture and updates the
+   caption underneath. Uses your existing bundled artwork:
+   `coaster_photo.png`, `car_photo.png`, `bike_photo.png`,
+   `home_services/hotel_room.webp`.
+2. **Free-text addresses.** The customer is no longer forced to tap a
+   suggestion. Type anything; the address is geocoded when the button is
+   pressed. If it cannot be resolved, the full route screen opens with the text
+   pre-filled — no dead end. (Tour bookings are the one exception: that API
+   needs real coordinates, so an unresolvable address asks for a more specific
+   one.)
+3. **Font sizes increased throughout** — captions 10.5→12, field text 14→16,
+   service labels 11→12.5, CTA 15→16.5 and 50→56px tall, stepper values 15→17,
+   driver-card fare 22→24. Buttons and tap targets grew to match.
+4. **Header alignment fixed.** The location control and the three icon buttons
+   now sit in a fixed 40px row on a shared centre axis, so they line up. Icon
+   buttons went 33→40px.
+
+`UdMap` still exists and is still used by Tour Map and Near Me — only Home
+dropped it.
 
 ---
 

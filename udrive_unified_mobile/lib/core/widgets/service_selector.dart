@@ -25,6 +25,30 @@ extension HomeServiceInfo on HomeService {
         HomeService.hotel => Icons.apartment_rounded,
       };
 
+  /// Large illustration shown on Home so the customer can see at a glance
+  /// which service they picked.
+  String get heroAsset => switch (this) {
+        HomeService.bus => 'assets/vehicles_photo/coaster_photo.png',
+        HomeService.car => 'assets/vehicles_photo/car_photo.png',
+        HomeService.bike => 'assets/vehicles_photo/bike_photo.png',
+        HomeService.hotel => 'assets/images/home_services/hotel_room.webp',
+      };
+
+  /// Caption under the illustration.
+  String get heroTitle => switch (this) {
+        HomeService.bus => 'Coaster / Bus',
+        HomeService.car => 'Car',
+        HomeService.bike => 'Bike',
+        HomeService.hotel => 'Hotel',
+      };
+
+  String get heroSubtitle => switch (this) {
+        HomeService.bus => 'Group travel across Kashmir',
+        HomeService.car => 'Comfortable door-to-door rides',
+        HomeService.bike => 'Quick and affordable',
+        HomeService.hotel => 'Stay near your destination',
+      };
+
   /// Vehicle category sent to the ride-request API. Null for Hotel.
   String? get vehicleCategory => switch (this) {
         HomeService.bus => 'Coaster',
@@ -91,8 +115,8 @@ class _ServiceColumn extends StatelessWidget {
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                width: 48,
-                height: 48,
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
                   color: selected ? AppTint.brand : Colors.transparent,
                   borderRadius: BorderRadius.circular(AppRadii.tile),
@@ -103,7 +127,7 @@ class _ServiceColumn extends StatelessWidget {
                 ),
                 child: Icon(
                   service.icon,
-                  size: 22,
+                  size: 26,
                   color: selected ? AppColors.navy : AppText.disabled,
                 ),
               ),
@@ -114,7 +138,7 @@ class _ServiceColumn extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 12.5,
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                   color: selected ? AppColors.navy : AppText.secondary,
                 ),

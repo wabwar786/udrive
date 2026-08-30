@@ -10,7 +10,6 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/config/app_config.dart';
-import '../../core/maps/ud_map.dart';
 import '../../core/services/place_search_service.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -55,7 +54,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final _pickupFocus = FocusNode();
   final _destinationFocus = FocusNode();
 
-  final _mapController = UdMapController();
   final _places = PlaceSearchService();
 
   Timer? _tripTimer;
@@ -144,7 +142,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _tourOffer.dispose();
     _pickupFocus.dispose();
     _destinationFocus.dispose();
-    _mapController.dispose();
     _places.dispose();
     super.dispose();
   }
@@ -228,7 +225,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _pickup.text = label;
         _resolvedPlaceName = label;
       });
-      await _mapController.moveTo(point, zoom: AppConfig.focusedMapZoom);
     } catch (_) {
       _setPickupFailure('Tap the locate button to try again');
     } finally {
@@ -314,7 +310,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _suggestions = const [];
       _activeField = null;
     });
-    _mapController.moveTo(place.point, zoom: AppConfig.focusedMapZoom);
   }
 
   // ------------------------------------------------------------------ actions
@@ -324,6 +319,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (_service == HomeService.hotel) {
       return _hotelCity.text.trim().isNotEmpty && _checkOut.isAfter(_checkIn);
     }
+    // Typed text is enough. Coordinates are resolved when the button is
+    // pressed, so the customer is never blocked on picking a suggestion.
     if (_pickup.text.trim().isEmpty || _destination.text.trim().isEmpty) {
       return false;
     }
@@ -373,14 +370,38 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     await _openVehicleSelection();
   }
 
-  /// Non-tour: hand straight to the existing route/vehicle flow. The
-  /// route-entry step is skipped because Home already collected both ends.
-  Future<void> _openVehicleSelection() async {
-    final destinationPoint = _destinationPoint;
-    if (destinationPoint == null) {
-      _snack('Pick a destination from the suggestions list.');
-      return;
+  /// Resolves whatever the customer typed into coordinates.
+  ///
+  /// The customer is never forced to pick from the suggestion list — they can
+  /// type any address, area or landmark. If they did tap a suggestion we
+  /// already have the point; otherwise we geocode the free text here. A null
+  /// result is not a dead end: the caller falls back to the full route screen
+  /// with the text pre-filled so the trip can still be booked.
+  Future<LatLng?> _resolveDestination() async {
+    if (_destinationPoint != null) return _destinationPoint;
+
+    final text = _destination.text.trim();
+    if (text.isEmpty) return null;
+
+    setState(() => _submitting = true);
+    try {
+      final matches = await _places.search(text, bias: _pickupPoint);
+      if (matches.isEmpty) return null;
+      final point = matches.first.point;
+      if (mounted) setState(() => _destinationPoint = point);
+      return point;
+    } catch (_) {
+      return null;
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  /// Non-tour: hand straight to the existing route/vehicle flow. The
+  /// route-entry step is skipped when we have coordinates for both ends.
+  Future<void> _openVehicleSelection() async {
+    final destinationPoint = await _resolveDestination();
+    if (!mounted) return;
 
     await Navigator.push(
       context,
@@ -393,9 +414,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           pickupLabel: _pickup.text.trim(),
           pickupPoint: _pickupPoint,
           initialDestinationLabel: _destination.text.trim(),
-          initialDestinationLatitude: destinationPoint.latitude,
-          initialDestinationLongitude: destinationPoint.longitude,
-          skipRouteEntry: true,
+          initialDestinationLatitude: destinationPoint?.latitude,
+          initialDestinationLongitude: destinationPoint?.longitude,
+          // When the typed address could not be geocoded we open the full
+          // route screen (pre-filled) rather than blocking the customer.
+          skipRouteEntry: destinationPoint != null,
         ),
       ),
     );
@@ -404,9 +427,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// Tour: create the ride request now, then show nearby drivers on a map so
   /// the customer can pick whichever price suits them.
   Future<void> _submitTour() async {
-    final destinationPoint = _destinationPoint;
+    final destinationPoint = await _resolveDestination();
+    if (!mounted) return;
     if (destinationPoint == null) {
-      _snack('Pick a destination from the suggestions list.');
+      // The tour request API needs real coordinates, so this is the one place
+      // we have to ask for a more specific address.
+      _snack(
+        'We could not locate "${_destination.text.trim()}". Try adding the '
+        'town or district, or pick from the suggestions.',
+      );
       return;
     }
     final offer = int.tryParse(_tourOffer.text.trim());
@@ -536,7 +565,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         padding: EdgeInsets.zero,
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
-          _buildMapBand(controller),
+          _buildServiceHero(controller),
           Transform.translate(
             offset: const Offset(0, -24),
             child: Column(
@@ -571,38 +600,30 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  Widget _buildMapBand(AppController controller) {
+  /// Service hero. Replaces the map: the customer sees a large picture of
+  /// whatever service is selected, so the choice is unmistakable.
+  Widget _buildServiceHero(AppController controller) {
     final topInset = MediaQuery.paddingOf(context).top;
 
-    return SizedBox(
-      height: 280 + topInset,
-      child: Stack(
-        fit: StackFit.expand,
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, topInset + 12, 16, 34),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppTint.surface, AppColors.background],
+        ),
+      ),
+      child: Column(
         children: [
-          UdMap(
-            controller: _mapController,
-            initialCenter: _pickupPoint,
-            routeOrigin: _pickupPoint,
-            routeDestination: _destinationPoint ?? _pickupPoint,
-            markers: [
-              UdMarker(id: 'pickup', position: _pickupPoint, label: 'Pickup'),
-              if (_destinationPoint != null)
-                UdMarker(
-                  id: 'destination',
-                  position: _destinationPoint!,
-                  label: _destination.text.trim(),
-                  hue: UdMarkerHue.navy,
-                ),
-            ],
-          ),
-          Positioned(
-            top: topInset + 14,
-            left: 14,
-            right: 14,
+          // Header row. Everything is centred on one axis so the location
+          // control and the three icon buttons line up regardless of height.
+          SizedBox(
+            height: 40,
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Flexible(
+                Expanded(
                   child: _LocationControl(
                     expanded: _locationExpanded,
                     placeName: _resolvedPlaceName,
@@ -610,32 +631,49 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         setState(() => _locationExpanded = !_locationExpanded),
                   ),
                 ),
-                const Spacer(),
-                _MapIconButton(
-                  icon: Icons.translate_rounded,
-                  semanticLabel: 'Switch language',
-                  onTap: () => _toggleLanguage(controller),
-                ),
-                const SizedBox(width: 7),
-                _MapIconButton(
-                  icon: Icons.swap_horiz_rounded,
-                  semanticLabel: 'Switch to driver mode',
-                  onTap: () => controller.switchMode(UserMode.driver),
-                ),
-                const SizedBox(width: 7),
-                _MapIconButton(
-                  icon: Icons.notifications_none_rounded,
-                  semanticLabel: 'Notifications',
-                  showDot: true,
-                  onTap: () => widget.onNavigate('notifications'),
+                const SizedBox(width: 8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    _MapIconButton(
+                      icon: Icons.translate_rounded,
+                      semanticLabel: 'Switch language',
+                      onTap: () => _toggleLanguage(controller),
+                    ),
+                    const SizedBox(width: 8),
+                    _MapIconButton(
+                      icon: Icons.swap_horiz_rounded,
+                      semanticLabel: 'Switch to driver mode',
+                      onTap: () => controller.switchMode(UserMode.driver),
+                    ),
+                    const SizedBox(width: 8),
+                    _MapIconButton(
+                      icon: Icons.notifications_none_rounded,
+                      semanticLabel: 'Notifications',
+                      showDot: true,
+                      onTap: () => widget.onNavigate('notifications'),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          Positioned(
-            right: 14,
-            bottom: 38,
-            child: _LocateMeButton(busy: _locating, onTap: _loadLocation),
+          const SizedBox(height: 14),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            switchInCurve: Curves.easeOut,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: .94, end: 1).animate(animation),
+                child: child,
+              ),
+            ),
+            child: _ServiceHeroArt(
+              key: ValueKey(_service),
+              service: _service,
+            ),
           ),
         ],
       ),
@@ -694,6 +732,39 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       key: const ValueKey('vehicle-panel'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Trip details',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AppText.secondary,
+                ),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _locating ? null : _loadLocation,
+              icon: _locating
+                  ? const SizedBox(
+                      width: 15,
+                      height: 15,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.my_location_rounded, size: 17),
+              label: Text(_locating ? 'Locating…' : 'Use my location'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.navy,
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         RouteFields(
           pickupController: _pickup,
           destinationController: _destination,
@@ -893,8 +964,8 @@ class _LocationControl extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 30,
-              height: 30,
+              width: 36,
+              height: 36,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: AppColors.navy,
@@ -904,7 +975,7 @@ class _LocationControl extends StatelessWidget {
                 'U',
                 style: TextStyle(
                   color: AppColors.secondary,
-                  fontSize: 15,
+                  fontSize: 18,
                   fontWeight: FontWeight.w900,
                   height: 1,
                 ),
@@ -917,7 +988,7 @@ class _LocationControl extends StatelessWidget {
                   ? Padding(
                       padding: const EdgeInsets.only(left: 7),
                       child: Container(
-                        constraints: const BoxConstraints(maxWidth: 140),
+                        constraints: const BoxConstraints(maxWidth: 165),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
@@ -932,7 +1003,7 @@ class _LocationControl extends StatelessWidget {
                             const Text(
                               'Current location',
                               style: TextStyle(
-                                fontSize: 9,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 color: AppText.secondary,
                               ),
@@ -942,7 +1013,7 @@ class _LocationControl extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 11,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w800,
                                 color: AppText.primary,
                               ),
@@ -985,15 +1056,15 @@ class _MapIconButton extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             Container(
-              width: 33,
-              height: 33,
+              width: 40,
+              height: 40,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: .97),
                 borderRadius: BorderRadius.circular(11),
                 boxShadow: AppShadows.floating,
               ),
-              child: Icon(icon, size: 17, color: AppColors.navy),
+              child: Icon(icon, size: 20, color: AppColors.navy),
             ),
             if (showDot)
               Positioned(
@@ -1015,38 +1086,50 @@ class _MapIconButton extends StatelessWidget {
   }
 }
 
-class _LocateMeButton extends StatelessWidget {
-  const _LocateMeButton({required this.busy, required this.onTap});
+/// Large illustration of the currently selected service.
+class _ServiceHeroArt extends StatelessWidget {
+  const _ServiceHeroArt({required this.service, super.key});
 
-  final bool busy;
-  final VoidCallback onTap;
+  final HomeService service;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Locate me',
-      child: GestureDetector(
-        onTap: busy ? null : onTap,
-        child: Container(
-          width: 42,
-          height: 42,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: AppShadows.floating,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 168,
+          child: Image.asset(
+            service.heroAsset,
+            fit: BoxFit.contain,
+            // If an asset is ever missing the screen still works: a large
+            // outline icon stands in rather than a broken-image box.
+            errorBuilder: (_, __, ___) => Center(
+              child: Icon(service.icon, size: 96, color: AppText.disabled),
+            ),
           ),
-          child: busy
-              ? const SizedBox(
-                  width: 17,
-                  height: 17,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.explore_outlined,
-                  size: 21, color: AppColors.navy),
         ),
-      ),
+        const SizedBox(height: 10),
+        Text(
+          service.heroTitle,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            color: AppText.primary,
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          service.heroSubtitle,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppText.secondary,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1070,13 +1153,13 @@ class _TourToggleRow extends StatelessWidget {
       child: Row(
         children: [
           const Icon(Icons.card_giftcard_rounded,
-              size: 18, color: AppColors.navy),
+              size: 21, color: AppColors.navy),
           const SizedBox(width: 9),
           const Expanded(
             child: Text(
               'Tour booking',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 15,
                 fontWeight: FontWeight.w800,
                 color: AppText.primary,
               ),
@@ -1114,8 +1197,8 @@ class _AdvanceDisclosure extends StatelessWidget {
               'Tour bookings require an advance payment, held securely by '
               'UDrive and released to your driver on arrival.',
               style: TextStyle(
-                fontSize: 11,
-                height: 1.4,
+                fontSize: 12.5,
+                height: 1.45,
                 fontWeight: FontWeight.w600,
                 color: AppTint.successText,
               ),
@@ -1156,7 +1239,7 @@ class _PlainField extends StatelessWidget {
           Text(
             caption,
             style: const TextStyle(
-              fontSize: 10.5,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
               color: AppText.secondary,
             ),
@@ -1165,7 +1248,7 @@ class _PlainField extends StatelessWidget {
             controller: controller,
             onChanged: onChanged,
             style: const TextStyle(
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w800,
               color: AppText.primary,
             ),
@@ -1220,7 +1303,7 @@ class _MoneyField extends StatelessWidget {
           Text(
             caption,
             style: const TextStyle(
-              fontSize: 10.5,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
               color: AppText.secondary,
             ),
@@ -1230,7 +1313,7 @@ class _MoneyField extends StatelessWidget {
               const Text(
                 'PKR',
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 15,
                   fontWeight: FontWeight.w900,
                   color: AppText.secondary,
                 ),
@@ -1243,7 +1326,7 @@ class _MoneyField extends StatelessWidget {
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.w800,
                     color: AppText.primary,
                   ),
@@ -1306,7 +1389,7 @@ class _TapField extends StatelessWidget {
                   Text(
                     caption,
                     style: const TextStyle(
-                      fontSize: 10.5,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: AppText.secondary,
                     ),
@@ -1317,7 +1400,7 @@ class _TapField extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 15,
                       fontWeight: FontWeight.w800,
                       color: AppText.primary,
                     ),
@@ -1325,7 +1408,7 @@ class _TapField extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(icon, size: 17, color: AppText.secondary),
+            Icon(icon, size: 20, color: AppText.secondary),
           ],
         ),
       ),
@@ -1349,7 +1432,7 @@ class _PrimaryCta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 50,
+      height: 56,
       child: Material(
         color: enabled ? AppColors.navy : AppColors.border,
         borderRadius: AppRadii.all(AppRadii.cta),
@@ -1369,7 +1452,7 @@ class _PrimaryCta extends StatelessWidget {
                 : Text(
                     label,
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 16.5,
                       fontWeight: FontWeight.w800,
                       color: enabled ? Colors.white : AppText.disabled,
                     ),
@@ -1401,8 +1484,8 @@ class _OfflineNotice extends StatelessWidget {
               'You are offline. Saved maps are in use and bookings will need a '
               'connection.',
               style: TextStyle(
-                fontSize: 11.5,
-                height: 1.35,
+                fontSize: 12.5,
+                height: 1.4,
                 fontWeight: FontWeight.w600,
                 color: AppTint.warningText,
               ),
@@ -1438,7 +1521,7 @@ class _ActiveTripBanner extends StatelessWidget {
                 const Text(
                   'Trip in progress',
                   style: TextStyle(
-                    fontSize: 10.5,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: Colors.white70,
                   ),
@@ -1449,7 +1532,7 @@ class _ActiveTripBanner extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                   ),
@@ -1469,7 +1552,7 @@ class _ActiveTripBanner extends StatelessWidget {
                 child: Text(
                   'Track Ride',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w900,
                     color: AppColors.navy,
                   ),
@@ -1519,15 +1602,15 @@ class _InviteRow extends StatelessWidget {
                 Text(
                   'Invite a friend',
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: AppText.primary,
                   ),
                 ),
-                SizedBox(height: 2),
+                SizedBox(height: 3),
                 Text(
                   'Share the UDrive app link',
-                  style: TextStyle(fontSize: 11, color: AppText.secondary),
+                  style: TextStyle(fontSize: 12.5, color: AppText.secondary),
                 ),
               ],
             ),
@@ -1537,7 +1620,7 @@ class _InviteRow extends StatelessWidget {
             child: const Text(
               'Share',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w800,
                 color: AppColors.navy,
               ),

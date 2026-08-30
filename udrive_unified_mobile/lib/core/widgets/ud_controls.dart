@@ -105,7 +105,7 @@ class UdStepper extends StatelessWidget {
                 Text(
                   label,
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: AppText.secondary,
                   ),
@@ -115,7 +115,7 @@ class UdStepper extends StatelessWidget {
                   Text(
                     caption!,
                     style: const TextStyle(
-                      fontSize: 10,
+                      fontSize: 11.5,
                       color: AppText.disabled,
                     ),
                   ),
@@ -135,7 +135,7 @@ class UdStepper extends StatelessWidget {
               '$value',
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 15,
+                fontSize: 17,
                 fontWeight: FontWeight.w900,
                 color: AppText.primary,
               ),
@@ -176,8 +176,8 @@ class _StepButton extends StatelessWidget {
         onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          width: 34,
-          height: 34,
+          width: 38,
+          height: 38,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: enabled ? AppTint.surface : const Color(0xFFF7F9F9),
@@ -186,7 +186,7 @@ class _StepButton extends StatelessWidget {
           ),
           child: Icon(
             icon,
-            size: 17,
+            size: 19,
             color: enabled ? AppColors.navy : AppText.disabled,
           ),
         ),
@@ -225,7 +225,7 @@ class UdSegmented<T> extends StatelessWidget {
               onTap: () => onChanged(option.value),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                height: 38,
+                height: 42,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: selected ? Colors.white : Colors.transparent,
@@ -235,7 +235,7 @@ class UdSegmented<T> extends StatelessWidget {
                 child: Text(
                   option.label,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 13.5,
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                     color: selected ? AppText.primary : AppText.secondary,
                   ),
