@@ -559,11 +559,11 @@ class _UdMapState extends State<UdMap> {
                 )
                 .toList(growable: false),
           ),
-        // Required by the OpenStreetMap licence and CARTO's terms. Small and
-        // out of the way, but it must be present and readable.
+        // Required by the OpenStreetMap licence. Small and out of the way, but
+        // it has to be present and legible.
         const fmap.SimpleAttributionWidget(
           source: Text(
-            '© OpenStreetMap · CARTO',
+            '© OpenStreetMap',
             style: TextStyle(fontSize: 9, color: AppText.disabled),
           ),
           backgroundColor: Color(0xCC0B1417),

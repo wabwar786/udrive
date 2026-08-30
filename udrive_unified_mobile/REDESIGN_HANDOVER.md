@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 31) · build label `rev 31`
+# UDrive Redesign — Delivery 1 & 2 (revision 32) · build label `rev 32`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,34 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 32 — tiles that cannot start requiring a key
+
+CARTO now requires an API key for their basemaps. I picked them in revision 30
+for the dark styling without checking whether that was still free — that was
+careless, and it cost another round.
+
+Web tiles now come from **OpenStreetMap's own tile server**: the one source that
+needs no key and cannot begin needing one, because there is no vendor to change
+their mind.
+
+### Making light tiles dark
+
+OSM tiles are light, so they are darkened in the app rather than sourced from a
+dark provider. The filter is an invert combined with a 180° hue rotation — the
+same pair CSS dark-map filters use. Inverting alone turns land grey and water
+white; rotating the hue afterwards brings the colours back at dark luminance, so
+roads stay pale against dark land and water stays blue.
+
+The matrix was computed rather than guessed, by multiplying the two standard
+matrices together. It is applied through `tileBuilder`, per tile, so markers,
+the route line and the pickup pin keep their true colours.
+
+### Traffic
+
+OSM's usage policy covers development and modest production traffic. If web
+traffic ever outgrows it, a paid tile provider or Google's Map Tiles API drops
+into this one widget without touching anything else.
 
 ## Revision 31 — removing what web no longer needs
 
