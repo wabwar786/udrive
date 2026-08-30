@@ -11,6 +11,7 @@ class VehicleOption {
     required this.description,
     required this.seats,
     required this.icon,
+    required this.asset,
     required this.recommendedFare,
     required this.service,
     this.etaMinutes,
@@ -24,6 +25,10 @@ class VehicleOption {
   final String description;
   final int seats;
   final IconData icon;
+
+  /// Photograph shown in the picker. The icon is the fallback for anywhere the
+  /// image cannot be loaded.
+  final String asset;
 
   /// What UDrive suggests paying. The customer can go above or below it: the
   /// whole point of the model is that they name a price and drivers answer.
@@ -43,6 +48,7 @@ class VehicleOption {
         description: description,
         seats: seats,
         icon: icon,
+        asset: asset,
         recommendedFare: recommendedFare,
         service: service,
         etaMinutes: etaMinutes ?? this.etaMinutes,
@@ -118,6 +124,7 @@ class VehicleOptionsRepository {
             description: entry.description,
             seats: entry.seats,
             icon: entry.icon,
+            asset: entry.asset,
             recommendedFare: _round(fare),
             service: entry.service,
           );
@@ -145,6 +152,7 @@ class VehicleOptionsRepository {
       description: 'One passenger, quickest through traffic',
       seats: 1,
       icon: Icons.two_wheeler_rounded,
+      asset: 'assets/vehicles_photo/bike_clean.png',
       fallbackPerKm: 22,
       minimumFare: 120,
       service: HomeService.bike,
@@ -155,6 +163,7 @@ class VehicleOptionsRepository {
       description: 'Up to 4 passengers',
       seats: 4,
       icon: Icons.directions_car_rounded,
+      asset: 'assets/vehicles_photo/car_clean.png',
       fallbackPerKm: 48,
       minimumFare: 300,
       service: HomeService.car,
@@ -165,6 +174,7 @@ class VehicleOptionsRepository {
       description: 'Up to 4 passengers, air conditioned',
       seats: 4,
       icon: Icons.ac_unit_rounded,
+      asset: 'assets/vehicles_photo/private_car_clean.png',
       fallbackPerKm: 62,
       minimumFare: 400,
       service: HomeService.car,
@@ -175,6 +185,7 @@ class VehicleOptionsRepository {
       description: 'Up to 12 passengers, luggage space',
       seats: 12,
       icon: Icons.airport_shuttle_rounded,
+      asset: 'assets/vehicles_photo/coaster_clean.png',
       fallbackPerKm: 95,
       minimumFare: 1500,
       service: HomeService.bus,
@@ -185,6 +196,7 @@ class VehicleOptionsRepository {
       description: 'Up to 22 passengers, groups and tours',
       seats: 22,
       icon: Icons.directions_bus_rounded,
+      asset: 'assets/vehicles_photo/coaster_clean.png',
       fallbackPerKm: 135,
       minimumFare: 2500,
       service: HomeService.bus,
@@ -199,6 +211,7 @@ class _CatalogueEntry {
     required this.description,
     required this.seats,
     required this.icon,
+    required this.asset,
     required this.fallbackPerKm,
     required this.minimumFare,
     required this.service,
@@ -209,6 +222,7 @@ class _CatalogueEntry {
   final String description;
   final int seats;
   final IconData icon;
+  final String asset;
   final double fallbackPerKm;
   final int minimumFare;
   final HomeService service;

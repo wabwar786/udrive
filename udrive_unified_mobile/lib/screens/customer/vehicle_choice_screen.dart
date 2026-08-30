@@ -289,9 +289,36 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
               ),
             ),
             Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _buildSheet(),
+              child: Transform.translate(
+                offset: const Offset(0, -18),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 9, bottom: 4),
+                        child: Container(
+                          width: 38,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceHigh,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: _loading
+                            ? const Center(child: CircularProgressIndicator())
+                            : _buildSheet(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -313,16 +340,12 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                   option: selected,
                   perSeat: _perSeat,
                   seats: widget.seats,
-                ),
-                const SizedBox(height: 12),
-                _FareStepper(
                   fare: _fare,
-                  recommended: selected.recommendedFare,
                   onDecrease: () => _nudge(-1),
                   onIncrease: () => _nudge(1),
                   onEdit: _editFare,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
               ],
 
               ..._options
@@ -399,10 +422,12 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
           ),
 
         Container(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          decoration: BoxDecoration(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          decoration: const BoxDecoration(
             color: AppColors.surface,
-            boxShadow: AppShadows.navBar,
+            border: Border(
+              top: BorderSide(color: AppColors.border, width: 1),
+            ),
           ),
           child: SafeArea(
             top: false,
@@ -572,154 +597,143 @@ class _TripHeader extends StatelessWidget {
   }
 }
 
+/// The chosen vehicle and the fare, as one raised card.
+///
+/// Keeping them together matters: the price belongs to the vehicle above it,
+/// and splitting them into two panels made the screen read as a form rather
+/// than a choice.
 class _SelectedVehicleCard extends StatelessWidget {
   const _SelectedVehicleCard({
     required this.option,
     required this.perSeat,
     required this.seats,
-  });
-
-  final VehicleOption option;
-  final bool perSeat;
-  final int seats;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTint.brand,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.secondary.withValues(alpha: .45),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceHigh,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(option.icon, size: 27, color: AppColors.secondary),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  option.label,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    color: AppText.primary,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    const Icon(Icons.person_rounded,
-                        size: 14, color: AppText.secondary),
-                    const SizedBox(width: 3),
-                    Text(
-                      perSeat ? '$seats seats' : '${option.seats}',
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: AppText.secondary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  option.description,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    color: AppText.disabled,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FareStepper extends StatelessWidget {
-  const _FareStepper({
     required this.fare,
-    required this.recommended,
     required this.onDecrease,
     required this.onIncrease,
     required this.onEdit,
   });
 
+  final VehicleOption option;
+  final bool perSeat;
+  final int seats;
   final int fare;
-  final int recommended;
   final VoidCallback onDecrease;
   final VoidCallback onIncrease;
   final VoidCallback onEdit;
 
-  /// Tells the customer how their offer compares, so a number well under the
-  /// recommendation does not look like it will be answered as quickly.
   String get _caption {
-    if (fare == recommended) return 'Recommended fare';
-    final difference = ((fare - recommended) / recommended * 100).round();
-    if (difference > 0) return '$difference% above recommended · faster pickup';
-    return '${difference.abs()}% below recommended · may take longer';
+    if (fare == option.recommendedFare) return 'Recommended fare';
+    final difference =
+        ((fare - option.recommendedFare) / option.recommendedFare * 100).round();
+    if (difference > 0) return '$difference% above · faster pickup';
+    return '${difference.abs()}% below · may take longer';
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
+      child: Column(
         children: [
-          _StepButton(icon: Icons.remove_rounded, onTap: onDecrease),
-          Expanded(
-            child: GestureDetector(
-              onTap: onEdit,
-              behavior: HitTestBehavior.opaque,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'PKR ${_grouped(fare)}',
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -.5,
-                      color: AppText.primary,
-                    ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _VehicleImage(option: option, size: 68),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        option.label,
+                        style: const TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -.2,
+                          color: AppText.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          const Icon(Icons.person_rounded,
+                              size: 15, color: AppText.secondary),
+                          const SizedBox(width: 3),
+                          Text(
+                            perSeat ? '$seats' : '${option.seats}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppText.secondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        option.description,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: AppText.disabled,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _caption,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      color: AppText.secondary,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                IconButton(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_rounded, size: 18),
+                  color: AppText.secondary,
+                  tooltip: 'Type a fare',
+                ),
+              ],
             ),
           ),
-          _StepButton(icon: Icons.add_rounded, onTap: onIncrease),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 14),
+            child: Row(
+              children: [
+                _StepButton(icon: Icons.remove_rounded, onTap: onDecrease),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onEdit,
+                    behavior: HitTestBehavior.opaque,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'PKR ${_grouped(fare)}',
+                          style: const TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -.8,
+                            color: AppText.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          _caption,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppText.secondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                _StepButton(icon: Icons.add_rounded, onTap: onIncrease),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -733,6 +747,31 @@ class _FareStepper extends StatelessWidget {
       buffer.write(digits[i]);
     }
     return buffer.toString();
+  }
+}
+
+/// Vehicle photograph, falling back to its icon if the image is missing.
+class _VehicleImage extends StatelessWidget {
+  const _VehicleImage({required this.option, required this.size});
+
+  final VehicleOption option;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size * .68,
+      child: Image.asset(
+        option.asset,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Icon(
+          option.icon,
+          size: size * .5,
+          color: AppText.secondary,
+        ),
+      ),
+    );
   }
 }
 
@@ -751,9 +790,9 @@ class _StepButton extends StatelessWidget {
         onTap: onTap,
         customBorder: const CircleBorder(),
         child: SizedBox(
-          width: 46,
-          height: 46,
-          child: Icon(icon, size: 22, color: AppText.primary),
+          width: 52,
+          height: 52,
+          child: Icon(icon, size: 24, color: AppText.primary),
         ),
       ),
     );
@@ -777,22 +816,13 @@ class _VehicleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
         child: Row(
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppColors.surfaceAlt,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(option.icon, size: 23, color: AppText.secondary),
-            ),
-            const SizedBox(width: 13),
+            _VehicleImage(option: option, size: 58),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -801,30 +831,46 @@ class _VehicleRow extends StatelessWidget {
                   Text(
                     option.label,
                     style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: AppText.primary,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      const Icon(Icons.person_rounded,
+                          size: 14, color: AppText.secondary),
+                      const SizedBox(width: 3),
+                      Text(
+                        perSeat ? '$seats' : '${option.seats}',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppText.secondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
                   Text(
                     option.description,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 11.5,
-                      color: AppText.secondary,
+                      fontSize: 12,
+                      color: AppText.disabled,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Text(
-              'PKR ${_FareStepper._grouped(option.recommendedFare)}',
+              'PKR ${_SelectedVehicleCard._grouped(option.recommendedFare)}',
               style: const TextStyle(
-                fontSize: 14.5,
-                fontWeight: FontWeight.w800,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
                 color: AppText.primary,
               ),
             ),
