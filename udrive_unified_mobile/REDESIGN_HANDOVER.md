@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 42) · build label `rev 42`
+# UDrive Redesign — Delivery 1 & 2 (revision 44) · build label `rev 44`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,50 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 44 — vehicle picker without a second map
+
+### No map on this screen
+
+Removed, as you asked. The customer has just seen the route on Home; repeating
+it here cost a tile session and the space the vehicle list needs. The trip is
+now stated at the top instead — From and To in full, with travel time, distance
+and the road it takes.
+
+### Real vehicle photographs
+
+`assets/vehicles_photo/*_clean.png` were already in the project and I was not
+using them. They are most of what separates a premium picker from a list of
+glyphs. The Material icon is now only the fallback for an image that fails to
+load.
+
+### Vehicle and fare as one card
+
+They were two panels, which made the screen read as a form rather than a choice.
+The price belongs to the vehicle above it, so they are one raised card: photo,
+name, capacity, description, then the stepper and the fare beneath.
+
+Touch targets grew — stepper buttons 52px, the fare 30px.
+
+### Removed rather than faked
+
+The fallback `VehicleOption` is gone. When no vehicle can be priced the screen
+says so; inventing a car at an invented price would have let someone book
+something that does not exist. That fallback was also what broke the build —
+it predated the `asset` field and never got one.
+
+### Third time for the same editing mistake
+
+`class X {class X {` — an anchored insert whose replacement ended with the same
+line the remainder began with. It has now happened three times.
+
+The audit caught the brace count but reported only "mismatch", which is a weak
+clue in a two-thousand-line file. It now names the fault and the line. Verified
+by reintroducing it, confirming the message, and removing it again.
+
+Files that ship minified are skipped: two of them legitimately put a
+constructor on the class line, and a check that reports them forever is a check
+nobody reads.
 
 ## Revision 42 — choose a vehicle, name a price
 

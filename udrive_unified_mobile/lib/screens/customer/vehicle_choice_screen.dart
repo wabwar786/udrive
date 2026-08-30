@@ -4,7 +4,6 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/booking/booking_options.dart';
 import '../../core/booking/booking_repository.dart';
-import '../../core/maps/ud_map.dart';
 import '../../core/routing/route_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -50,8 +49,6 @@ class VehicleChoiceScreen extends StatefulWidget {
 }
 
 class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
-  final _mapController = UdMapController();
-
   List<VehicleOption> _options = const [];
   VehicleOption? _selected;
   int _fare = 0;
@@ -75,12 +72,6 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  @override
-  void dispose() {
-    _mapController.dispose();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -107,39 +98,25 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     );
     if (!mounted) return;
 
-    // Open on the vehicle matching the service they chose on Home, so the
-    // screen continues their decision rather than restarting it.
-    final preferred = options.firstWhere(
-      (option) => option.service == widget.service,
-      orElse: () => options.isEmpty
-          ? const VehicleOption(
-              category: 'Car',
-              label: 'Car',
-              description: '',
-              seats: 4,
-              icon: Icons.directions_car_rounded,
-              recommendedFare: 500,
-              service: HomeService.car,
-            )
-          : options.first,
-    );
+    // Open on the vehicle matching the service chosen on Home, so this screen
+    // continues that decision rather than restarting it.
+    final preferred = options.isEmpty
+        ? null
+        : options.firstWhere(
+            (option) => option.service == widget.service,
+            orElse: () => options.first,
+          );
 
     setState(() {
       _options = options;
       _selected = preferred;
-      _fare = preferred.recommendedFare;
+      _fare = preferred?.recommendedFare ?? 0;
       _loading = false;
+      if (preferred == null) {
+        _error = 'No vehicles are available for this trip right now.';
+      }
     });
 
-    final points = route?.points;
-    if (points != null && points.isNotEmpty) {
-      await _mapController.fitBounds(points, padding: 60);
-    } else {
-      await _mapController.fitBounds(
-        [widget.pickupPoint, widget.destinationPoint],
-        padding: 60,
-      );
-    }
   }
 
   void _select(VehicleOption option) {
@@ -222,103 +199,21 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final height = MediaQuery.sizeOf(context).height;
-    final mapHeight = (height * .38).clamp(220.0, 400.0);
-    final route = widget.route;
-
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        bottom: false,
         child: Column(
           children: [
-            SizedBox(
-              height: mapHeight,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  UdMap(
-                    controller: _mapController,
-                    initialCenter: widget.pickupPoint,
-                    zoom: 12,
-                    showMyLocation: false,
-                    routeOrigin: widget.pickupPoint,
-                    routeDestination: widget.destinationPoint,
-                    polylines: [
-                      if (route != null && route.points.isNotEmpty)
-                        UdPolyline(
-                          id: 'trip',
-                          points: route.points,
-                          color: AppColors.secondary,
-                          width: 6,
-                        ),
-                    ],
-                    markers: [
-                      UdMarker(
-                        id: 'pickup',
-                        position: widget.pickupPoint,
-                        label: widget.pickupLabel,
-                      ),
-                      UdMarker(
-                        id: 'destination',
-                        position: widget.destinationPoint,
-                        label: widget.destinationLabel,
-                        hue: UdMarkerHue.danger,
-                      ),
-                    ],
-                  ),
-                  Positioned(
-                    top: 10,
-                    left: 12,
-                    child: _RoundButton(
-                      icon: Icons.arrow_back_rounded,
-                      onTap: () => Navigator.pop(context),
-                    ),
-                  ),
-                  Positioned(
-                    top: 10,
-                    left: 62,
-                    right: 12,
-                    child: _TripHeader(
-                      pickup: widget.pickupLabel,
-                      destination: widget.destinationLabel,
-                      route: route,
-                    ),
-                  ),
-                ],
-              ),
+            _RouteHeader(
+              pickup: widget.pickupLabel,
+              destination: widget.destinationLabel,
+              route: widget.route,
+              onBack: () => Navigator.pop(context),
             ),
             Expanded(
-              child: Transform.translate(
-                offset: const Offset(0, -18),
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius:
-                        BorderRadius.vertical(top: Radius.circular(24)),
-                  ),
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 9, bottom: 4),
-                        child: Container(
-                          width: 38,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceHigh,
-                            borderRadius: BorderRadius.circular(9),
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: _loading
-                            ? const Center(child: CircularProgressIndicator())
-                            : _buildSheet(),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _buildSheet(),
             ),
           ],
         ),
@@ -520,76 +415,138 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   }
 }
 
-class _TripHeader extends StatelessWidget {
-  const _TripHeader({
+/// The trip, stated plainly at the top of the screen.
+///
+/// This replaces a second map. The customer has just seen the route on Home;
+/// what they need here is confirmation of where they are going and roughly how
+/// long it takes, while they decide what to pay. Repeating the map would cost a
+/// tile session and the space the vehicle list needs.
+class _RouteHeader extends StatelessWidget {
+  const _RouteHeader({
     required this.pickup,
     required this.destination,
     required this.route,
+    required this.onBack,
   });
 
   final String pickup;
   final String destination;
   final TripRoute? route;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: .92),
-        borderRadius: AppRadii.all(AppRadii.row),
+      padding: const EdgeInsets.fromLTRB(6, 6, 16, 16),
+      decoration: const BoxDecoration(
+        color: AppColors.background,
+        border: Border(
+          bottom: BorderSide(color: AppColors.border, width: 1),
+        ),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.trip_origin_rounded,
-                  size: 13, color: AppColors.secondary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
+          IconButton(
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+            color: AppText.primary,
+            tooltip: 'Back',
+          ),
+          const SizedBox(width: 2),
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Column(
+              children: [
+                Container(
+                  width: 9,
+                  height: 9,
+                  decoration: const BoxDecoration(
+                    color: AppColors.secondary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Container(
+                  width: 1.5,
+                  height: 26,
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  color: AppColors.border,
+                ),
+                Container(width: 8, height: 8, color: AppText.primary),
+              ],
+            ),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 10),
+                const Text(
+                  'From',
+                  style: TextStyle(fontSize: 11, color: AppText.disabled),
+                ),
+                const SizedBox(height: 2),
+                Text(
                   pickup,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: AppText.primary,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          Row(
-            children: [
-              const Icon(Icons.square_rounded, size: 11, color: Colors.white),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
+                const SizedBox(height: 10),
+                const Text(
+                  'To',
+                  style: TextStyle(fontSize: 11, color: AppText.disabled),
+                ),
+                const SizedBox(height: 2),
+                Text(
                   destination,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: AppText.primary,
                   ),
                 ),
-              ),
-              if (route != null) ...[
-                const SizedBox(width: 8),
-                Text(
-                  '~${route!.durationLabel}',
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    color: AppText.secondary,
+                if (route != null) ...[
+                  const SizedBox(height: 9),
+                  Row(
+                    children: [
+                      const Icon(Icons.schedule_rounded,
+                          size: 14, color: AppColors.secondary),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${route!.durationLabel}  ·  ${route!.distanceLabel}',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.secondary,
+                        ),
+                      ),
+                      if (route!.summary.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'via ${route!.summary.split('/').first.trim()}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppText.secondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ],
       ),
@@ -597,11 +554,6 @@ class _TripHeader extends StatelessWidget {
   }
 }
 
-/// The chosen vehicle and the fare, as one raised card.
-///
-/// Keeping them together matters: the price belongs to the vehicle above it,
-/// and splitting them into two panels made the screen read as a form rather
-/// than a choice.
 class _SelectedVehicleCard extends StatelessWidget {
   const _SelectedVehicleCard({
     required this.option,
@@ -875,30 +827,6 @@ class _VehicleRow extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RoundButton extends StatelessWidget {
-  const _RoundButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.primary.withValues(alpha: .92),
-      shape: const CircleBorder(),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: Icon(icon, size: 21, color: AppText.primary),
         ),
       ),
     );

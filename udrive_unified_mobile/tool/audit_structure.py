@@ -58,6 +58,26 @@ def audit(path):
         if c != '_list':
             issues.append(f'UNDECLARED {c}')
 
+    # Two declarations sharing a line.
+    #
+    # An anchored insert whose replacement ends with the same line the
+    # remainder begins with produces `class X {class X {`. It has happened
+    # three times. The brace count notices, but only says "mismatch", which is
+    # a poor clue when the file is two thousand lines long.
+    # Some files in this project ship minified — imports and classes all on one
+    # line. The check cannot say anything useful about those, so they are
+    # skipped rather than reported forever until the output is ignored.
+    minified = any(
+        len(line) > 300 for line in s.split('\n')[:5]
+    )
+    for n, line in enumerate([] if minified else s.split('\n'), 1):
+        # Only two *type declarations* on one line. Some files in this project
+        # are minified and legitimately put a constructor on the class line, so
+        # matching anything looser reports them forever and the check stops
+        # being read.
+        if len(re.findall(r'\b(?:class|enum|mixin|extension)\s+\w+\s*(?:extends|implements|with|\{)', line)) > 1:
+            issues.append(f'TWO DECLARATIONS ON ONE LINE @{n}: {line.strip()[:60]}')
+
     # Uninitialised final fields.
     #
     # A `final` field with no initialiser must be set by every constructor. When
