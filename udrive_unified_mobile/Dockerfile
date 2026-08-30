@@ -1,14 +1,9 @@
 FROM ghcr.io/cirruslabs/flutter:stable AS builder
 WORKDIR /app
 
-# Google Maps JavaScript API key.
-#
-# Passed in at build time, never committed. On Railway set a service variable
-# named MAPS_WEB_KEY; Railway forwards it to the build as an ARG of the same
-# name when it is declared here.
-#
-# Leaving it unset is safe: the placeholder stays in index.html, the map area
-# renders blank, and everything else in the app still works.
+# Kept for compatibility with the existing Railway service variable, but no
+# longer used: the web build renders maps with flutter_map and never loads the
+# Google Maps JavaScript API. The variable can be deleted from Railway.
 ARG MAPS_WEB_KEY=""
 
 COPY pubspec.yaml analysis_options.yaml ./
@@ -16,12 +11,8 @@ COPY assets ./assets
 COPY lib ./lib
 COPY web ./web
 
-RUN if [ -n "$MAPS_WEB_KEY" ]; then \
-        sed -i "s|YOUR_WEB_MAPS_API_KEY|$MAPS_WEB_KEY|g" web/index.html && \
-        echo "Maps web key injected."; \
-    else \
-        echo "MAPS_WEB_KEY not set - map will render blank."; \
-    fi
+RUN echo "Web build uses flutter_map; no Google Maps key required."
+
 
 RUN flutter config --enable-web \
     && flutter pub get \

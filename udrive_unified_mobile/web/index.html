@@ -25,58 +25,16 @@
 
        Until the key is filled in, map screens fall back to the offline
        OpenStreetMap layer rather than breaking. -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_WEB_MAPS_API_KEY"></script>
+  <!--
+    Google Maps JS is deliberately not loaded.
 
-  <script>
-    // Google Maps reports authentication problems by calling this global and
-    // by logging to the console — it never tells the Flutter side. Without it,
-    // a rejected key looks identical to a slow network: grey tiles, no reason.
-    //
-    // This surfaces the reason on the page itself, so the cause is visible
-    // without opening devtools on a phone.
-    window.gm_authFailure = function () {
-      var box = document.createElement('div');
-      box.style.cssText = [
-        'position:fixed', 'left:12px', 'right:12px', 'bottom:12px',
-        'z-index:99999', 'background:#3A2E14', 'color:#FFC96B',
-        'border:1px solid #FFB84D', 'border-radius:12px', 'padding:12px 14px',
-        'font:13px/1.5 system-ui,sans-serif'
-      ].join(';');
-      box.innerHTML =
-        '<b>Google Maps rejected the key.</b><br>' +
-        'Usually the site is missing from the key&rsquo;s website ' +
-        'restrictions, or billing is off. Current origin:<br><code>' +
-        window.location.origin + '</code>';
-      document.body.appendChild(box);
-      console.error('[UDrive] gm_authFailure — origin:', window.location.origin);
-    };
+    The web build renders maps with flutter_map on Flutter's own canvas. Loading
+    the Maps JS API here achieved nothing except a download on every visit and,
+    when the key did not match the origin, an error overlay on a map that was
+    never Google's to begin with.
 
-    // Maps also logs its specific error name (RefererNotAllowedMapError and
-    // friends) rather than throwing. Mirror those onto the page too.
-    (function () {
-      var originalError = console.error;
-      console.error = function () {
-        var text = Array.prototype.join.call(arguments, ' ');
-        if (text.indexOf('MapError') !== -1 || text.indexOf('Google Maps') !== -1) {
-          var box = document.getElementById('udrive-map-error');
-          if (!box) {
-            box = document.createElement('div');
-            box.id = 'udrive-map-error';
-            box.style.cssText = [
-              'position:fixed', 'left:12px', 'right:12px', 'top:12px',
-              'z-index:99999', 'background:#3A1A18', 'color:#FF9A8F',
-              'border:1px solid #FF5A4E', 'border-radius:12px',
-              'padding:10px 12px', 'font:12px/1.45 system-ui,sans-serif',
-              'max-height:40vh', 'overflow:auto'
-            ].join(';');
-            document.body.appendChild(box);
-          }
-          box.textContent = 'Maps: ' + text;
-        }
-        originalError.apply(console, arguments);
-      };
-    })();
-  </script>
+    Android and iOS use the native Google Maps SDK; neither reads this file.
+  -->
 </head>
 <body>
   <script>

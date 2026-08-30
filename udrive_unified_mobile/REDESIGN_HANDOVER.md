@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 30) · build label `rev 30`
+# UDrive Redesign — Delivery 1 & 2 (revision 31) · build label `rev 31`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,27 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 31 — removing what web no longer needs
+
+The "API key required" overlay came from `web/index.html`, which was still
+loading the Google Maps JavaScript API and still carrying the `gm_authFailure`
+diagnostic I added while debugging. Web renders with flutter_map now, so that
+script downloaded on every visit and did nothing except produce an error banner
+over a map that was never Google's.
+
+Removed from the web build:
+
+- the Maps JS `<script>` tag
+- the `gm_authFailure` handler and the console-error mirror
+- the Dockerfile step that injected `MAPS_WEB_KEY` into `index.html`
+
+The `MAPS_WEB_KEY` variable on Railway can be deleted; nothing reads it. The
+`ARG` stays in the Dockerfile only so an existing build variable does not cause
+an error.
+
+Android and iOS are untouched — they use the native SDK and never read
+`index.html`.
 
 ## Revision 30 — web stops using Google Maps
 
