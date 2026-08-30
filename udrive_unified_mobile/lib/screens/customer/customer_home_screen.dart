@@ -12,6 +12,7 @@ import '../../core/maps/ud_map.dart';
 import '../../core/vehicles/nearby_repository.dart';
 import '../../core/vehicles/nearby_vehicle.dart';
 import '../../core/booking/trip_operations_repository.dart';
+import '../../core/booking/vehicle_booking_mode.dart';
 import '../../core/config/app_config.dart';
 import '../../core/services/place_search_service.dart';
 import '../../core/state/app_controller.dart';

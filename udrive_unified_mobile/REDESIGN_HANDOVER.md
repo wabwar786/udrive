@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 8)
+# UDrive Redesign — Delivery 1 & 2 (revision 9)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,25 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 9 — build fix
+
+`customer_home_screen.dart` used `allowsPerSeat` / `allowsWholeVehicle` without
+importing `core/booking/vehicle_booking_mode.dart`.
+
+Dart resolves the *type* through a transitive import, which is why the error
+message could name `VehicleBookingMode` — but **extension members are only in
+scope when their defining library is imported directly**. That is why four
+getters failed on a type the compiler could clearly see.
+
+Fixed by adding the import. I also scanned every file for the same class of
+mistake against the uniquely-named extension members
+(`allowsPerSeat`, `allowsWholeVehicle`, `vehicleFilterKey`, `heroTitle`,
+`heroSubtitle`, `isVehicle`) — nothing else is missing.
+
+Dependency resolution succeeded on Railway, so the versions added in earlier
+revisions are confirmed good: `google_maps_flutter 2.18.0`,
+`share_plus 11.1.0`, `google_maps_flutter_web 0.6.3`.
 
 ## Revision 8 — live vehicles on the home map
 
