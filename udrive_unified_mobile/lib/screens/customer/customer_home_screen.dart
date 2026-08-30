@@ -1,32 +1,39 @@
-
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:geocoding/geocoding.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:share_plus/share_plus.dart';
 
-import '../../core/auth/session_store.dart';
 import '../../core/booking/trip_operations_repository.dart';
-import '../../core/network/api_client.dart';
-import '../../core/network/api_config.dart';
+import '../../core/config/app_config.dart';
+import '../../core/maps/ud_map.dart';
+import '../../core/services/place_search_service.dart';
 import '../../core/state/app_controller.dart';
-import '../../models/booking_models.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/route_fields.dart';
+import '../../core/widgets/service_selector.dart';
+import '../../core/widgets/ud_controls.dart';
+import '../../data/models.dart';
 import '../../models/trip_operations_models.dart';
-import '../operations/live_trip_navigation_screen.dart';
-import '../safety/customer_sos_sheet.dart';
-import 'live_packages_screen.dart';
-import 'live_explore_screen.dart';
 import '../hotels/hotel_list_screen.dart';
+import '../operations/live_trip_navigation_screen.dart';
+import 'tour_map_screen.dart';
 import 'udrive_route_flow_screen.dart';
-import 'emergency_ambulance_screen.dart';
 
+/// Map-first, service-first Home.
+///
+/// Layout, per the redesign handoff: a fixed map band with floating controls, a
+/// white booking card that overlaps it by 24px, then the active-trip banner and
+/// the invite row, all in a single scroll.
+///
+/// The booking card is presentation only. Every submission still goes through
+/// the existing repositories: non-tour bookings hand off to the current vehicle
+/// selection screen, tour bookings create a ride request and push [TourMapScreen].
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({required this.onNavigate, super.key});
 
@@ -36,87 +43,81 @@ class CustomerHomeScreen extends StatefulWidget {
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
 }
 
-enum _HomeServiceMode { localRide, exploreKashmir }
+enum _BusFareMode { perSeat, wholeVehicle }
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
-  static const _ink = Color(0xFF10212B);
-  static const _lime = Color(0xFF8ED12B);
-  static const _muted = Color(0xFF667781);
-  static const _surface = Color(0xFFF6F8FA);
-  // Fraction the services sheet expands to on load so the full box shows.
-  static const double _kSheetExpanded = 0.90;
-  static const double _kSheetInitial = 0.56;
-
+  // ------------------------------------------------------------- controllers
   final _pickup = TextEditingController(text: 'Detecting current address…');
   final _destination = TextEditingController();
-  final _pageController = PageController();
-  final _scrollController = ScrollController();
-  final _mapController = MapController();
-  final _sheetController = DraggableScrollableController();
-  final _resultsKey = GlobalKey();
-  late final ApiClient _api;
+  final _hotelCity = TextEditingController();
+  final _tourOffer = TextEditingController();
 
-  Timer? _heroTimer;
+  final _pickupFocus = FocusNode();
+  final _destinationFocus = FocusNode();
+
+  final _mapController = UdMapController();
+  final _places = PlaceSearchService();
+
   Timer? _tripTimer;
-  int _heroIndex = 0;
-  bool _loadingDestinations = true;
-  bool _showDestinationList = false;
-  bool _searched = true;
-  bool _locating = false;
-  String _destinationQuery = '';
-  String? _selectedVehicleType;
-  DateTime? _selectedDepartureDay;
-  bool _historyNextMonthOnly = true;
-  bool _showVehicleTypeBar = false;
-  _HomeServiceMode _serviceMode = _HomeServiceMode.localRide;
-  DateTime _travelDate = DateTime.now();
-  bool _offline = false;
-  LatLng _currentPoint = const LatLng(34.3700, 73.4711);
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  String? _resultsTitle = 'Available local rides';
-  List<_HeroDestination> _destinations = const [];
+  StreamSubscription<List<ConnectivityResult>>? _connectivity;
   TripOperationsRepository? _tripRepository;
+
+  // ------------------------------------------------------------------- state
+  HomeService _service = HomeService.car;
+  bool _tourMode = false;
+  bool _locating = false;
+  bool _offline = false;
+  bool _submitting = false;
+  bool _locationExpanded = false;
+
+  LatLng _pickupPoint =
+      const LatLng(AppConfig.fallbackLatitude, AppConfig.fallbackLongitude);
+  LatLng? _destinationPoint;
+  String _resolvedPlaceName = 'Locating…';
+
+  RouteFieldKind? _activeField;
+  List<PlaceSuggestion> _suggestions = const [];
+  bool _searching = false;
+
+  // Non-tour vehicle options
+  _BusFareMode _busFareMode = _BusFareMode.perSeat;
+  int _seats = 1;
+  int _passengers = 1;
+
+  // Tour options
+  DateTime _tourDate = DateTime.now().add(const Duration(days: 1));
+  TimeOfDay _tourTime = const TimeOfDay(hour: 8, minute: 0);
+  int _tourPassengers = 2;
+
+  // Hotel options
+  DateTime _checkIn = DateTime.now().add(const Duration(days: 1));
+  DateTime _checkOut = DateTime.now().add(const Duration(days: 2));
+  int _guests = 2;
+  int _rooms = 1;
+
   MobileTrip? _activeTrip;
+
+  /// Trip states that mean a ride is genuinely under way. Matches the set the
+  /// previous Home screen used, so banner behaviour is unchanged.
+  static const _activeTripStatuses = {
+    'DriverEnRoute',
+    'DriverArrived',
+    'TripStarted',
+    'Emergency',
+  };
 
   @override
   void initState() {
     super.initState();
-    _api = ApiClient(SessionStore());
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
-      if (!mounted) return;
-      setState(() => _offline = results.every((value) => value == ConnectivityResult.none));
-    });
-    Connectivity().checkConnectivity().then((results) {
-      if (mounted) setState(() => _offline = results.every((value) => value == ConnectivityResult.none));
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Auto-expand the services sheet so the complete box is visible by default.
-      Future.delayed(const Duration(milliseconds: 350), () {
-        if (mounted && _sheetController.isAttached) {
-          _sheetController.animateTo(
-            _kSheetExpanded,
-            duration: const Duration(milliseconds: 520),
-            curve: Curves.easeOutCubic,
-          );
-        }
-      });
-      await Future.wait([
-        _loadDestinations(),
-        _loadLocation(),
-        _loadMarketplace(),
-      ]);
-    });
-    _heroTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted || !_pageController.hasClients || _destinations.length < 2) {
-        return;
-      }
-      final next = (_heroIndex + 1) % _destinations.length;
-      _pageController.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 700),
-        curve: Curves.easeInOutCubic,
-      );
-    });
+
+    _pickupFocus.addListener(_onFocusChanged);
+    _destinationFocus.addListener(_onFocusChanged);
+
+    Connectivity().checkConnectivity().then(_applyConnectivity);
+    _connectivity =
+        Connectivity().onConnectivityChanged.listen(_applyConnectivity);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLocation());
   }
 
   @override
@@ -125,44 +126,51 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _tripRepository ??=
         TripOperationsRepository(AppControllerScope.of(context).apiClient);
     _refreshActiveTrip();
-    _tripTimer ??=
-        Timer.periodic(const Duration(seconds: 12), (_) => _refreshActiveTrip());
+    _tripTimer ??= Timer.periodic(
+      const Duration(seconds: 12),
+      (_) => _refreshActiveTrip(),
+    );
   }
 
-  Future<void> _loadMarketplace() async {
-    final controller = AppControllerScope.of(context);
-    await controller.refreshHomeVehicles();
-    await controller.refreshPhase9Marketplace();
-    await controller.refreshLiveBookings();
+  @override
+  void dispose() {
+    _tripTimer?.cancel();
+    _connectivity?.cancel();
+    _pickupFocus.removeListener(_onFocusChanged);
+    _destinationFocus.removeListener(_onFocusChanged);
+    _pickup.dispose();
+    _destination.dispose();
+    _hotelCity.dispose();
+    _tourOffer.dispose();
+    _pickupFocus.dispose();
+    _destinationFocus.dispose();
+    _mapController.dispose();
+    _places.dispose();
+    super.dispose();
   }
 
-  Future<void> _loadDestinations() async {
-    try {
-      final response = await _api.getJson(
-        '/api/v1/catalog/destinations?language=en',
-        authenticated: false,
-      );
-      final raw = response['data'] as List? ?? const [];
-      final loaded = raw.whereType<Map>().map((item) {
-        final map = Map<String, dynamic>.from(item);
-        return _HeroDestination(
-          name: '${map['name'] ?? ''}'.trim(),
-          district: '${map['district'] ?? ''}'.trim(),
-          summary: '${map['summary'] ?? ''}'.trim(),
-          imageUrl: ApiConfig.absoluteUrl(map['coverImageUrl']?.toString()),
-        );
-      }).where((item) => item.name.isNotEmpty && item.imageUrl.isNotEmpty).toList();
-      if (mounted) {
-        setState(() {
-          _destinations = loaded.isEmpty ? _fallbackDestinations : loaded;
-        });
+  void _applyConnectivity(List<ConnectivityResult> results) {
+    if (!mounted) return;
+    final offline = results.every((value) => value == ConnectivityResult.none);
+    if (offline == _offline) return;
+    setState(() => _offline = offline);
+  }
+
+  void _onFocusChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_pickupFocus.hasFocus) {
+        _activeField = RouteFieldKind.pickup;
+      } else if (_destinationFocus.hasFocus) {
+        _activeField = RouteFieldKind.destination;
+      } else {
+        _activeField = null;
+        _suggestions = const [];
       }
-    } catch (_) {
-      if (mounted) setState(() => _destinations = _fallbackDestinations);
-    } finally {
-      if (mounted) setState(() => _loadingDestinations = false);
-    }
+    });
   }
+
+  // ----------------------------------------------------------------- location
 
   Future<void> _loadLocation() async {
     if (_locating) return;
@@ -171,7 +179,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
-        _pickup.text = 'Turn on location to use current address';
+        _setPickupFailure('Turn on location to use current address');
         return;
       }
 
@@ -180,11 +188,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.deniedForever) {
-        _pickup.text = 'Allow location from app settings';
+        _setPickupFailure('Allow location from app settings');
         return;
       }
       if (permission == LocationPermission.denied) {
-        _pickup.text = 'Allow location to detect pickup';
+        _setPickupFailure('Allow location to detect pickup');
         return;
       }
 
@@ -201,90 +209,39 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       }
 
       if (position == null) {
-        _pickup.text = 'Tap location icon to try again';
+        _setPickupFailure('Tap the locate button to try again');
         return;
       }
 
-      final latitude = position.latitude;
-      final longitude = position.longitude;
-      final address = await _reverseGeocode(latitude, longitude);
-      _pickup.text = address.isNotEmpty
+      final point = LatLng(position.latitude, position.longitude);
+      final address =
+          await _places.reverseGeocode(point.latitude, point.longitude);
+      if (!mounted) return;
+
+      final label = address.isNotEmpty
           ? address
-          : '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}';
-      if (mounted) {
-        final point = LatLng(latitude, longitude);
-        setState(() {
-          _currentPoint = point;
-        });
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _mapController.move(point, 15.8);
-        });
-      }
+          : '${point.latitude.toStringAsFixed(5)}, '
+              '${point.longitude.toStringAsFixed(5)}';
+
+      setState(() {
+        _pickupPoint = point;
+        _pickup.text = label;
+        _resolvedPlaceName = label;
+      });
+      await _mapController.moveTo(point, zoom: AppConfig.focusedMapZoom);
     } catch (_) {
-      _pickup.text = 'Tap location icon to try again';
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location could not be detected. Please allow location access and try again.'),
-          ),
-        );
-      }
+      _setPickupFailure('Tap the locate button to try again');
     } finally {
       if (mounted) setState(() => _locating = false);
     }
   }
 
-
-  Future<String> _reverseGeocode(double latitude, double longitude) async {
-    if (!kIsWeb) {
-      try {
-        final marks = await placemarkFromCoordinates(latitude, longitude);
-        if (marks.isNotEmpty) {
-          final mark = marks.first;
-          final values = [
-            mark.street,
-            mark.subLocality,
-            mark.locality,
-            mark.administrativeArea,
-            mark.country,
-          ]
-              .whereType<String>()
-              .map((value) => value.trim())
-              .where((value) => value.isNotEmpty)
-              .toSet()
-              .toList();
-          if (values.isNotEmpty) return values.join(', ');
-        }
-      } catch (_) {
-        // Fall through to the web-compatible reverse-geocoding service.
-      }
-    }
-
-    final uri = Uri.https(
-      'api.bigdatacloud.net',
-      '/data/reverse-geocode-client',
-      {
-        'latitude': latitude.toStringAsFixed(7),
-        'longitude': longitude.toStringAsFixed(7),
-        'localityLanguage': 'en',
-      },
-    );
-    final response = await http.get(uri).timeout(const Duration(seconds: 15));
-    if (response.statusCode < 200 || response.statusCode >= 300) return '';
-    final json = jsonDecode(response.body);
-    if (json is! Map<String, dynamic>) return '';
-    final values = [
-      json['locality'],
-      json['city'],
-      json['principalSubdivision'],
-      json['countryName'],
-    ]
-        .whereType<String>()
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty)
-        .toSet()
-        .toList();
-    return values.join(', ');
+  void _setPickupFailure(String message) {
+    if (!mounted) return;
+    setState(() {
+      _pickup.text = message;
+      _resolvedPlaceName = message;
+    });
   }
 
   Future<void> _refreshActiveTrip() async {
@@ -292,953 +249,710 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (repository == null) return;
     try {
       final trips = await repository.customerTrips();
+      if (!mounted) return;
       final active = trips
-          .where((trip) => const {
-                'DriverEnRoute',
-                'DriverArrived',
-                'TripStarted',
-                'Emergency',
-              }.contains(trip.tripStatus))
+          .where((trip) => _activeTripStatuses.contains(trip.tripStatus))
           .toList();
-      if (mounted) {
-        setState(() => _activeTrip = active.isEmpty ? null : active.first);
-      }
-    } catch (_) {}
+      setState(() => _activeTrip = active.isEmpty ? null : active.first);
+    } catch (_) {
+      // A failed poll must never disturb a screen the customer is using.
+    }
   }
 
   Future<void> _openActiveTrip() async {
-    if (_activeTrip == null || _tripRepository == null) return;
+    final trip = _activeTrip;
+    final repository = _tripRepository;
+    if (trip == null || repository == null) return;
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => CustomerFullScreenTrackingScreen(
-          trip: _activeTrip!,
-          repository: _tripRepository!,
+          trip: trip,
+          repository: repository,
         ),
       ),
     );
-    await _refreshActiveTrip();
+    if (mounted) await _refreshActiveTrip();
   }
 
-  void _selectDestination(_HeroDestination value) {
-    _destination.text = value.name;
+  // -------------------------------------------------------------- suggestions
+
+  void _onRouteQueryChanged(RouteFieldKind field, String value) {
     setState(() {
-      _destinationQuery = value.name.toLowerCase();
-      _showDestinationList = false;
-      _searched = true;
-      _selectedDepartureDay = null;
-      _historyNextMonthOnly = true;
-      _resultsTitle = _serviceMode == _HomeServiceMode.localRide
-          ? 'Local rides to ${value.name}'
-          : 'Kashmir trips to ${value.name}';
+      _activeField = field;
+      _searching = value.trim().length >= 2;
+      if (field == RouteFieldKind.destination) _destinationPoint = null;
     });
-  }
-
-  void _showResultsForDestination(String destination) {
-    _destination.text = destination;
-    setState(() {
-      _destinationQuery = destination.toLowerCase();
-      _showDestinationList = false;
-      _searched = true;
-      _selectedDepartureDay = null;
-      _historyNextMonthOnly = true;
-      _resultsTitle = 'Rides to $destination · next 30 days';
-    });
-    _scrollToResults();
-  }
-
-  void _showResultsForUpcoming(LiveTourPackage ride) {
-    _destination.text = ride.destination;
-    setState(() {
-      _destinationQuery = ride.destination.trim().toLowerCase();
-      _searched = true;
-      _showDestinationList = false;
-      _selectedDepartureDay = DateTime(
-        ride.departureAt.year,
-        ride.departureAt.month,
-        ride.departureAt.day,
-      );
-      _historyNextMonthOnly = false;
-      _resultsTitle =
-          '${ride.destination} · ${DateFormat('EEE, dd MMM').format(ride.departureAt)}';
-    });
-    _scrollToResults();
-  }
-
-  void _showResultsForVehicleType(String type) {
-    final title = '${type[0].toUpperCase()}${type.substring(1)} rides';
-    setState(() {
-      _selectedVehicleType = type;
-      _searched = true;
-      _showDestinationList = false;
-      _selectedDepartureDay = null;
-      _historyNextMonthOnly = false;
-      _destinationQuery = '';
-      _showVehicleTypeBar = false;
-      _resultsTitle = title;
-    });
-    _scrollToResults();
-  }
-
-  void _scrollToResults() {
-    Future<void>.delayed(const Duration(milliseconds: 100), () {
-      if (!mounted || !_scrollController.hasClients) return;
-      final context = _resultsKey.currentContext;
-      if (context != null) {
-        Scrollable.ensureVisible(
-          context,
-          duration: const Duration(milliseconds: 420),
-          curve: Curves.easeOutCubic,
-          alignment: 0.05,
-        );
-      } else {
-        _scrollController.animateTo(
-          MediaQuery.sizeOf(this.context).height * .78,
-          duration: const Duration(milliseconds: 420),
-          curve: Curves.easeOutCubic,
-        );
-      }
-    });
-  }
-
-  Future<void> _pickTravelDate() async {
-    final selected = await showDatePicker(
-      context: context,
-      initialDate: _travelDate.isBefore(DateTime.now()) ? DateTime.now() : _travelDate,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 180)),
+    _places.searchDebounced(
+      value,
+      bias: _pickupPoint,
+      onResults: (results) {
+        if (!mounted) return;
+        setState(() {
+          _suggestions = results;
+          _searching = false;
+        });
+      },
+      onError: (_) {
+        if (!mounted) return;
+        setState(() => _searching = false);
+      },
     );
-    if (selected != null && mounted) setState(() => _travelDate = selected);
   }
 
-  void _findRides() {
+  void _onSuggestionSelected(RouteFieldKind field, PlaceSuggestion place) {
     FocusScope.of(context).unfocus();
-    if (_pickup.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter or detect your pickup location.')),
+    setState(() {
+      if (field == RouteFieldKind.pickup) {
+        _pickup.text = place.title;
+        _pickupPoint = place.point;
+        _resolvedPlaceName = place.title;
+      } else {
+        _destination.text = place.title;
+        _destinationPoint = place.point;
+      }
+      _suggestions = const [];
+      _activeField = null;
+    });
+    _mapController.moveTo(place.point, zoom: AppConfig.focusedMapZoom);
+  }
+
+  // ------------------------------------------------------------------ actions
+
+  bool get _ctaEnabled {
+    if (_submitting) return false;
+    if (_service == HomeService.hotel) {
+      return _hotelCity.text.trim().isNotEmpty && _checkOut.isAfter(_checkIn);
+    }
+    if (_pickup.text.trim().isEmpty || _destination.text.trim().isEmpty) {
+      return false;
+    }
+    if (_tourMode) {
+      final offer = int.tryParse(_tourOffer.text.trim());
+      return offer != null && offer > 0;
+    }
+    return true;
+  }
+
+  String get _ctaLabel {
+    if (_service == HomeService.hotel) return 'Find Hotels';
+    if (_tourMode) return 'Find Vehicle for Tour';
+    return switch (_service) {
+      HomeService.bus => 'Find Coaster / Bus',
+      HomeService.car => 'Find a Car',
+      HomeService.bike => 'Find a Bike',
+      HomeService.hotel => 'Find Hotels',
+    };
+  }
+
+  Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+    if (!_ctaEnabled) return;
+
+    if (_service == HomeService.hotel) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => HotelListScreen(
+            destination: _hotelCity.text.trim(),
+            checkIn: _checkIn,
+            checkOut: _checkOut,
+            guests: _guests,
+            rooms: _rooms,
+          ),
+        ),
       );
       return;
     }
-    final destination = _destination.text.trim();
-    setState(() {
-      _destinationQuery = destination.toLowerCase();
-      _showDestinationList = false;
-      _searched = true;
-      _selectedDepartureDay = _serviceMode == _HomeServiceMode.exploreKashmir && destination.isNotEmpty
-          ? _travelDate
-          : null;
-      _historyNextMonthOnly = true;
-      _resultsTitle = destination.isEmpty
-          ? (_serviceMode == _HomeServiceMode.localRide
-              ? 'Available local rides'
-              : 'Kashmir tours · next 30 days')
-          : (_serviceMode == _HomeServiceMode.localRide
-              ? 'Local rides to $destination'
-              : 'Kashmir trips to $destination');
-    });
-    _scrollToResults();
-  }
 
-  String _vehicleTypeForRide(LiveTourPackage ride) {
-    final raw = '${ride.vehicle} ${ride.title} ${ride.registrationNumber}'.toLowerCase();
-    if (raw.contains('bike') || raw.contains('motor')) return 'bike';
-    if (raw.contains('rickshaw') || raw.contains('auto')) return 'rickshaw';
-    if (raw.contains('coaster') || raw.contains('coster') || raw.contains('bus') || raw.contains('van')) {
-      return 'coster';
+    if (_tourMode) {
+      await _submitTour();
+      return;
     }
-    return 'car';
+
+    await _openVehicleSelection();
   }
 
-  bool _looksLikeTour(LiveTourPackage ride) {
-    final text = '${ride.title} ${ride.description ?? ''}'.toLowerCase();
-    return ride.returnAt != null ||
-        ride.itinerary.isNotEmpty ||
-        ride.inclusions.isNotEmpty ||
-        text.contains('tour') ||
-        text.contains('trip') ||
-        text.contains('package') ||
-        text.contains('valley') ||
-        text.contains('lake');
-  }
-
-  List<LiveTourPackage> _matchingRides(List<LiveTourPackage> source) {
-    if (!_searched) return const [];
-    final now = DateTime.now();
-    final end = now.add(const Duration(days: 30));
-    final query = _destinationQuery.trim();
-    final day = _selectedDepartureDay;
-    final type = _selectedVehicleType;
-
-    final modeMatches = source.where((ride) {
-      final isTour = _looksLikeTour(ride);
-      return _serviceMode == _HomeServiceMode.exploreKashmir ? isTour : !isTour;
-    }).toList();
-    // Older API records may not yet contain a service type. In that case,
-    // keep the screen useful instead of showing an empty list.
-    final candidates = modeMatches.isEmpty ? source : modeMatches;
-
-    final filtered = candidates.where((ride) {
-      final searchable = '${ride.destination} ${ride.title} ${ride.pickupPoint} ${ride.startingCity}'
-          .toLowerCase();
-      final matchesQuery = query.isEmpty || searchable.contains(query);
-      final matchesDay = day == null || DateUtils.isSameDay(ride.departureAt, day);
-      final matchesType = type == null || _vehicleTypeForRide(ride) == type;
-      final inNextThirtyDays = !ride.departureAt.isBefore(now) && ride.departureAt.isBefore(end);
-      return matchesQuery && matchesDay && matchesType && inNextThirtyDays;
-    }).toList();
-    filtered.sort((a, b) => a.departureAt.compareTo(b.departureAt));
-    return filtered;
-  }
-
-  List<LiveTourPackage> _nextSevenDayRides(List<LiveTourPackage> source) {
-    final now = DateTime.now();
-    final end = now.add(const Duration(days: 7));
-    final rides = source
-        .where((ride) =>
-            !ride.departureAt.isBefore(now) && ride.departureAt.isBefore(end))
-        .toList();
-    rides.sort((a, b) => a.departureAt.compareTo(b.departureAt));
-    return rides;
-  }
-
-  List<LiveTourPackage> _halfBookedRides(List<LiveTourPackage> source) {
-    return _nextSevenDayRides(source).where((ride) {
-      if (ride.totalSeats <= 0) return false;
-      final reserved = ride.totalSeats - ride.bookableSeats;
-      return reserved / ride.totalSeats >= .5;
-    }).toList();
-  }
-
-  List<String> _destinationHistory(List<LiveBooking> bookings) {
-    final sorted = bookings
-        .where((booking) => booking.destinationLabel.trim().isNotEmpty)
-        .toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final seen = <String>{};
-    final results = <String>[];
-    for (final booking in sorted) {
-      final key = booking.destinationLabel.trim().toLowerCase();
-      if (seen.add(key)) {
-        results.add(booking.destinationLabel.trim());
-      }
-      if (results.length >= 8) break;
+  /// Non-tour: hand straight to the existing route/vehicle flow. The
+  /// route-entry step is skipped because Home already collected both ends.
+  Future<void> _openVehicleSelection() async {
+    final destinationPoint = _destinationPoint;
+    if (destinationPoint == null) {
+      _snack('Pick a destination from the suggestions list.');
+      return;
     }
-    return results;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UDriveRouteFlowScreen(
+          serviceType: _busFareMode == _BusFareMode.wholeVehicle &&
+                  _service == HomeService.bus
+              ? UDriveServiceType.privateVehicle
+              : UDriveServiceType.city,
+          pickupLabel: _pickup.text.trim(),
+          pickupPoint: _pickupPoint,
+          initialDestinationLabel: _destination.text.trim(),
+          initialDestinationLatitude: destinationPoint.latitude,
+          initialDestinationLongitude: destinationPoint.longitude,
+          skipRouteEntry: true,
+        ),
+      ),
+    );
   }
 
-  String get _greeting {
-    final hour = DateTime.now().toLocal().hour;
-    if (hour >= 5 && hour < 12) return 'Good morning';
-    if (hour >= 12 && hour < 17) return 'Good afternoon';
-    if (hour >= 17 && hour < 22) return 'Good evening';
-    return 'Good night';
+  /// Tour: create the ride request now, then show nearby drivers on a map so
+  /// the customer can pick whichever price suits them.
+  Future<void> _submitTour() async {
+    final destinationPoint = _destinationPoint;
+    if (destinationPoint == null) {
+      _snack('Pick a destination from the suggestions list.');
+      return;
+    }
+    final offer = int.tryParse(_tourOffer.text.trim());
+    if (offer == null || offer <= 0) {
+      _snack('Enter your fare offer before finding a vehicle.');
+      return;
+    }
+
+    setState(() => _submitting = true);
+    final controller = AppControllerScope.of(context);
+    try {
+      final departure = DateTime(
+        _tourDate.year,
+        _tourDate.month,
+        _tourDate.day,
+        _tourTime.hour,
+        _tourTime.minute,
+      );
+
+      final request = await controller.createLiveRideRequest({
+        'pickupLabel': _pickup.text.trim(),
+        'destinationLabel': _destination.text.trim(),
+        'pickupLatitude': _pickupPoint.latitude,
+        'pickupLongitude': _pickupPoint.longitude,
+        'destinationLatitude': destinationPoint.latitude,
+        'destinationLongitude': destinationPoint.longitude,
+        'pickupAt': departure.toUtc().toIso8601String(),
+        'bookingType': 'WholeVehicle',
+        'seatsRequested': _tourPassengers,
+        'adults': _tourPassengers,
+        'children': 0,
+        'luggageCount': 0,
+        'customerOffer': offer,
+        'vehicleCategory': _service.vehicleCategory ?? 'Car',
+        'partyType': _tourPassengers > 1 ? 'Group' : 'Individual',
+        'familyOnly': false,
+        'womenOnly': false,
+        'instantRide': false,
+        'notes': 'Tour booking • $_tourPassengers passenger(s) • '
+            'advance payment required',
+      });
+
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TourMapScreen(
+            rideRequestId: request.id,
+            pickupLabel: request.pickupLabel,
+            destinationLabel: request.destinationLabel,
+            pickupPoint: _pickupPoint,
+            destinationPoint: destinationPoint,
+            departureAt: departure,
+            passengers: _tourPassengers,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _snack('$error'.replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
-  String _firstName(String value) {
-    final clean = value.trim();
-    return clean.isEmpty ? 'Traveller' : clean.split(RegExp(r'\s+')).first;
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  @override
-  void dispose() {
-    _heroTimer?.cancel();
-    _connectivitySubscription?.cancel();
-    _tripTimer?.cancel();
-    _pickup.dispose();
-    _destination.dispose();
-    _pageController.dispose();
-    _scrollController.dispose();
-    _mapController.dispose();
-    _sheetController.dispose();
-    super.dispose();
+  Future<void> _pickTourDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _tourDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 180)),
+    );
+    if (selected != null && mounted) setState(() => _tourDate = selected);
   }
+
+  Future<void> _pickTourTime() async {
+    final selected =
+        await showTimePicker(context: context, initialTime: _tourTime);
+    if (selected != null && mounted) setState(() => _tourTime = selected);
+  }
+
+  Future<void> _pickHotelDates() async {
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: DateTimeRange(start: _checkIn, end: _checkOut),
+    );
+    if (range != null && mounted) {
+      setState(() {
+        _checkIn = range.start;
+        _checkOut = range.end;
+      });
+    }
+  }
+
+  Future<void> _shareApp() async {
+    await SharePlus.instance.share(
+      ShareParams(
+        text: 'Book rides, tours and hotels across Azad Kashmir with '
+            '${AppConfig.appName}: ${AppConfig.referralShareUrl}',
+        subject: '${AppConfig.appName} — travel across Kashmir',
+      ),
+    );
+  }
+
+  Future<void> _toggleLanguage(AppController controller) async {
+    final next = controller.locale.languageCode == 'ur' ? 'en' : 'ur';
+    await controller.setLanguage(next);
+  }
+
+  // ------------------------------------------------------------------ building
 
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
-    final recentBookings = controller.liveBookings.toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return ColoredBox(
-      color: const Color(0xFF111311),
-      child: Stack(
+
+    return Container(
+      color: AppColors.background,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
-          Positioned.fill(child: _buildMapBackground()),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: .36),
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: .18),
-                    ],
-                    stops: const [0, .42, 1],
-                  ),
+          _buildMapBand(controller),
+          Transform.translate(
+            offset: const Offset(0, -24),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildBookingCard(),
                 ),
-              ),
-            ),
-          ),
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Row(
-                children: [
-                  _MapActionButton(
-                    icon: Icons.menu_rounded,
-                    onTap: () => Scaffold.of(context).openDrawer(),
+                if (_offline)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _OfflineNotice(),
                   ),
-                  const Spacer(),
-                  if (_activeTrip != null) ...[
-                    _MapActionButton(
-                      icon: Icons.route_rounded,
-                      onTap: _openActiveTrip,
-                      showDot: true,
+                if (_activeTrip != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _ActiveTripBanner(
+                      trip: _activeTrip!,
+                      onTrack: _openActiveTrip,
                     ),
-                    const SizedBox(width: 8),
-                  ],
-                  _CompactSosButton(onTap: () => CustomerSosSheet.show(context)),
-                  const SizedBox(width: 8),
-                  _MapActionButton(
-                    icon: Icons.notifications_none_rounded,
-                    onTap: () => widget.onNavigate('notifications'),
                   ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            top: 92,
-            left: 16,
-            right: 16,
-            child: _PickupMapCard(
-              address: _pickup.text,
-              locating: _locating,
-              onTap: _loadLocation,
-            ),
-          ),
-          if (_offline)
-            const Positioned(
-              top: 158,
-              left: 16,
-              right: 16,
-              child: _OfflineMapPill(),
-            ),
-          DraggableScrollableSheet(
-            controller: _sheetController,
-            initialChildSize: _kSheetInitial,
-            minChildSize: .48,
-            maxChildSize: _kSheetExpanded,
-            snap: true,
-            snapSizes: const [_kSheetInitial, _kSheetExpanded],
-            builder: (context, sheetController) {
-              return Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFA181A18),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-                  boxShadow: [
-                    BoxShadow(color: Color(0x66000000), blurRadius: 30, offset: Offset(0, -8)),
-                  ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: _InviteRow(onShare: _shareApp),
                 ),
-                child: ListView(
-                  controller: sheetController,
-                  padding: const EdgeInsets.fromLTRB(16, 9, 16, 32),
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 46,
-                        height: 4,
-                        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99)),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _UDriveServicesGrid(
-                      onCity: () => _openRouteFlow(UDriveServiceType.city),
-                      onTours: () => _openRouteFlow(UDriveServiceType.tours),
-                      onPrivate: () => _openRouteFlow(UDriveServiceType.privateVehicle),
-                      onHotels: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HotelListScreen())),
-                      onEmergency: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => EmergencyAmbulanceScreen(
-                            pickupLabel: _pickup.text.trim(),
-                            latitude: _currentPoint.latitude,
-                            longitude: _currentPoint.longitude,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Material(color: const Color(0xFF252A27),borderRadius: BorderRadius.circular(15),child:InkWell(borderRadius:BorderRadius.circular(15),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const LiveExploreScreen())),child:const Padding(padding:EdgeInsets.symmetric(horizontal:13,vertical:10),child:Row(children:[Icon(Icons.landscape_rounded,color:Color(0xFFB7F20A),size:20),SizedBox(width:9),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Explore Kashmir',style:TextStyle(color:Colors.white,fontSize:12,fontWeight:FontWeight.w900)),Text('Destinations, hotels and complete trip plans',style:TextStyle(color:Colors.white60,fontSize:8.5))])),Icon(Icons.chevron_right_rounded,color:Colors.white70,size:19)])))),
-                    const SizedBox(height: 14),
-                    Material(
-                      color: const Color(0xFF303330),
-                      borderRadius: BorderRadius.circular(18),
-                      child: InkWell(
-                        onTap: () => _openRouteFlow(UDriveServiceType.city),
-                        borderRadius: BorderRadius.circular(18),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 18, vertical: 17),
-                          child: Row(
-                            children: [
-                              Icon(Icons.search_rounded, color: Colors.white, size: 30),
-                              SizedBox(width: 14),
-                              Expanded(child: Text('Where to?', style: TextStyle(color: Colors.white70, fontSize: 19, fontWeight: FontWeight.w800))),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 2),
-                      child: Text('Recent bookings', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
-                    ),
-                    const SizedBox(height: 4),
-                    if (recentBookings.isEmpty)
-                      const _EmptyRecentBookings()
-                    else
-                      ...recentBookings.take(2).map((booking) => _RecentBookingTile(
-                            booking: booking,
-                            onTap: () => _openRecentBooking(booking),
-                          )),
-                  ],
-                ),
-              );
-            },
+                const SizedBox(height: 26),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildMapBand(AppController controller) {
+    final topInset = MediaQuery.paddingOf(context).top;
 
-  Future<void> _openRecentBooking(LiveBooking booking) async {
-    final label = booking.destinationLabel.trim();
-    if (label.isEmpty) return;
-    try {
-      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
-        'q': '$label, Pakistan',
-        'format': 'jsonv2',
-        'limit': '1',
-        'countrycodes': 'pk',
-      });
-      final response = await http.get(uri, headers: const {
-        'User-Agent': 'UDrive-Mobile/1.0',
-        'Accept-Language': 'en',
-      }).timeout(const Duration(seconds: 10));
-      if (!mounted) return;
-      double lat = _currentPoint.latitude;
-      double lng = _currentPoint.longitude;
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final raw = jsonDecode(response.body);
-        if (raw is List && raw.isNotEmpty && raw.first is Map) {
-          final first = Map<String, dynamic>.from(raw.first as Map);
-          lat = double.tryParse('${first['lat']}') ?? lat;
-          lng = double.tryParse('${first['lon']}') ?? lng;
-        }
-      }
-      final isTour = booking.tourPackageId != null || booking.packageBookingId != null;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => UDriveRouteFlowScreen(
-            serviceType: isTour ? UDriveServiceType.tours : UDriveServiceType.city,
-            pickupLabel: _pickup.text.trim().isEmpty ? booking.pickupLabel : _pickup.text.trim(),
-            pickupPoint: _currentPoint,
-            initialDestinationLabel: label,
-            initialDestinationLatitude: lat,
-            initialDestinationLongitude: lng,
-            skipRouteEntry: true,
+    return SizedBox(
+      height: 280 + topInset,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          UdMap(
+            controller: _mapController,
+            initialCenter: _pickupPoint,
+            routeOrigin: _pickupPoint,
+            routeDestination: _destinationPoint ?? _pickupPoint,
+            markers: [
+              UdMarker(id: 'pickup', position: _pickupPoint, label: 'Pickup'),
+              if (_destinationPoint != null)
+                UdMarker(
+                  id: 'destination',
+                  position: _destinationPoint!,
+                  label: _destination.text.trim(),
+                  hue: UdMarkerHue.navy,
+                ),
+            ],
           ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This booking destination could not be opened right now.')),
-      );
-    }
-  }
-
-  Future<void> _openRouteFlow(UDriveServiceType type) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UDriveRouteFlowScreen(
-          serviceType: type,
-          pickupLabel: _pickup.text.trim().isEmpty ? 'Current location' : _pickup.text.trim(),
-          pickupPoint: _currentPoint,
-        ),
+          Positioned(
+            top: topInset + 14,
+            left: 14,
+            right: 14,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Flexible(
+                  child: _LocationControl(
+                    expanded: _locationExpanded,
+                    placeName: _resolvedPlaceName,
+                    onTap: () =>
+                        setState(() => _locationExpanded = !_locationExpanded),
+                  ),
+                ),
+                const Spacer(),
+                _MapIconButton(
+                  icon: Icons.translate_rounded,
+                  semanticLabel: 'Switch language',
+                  onTap: () => _toggleLanguage(controller),
+                ),
+                const SizedBox(width: 7),
+                _MapIconButton(
+                  icon: Icons.swap_horiz_rounded,
+                  semanticLabel: 'Switch to driver mode',
+                  onTap: () => controller.switchMode(UserMode.driver),
+                ),
+                const SizedBox(width: 7),
+                _MapIconButton(
+                  icon: Icons.notifications_none_rounded,
+                  semanticLabel: 'Notifications',
+                  showDot: true,
+                  onTap: () => widget.onNavigate('notifications'),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            right: 14,
+            bottom: 38,
+            child: _LocateMeButton(busy: _locating, onTap: _loadLocation),
+          ),
+        ],
       ),
     );
   }
 
-  void _switchMode(_HomeServiceMode mode) {
-    _destination.clear();
-    setState(() {
-      _serviceMode = mode;
-      _destinationQuery = '';
-      _searched = true;
-      _selectedDepartureDay = null;
-      _historyNextMonthOnly = true;
-      _resultsTitle = mode == _HomeServiceMode.localRide
-          ? 'Available local rides'
-          : 'Kashmir tours · next 30 days';
-      _showDestinationList = false;
-    });
+  Widget _buildBookingCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AppRadii.all(AppRadii.panel),
+        boxShadow: AppShadows.panel,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ServiceSelector(
+            selected: _service,
+            onChanged: (service) {
+              FocusScope.of(context).unfocus();
+              setState(() {
+                _service = service;
+                if (service == HomeService.hotel) _tourMode = false;
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 14),
+          AnimatedSize(
+            duration: AppConfig.panelSwitch,
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: AnimatedSwitcher(
+              duration: AppConfig.panelSwitch,
+              child: _service == HomeService.hotel
+                  ? _buildHotelPanel()
+                  : _buildVehiclePanel(),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _PrimaryCta(
+            label: _ctaLabel,
+            enabled: _ctaEnabled,
+            busy: _submitting,
+            onTap: _submit,
+          ),
+        ],
+      ),
+    );
   }
 
-  Widget _buildMapBackground() {
-    return FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-        initialCenter: _currentPoint,
-        initialZoom: 14.8,
-        interactionOptions: const InteractionOptions(
-          flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
-        ),
-      ),
+  Widget _buildVehiclePanel() {
+    return Column(
+      key: const ValueKey('vehicle-panel'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.udrive.mobile',
+        RouteFields(
+          pickupController: _pickup,
+          destinationController: _destination,
+          pickupFocus: _pickupFocus,
+          destinationFocus: _destinationFocus,
+          activeField: _activeField,
+          suggestions: _suggestions,
+          searching: _searching,
+          onPickupChanged: (value) =>
+              _onRouteQueryChanged(RouteFieldKind.pickup, value),
+          onDestinationChanged: (value) =>
+              _onRouteQueryChanged(RouteFieldKind.destination, value),
+          onSuggestionSelected: _onSuggestionSelected,
         ),
-        MarkerLayer(
-          markers: [
-            Marker(
-              point: _currentPoint,
-              width: 116,
-              height: 92,
-              alignment: Alignment.bottomCenter,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF202220),
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 10)],
-                    ),
-                    child: const Text(
-                      'PICKUP POINT',
-                      style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  const Icon(Icons.location_pin, color: _lime, size: 50),
-                ],
-              ),
-            ),
-          ],
+        const SizedBox(height: 12),
+        _TourToggleRow(
+          value: _tourMode,
+          onChanged: (value) => setState(() => _tourMode = value),
         ),
-        RichAttributionWidget(
-          attributions: const [TextSourceAttribution('OpenStreetMap contributors')],
+        AnimatedSize(
+          duration: AppConfig.panelSwitch,
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: _tourMode ? _buildTourPanel() : _buildStandardOptions(),
         ),
       ],
     );
   }
 
-}
+  Widget _buildTourPanel() {
+    final dateLabel = DateFormat('EEE, d MMM yyyy').format(_tourDate);
+    final timeLabel = _tourTime.format(context);
 
-class _MapActionButton extends StatelessWidget {
-  const _MapActionButton({required this.icon, required this.onTap, this.showDot = false});
-
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool showDot;
-
-  @override
-  Widget build(BuildContext context) => Material(
-        color: const Color(0xE8202220),
-        shape: const CircleBorder(),
-        elevation: 8,
-        shadowColor: Colors.black45,
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: SizedBox(
-            width: 48,
-            height: 48,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(icon, color: Colors.white, size: 25),
-                if (showDot)
-                  const Positioned(
-                    right: 8,
-                    top: 8,
-                    child: CircleAvatar(radius: 4, backgroundColor: _CustomerHomeScreenState._lime),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      );
-}
-
-class _CompactSosButton extends StatelessWidget {
-  const _CompactSosButton({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Material(
-        color: const Color(0xFFD92D20),
-        borderRadius: BorderRadius.circular(24),
-        elevation: 8,
-        shadowColor: Colors.black45,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(24),
-          child: const SizedBox(
-            height: 48,
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 14),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.sos_rounded, color: Colors.white, size: 22),
-                  SizedBox(width: 5),
-                  Text('SOS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-                ],
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _TapField(
+                  caption: 'Departure date',
+                  value: dateLabel,
+                  icon: Icons.calendar_today_rounded,
+                  onTap: _pickTourDate,
+                ),
               ),
-            ),
+              const SizedBox(width: 9),
+              SizedBox(
+                width: 116,
+                child: _TapField(
+                  caption: 'Time',
+                  value: timeLabel,
+                  icon: Icons.schedule_rounded,
+                  onTap: _pickTourTime,
+                ),
+              ),
+            ],
           ),
-        ),
-      );
-}
+          const SizedBox(height: 9),
+          UdStepper(
+            label: 'Passengers',
+            value: _tourPassengers,
+            min: 1,
+            max: 40,
+            onChanged: (value) => setState(() => _tourPassengers = value),
+          ),
+          const SizedBox(height: 9),
+          _MoneyField(
+            caption: 'Your offer',
+            controller: _tourOffer,
+            hint: 'e.g. 12000',
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 9),
+          const _AdvanceDisclosure(),
+        ],
+      ),
+    );
+  }
 
-class _PickupMapCard extends StatelessWidget {
-  const _PickupMapCard({required this.address, required this.locating, required this.onTap});
-  final String address;
-  final bool locating;
-  final VoidCallback onTap;
+  Widget _buildStandardOptions() {
+    if (_service == HomeService.bike) return const SizedBox.shrink();
 
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Material(
-          color: const Color(0xEE202220),
-          borderRadius: BorderRadius.circular(16),
-          elevation: 8,
-          shadowColor: Colors.black45,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-                child: Row(
-                  children: [
-                    const Icon(Icons.my_location_rounded, color: _CustomerHomeScreenState._lime, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('Pickup point', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w700)),
-                          Text(
-                            address,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
-                          ),
-                        ],
-                      ),
-                    ),
-                    locating
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.chevron_right_rounded, color: Colors.white70),
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: _service == HomeService.bus
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                UdSegmented<_BusFareMode>(
+                  value: _busFareMode,
+                  options: const [
+                    (value: _BusFareMode.perSeat, label: 'Per seat'),
+                    (value: _BusFareMode.wholeVehicle, label: 'Full vehicle'),
                   ],
+                  onChanged: (value) => setState(() => _busFareMode = value),
                 ),
+                if (_busFareMode == _BusFareMode.perSeat) ...[
+                  const SizedBox(height: 9),
+                  UdStepper(
+                    label: 'Seats',
+                    value: _seats,
+                    min: 1,
+                    max: 40,
+                    onChanged: (value) => setState(() => _seats = value),
+                  ),
+                ],
+              ],
+            )
+          : UdStepper(
+              label: 'Passengers',
+              value: _passengers,
+              min: 1,
+              max: 7,
+              onChanged: (value) => setState(() => _passengers = value),
+            ),
+    );
+  }
+
+  Widget _buildHotelPanel() {
+    final nights = _checkOut.difference(_checkIn).inDays;
+    final format = DateFormat('d MMM');
+
+    return Column(
+      key: const ValueKey('hotel-panel'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PlainField(
+          caption: 'City',
+          controller: _hotelCity,
+          hint: 'Muzaffarabad, Rawalakot, Neelum…',
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 9),
+        _TapField(
+          caption: 'Check-in — Check-out',
+          value: '${format.format(_checkIn)} — ${format.format(_checkOut)}'
+              '${nights > 0 ? '  ·  $nights night${nights == 1 ? '' : 's'}' : ''}',
+          icon: Icons.date_range_rounded,
+          onTap: _pickHotelDates,
+        ),
+        const SizedBox(height: 9),
+        Row(
+          children: [
+            Expanded(
+              child: UdStepper(
+                label: 'Guests',
+                value: _guests,
+                min: 1,
+                max: 20,
+                onChanged: (value) => setState(() => _guests = value),
               ),
             ),
-          ),
-        ),
-      );
-}
-
-class _OfflineMapPill extends StatelessWidget {
-  const _OfflineMapPill();
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF79009),
-            borderRadius: BorderRadius.circular(99),
-            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
-          ),
-          child: const Text(
-            'Offline mode · confirmation will need SMS',
-            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900),
-          ),
-        ),
-      );
-}
-
-class _SmallModePill extends StatelessWidget {
-  const _SmallModePill({required this.selected, required this.icon, required this.label, required this.onTap});
-  final bool selected;
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Material(
-        color: selected ? _CustomerHomeScreenState._lime : const Color(0xFF343734),
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 16, color: selected ? _CustomerHomeScreenState._ink : Colors.white70),
-                const SizedBox(width: 5),
-                Text(label, style: TextStyle(color: selected ? _CustomerHomeScreenState._ink : Colors.white70, fontSize: 11, fontWeight: FontWeight.w900)),
-              ],
+            const SizedBox(width: 9),
+            Expanded(
+              child: UdStepper(
+                label: 'Rooms',
+                value: _rooms,
+                min: 1,
+                max: 10,
+                onChanged: (value) => setState(() => _rooms = value),
+              ),
             ),
-          ),
+          ],
         ),
-      );
+      ],
+    );
+  }
 }
 
-class _InDriveSearchField extends StatelessWidget {
-  const _InDriveSearchField({
-    required this.controller,
-    required this.icon,
-    required this.iconColor,
-    required this.hint,
-    this.suffix,
-    this.onTap,
-    this.onChanged,
+// ----------------------------------------------------------------- map chrome
+
+/// Collapsed: a plain 30x30 navy square with the green U mark, no card.
+/// Expanded: animates open left-to-right into a translucent white pill.
+class _LocationControl extends StatelessWidget {
+  const _LocationControl({
+    required this.expanded,
+    required this.placeName,
+    required this.onTap,
   });
 
-  final TextEditingController controller;
-  final IconData icon;
-  final Color iconColor;
-  final String hint;
-  final Widget? suffix;
-  final VoidCallback? onTap;
-  final ValueChanged<String>? onChanged;
-
-  @override
-  Widget build(BuildContext context) => TextField(
-        controller: controller,
-        onTap: onTap,
-        onChanged: onChanged,
-        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w600),
-          prefixIcon: Icon(icon, color: iconColor, size: 21),
-          suffixIcon: suffix,
-          filled: true,
-          fillColor: const Color(0xFF343734),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: _CustomerHomeScreenState._lime, width: 1.5),
-          ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 17),
-        ),
-      );
-}
-
-class _TourDateTile extends StatelessWidget {
-  const _TourDateTile({required this.date, required this.onTap});
-  final DateTime date;
+  final bool expanded;
+  final String placeName;
   final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Material(
-        color: const Color(0xFF343734),
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            child: Row(
-              children: [
-                const Icon(Icons.calendar_month_rounded, color: _CustomerHomeScreenState._lime),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text('Travel date', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700)),
-                ),
-                Text(
-                  DateFormat('dd MMM yyyy').format(date),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(width: 4),
-                const Icon(Icons.chevron_right_rounded, color: Colors.white54),
-              ],
-            ),
-          ),
-        ),
-      );
-}
-
-class _HeroDestination {
-  const _HeroDestination({
-    required this.name,
-    required this.district,
-    required this.summary,
-    required this.imageUrl,
-  });
-
-  final String name;
-  final String district;
-  final String summary;
-  final String imageUrl;
-}
-
-const _fallbackDestinations = <_HeroDestination>[
-  _HeroDestination(
-    name: 'Neelum Valley',
-    district: 'Azad Kashmir',
-    summary: 'Mountains, rivers and unforgettable journeys',
-    imageUrl:
-        'https://images.unsplash.com/photo-1595815771614-ade9d652a65d?auto=format&fit=crop&w=1400&q=85',
-  ),
-  _HeroDestination(
-    name: 'Gulmarg',
-    district: 'Kashmir',
-    summary: 'Snow, gondolas and alpine adventure',
-    imageUrl:
-        'https://images.unsplash.com/photo-1598091383021-15ddea10925d?auto=format&fit=crop&w=1400&q=85',
-  ),
-  _HeroDestination(
-    name: 'Dal Lake',
-    district: 'Srinagar',
-    summary: 'Shikara rides and beautiful houseboats',
-    imageUrl:
-        'https://images.unsplash.com/photo-1621232082074-1a7750ecc557?auto=format&fit=crop&w=1400&q=85',
-  ),
-];
-
-class _HeroSlider extends StatelessWidget {
-  const _HeroSlider({
-    required this.items,
-    required this.loading,
-    required this.controller,
-    required this.onChanged,
-  });
-
-  final List<_HeroDestination> items;
-  final bool loading;
-  final PageController controller;
-  final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    if (loading || items.isEmpty) {
-      return const ColoredBox(
-        color: Color(0xFFEAF0F2),
-        child: Center(child: CircularProgressIndicator(color: Color(0xFF8ED12B))),
-      );
-    }
-    return PageView.builder(
-      controller: controller,
-      itemCount: items.length,
-      onPageChanged: onChanged,
-      itemBuilder: (_, index) => Image.network(
-        items[index].imageUrl,
-        fit: BoxFit.cover,
-        alignment: Alignment.center,
-        errorBuilder: (_, __, ___) => const ColoredBox(
-          color: Color(0xFFDCE6E9),
-          child: Center(
-            child: Icon(Icons.landscape_rounded, color: Colors.white, size: 70),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-
-class _TopSosButton extends StatelessWidget {
-  const _TopSosButton({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Ink(
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 13),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE53935),
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: const [BoxShadow(color: Color(0x55E53935), blurRadius: 12)],
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.sos_rounded, color: Colors.white, size: 20),
-                SizedBox(width: 5),
-                Text('SOS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-              ],
-            ),
-          ),
-        ),
-      );
-}
-
-class _CompactModeSelector extends StatelessWidget {
-  const _CompactModeSelector({required this.mode, required this.onChanged});
-  final _HomeServiceMode mode;
-  final ValueChanged<_HomeServiceMode> onChanged;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: const Color(0xDD202322),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white24),
-        ),
+    return Semantics(
+      button: true,
+      label: 'Current location: $placeName',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _item(_HomeServiceMode.localRide, Icons.directions_bus_rounded, 'Local'),
-            _item(_HomeServiceMode.exploreKashmir, Icons.landscape_rounded, 'Tours'),
-          ],
-        ),
-      );
-
-  Widget _item(_HomeServiceMode value, IconData icon, String label) {
-    final selected = mode == value;
-    return InkWell(
-      onTap: () => onChanged(value),
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected ? _CustomerHomeScreenState._lime : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 17, color: selected ? _CustomerHomeScreenState._ink : Colors.white70),
-            const SizedBox(width: 6),
-            Text(label, style: TextStyle(color: selected ? _CustomerHomeScreenState._ink : Colors.white70, fontWeight: FontWeight.w900, fontSize: 12)),
+            Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.navy,
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Text(
+                'U',
+                style: TextStyle(
+                  color: AppColors.secondary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ),
+            AnimatedSize(
+              duration: AppConfig.pillExpand,
+              curve: Curves.easeOut,
+              child: expanded
+                  ? Padding(
+                      padding: const EdgeInsets.only(left: 7),
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 140),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .95),
+                          borderRadius: BorderRadius.circular(11),
+                          boxShadow: AppShadows.floating,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Current location',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: AppText.secondary,
+                              ),
+                            ),
+                            Text(
+                              placeName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: AppText.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ],
         ),
       ),
@@ -1246,1257 +960,420 @@ class _CompactModeSelector extends StatelessWidget {
   }
 }
 
-class _CircleButton extends StatelessWidget {
-  const _CircleButton({
+class _MapIconButton extends StatelessWidget {
+  const _MapIconButton({
     required this.icon,
+    required this.semanticLabel,
     required this.onTap,
     this.showDot = false,
   });
 
   final IconData icon;
+  final String semanticLabel;
   final VoidCallback onTap;
   final bool showDot;
 
   @override
-  Widget build(BuildContext context) => Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: Ink(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .94),
-              shape: BoxShape.circle,
-              boxShadow: const [
-                BoxShadow(color: Colors.black26, blurRadius: 12),
-              ],
-            ),
-            child: Stack(
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 33,
+              height: 33,
               alignment: Alignment.center,
-              children: [
-                Icon(icon, color: _CustomerHomeScreenState._ink, size: 21),
-                if (showDot)
-                  const Positioned(
-                    right: 6,
-                    top: 6,
-                    child: CircleAvatar(
-                      radius: 4,
-                      backgroundColor: _CustomerHomeScreenState._lime,
-                    ),
-                  ),
-              ],
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: .97),
+                borderRadius: BorderRadius.circular(11),
+                boxShadow: AppShadows.floating,
+              ),
+              child: Icon(icon, size: 17, color: AppColors.navy),
             ),
-          ),
+            if (showDot)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: const BoxDecoration(
+                    color: AppColors.danger,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 }
 
-class _VehicleTypeToggle extends StatelessWidget {
-  const _VehicleTypeToggle({required this.expanded, required this.onTap});
+class _LocateMeButton extends StatelessWidget {
+  const _LocateMeButton({required this.busy, required this.onTap});
 
-  final bool expanded;
+  final bool busy;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Ink(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .94),
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: const [
-                BoxShadow(color: Color(0x18000000), blurRadius: 10),
-              ],
-            ),
-            child: Icon(
-              expanded ? Icons.close_rounded : Icons.commute_rounded,
-              size: 20,
-              color: _CustomerHomeScreenState._ink,
-            ),
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Locate me',
+      child: GestureDetector(
+        onTap: busy ? null : onTap,
+        child: Container(
+          width: 42,
+          height: 42,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: AppShadows.floating,
           ),
+          child: busy
+              ? const SizedBox(
+                  width: 17,
+                  height: 17,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.explore_outlined,
+                  size: 21, color: AppColors.navy),
         ),
-      );
+      ),
+    );
+  }
 }
 
-class _VehicleTypePanel extends StatelessWidget {
-  const _VehicleTypePanel({
-    required this.onSelected,
-    this.highlighted = false,
-  });
+// --------------------------------------------------------------- card pieces
 
-  final ValueChanged<String> onSelected;
-  final bool highlighted;
+class _TourToggleRow extends StatelessWidget {
+  const _TourToggleRow({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    const items = <({String key, IconData icon, String label})>[
-      (key: 'car', icon: Icons.directions_car_filled_rounded, label: 'Car'),
-      (key: 'bike', icon: Icons.two_wheeler_rounded, label: 'Bike'),
-      (key: 'rickshaw', icon: Icons.electric_rickshaw_rounded, label: 'Rickshaw'),
-      (key: 'coster', icon: Icons.airport_shuttle_rounded, label: 'Coster'),
-    ];
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+      padding: const EdgeInsets.fromLTRB(12, 2, 6, 2),
       decoration: BoxDecoration(
-        color: highlighted
-            ? _CustomerHomeScreenState._lime.withValues(alpha: .90)
-            : Colors.white.withValues(alpha: .94),
-        borderRadius: BorderRadius.circular(17),
-        border: Border.all(
-          color: highlighted
-              ? Colors.white.withValues(alpha: .55)
-              : const Color(0xFFE5EAEC),
-        ),
+        color: AppColors.background,
+        borderRadius: AppRadii.all(AppRadii.field),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        mainAxisSize: MainAxisSize.max,
         children: [
-          for (var i = 0; i < items.length; i++) ...[
-            InkWell(
-              onTap: () => onSelected(items[i].key),
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      items[i].icon,
-                      size: 16,
-                      color: highlighted ? Colors.white : _CustomerHomeScreenState._ink,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      items[i].label,
-                      style: TextStyle(
-                        color: highlighted ? Colors.white : _CustomerHomeScreenState._ink,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
+          const Icon(Icons.card_giftcard_rounded,
+              size: 18, color: AppColors.navy),
+          const SizedBox(width: 9),
+          const Expanded(
+            child: Text(
+              'Tour booking',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: AppText.primary,
               ),
             ),
-            if (i != items.length - 1)
-              Container(
-                width: 1,
-                height: 22,
-                color: highlighted ? Colors.white38 : const Color(0xFFE5EAEC),
-              ),
-          ],
+          ),
+          UdToggleSwitch(
+            value: value,
+            onChanged: onChanged,
+            semanticLabel: 'Tour booking',
+          ),
         ],
       ),
     );
   }
 }
 
-class _UpcomingDestinations extends StatelessWidget {
-  const _UpcomingDestinations({required this.rides, required this.onSelected});
-
-  final List<LiveTourPackage> rides;
-  final ValueChanged<LiveTourPackage> onSelected;
-
-  String _typeLabel(LiveTourPackage ride) {
-    final raw = '${ride.vehicle} ${ride.title}'.toLowerCase();
-    if (raw.contains('bike') || raw.contains('motor')) return 'Bike';
-    if (raw.contains('rickshaw') || raw.contains('auto')) return 'Rickshaw';
-    if (raw.contains('coaster') || raw.contains('coster') || raw.contains('bus')) {
-      return 'Coster';
-    }
-    return ride.vehicle.trim().isEmpty ? 'Car' : ride.vehicle.trim();
-  }
+class _AdvanceDisclosure extends StatelessWidget {
+  const _AdvanceDisclosure();
 
   @override
   Widget build(BuildContext context) {
-    final items = rides.take(8).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Vehicles departing in next 7 days',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            shadows: [Shadow(color: Colors.black45, blurRadius: 6)],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTint.success,
+        borderRadius: AppRadii.all(AppRadii.field),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.lock_outline_rounded, size: 15, color: AppTint.successText),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Tour bookings require an advance payment, held securely by '
+              'UDrive and released to your driver on arrival.',
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+                color: AppTint.successText,
+              ),
+            ),
           ),
-        ),
-        const SizedBox(height: 7),
-        SizedBox(
-          height: 78,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (_, index) {
-              final ride = items[index];
-              return Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => onSelected(ride),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Ink(
-                    width: 154,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: .80),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withValues(alpha: .70)),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black12, blurRadius: 8),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.directions_car_filled_rounded,
-                              size: 15,
-                              color: Color(0xFF5C9417),
-                            ),
-                            const SizedBox(width: 5),
-                            Expanded(
-                              child: Text(
-                                ride.destination,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: _CustomerHomeScreenState._ink,
-                                  fontSize: 10.8,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          DateFormat('EEE, dd MMM').format(ride.departureAt),
-                          style: const TextStyle(
-                            color: _CustomerHomeScreenState._muted,
-                            fontSize: 8.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _typeLabel(ride),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: _CustomerHomeScreenState._ink,
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            const Icon(Icons.event_seat_rounded, size: 11, color: Color(0xFF5C9417)),
-                            Text(
-                              ' ${ride.bookableSeats}',
-                              style: const TextStyle(
-                                fontSize: 8.5,
-                                fontWeight: FontWeight.w800,
-                                color: _CustomerHomeScreenState._ink,
-                              ),
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              'PKR ${ride.pricePerSeat.toStringAsFixed(0)}',
-                              style: const TextStyle(
-                                color: Color(0xFF4F8214),
-                                fontSize: 8.5,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-class _HalfBookedStrip extends StatelessWidget {
-  const _HalfBookedStrip({required this.rides, required this.onSelected});
-
-  final List<LiveTourPackage> rides;
-  final ValueChanged<LiveTourPackage> onSelected;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        height: 32,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: rides.take(5).length,
-          separatorBuilder: (_, __) => const SizedBox(width: 6),
-          itemBuilder: (_, index) {
-            final ride = rides[index];
-            final reserved = ride.totalSeats - ride.bookableSeats;
-            final percentage = ride.totalSeats <= 0
-                ? 0
-                : ((reserved / ride.totalSeats) * 100).round();
-            return ActionChip(
-              onPressed: () => onSelected(ride),
-              avatar: const Icon(
-                Icons.local_fire_department_rounded,
-                size: 14,
-                color: Color(0xFFE87427),
-              ),
-              label: Text(
-                '${ride.destination} $percentage% booked',
-                style: const TextStyle(
-                  color: _CustomerHomeScreenState._ink,
-                  fontSize: 8.6,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 5),
-              backgroundColor: Colors.white.withValues(alpha: .94),
-              side: BorderSide.none,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              visualDensity: VisualDensity.compact,
-            );
-          },
-        ),
-      );
-}
-
-class _LocationInput extends StatelessWidget {
-  const _LocationInput({
+class _PlainField extends StatelessWidget {
+  const _PlainField({
+    required this.caption,
     required this.controller,
-    required this.label,
-    required this.icon,
-    required this.accent,
     required this.hint,
-    required this.fillColor,
-    this.readOnly = false,
-    this.onTap,
     this.onChanged,
-    this.suffix,
   });
 
+  final String caption;
   final TextEditingController controller;
-  final String label;
-  final IconData icon;
-  final Color accent;
   final String hint;
-  final Color fillColor;
-  final bool readOnly;
-  final VoidCallback? onTap;
   final ValueChanged<String>? onChanged;
-  final Widget? suffix;
 
   @override
   Widget build(BuildContext context) {
-    final dark = fillColor.computeLuminance() < .35;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 17),
-          child: Icon(icon, color: accent, size: 19),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: TextField(
-            controller: controller,
-            readOnly: readOnly,
-            onTap: onTap,
-            onChanged: onChanged,
-            style: TextStyle(
-              color: dark ? Colors.white : _CustomerHomeScreenState._ink,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: fillColor,
-              isDense: true,
-              contentPadding: const EdgeInsets.fromLTRB(14, 15, 8, 15),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: dark ? Colors.white24 : const Color(0xFFE5ECEF),
-                ),
-              ),
-              labelText: label,
-              labelStyle: TextStyle(
-                color: accent,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w900,
-              ),
-              hintText: hint,
-              hintStyle: TextStyle(
-                color: dark ? Colors.white54 : const Color(0xFF9AA7AD),
-                fontSize: 11.5,
-              ),
-              suffixIcon: suffix,
-              suffixIconConstraints: const BoxConstraints(minWidth: 36),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DestinationDropdown extends StatelessWidget {
-  const _DestinationDropdown({required this.items, required this.onSelected});
-
-  final List<_HeroDestination> items;
-  final ValueChanged<_HeroDestination> onSelected;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(top: 8),
-        constraints: const BoxConstraints(maxHeight: 190),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF4F7F8),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: const Color(0xFFE1E8EA)),
-        ),
-        child: ListView.separated(
-          shrinkWrap: true,
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          itemCount: items.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (_, index) {
-            final item = items[index];
-            return ListTile(
-              dense: true,
-              onTap: () => onSelected(item),
-              leading: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  item.imageUrl,
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: Icon(Icons.landscape_rounded),
-                  ),
-                ),
-              ),
-              title: Text(
-                item.name,
-                style: const TextStyle(
-                  color: _CustomerHomeScreenState._ink,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              subtitle: Text(
-                item.district,
-                style: const TextStyle(
-                  color: _CustomerHomeScreenState._muted,
-                  fontSize: 9.5,
-                ),
-              ),
-              trailing: const Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFF6FAE20),
-                size: 19,
-              ),
-            );
-          },
-        ),
-      );
-}
-
-class _DestinationHistoryStrip extends StatelessWidget {
-  const _DestinationHistoryStrip({
-    required this.items,
-    required this.onSelected,
-    this.darkText = false,
-  });
-
-  final List<String> items;
-  final ValueChanged<String> onSelected;
-  final bool darkText;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        height: 35,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: items.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 6),
-          itemBuilder: (_, index) => ActionChip(
-            onPressed: () => onSelected(items[index]),
-            label: Text(
-              items[index],
-              style: const TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w800,
-                color: _CustomerHomeScreenState._ink,
-              ),
-            ),
-            avatar: const Icon(
-              Icons.history_rounded,
-              size: 15,
-              color: Color(0xFF739F18),
-            ),
-            backgroundColor: Colors.white.withValues(alpha: .92),
-            side: BorderSide.none,
-            visualDensity: VisualDensity.compact,
-          ),
-        ),
-      );
-}
-
-class _RideCard extends StatelessWidget {
-  const _RideCard({
-    required this.ride,
-    required this.onTap,
-    required this.onWholeVehicle,
-  });
-
-  final LiveTourPackage ride;
-  final VoidCallback onTap;
-  final VoidCallback onWholeVehicle;
-
-  String get _vehicleAsset {
-    final raw = '${ride.vehicle} ${ride.title}'.toLowerCase();
-    if (raw.contains('bike') || raw.contains('motor')) {
-      return 'assets/vehicles_photo/bike_photo.png';
-    }
-    if (raw.contains('rickshaw') || raw.contains('auto')) {
-      return 'assets/vehicles_photo/rickshaw_photo.png';
-    }
-    if (raw.contains('coaster') || raw.contains('coster') || raw.contains('bus')) {
-      return 'assets/vehicles_photo/coaster_photo.png';
-    }
-    if (raw.contains('van')) return 'assets/vehicles_photo/coaster_photo.png';
-    if (raw.contains('suv') || raw.contains('prado') || raw.contains('fortuner')) {
-      return 'assets/vehicles_photo/private_car_clean.png';
-    }
-    return 'assets/vehicles_photo/car_clean.png';
-  }
-
-  Widget _vehicleImage() {
-    final url = ride.coverImageUrl;
-    if (url != null && url.trim().isNotEmpty) {
-      return Image.network(
-        url,
-        fit: BoxFit.contain,
-        cacheWidth: 300,
-        filterQuality: FilterQuality.medium,
-        errorBuilder: (_, __, ___) => Image.asset(
-          _vehicleAsset,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
-        ),
-      );
-    }
-    return Image.asset(
-      _vehicleAsset,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) => RepaintBoundary(
-        child: Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE2E9EB)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x10000000),
-                blurRadius: 14,
-                offset: Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 94,
-                    height: 78,
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0F4F5),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: _vehicleImage(),
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 9,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEAF6D9),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.location_on_rounded,
-                                size: 14,
-                                color: Color(0xFF5C9417),
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  ride.destination,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: _CustomerHomeScreenState._ink,
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                              const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFB300)),
-                              Text(
-                                ride.destinationRating.toStringAsFixed(1),
-                                style: const TextStyle(
-                                  color: _CustomerHomeScreenState._ink,
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          '${ride.pickupPoint} → ${ride.destination}',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: _CustomerHomeScreenState._muted,
-                            fontSize: 9.8,
-                            height: 1.3,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 7),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          children: [
-                            _RideMeta(
-                              icon: Icons.event_seat_rounded,
-                              text: '${ride.bookableSeats} seats left',
-                            ),
-                            _RideMeta(
-                              icon: Icons.schedule_rounded,
-                              text: DateFormat('dd MMM, hh:mm a')
-                                  .format(ride.departureAt),
-                            ),
-                            _RideMeta(
-                              icon: Icons.star_rounded,
-                              text: 'Vehicle ${ride.vehicleRating.toStringAsFixed(1)}',
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 11),
-              Row(
-                children: [
-                  Expanded(
-                    child: _RateBox(
-                      label: 'Per seat',
-                      amount: ride.pricePerSeat,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _RateBox(
-                      label: 'Whole vehicle',
-                      amount: ride.wholeVehiclePrice,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 9),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onTap,
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(38),
-                        padding: const EdgeInsets.symmetric(horizontal: 7),
-                        side: const BorderSide(color: Color(0xFF87C72B)),
-                        foregroundColor: const Color(0xFF568B15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.event_seat_rounded, size: 15),
-                      label: const Text(
-                        'Book seat',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: onWholeVehicle,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(38),
-                        padding: const EdgeInsets.symmetric(horizontal: 7),
-                        backgroundColor: _CustomerHomeScreenState._lime,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.directions_car_filled_rounded, size: 15),
-                      label: const Text(
-                        'Whole vehicle',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-}
-
-class _RideMeta extends StatelessWidget {
-  const _RideMeta({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Row(
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AppRadii.all(AppRadii.field),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: const Color(0xFF6FAE20)),
-          const SizedBox(width: 3),
           Text(
-            text,
+            caption,
             style: const TextStyle(
-              color: _CustomerHomeScreenState._muted,
-              fontSize: 8.8,
-              fontWeight: FontWeight.w600,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: AppText.secondary,
+            ),
+          ),
+          TextField(
+            controller: controller,
+            onChanged: onChanged,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: AppText.primary,
+            ),
+            decoration: InputDecoration(
+              isDense: true,
+              filled: false,
+              contentPadding: const EdgeInsets.symmetric(vertical: 3),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              hintText: hint,
+              hintStyle: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppText.disabled,
+              ),
             ),
           ),
         ],
-      );
-}
-
-class _RateBox extends StatelessWidget {
-  const _RateBox({required this.label, required this.amount});
-
-  final String label;
-  final double amount;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF7F9FA),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8EDEF)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                color: _CustomerHomeScreenState._muted,
-                fontSize: 8.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'PKR ${NumberFormat('#,##0').format(amount)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF5A9018),
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      );
-}
-
-class _EmptyRides extends StatelessWidget {
-  const _EmptyRides({required this.destination});
-
-  final String destination;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE2E9EB)),
-        ),
-        child: Column(
-          children: [
-            const Icon(
-              Icons.directions_car_outlined,
-              color: Color(0xFF6FAE20),
-              size: 38,
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'No matching ride available',
-              style: TextStyle(
-                color: _CustomerHomeScreenState._ink,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              destination.trim().isEmpty
-                  ? 'No ride is currently available for this filter.'
-                  : 'No active ride is currently going towards $destination.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _CustomerHomeScreenState._muted,
-                fontSize: 10.5,
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
-      );
-}
-
-class _ServiceModeSelector extends StatelessWidget {
-  const _ServiceModeSelector({required this.mode, required this.onChanged});
-  final _HomeServiceMode mode;
-  final ValueChanged<_HomeServiceMode> onChanged;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(5),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .96),
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: const [BoxShadow(color: Color(0x18000000), blurRadius: 16, offset: Offset(0, 7))],
-        ),
-        child: Row(
-          children: [
-            Expanded(child: _item(_HomeServiceMode.localRide, Icons.directions_bus_rounded, 'Local Ride', 'Per-seat travel')),
-            Expanded(child: _item(_HomeServiceMode.exploreKashmir, Icons.landscape_rounded, 'Explore Kashmir', 'Tour packages')),
-          ],
-        ),
-      );
-
-  Widget _item(_HomeServiceMode value, IconData icon, String title, String subtitle) {
-    final selected = mode == value;
-    return InkWell(
-      onTap: () => onChanged(value),
-      borderRadius: BorderRadius.circular(14),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF10212B) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: selected ? Colors.white : const Color(0xFF10212B), size: 21),
-            const SizedBox(width: 7),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, maxLines: 1, style: TextStyle(color: selected ? Colors.white : const Color(0xFF10212B), fontWeight: FontWeight.w900, fontSize: 13)),
-              Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: selected ? Colors.white70 : const Color(0xFF667781), fontSize: 9.5, fontWeight: FontWeight.w600)),
-            ])),
-          ],
-        ),
       ),
     );
   }
 }
 
-class _OfflineBookingBanner extends StatelessWidget {
-  const _OfflineBookingBanner();
-  @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(color: const Color(0xFFFFF3D8), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFFFD789))),
-        child: const Row(children: [
-          Icon(Icons.signal_wifi_connected_no_internet_4_rounded, color: Color(0xFF9A6500), size: 20),
-          SizedBox(width: 9),
-          Expanded(child: Text('Offline mode: saved routes remain visible. SMS confirmation will be required for offline bookings.', style: TextStyle(color: Color(0xFF714B00), fontSize: 11, fontWeight: FontWeight.w700))),
-        ]),
-      );
-}
+/// PKR prefix is a static label, never part of the editable value.
+class _MoneyField extends StatelessWidget {
+  const _MoneyField({
+    required this.caption,
+    required this.controller,
+    required this.hint,
+    this.onChanged,
+  });
 
-class _ActiveTripHomeCard extends StatelessWidget {
-  const _ActiveTripHomeCard({required this.trip, required this.onTap});
-  final MobileTrip trip;
-  final VoidCallback onTap;
+  final String caption;
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String>? onChanged;
+
   @override
-  Widget build(BuildContext context) => Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-            decoration: BoxDecoration(color: const Color(0xFF10212B), borderRadius: BorderRadius.circular(16)),
-            child: Row(children: [
-              const CircleAvatar(backgroundColor: Color(0xFF8ED12B), child: Icon(Icons.route_rounded, color: Colors.white)),
-              const SizedBox(width: 10),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(trip.tripStatus == 'TripStarted' ? 'Trip in progress' : 'Driver is coming', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-                Text('${trip.pickupLabel} → ${trip.destinationLabel}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 11)),
-              ])),
-              const Icon(Icons.chevron_right_rounded, color: Colors.white),
-            ]),
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AppRadii.all(AppRadii.field),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            caption,
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: AppText.secondary,
+            ),
           ),
-        ),
-      );
-}
-
-class _UDriveServicesGrid extends StatelessWidget {
-  const _UDriveServicesGrid({
-    required this.onCity,
-    required this.onTours,
-    required this.onPrivate,
-    required this.onHotels,
-    required this.onEmergency,
-  });
-
-  final VoidCallback onCity;
-  final VoidCallback onTours;
-  final VoidCallback onPrivate;
-  final VoidCallback onHotels;
-  final VoidCallback onEmergency;
-
-  @override
-  Widget build(BuildContext context) {
-    final tiles = <Widget>[
-      _ServiceTile(
-        title: 'City-to-City Ride',
-        asset: 'assets/images/home_services/travel_within_city.webp',
-        onTap: onCity,
-      ),
-      _ServiceTile(
-        title: 'Tours & Trips',
-        asset: 'assets/images/home_services/tours_and_trips.webp',
-        onTap: onTours,
-      ),
-      _ServiceTile(
-        title: 'Private Vehicle',
-        asset: 'assets/images/home_services/private_vehicle.webp',
-        onTap: onPrivate,
-      ),
-      _ServiceTile(
-        title: 'Hotels & Stays',
-        asset: 'assets/images/home_services/hotel_room.webp',
-        onTap: onHotels,
-        isPhoto: true,
-      ),
-      _ServiceTile(
-        title: 'Emergency',
-        asset: 'assets/images/home_services/ambulance.png',
-        onTap: onEmergency,
-        emergency: true,
-      ),
-    ];
-
-    // Responsive two-column grid. shrinkWrap + no scroll keeps it fully
-    // visible inside the parent ListView so the second row is never clipped.
-    return GridView.builder(
-      padding: EdgeInsets.zero,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: tiles.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 11,
-        mainAxisSpacing: 11,
-        childAspectRatio: 1.48,
-      ),
-      itemBuilder: (context, index) => tiles[index],
-    );
-  }
-}
-
-class _ServiceTile extends StatelessWidget {
-  const _ServiceTile({
-    required this.title,
-    required this.asset,
-    required this.onTap,
-    this.isPhoto = false,
-    this.emergency = false,
-  });
-
-  final String title;
-  final String asset;
-  final VoidCallback onTap;
-
-  /// Photo cards (Hotels & Stays) fill the card with a cover image and a
-  /// dark overlay. Vehicle cards contain a transparent composition instead.
-  final bool isPhoto;
-  final bool emergency;
-
-  static const _card = Color(0xFF151917);
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: _card,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: .10),
-              width: 1,
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x33000000),
-                blurRadius: 12,
-                offset: Offset(0, 5),
+          Row(
+            children: [
+              const Text(
+                'PKR',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: AppText.secondary,
+                ),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  onChanged: onChanged,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    filled: false,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 3),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    hintText: hint,
+                    hintStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppText.disabled,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
-          child: emergency
-              ? _buildEmergencyCard()
-              : isPhoto
-                  ? _buildPhotoCard()
-                  : _buildVehicleCard(),
-        ),
-      ),
-    );
-  }
-
-  // Vehicle composition: title top, transparent image contained in the
-  // lower area and bottom-aligned so it blends into the card surface.
-  Widget _buildVehicleCard() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(13, 12, 12, 11),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: _titleStyle),
-          const SizedBox(height: 6),
-          Expanded(
-            child: SizedBox(
-              width: double.infinity,
-              child: Image.asset(
-                asset,
-                fit: BoxFit.contain,
-                alignment: Alignment.bottomCenter,
-                filterQuality: FilterQuality.medium,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
+}
 
+class _TapField extends StatelessWidget {
+  const _TapField({
+    required this.caption,
+    required this.value,
+    required this.icon,
+    required this.onTap,
+  });
 
-  Widget _buildEmergencyCard() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 10, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: _titleStyle),
-          const SizedBox(height: 2),
-          const Text(
-            'Find an ambulance',
-            style: TextStyle(color: Colors.white60, fontSize: 9.5, fontWeight: FontWeight.w700),
-          ),
-          Expanded(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Image.asset(
-                asset,
-                width: double.infinity,
-                fit: BoxFit.contain,
-                alignment: Alignment.bottomCenter,
-                filterQuality: FilterQuality.high,
-                errorBuilder: (_, __, ___) => const Icon(
-                  Icons.local_hospital_rounded,
-                  color: Color(0xFFB7F20A),
-                  size: 48,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  final String caption;
+  final String value;
+  final IconData icon;
+  final VoidCallback onTap;
 
-  // Photo card: full-bleed cover image with a top-down dark gradient so the
-  // title stays readable.
-  Widget _buildPhotoCard() {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Image.asset(
-          asset,
-          fit: BoxFit.cover,
-          alignment: Alignment.center,
-          filterQuality: FilterQuality.medium,
-          errorBuilder: (_, __, ___) => const ColoredBox(color: _card),
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadii.all(AppRadii.field),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 9),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: AppRadii.all(AppRadii.field),
+          border: Border.all(color: AppColors.border),
         ),
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xD9070908), Color(0x33070908), Color(0x00000000)],
-              stops: [0.0, 0.42, 0.8],
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(13, 12, 12, 11),
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: Text(
-              title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: _titleStyle.copyWith(
-                shadows: const [
-                  Shadow(color: Color(0xB3000000), blurRadius: 8, offset: Offset(0, 1)),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    caption,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppText.secondary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: AppText.primary,
+                    ),
+                  ),
                 ],
               ),
             ),
-          ),
+            Icon(icon, size: 17, color: AppText.secondary),
+          ],
         ),
-      ],
+      ),
     );
   }
-
-  static const TextStyle _titleStyle = TextStyle(
-    color: Colors.white,
-    fontSize: 14,
-    height: 1.1,
-    fontWeight: FontWeight.w800,
-    letterSpacing: -.2,
-  );
 }
 
-class _RecentBookingTile extends StatelessWidget {
-  const _RecentBookingTile({required this.booking, required this.onTap});
+class _PrimaryCta extends StatelessWidget {
+  const _PrimaryCta({
+    required this.label,
+    required this.enabled,
+    required this.busy,
+    required this.onTap,
+  });
 
-  final LiveBooking booking;
+  final String label;
+  final bool enabled;
+  final bool busy;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final date = DateFormat('dd MMM, h:mm a').format(booking.pickupAt);
-    final isTour = booking.tourPackageId != null || booking.packageBookingId != null;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)),
-                child: Icon(isTour ? Icons.landscape_rounded : Icons.route_rounded, color: _CustomerHomeScreenState._lime, size: 20),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      booking.destinationLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w800),
+    return SizedBox(
+      height: 50,
+      child: Material(
+        color: enabled ? AppColors.navy : AppColors.border,
+        borderRadius: AppRadii.all(AppRadii.cta),
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: AppRadii.all(AppRadii.cta),
+          child: Center(
+            child: busy
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${booking.pickupLabel}  •  $date',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white54, fontSize: 10.5),
+                  )
+                : Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: enabled ? Colors.white : AppText.disabled,
                     ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: Colors.white38, size: 20),
-            ],
+                  ),
           ),
         ),
       ),
@@ -2504,36 +1381,170 @@ class _RecentBookingTile extends StatelessWidget {
   }
 }
 
-class _EmptyRecentBookings extends StatelessWidget {
-  const _EmptyRecentBookings();
+class _OfflineNotice extends StatelessWidget {
+  const _OfflineNotice();
 
   @override
-  Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(top: 6),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: Colors.white.withValues(alpha: .05), borderRadius: BorderRadius.circular(14)),
-        child: const Row(
-          children: [
-            Icon(Icons.receipt_long_rounded, color: Colors.white38, size: 20),
-            SizedBox(width: 10),
-            Expanded(child: Text('Your completed and upcoming bookings will appear here.', style: TextStyle(color: Colors.white54, fontSize: 11.5))),
-          ],
-        ),
-      );
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTint.warning,
+        borderRadius: AppRadii.all(AppRadii.row),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.cloud_off_rounded, size: 16, color: AppTint.warningText),
+          SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              'You are offline. Saved maps are in use and bookings will need a '
+              'connection.',
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+                color: AppTint.warningText,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _RecentPlaceTile extends StatelessWidget {
-  const _RecentPlaceTile({required this.title, required this.subtitle});
-  final String title;
-  final String subtitle;
+class _ActiveTripBanner extends StatelessWidget {
+  const _ActiveTripBanner({required this.trip, required this.onTrack});
+
+  final MobileTrip trip;
+  final VoidCallback onTrack;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-        onTap: () {},
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-        leading: const Icon(Icons.history_rounded, color: Colors.white54, size: 29),
-        title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-        subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54)),
-        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
-      );
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(15, 13, 12, 13),
+      decoration: BoxDecoration(
+        color: AppColors.navy,
+        borderRadius: AppRadii.all(AppRadii.card),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Trip in progress',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white70,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${trip.pickupLabel} → ${trip.destinationLabel}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Material(
+            color: AppColors.secondary,
+            borderRadius: BorderRadius.circular(99),
+            child: InkWell(
+              onTap: onTrack,
+              borderRadius: BorderRadius.circular(99),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                child: Text(
+                  'Track Ride',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.navy,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InviteRow extends StatelessWidget {
+  const _InviteRow({required this.onShare});
+
+  final VoidCallback onShare;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(13, 12, 13, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AppRadii.all(AppRadii.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTint.brand,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: const Icon(Icons.ios_share_rounded,
+                size: 18, color: AppColors.navy),
+          ),
+          const SizedBox(width: 11),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Invite a friend',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Share the UDrive app link',
+                  style: TextStyle(fontSize: 11, color: AppText.secondary),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onShare,
+            child: const Text(
+              'Share',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: AppColors.navy,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -14,6 +14,20 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:usesCleartextTraffic="false">
+
+        <!-- Google Maps SDK key.
+             This MUST be present at build time; Google does not allow the map
+             key to be supplied at runtime. Supply it without committing it:
+
+                 flutter build apk \
+                   --dart-define=MAPS_ANDROID_KEY=AIza... \
+                   -Pmaps_key=AIza...
+
+             or replace the placeholder below for a local debug build. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

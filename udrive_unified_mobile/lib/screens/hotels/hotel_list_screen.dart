@@ -15,8 +15,23 @@ const _lime = Color(0xFFB7F20A);
 const _muted = Color(0xFF9AA09A);
 
 class HotelListScreen extends StatefulWidget {
-  const HotelListScreen({this.destination, super.key});
+  const HotelListScreen({
+    this.destination,
+    this.checkIn,
+    this.checkOut,
+    this.guests,
+    this.rooms,
+    super.key,
+  });
+
   final String? destination;
+
+  /// Optional search values pre-filled from the Home booking card, so the
+  /// customer does not re-enter what they already typed.
+  final DateTime? checkIn;
+  final DateTime? checkOut;
+  final int? guests;
+  final int? rooms;
   @override
   State<HotelListScreen> createState() => _HotelListScreenState();
 }
@@ -28,6 +43,7 @@ class _HotelListScreenState extends State<HotelListScreen> {
   int _guests = 2;
   int _rooms = 1;
   bool _busy = true;
+  bool _prefilled = false;
   String? _loadError;
   List<HotelSummary> _items = const [];
   HotelRepository? _repo;
@@ -37,6 +53,13 @@ class _HotelListScreenState extends State<HotelListScreen> {
     super.didChangeDependencies();
     if (_query.text.isEmpty && widget.destination != null) {
       _query.text = widget.destination!;
+    }
+    if (!_prefilled) {
+      _prefilled = true;
+      if (widget.checkIn != null) _checkIn = widget.checkIn!;
+      if (widget.checkOut != null) _checkOut = widget.checkOut!;
+      if (widget.guests != null) _guests = widget.guests!;
+      if (widget.rooms != null) _rooms = widget.rooms!;
     }
     if (_repo != null) return;
     try {

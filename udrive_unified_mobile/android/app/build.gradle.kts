@@ -21,6 +21,10 @@ android {
     defaultConfig {
         applicationId = "com.udrive.udrive_mobile"
         minSdk = 23
+        // Falls back to an empty string so a developer without a key can still
+        // build and run; the map area simply renders blank until a key is set.
+        manifestPlaceholders["MAPS_API_KEY"] =
+            (project.findProperty("maps_key") ?: "") as String
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

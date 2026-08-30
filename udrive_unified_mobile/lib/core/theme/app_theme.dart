@@ -11,10 +11,16 @@ class AppColors {
   static const surface = Color(0xFFFFFFFF);
   static const muted = Color(0xFF667085);
   static const border = Color(0xFFE2E9EB);
-  static const danger = Color(0xFFE5484D);
+
+  /// Redesign token. Previously 0xFFE5484D — the handoff pins danger to
+  /// #D92D20 so the SOS control and cancellation states match the spec.
+  static const danger = Color(0xFFD92D20);
   static const success = Color(0xFF16A36A);
   static const info = Color(0xFF2F80ED);
   static const warning = Color(0xFFF59E0B);
+
+  /// Body copy. Slightly warmer than [navy], used for text rather than fills.
+  static const text = Color(0xFF101828);
 }
 
 class AppTheme {

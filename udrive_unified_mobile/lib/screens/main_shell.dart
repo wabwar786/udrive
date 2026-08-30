@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/localization/app_strings.dart';
 import '../core/state/app_controller.dart';
 import '../core/theme/app_theme.dart';
+import '../core/theme/app_tokens.dart';
 import '../core/widgets/brand.dart';
 import '../data/models.dart';
 import 'common/common_pages.dart';
@@ -12,6 +13,8 @@ import 'customer/family_tour_planner_screen.dart';
 import 'customer/join_tour_screen.dart';
 import 'customer/live_bookings_screen.dart';
 import 'customer/live_explore_screen.dart';
+import 'customer/near_me_screen.dart';
+import 'business_owner/business_owner_dashboard.dart';
 import 'customer/live_packages_screen.dart';
 import 'customer/live_tour_interest_screen.dart';
 import 'driver/live_create_package_screen.dart';
@@ -223,39 +226,57 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
+  /// Redesigned customer bar: Home · Explore · (SOS) · Near me · Profile.
+  ///
+  /// No border-top — a soft upward shadow instead, per the handoff. The active
+  /// tab gets a pill background behind icon and label; inactive tabs are plain.
+  /// SOS stays in the centre slot rather than moving onto the map band.
   Widget _customerBottomNavigation() {
-    Widget item(String key, IconData icon, String label) {
+    Widget item(String key, IconData icon, IconData activeIcon, String label) {
       final selected = _customerPage == key;
       return Expanded(
-        child: InkWell(
-          onTap: () => setState(() => _customerPage = key),
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            height: 58,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  icon,
-                  size: 20,
-                  color: selected
-                      ? const Color(0xFF6FAE20)
-                      : const Color(0xFF7B8A92),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: selected
-                        ? const Color(0xFF6FAE20)
-                        : const Color(0xFF7B8A92),
-                    fontSize: 8.5,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+        child: Semantics(
+          button: true,
+          selected: selected,
+          label: label,
+          child: InkWell(
+            onTap: () => setState(() => _customerPage = key),
+            borderRadius: BorderRadius.circular(16),
+            child: SizedBox(
+              height: 58,
+              child: Center(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: selected ? AppTint.brand : Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        selected ? activeIcon : icon,
+                        size: 20,
+                        color: selected ? AppColors.navy : AppText.disabled,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: selected ? AppColors.navy : AppText.disabled,
+                          fontSize: 9,
+                          fontWeight:
+                              selected ? FontWeight.w800 : FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -263,60 +284,57 @@ class _MainShellState extends State<MainShell> {
     }
 
     return ColoredBox(
-      color: const Color(0xFFF7FAFB),
+      color: AppColors.background,
       child: SafeArea(
         top: false,
         minimum: const EdgeInsets.fromLTRB(13, 5, 13, 9),
         child: Container(
           height: 66,
-          padding: const EdgeInsets.symmetric(horizontal: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(23),
-            border: Border.all(color: const Color(0xFFE1E8EA)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x18000000),
-                blurRadius: 22,
-                offset: Offset(0, 8),
-              ),
-            ],
+            boxShadow: AppShadows.navBar,
           ),
           child: Row(
             children: [
-              item('home', Icons.home_rounded, 'Home'),
-              item('explore', Icons.explore_outlined, 'Explore'),
+              item('home', Icons.home_outlined, Icons.home_rounded, 'Home'),
+              item('explore', Icons.explore_outlined, Icons.explore_rounded,
+                  'Explore'),
               Expanded(
                 child: Center(
-                  child: InkWell(
-                    onTap: () => CustomerSosSheet.show(context),
-                    customBorder: const CircleBorder(),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF82C927),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x3382C927),
-                            blurRadius: 16,
-                            offset: Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.sos_rounded,
-                        color: Colors.white,
-                        size: 22,
+                  child: Semantics(
+                    button: true,
+                    label: 'Emergency SOS',
+                    child: InkWell(
+                      onTap: () => CustomerSosSheet.show(context),
+                      customBorder: const CircleBorder(),
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppColors.danger,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.danger.withValues(alpha: .30),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.sos_rounded,
+                            color: Colors.white, size: 22),
                       ),
                     ),
                   ),
                 ),
               ),
-              item('packages', Icons.luggage_outlined, 'Packages'),
-              item('profile', Icons.person_outline_rounded, 'Profile'),
+              item('nearMe', Icons.location_on_outlined,
+                  Icons.location_on_rounded, 'Near me'),
+              item('profile', Icons.person_outline_rounded,
+                  Icons.person_rounded, 'Profile'),
             ],
           ),
         ),
@@ -331,6 +349,8 @@ class _MainShellState extends State<MainShell> {
       'joinTour': 'joinTour',
       'familyPlanner': 'familyTourPlanner',
       'explore': 'explore',
+      'nearMe': 'nearMe',
+      'myBusiness': 'myBusiness',
       'packages': 'packages',
       'trips': 'trips',
       'saved': 'savedPlaces',
@@ -375,6 +395,8 @@ class _MainShellState extends State<MainShell> {
         'joinTour' => const LiveTourInterestScreen(),
         'familyPlanner' => const FamilyTourPlannerScreen(),
         'explore' => const LiveExploreScreen(),
+        'nearMe' => const NearMeScreen(),
+        'myBusiness' => const BusinessOwnerDashboard(),
         'packages' => const LivePackagesScreen(),
         'trips' => const LiveBookingsScreen(),
         'saved' => const SavedPlacesScreen(),
@@ -582,6 +604,7 @@ class _PremiumDrawer extends StatelessWidget {
         ('explore', Icons.landscape_outlined, 'Explore Kashmir'),
         ('packages', Icons.luggage_outlined, 'Tour packages'),
         ('saved', Icons.bookmark_border_rounded, 'Saved places'),
+        ('myBusiness', Icons.storefront_outlined, 'My business'),
         ('notifications', Icons.notifications_none_rounded, 'Notifications'),
         ('safety', Icons.health_and_safety_outlined, 'Safety'),
         ('settings', Icons.settings_outlined, 'Settings'),
