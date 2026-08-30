@@ -216,6 +216,21 @@ class _UdMapState extends State<UdMap> {
   /// it — Google gives the position during the move, not at the end.
   LatLng? _cameraTarget;
 
+  /// A camera move requested before the map existed.
+  ///
+  /// Both renderers refuse camera commands until they are ready, and dropping
+  /// the request left the map at its initial position — which is how a route
+  /// could be drawn while the camera sat somewhere else entirely.
+  ({LatLng target, double zoom})? _pendingCamera;
+
+  /// flutter_map only accepts camera commands after `onMapReady`.
+  bool _offlineReady = false;
+
+  /// Which tile source answered — Google's proxy or the OpenStreetMap
+  /// fallback. Surfaced in the diagnostics overlay so a misconfigured proxy is
+  /// visible rather than guessed at.
+  String _tileSource = '…';
+
   late LatLng _center;
   late double _zoom;
 

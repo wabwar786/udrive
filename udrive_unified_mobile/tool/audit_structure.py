@@ -58,6 +58,14 @@ def audit(path):
         if c != '_list':
             issues.append(f'UNDECLARED {c}')
 
+    # Undeclared *fields* are deliberately not checked here.
+    #
+    # Two attempts produced dozens of false positives, and a check that cries
+    # wolf is worse than no check — it trains you to skip the output. The right
+    # tool already exists: `flutter analyze` catches every undeclared name with
+    # no guessing, and the repository's GitHub Actions workflow runs it as the
+    # first job. Use that before deploying.
+
     # theme token members
     if '/theme/' not in path:
         for cls_name in ('AppProduct', 'AppTint', 'AppText', 'AppColors', 'AppRadii', 'AppShadows'):
