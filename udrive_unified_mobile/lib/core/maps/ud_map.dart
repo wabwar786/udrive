@@ -123,6 +123,7 @@ class UdMap extends StatefulWidget {
     this.routeOrigin,
     this.routeDestination,
     this.showMyLocation = true,
+    this.myLocation,
     this.interactive = true,
     this.onTap,
     this.onSourceChanged,
@@ -142,6 +143,11 @@ class UdMap extends StatefulWidget {
   final LatLng? routeDestination;
 
   final bool showMyLocation;
+
+  /// Drawn as a blue dot with an accuracy halo when the offline renderer is
+  /// active. Google draws its own dot from [showMyLocation], so this is only
+  /// used by flutter_map — pass it anyway and both paths look the same.
+  final LatLng? myLocation;
   final bool interactive;
   final ValueChanged<LatLng>? onTap;
   final ValueChanged<UdMapSource>? onSourceChanged;
@@ -355,6 +361,36 @@ class _UdMapState extends State<UdMap> {
                   ),
                 )
                 .toList(growable: false),
+          ),
+        if (widget.showMyLocation && widget.myLocation != null)
+          fmap.CircleLayer(
+            circles: [
+              fmap.CircleMarker(
+                point: widget.myLocation!,
+                radius: 90,
+                useRadiusInMeter: true,
+                color: AppColors.info.withValues(alpha: .16),
+                borderColor: Colors.transparent,
+                borderStrokeWidth: 0,
+              ),
+            ],
+          ),
+        if (widget.showMyLocation && widget.myLocation != null)
+          fmap.MarkerLayer(
+            markers: [
+              fmap.Marker(
+                point: widget.myLocation!,
+                width: 22,
+                height: 22,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.info,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                  ),
+                ),
+              ),
+            ],
           ),
         if (widget.markers.isNotEmpty)
           fmap.MarkerLayer(

@@ -16,6 +16,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls($"http://0.0.0.0:{Environment.GetEnvironmentVariable("PORT") ?? "8080"}");
 
 var connectionString = ConnectionStringFactory.Resolve(builder.Configuration);
+
+// Named client for the Places proxy. Nominatim requires a descriptive
+// User-Agent, which a server can send but a browser cannot — one of the reasons
+// address search is proxied here instead of called from the app.
+builder.Services.AddHttpClient("places", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(12);
+    client.DefaultRequestHeaders.Add("User-Agent", "UDrive-API/1.0 (+https://udrive.pk)");
+    client.DefaultRequestHeaders.Add("Accept-Language", "en");
+});
 var authOptions = AuthOptions.FromEnvironment();
 
 builder.Services.AddProblemDetails();

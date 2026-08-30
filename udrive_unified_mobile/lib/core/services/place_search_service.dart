@@ -36,17 +36,15 @@ class PlaceSuggestion {
 
 /// Address autocomplete and reverse geocoding for the whole app.
 ///
-/// Resolution order, by design:
+/// Every lookup goes through the UDrive API proxy
+/// (`/api/v1/places/...`). The server decides whether to answer from Google
+/// Places or from OpenStreetMap, so the Google key never reaches the client and
+/// an admin can rotate it without a new build.
 ///
-///  1. **UDrive API proxy** (`/api/v1/places/autocomplete`). The Google Places
-///     key lives on the server, so an admin can add or rotate it without
-///     shipping a new build, and the key is never exposed in the APK.
-///  2. **OpenStreetMap Nominatim**, which needs no key. This keeps search
-///     working today, before the Google key exists, and acts as a safety net
-///     if the proxy is ever down or over quota.
-///
-/// Callers get the same [PlaceSuggestion] list either way and never need to
-/// know which source answered.
+/// This client used to call Nominatim directly and that silently failed on
+/// web: Nominatim wants a `User-Agent`, browsers forbid setting one, and the
+/// request died in CORS preflight. Proxying fixed the header problem and the
+/// cross-origin problem at once.
 class PlaceSearchService {
   PlaceSearchService({http.Client? client})
       : _client = client ?? http.Client();
@@ -86,100 +84,57 @@ class PlaceSearchService {
   Future<List<PlaceSuggestion>> search(String query, {LatLng? bias}) async {
     final trimmed = query.trim();
     if (trimmed.length < 2) return const [];
-
-    final viaProxy = await _searchViaProxy(trimmed, bias);
-    if (viaProxy != null && viaProxy.isNotEmpty) return viaProxy;
-
-    return _searchViaNominatim(trimmed);
-  }
-
-  /// Returns null when the proxy is unreachable or not yet deployed, so the
-  /// caller can fall through to Nominatim. Returns an empty list only when the
-  /// proxy genuinely found nothing.
-  Future<List<PlaceSuggestion>?> _searchViaProxy(
-    String query,
-    LatLng? bias,
-  ) async {
     try {
-      final uri = ApiConfig.uri(AppConfig.placesProxyPath, {
-        'q': query,
-        'country': 'pk',
-        if (bias != null) 'lat': bias.latitude,
-        if (bias != null) 'lng': bias.longitude,
-      });
-      final response =
-          await _client.get(uri).timeout(AppConfig.networkTimeout);
-      if (response.statusCode < 200 || response.statusCode >= 300) return null;
-
-      final decoded = jsonDecode(response.body);
-      final items = decoded is List
-          ? decoded
-          : decoded is Map && decoded['results'] is List
-              ? decoded['results'] as List
-              : const [];
-
-      return items
-          .whereType<Map>()
-          .map((raw) {
-            final map = Map<String, dynamic>.from(raw);
-            final lat = _toDouble(map['latitude'] ?? map['lat']);
-            final lng = _toDouble(map['longitude'] ?? map['lng']);
-            if (lat == null || lng == null) return null;
-            return PlaceSuggestion(
-              title: '${map['title'] ?? map['name'] ?? ''}'.trim(),
-              subtitle: '${map['subtitle'] ?? map['address'] ?? ''}'.trim(),
-              latitude: lat,
-              longitude: lng,
-            );
-          })
-          .whereType<PlaceSuggestion>()
-          .where((item) => item.title.isNotEmpty)
-          .toList(growable: false);
+      return await _searchViaProxy(trimmed, bias);
     } catch (_) {
-      return null;
+      return const [];
     }
   }
 
-  Future<List<PlaceSuggestion>> _searchViaNominatim(String query) async {
-    final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+  /// Calls the UDrive proxy.
+  ///
+  /// The proxy talks to Google when an admin has configured a key and falls
+  /// back to OpenStreetMap when they have not, so this client never needs to
+  /// know which one answered.
+  ///
+  /// Client-side calls to Nominatim were removed deliberately: Nominatim
+  /// requires a `User-Agent`, and browsers forbid that header, so a direct call
+  /// fails CORS preflight on web every time. Going through our own origin also
+  /// removes the CORS question entirely.
+  Future<List<PlaceSuggestion>> _searchViaProxy(
+    String query,
+    LatLng? bias,
+  ) async {
+    final uri = ApiConfig.uri(AppConfig.placesProxyPath, {
       'q': query,
-      'format': 'jsonv2',
-      'limit': '8',
-      'countrycodes': 'pk',
-      'addressdetails': '1',
+      'country': 'pk',
+      if (bias != null) 'lat': bias.latitude,
+      if (bias != null) 'lng': bias.longitude,
     });
 
-    final response = await _client.get(uri, headers: const {
-      'User-Agent': 'UDrive-Mobile/1.0',
-      'Accept-Language': 'en',
-    }).timeout(AppConfig.networkTimeout);
-
+    final response = await _client.get(uri).timeout(AppConfig.networkTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       return const [];
     }
 
     final decoded = jsonDecode(response.body);
-    if (decoded is! List) return const [];
+    final payload = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    final items = payload is Map
+        ? (payload['results'] as List? ?? const [])
+        : payload is List
+            ? payload
+            : const [];
 
-    return decoded
+    return items
         .whereType<Map>()
         .map((raw) {
           final map = Map<String, dynamic>.from(raw);
-          final lat = double.tryParse('${map['lat']}');
-          final lng = double.tryParse('${map['lon']}');
+          final lat = _toDouble(map['latitude']);
+          final lng = _toDouble(map['longitude']);
           if (lat == null || lng == null) return null;
-
-          final display = '${map['display_name'] ?? ''}';
-          final parts = display.split(',').map((e) => e.trim()).toList();
-          final title = '${map['name'] ?? ''}'.trim().isNotEmpty
-              ? '${map['name']}'.trim()
-              : (parts.isNotEmpty ? parts.first : display);
-          final subtitle =
-              parts.length > 1 ? parts.skip(1).take(3).join(', ') : '';
-
           return PlaceSuggestion(
-            title: title,
-            subtitle: subtitle,
+            title: '${map['title'] ?? ''}'.trim(),
+            subtitle: '${map['subtitle'] ?? ''}'.trim(),
             latitude: lat,
             longitude: lng,
           );
@@ -189,7 +144,7 @@ class PlaceSearchService {
         .toList(growable: false);
   }
 
-  /// Human-readable address for a coordinate. Proxy first, Nominatim second.
+  /// Human-readable address for a coordinate, via the same proxy.
   Future<String> reverseGeocode(double latitude, double longitude) async {
     try {
       final uri = ApiConfig.uri(AppConfig.geocodeProxyPath, {
@@ -200,40 +155,16 @@ class PlaceSearchService {
           await _client.get(uri).timeout(AppConfig.networkTimeout);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
-        if (decoded is Map) {
-          final label = '${decoded['address'] ?? decoded['title'] ?? ''}'.trim();
+        final payload = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+        if (payload is Map) {
+          final label = '${payload['address'] ?? ''}'.trim();
           if (label.isNotEmpty) return label;
         }
       }
     } catch (_) {
-      // fall through
+      // An empty label makes the caller show coordinates instead, which is
+      // still usable — better than blocking on a failed lookup.
     }
-
-    try {
-      final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
-        'lat': '$latitude',
-        'lon': '$longitude',
-        'format': 'jsonv2',
-        'zoom': '16',
-      });
-      final response = await _client.get(uri, headers: const {
-        'User-Agent': 'UDrive-Mobile/1.0',
-        'Accept-Language': 'en',
-      }).timeout(AppConfig.networkTimeout);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map) {
-          final display = '${decoded['display_name'] ?? ''}'.trim();
-          if (display.isNotEmpty) {
-            return display.split(',').take(3).map((e) => e.trim()).join(', ');
-          }
-        }
-      }
-    } catch (_) {
-      // fall through
-    }
-
     return '';
   }
 

@@ -26,6 +26,9 @@ const SERVICES = [
 
 const keyFor = (id: string) => `home.hero.${id}.imageUrl`;
 
+/** Server-side Google Places key. Never sent to clients — see PlacesController. */
+const PLACES_KEY = 'places.google.apiKey';
+
 /** system_settings stores jsonb, so a URL arrives wrapped in quotes. */
 function unwrap(valueJson: string | undefined): string {
   if (!valueJson) return '';
@@ -39,6 +42,7 @@ function unwrap(valueJson: string | undefined): string {
 
 export default function Page() {
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [placesKey, setPlacesKey] = useState('');
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -53,6 +57,7 @@ export default function Page() {
           next[service.id] = unwrap(row?.valueJson);
         }
         setUrls(next);
+        setPlacesKey(unwrap(rows.find((r) => r.key === PLACES_KEY)?.valueJson));
       })
       .catch((e) => setError(e.message))
       .finally(() => setBusy(false));
@@ -67,6 +72,7 @@ export default function Page() {
       for (const service of SERVICES) {
         values[keyFor(service.id)] = (urls[service.id] ?? '').trim();
       }
+      values[PLACES_KEY] = placesKey.trim();
       await apiFetch('/api/v1/admin/operations/settings', {
         method: 'PUT',
         body: JSON.stringify({ values }),
@@ -84,8 +90,8 @@ export default function Page() {
 
   return (
     <AdminFrame
-      title="Home screen artwork"
-      subtitle="Pick the large picture shown at the top of the customer home screen for each service."
+      title="Maps and artwork"
+      subtitle="Address search key, and the artwork shown for each service."
     >
       <section className="panel formPanel">
         {busy ? (
@@ -182,6 +188,38 @@ export default function Page() {
                   </div>
                 );
               })}
+            </div>
+
+            <div
+              style={{
+                borderTop: '1px solid #E2E9EB',
+                paddingTop: 20,
+                marginBottom: 20,
+              }}
+            >
+              <p style={{ fontSize: 15, fontWeight: 500, margin: '0 0 6px' }}>
+                Google Places API key
+              </p>
+              <p
+                style={{
+                  color: '#667085',
+                  fontSize: 13,
+                  margin: '0 0 12px',
+                  lineHeight: 1.6,
+                }}
+              >
+                Used server-side for address search and reverse geocoding. It is
+                never sent to the app, so it cannot be extracted from the web
+                bundle or the APK. Leave it empty and search falls back to
+                OpenStreetMap, which needs no key.
+              </p>
+              <input
+                type="password"
+                value={placesKey}
+                placeholder="AIza… (empty = use OpenStreetMap)"
+                onChange={(e) => setPlacesKey(e.target.value)}
+                style={{ width: '100%' }}
+              />
             </div>
 
             <button

@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 9)
+# UDrive Redesign — Delivery 1 & 2 (revision 10)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,71 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 10 — search fixed, three travel modes, blue dot
+
+### Why address search never worked on the web
+
+`place_search_service.dart` called Nominatim directly with a `User-Agent`
+header. **Browsers forbid that header** — the request dies in CORS preflight, so
+search silently returned nothing on every deployed build. It worked on mobile,
+which is why it looked intermittent.
+
+Fixed by moving all geocoding server-side:
+
+```
+POST-free GET /api/v1/places/autocomplete?q=&lat=&lng=
+              /api/v1/places/reverse?lat=&lng=
+```
+
+`PlacesController` calls Google Places Text Search when a key is configured, and
+OpenStreetMap when it is not. Three wins at once: the Google key never reaches
+a client, an admin can rotate it without a rebuild, and the server *can* send
+the `User-Agent` that Nominatim requires.
+
+Text Search rather than Autocomplete is deliberate — it returns coordinates in
+the same response, so one call replaces predict-then-fetch-details and costs
+about half.
+
+**Run migration 029.** It seeds `places.google.apiKey` with `is_public = false`.
+That flag must stay false; making it public would expose the key through
+`/api/v1/settings/public`, defeating the whole point.
+
+Set the key in the admin portal under **Maps and artwork**.
+
+### Three travel modes
+
+`TravelMode { perSeat, wholeVehicle, tour }` now sits on one row above the
+addresses, because these are three different products rather than three
+settings:
+
+| Mode | Panel | API |
+| --- | --- | --- |
+| Per seat | seat stepper | `bookingType: PerSeat`, city service |
+| Whole vehicle | nothing extra | `bookingType: WholeVehicle`, private service |
+| Tour | destination chips, days, passengers, whole-trip offer, advance | `WholeVehicle` + advance |
+
+Tour is no longer a toggle. It has Kashmir destination chips (Neelum, Arang Kel,
+Banjosa, Sharda, Pir Chinasi, Rawalakot, Toli Peer), a **day count** instead of a
+single time, a whole-trip price, and the advance shown as a real figure —
+"20% advance (PKR 4,800)" — rather than a percentage the customer has to work out.
+
+The vehicle's own `bookingMode`, set by the driver, still narrows this on the
+next screen: a whole-vehicle-only car never appears under per seat.
+
+### Full-screen search
+
+`place_search_screen.dart` replaces the inline dropdown. Both route ends stay
+visible while typing, results get the whole screen, and two escape hatches sit
+at the bottom: **Use "<what you typed>"** and **Choose on map** — plenty of
+villages in Neelum and Bagh are in no geocoder, and those customers must still
+be able to book.
+
+### Blue dot
+
+`myLocationEnabled` gives Google's own blue dot. The offline renderer had none,
+so `UdMap` now draws a matching dot and accuracy halo for flutter_map. Both
+paths look the same.
 
 ## Revision 9 — build fix
 
