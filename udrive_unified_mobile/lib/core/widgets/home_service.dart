@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 /// Bus/Car/Bike are vehicle categories; Hotel branches to the hotel search.
 /// Tour booking is a separate flag rather than a service — a customer can book
 /// a tour with any of the three vehicle types.
-enum HomeService { bus, car, bike, hotel }
+enum HomeService { bus, car, bike, hotel, tour }
 
 extension HomeServiceInfo on HomeService {
   String get label => switch (this) {
@@ -13,6 +13,7 @@ extension HomeServiceInfo on HomeService {
         HomeService.car => 'Car',
         HomeService.bike => 'Bike',
         HomeService.hotel => 'Hotel',
+        HomeService.tour => 'Tour',
       };
 
   IconData get icon => switch (this) {
@@ -20,6 +21,7 @@ extension HomeServiceInfo on HomeService {
         HomeService.car => Icons.directions_car_rounded,
         HomeService.bike => Icons.two_wheeler_rounded,
         HomeService.hotel => Icons.apartment_rounded,
+        HomeService.tour => Icons.terrain_rounded,
       };
 
   /// Caption under the illustration.
@@ -28,6 +30,7 @@ extension HomeServiceInfo on HomeService {
         HomeService.car => 'Car',
         HomeService.bike => 'Bike',
         HomeService.hotel => 'Hotel',
+        HomeService.tour => 'Tour',
       };
 
   String get heroSubtitle => switch (this) {
@@ -35,6 +38,7 @@ extension HomeServiceInfo on HomeService {
         HomeService.car => 'Comfortable door-to-door rides',
         HomeService.bike => 'Quick and affordable',
         HomeService.hotel => 'Stay near your destination',
+        HomeService.tour => 'Multi-day Kashmir trips',
       };
 
   /// Key the booking flow filters on, matching `_normaliseVehicle` in the
@@ -44,6 +48,9 @@ extension HomeServiceInfo on HomeService {
         HomeService.car => 'car',
         HomeService.bike => 'bike',
         HomeService.hotel => null,
+        // Tour is not one vehicle category — any tour-enabled vehicle qualifies,
+        // so the search filters on availableForTour instead of a category.
+        HomeService.tour => null,
       };
 
   /// Vehicle category sent to the ride-request API. Null for Hotel.
@@ -52,7 +59,12 @@ extension HomeServiceInfo on HomeService {
         HomeService.car => 'Car',
         HomeService.bike => 'Bike',
         HomeService.hotel => null,
+        HomeService.tour => null,
       };
 
+  /// Whether this service puts vehicles on the map.
   bool get isVehicle => this != HomeService.hotel;
+
+  /// Tour searches only vehicles the driver opted into tours.
+  bool get isTour => this == HomeService.tour;
 }

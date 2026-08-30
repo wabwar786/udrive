@@ -67,7 +67,8 @@ public sealed class MarketplacePricingService(string connectionString)
                    NULLIF(v.image_url, ''),
                    dp.service_areas,
                    COALESCE(u.email LIKE 'demo.%@udrive.local', false),
-                   COALESCE(NULLIF(v.booking_mode, ''), 'WholeVehicle')
+                   COALESCE(NULLIF(v.booking_mode, ''), 'WholeVehicle'),
+                   COALESCE(v.available_for_tour, false)
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
@@ -128,7 +129,8 @@ public sealed class MarketplacePricingService(string connectionString)
                 reader.IsDBNull(19) ? null : reader.GetString(19),
                 reader.GetFieldValue<string[]>(20),
                 reader.GetBoolean(21),
-                reader.GetString(22)));
+                reader.GetString(22),
+                reader.GetBoolean(23)));
         }
 
         return list;
@@ -191,6 +193,7 @@ public sealed class MarketplacePricingService(string connectionString)
         double longitude,
         double radiusKm,
         string? category,
+        bool tourOnly,
         int limit,
         CancellationToken cancellationToken)
     {
@@ -204,7 +207,9 @@ public sealed class MarketplacePricingService(string connectionString)
                        ST_SetSRID(ST_MakePoint(@lng, @lat), 4326)::geography
                    ) / 1000.0 AS distance_km,
                    COALESCE(NULLIF(v.booking_mode, ''), 'WholeVehicle'),
-                   COALESCE(dp.average_rating, 0)
+                   COALESCE(dp.average_rating, 0),
+                   v.passenger_capacity,
+                   COALESCE(v.available_for_tour, false)
             FROM udrive.driver_presence_locations dpl
             JOIN udrive.driver_profiles dp ON dp.id = dpl.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
@@ -220,6 +225,7 @@ public sealed class MarketplacePricingService(string connectionString)
               AND u.status = 'Approved'
               AND v.status = 'Verified'
               AND (@category = '' OR lower(v.category) = lower(@category))
+              AND (@tourOnly = false OR COALESCE(v.available_for_tour, false) = true)
             ORDER BY distance_km
             LIMIT @limit;
             """;
@@ -233,6 +239,7 @@ public sealed class MarketplacePricingService(string connectionString)
         command.Parameters.AddWithValue("radiusMeters", radiusKm * 1000.0);
         command.Parameters.AddWithValue("freshness", PresenceFreshness);
         command.Parameters.AddWithValue("category", category?.Trim() ?? string.Empty);
+        command.Parameters.AddWithValue("tourOnly", tourOnly);
         command.Parameters.AddWithValue("limit", limit);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -248,7 +255,9 @@ public sealed class MarketplacePricingService(string connectionString)
                 Math.Round(distanceKm, 1),
                 EstimateEtaMinutes(distanceKm),
                 reader.GetString(5),
-                reader.GetDecimal(6)));
+                reader.GetDecimal(6),
+                reader.GetInt32(7),
+                reader.GetBoolean(8)));
         }
 
         return list;

@@ -42,6 +42,7 @@ public sealed class CatalogController(CatalogService catalogService, LocalFileSt
         [FromQuery] double lng,
         [FromQuery] double radiusKm = 5,
         [FromQuery] string? category = null,
+        [FromQuery] bool tourOnly = false,
         [FromQuery] int limit = 40,
         CancellationToken cancellationToken = default)
     {
@@ -61,6 +62,7 @@ public sealed class CatalogController(CatalogService catalogService, LocalFileSt
             lng,
             clampedRadius,
             category,
+            tourOnly,
             Math.Clamp(limit, 1, 100),
             cancellationToken);
 

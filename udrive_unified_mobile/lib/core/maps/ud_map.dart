@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmap;
@@ -95,6 +97,14 @@ class UdMapController {
 
   Future<void> moveTo(LatLng target, {double? zoom}) async {
     await _state?._moveTo(target, zoom: zoom);
+  }
+
+  /// Zooms out until every point fits, with padding around the edges.
+  ///
+  /// Used after a destination is chosen so the customer sees the whole trip
+  /// rather than staying zoomed in on the pickup.
+  Future<void> fitBounds(List<LatLng> points, {double padding = 60}) async {
+    await _state?._fitBounds(points, padding: padding);
   }
 
   void dispose() => _state = null;
@@ -225,6 +235,51 @@ class _UdMapState extends State<UdMap> {
     }
   }
 
+  Future<void> _fitBounds(List<LatLng> points, {double padding = 60}) async {
+    if (points.isEmpty) return;
+    if (points.length == 1) {
+      await _moveTo(points.first, zoom: AppConfig.focusedMapZoom);
+      return;
+    }
+
+    var minLat = points.first.latitude;
+    var maxLat = points.first.latitude;
+    var minLng = points.first.longitude;
+    var maxLng = points.first.longitude;
+    for (final point in points) {
+      if (point.latitude < minLat) minLat = point.latitude;
+      if (point.latitude > maxLat) maxLat = point.latitude;
+      if (point.longitude < minLng) minLng = point.longitude;
+      if (point.longitude > maxLng) maxLng = point.longitude;
+    }
+
+    _center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+
+    if (_online) {
+      if (!_googleController.isCompleted) return;
+      final controller = await _googleController.future;
+      await controller.animateCamera(
+        gmap.CameraUpdate.newLatLngBounds(
+          gmap.LatLngBounds(
+            southwest: gmap.LatLng(minLat, minLng),
+            northeast: gmap.LatLng(maxLat, maxLng),
+          ),
+          padding,
+        ),
+      );
+    } else {
+      _offlineController.fitCamera(
+        fmap.CameraFit.bounds(
+          bounds: fmap.LatLngBounds(
+            LatLng(maxLat, minLng),
+            LatLng(minLat, maxLng),
+          ),
+          padding: EdgeInsets.all(padding),
+        ),
+      );
+    }
+  }
+
   // --------------------------------------------------------------- rendering
 
   double _googleHue(UdMarkerHue hue) => switch (hue) {
@@ -267,6 +322,24 @@ class _UdMapState extends State<UdMap> {
           ? null
           : (position) =>
               widget.onTap!(LatLng(position.latitude, position.longitude)),
+      // The map is a platform view. Left to its own devices it can win the
+      // gesture arena for drags that started on a Flutter widget above it —
+      // which is why dragging the booking sheet used to pan the map underneath.
+      // Declaring the recognisers keeps the map to gestures that begin on the
+      // map itself and lets Flutter's own widgets claim the rest.
+      gestureRecognizers: widget.interactive
+          ? <Factory<OneSequenceGestureRecognizer>>{
+              Factory<OneSequenceGestureRecognizer>(
+                () => PanGestureRecognizer(),
+              ),
+              Factory<OneSequenceGestureRecognizer>(
+                () => ScaleGestureRecognizer(),
+              ),
+              Factory<OneSequenceGestureRecognizer>(
+                () => TapGestureRecognizer(),
+              ),
+            }
+          : const <Factory<OneSequenceGestureRecognizer>>{},
       markers: widget.markers
           .map(
             (marker) => gmap.Marker(

@@ -114,6 +114,133 @@ public sealed class PlacesController(
         return Ok(ApiResponse<object>.Ok(new { address = fallback, source = "osm" }));
     }
 
+    /// <summary>
+    /// Driving route between two points: distance, duration, the road it takes
+    /// and the encoded polyline to draw on the map.
+    /// </summary>
+    /// <remarks>
+    /// Distance Matrix would give distance and duration but no geometry, so the
+    /// road could not be highlighted. Directions returns both in one call, plus
+    /// alternatives, which is why it is used here.
+    ///
+    /// Straight-line distance is not an acceptable fallback in Kashmir: the road
+    /// from Muzaffarabad to Kel is roughly three times the direct line, so a
+    /// fare or an ETA built on the straight line would be badly wrong. When
+    /// Directions is unavailable this returns no route at all rather than a
+    /// misleading number.
+    /// </remarks>
+    [HttpGet("directions")]
+    [ResponseCache(Duration = 120, Location = ResponseCacheLocation.Any)]
+    public async Task<ActionResult<object>> Directions(
+        [FromQuery] double originLat,
+        [FromQuery] double originLng,
+        [FromQuery] double destinationLat,
+        [FromQuery] double destinationLng,
+        [FromQuery] bool alternatives = true,
+        CancellationToken cancellationToken = default)
+    {
+        var key = await GoogleKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return Ok(ApiResponse<object>.Ok(new
+            {
+                routes = Array.Empty<object>(),
+                reason = "no_key"
+            }));
+        }
+
+        var client = httpClientFactory.CreateClient("places");
+        var routes = new List<object>();
+
+        try
+        {
+            var url =
+                "https://maps.googleapis.com/maps/api/directions/json" +
+                $"?origin={originLat},{originLng}" +
+                $"&destination={destinationLat},{destinationLng}" +
+                $"&alternatives={(alternatives ? "true" : "false")}" +
+                "&mode=driving&region=pk&departure_time=now" +
+                $"&key={Uri.EscapeDataString(key!)}";
+
+            using var response = await client.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return Ok(ApiResponse<object>.Ok(new
+                {
+                    routes = Array.Empty<object>(),
+                    reason = "upstream_error"
+                }));
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+
+            var status = root.TryGetProperty("status", out var st)
+                ? st.GetString()
+                : "UNKNOWN";
+
+            if (status != "OK" || !root.TryGetProperty("routes", out var items))
+            {
+                return Ok(ApiResponse<object>.Ok(new
+                {
+                    routes = Array.Empty<object>(),
+                    reason = status
+                }));
+            }
+
+            foreach (var route in items.EnumerateArray().Take(3))
+            {
+                if (!route.TryGetProperty("legs", out var legs) ||
+                    legs.GetArrayLength() == 0)
+                {
+                    continue;
+                }
+
+                // A single origin-to-destination request has exactly one leg.
+                var leg = legs[0];
+
+                var distanceMetres = leg.TryGetProperty("distance", out var dist) &&
+                                     dist.TryGetProperty("value", out var dv)
+                    ? dv.GetInt32()
+                    : 0;
+
+                // duration_in_traffic is present because departure_time=now was
+                // sent; it reflects current conditions, so prefer it.
+                var seconds = leg.TryGetProperty("duration_in_traffic", out var traffic) &&
+                              traffic.TryGetProperty("value", out var tv)
+                    ? tv.GetInt32()
+                    : leg.TryGetProperty("duration", out var dur) &&
+                      dur.TryGetProperty("value", out var duv)
+                        ? duv.GetInt32()
+                        : 0;
+
+                routes.Add(new
+                {
+                    summary = route.TryGetProperty("summary", out var sum)
+                        ? sum.GetString()
+                        : string.Empty,
+                    distanceMetres,
+                    durationSeconds = seconds,
+                    polyline = route.TryGetProperty("overview_polyline", out var poly) &&
+                               poly.TryGetProperty("points", out var pts)
+                        ? pts.GetString()
+                        : string.Empty
+                });
+            }
+        }
+        catch
+        {
+            return Ok(ApiResponse<object>.Ok(new
+            {
+                routes = Array.Empty<object>(),
+                reason = "exception"
+            }));
+        }
+
+        return Ok(ApiResponse<object>.Ok(new { routes, reason = "ok" }));
+    }
+
     // ------------------------------------------------------------------ google
 
     /// <summary>

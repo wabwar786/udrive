@@ -40,6 +40,9 @@ class ServiceIllustration extends StatelessWidget {
             HomeService.bus => _CoasterPainter(),
             HomeService.bike => _BikePainter(),
             HomeService.hotel => _HotelPainter(),
+            // A tour is a vehicle trip, so it reuses the coaster artwork
+            // rather than inventing a symbol customers would have to learn.
+            HomeService.tour => _CoasterPainter(),
           },
         );
       },

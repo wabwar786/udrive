@@ -85,7 +85,7 @@ const groups = [
       ['/audit', 'Audit log', ClipboardList],
       ['/diagnostics', 'Diagnostics', Stethoscope],
       ['/help', 'Help / How to use', CircleHelp],
-      ['/appearance', 'Maps and artwork', ImageIcon],
+      ['/appearance', 'Address search', ImageIcon],
       ['/settings', 'Settings', Settings],
       ['/data-management', 'Data management', Database],
     ],

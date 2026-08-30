@@ -14,22 +14,15 @@ type Setting = {
 };
 
 /**
- * The four Home services, in the order they appear in the app.
- * `key` matches the system_settings key the mobile app reads.
+ * Server-side Google Places key.
+ *
+ * Read only by PlacesController when proxying address search and reverse
+ * geocoding. It is never returned to a client, so it cannot be extracted from
+ * the web bundle or the APK.
  */
-const SERVICES = [
-  { id: 'bus', label: 'Coaster / Bus' },
-  { id: 'car', label: 'Car' },
-  { id: 'bike', label: 'Bike' },
-  { id: 'hotel', label: 'Hotel' },
-] as const;
-
-const keyFor = (id: string) => `home.hero.${id}.imageUrl`;
-
-/** Server-side Google Places key. Never sent to clients — see PlacesController. */
 const PLACES_KEY = 'places.google.apiKey';
 
-/** system_settings stores jsonb, so a URL arrives wrapped in quotes. */
+/** system_settings stores jsonb, so a string arrives wrapped in quotes. */
 function unwrap(valueJson: string | undefined): string {
   if (!valueJson) return '';
   try {
@@ -41,8 +34,8 @@ function unwrap(valueJson: string | undefined): string {
 }
 
 export default function Page() {
-  const [urls, setUrls] = useState<Record<string, string>>({});
   const [placesKey, setPlacesKey] = useState('');
+  const [hadKey, setHadKey] = useState(false);
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -51,13 +44,9 @@ export default function Page() {
   useEffect(() => {
     apiFetch<Setting[]>('/api/v1/admin/operations/settings')
       .then((rows) => {
-        const next: Record<string, string> = {};
-        for (const service of SERVICES) {
-          const row = rows.find((r) => r.key === keyFor(service.id));
-          next[service.id] = unwrap(row?.valueJson);
-        }
-        setUrls(next);
-        setPlacesKey(unwrap(rows.find((r) => r.key === PLACES_KEY)?.valueJson));
+        const current = unwrap(rows.find((r) => r.key === PLACES_KEY)?.valueJson);
+        setPlacesKey(current);
+        setHadKey(current.length > 0);
       })
       .catch((e) => setError(e.message))
       .finally(() => setBusy(false));
@@ -68,18 +57,15 @@ export default function Page() {
     setError('');
     setSaved('');
     try {
-      const values: Record<string, string> = {};
-      for (const service of SERVICES) {
-        values[keyFor(service.id)] = (urls[service.id] ?? '').trim();
-      }
-      values[PLACES_KEY] = placesKey.trim();
       await apiFetch('/api/v1/admin/operations/settings', {
         method: 'PUT',
-        body: JSON.stringify({ values }),
+        body: JSON.stringify({ values: { [PLACES_KEY]: placesKey.trim() } }),
       });
+      setHadKey(placesKey.trim().length > 0);
       setSaved(
-        'Saved. Customers will see the new artwork the next time the app ' +
-          'loads its home screen — no app update is needed.',
+        placesKey.trim().length > 0
+          ? 'Key saved. Address search now uses Google Places — takes effect on the next search, no app update needed.'
+          : 'Key cleared. Address search falls back to OpenStreetMap.',
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save.');
@@ -90,8 +76,8 @@ export default function Page() {
 
   return (
     <AdminFrame
-      title="Maps and artwork"
-      subtitle="Address search key, and the artwork shown for each service."
+      title="Address search"
+      subtitle="The Google key used for From / To autocomplete and reverse geocoding."
     >
       <section className="panel formPanel">
         {busy ? (
@@ -101,118 +87,63 @@ export default function Page() {
             {error && <ErrorBox message={error} />}
             {saved && <div className="successBox">{saved}</div>}
 
-            <p style={{ color: '#667085', fontSize: 13, marginBottom: 18 }}>
-              Paste a direct image URL (must start with <code>https://</code>).
-              Leave a field empty to use the app&rsquo;s built-in illustration.
-              Landscape images around 1200&times;800 with a transparent or plain
-              background work best, because the app fades the bottom edge into
-              the page.
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 12px',
+                borderRadius: 999,
+                fontSize: 13,
+                marginBottom: 18,
+                background: hadKey ? '#EAF7F1' : '#FEF3C7',
+                color: hadKey ? '#0F5132' : '#92600A',
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: hadKey ? '#16A36A' : '#F59E0B',
+                }}
+              />
+              {hadKey
+                ? 'Google Places is active'
+                : 'No key set — using OpenStreetMap'}
+            </div>
+
+            <p
+              style={{
+                color: '#667085',
+                fontSize: 13,
+                lineHeight: 1.7,
+                margin: '0 0 16px',
+              }}
+            >
+              Used server-side only, so the key never reaches the app and cannot
+              be lifted out of the web bundle or the APK. Leave it empty and
+              search falls back to OpenStreetMap, which needs no key but does not
+              know most Pakistani colony, sector and street names.
+              <br />
+              <br />
+              Use a key restricted to <strong>Places API</strong> and{' '}
+              <strong>Geocoding API</strong>. Do not reuse the browser key —
+              server requests send no referrer, so a key restricted to websites
+              will be rejected.
             </p>
 
-            <div className="settingsList">
-              {SERVICES.map((service) => (
-                <label key={service.id}>
-                  <div>
-                    <strong>{service.label}</strong>
-                    <span>{keyFor(service.id)}</span>
-                  </div>
-                  <input
-                    value={urls[service.id] ?? ''}
-                    placeholder="https://… (empty = built-in illustration)"
-                    onChange={(e) =>
-                      setUrls({ ...urls, [service.id]: e.target.value })
-                    }
-                  />
-                </label>
-              ))}
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: 14,
-                margin: '22px 0',
-              }}
-            >
-              {SERVICES.map((service) => {
-                const url = (urls[service.id] ?? '').trim();
-                return (
-                  <div
-                    key={service.id}
-                    style={{
-                      border: '1px solid #E2E9EB',
-                      borderRadius: 14,
-                      padding: 10,
-                      background: '#F6F8FA',
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        marginBottom: 8,
-                        color: '#101828',
-                      }}
-                    >
-                      {service.label}
-                    </div>
-                    {url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={url}
-                        alt={`${service.label} hero preview`}
-                        style={{
-                          width: '100%',
-                          height: 110,
-                          objectFit: 'contain',
-                          borderRadius: 10,
-                        }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          height: 110,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#98A2B3',
-                          fontSize: 12,
-                          textAlign: 'center',
-                          padding: 8,
-                        }}
-                      >
-                        Using the app&rsquo;s built-in illustration
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div
-              style={{
-                borderTop: '1px solid #E2E9EB',
-                paddingTop: 20,
-                marginBottom: 20,
-              }}
-            >
-              <p style={{ fontSize: 15, fontWeight: 500, margin: '0 0 6px' }}>
-                Google Places API key
-              </p>
-              <p
+            <label style={{ display: 'block', marginBottom: 20 }}>
+              <span
                 style={{
-                  color: '#667085',
+                  display: 'block',
                   fontSize: 13,
-                  margin: '0 0 12px',
-                  lineHeight: 1.6,
+                  fontWeight: 500,
+                  marginBottom: 6,
                 }}
               >
-                Used server-side for address search and reverse geocoding. It is
-                never sent to the app, so it cannot be extracted from the web
-                bundle or the APK. Leave it empty and search falls back to
-                OpenStreetMap, which needs no key.
-              </p>
+                Google Places API key
+              </span>
               <input
                 type="password"
                 value={placesKey}
@@ -220,14 +151,10 @@ export default function Page() {
                 onChange={(e) => setPlacesKey(e.target.value)}
                 style={{ width: '100%' }}
               />
-            </div>
+            </label>
 
-            <button
-              className="primaryButton"
-              onClick={save}
-              disabled={saving}
-            >
-              {saving ? 'Saving…' : 'Save home screen artwork'}
+            <button className="primaryButton" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save key'}
             </button>
           </>
         )}

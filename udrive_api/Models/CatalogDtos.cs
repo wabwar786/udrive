@@ -64,7 +64,9 @@ public sealed record PublicVehicleDto(
     bool IsDemo,
     // How this vehicle may be booked: WholeVehicle, PerSeat or Both.
     // The customer app offers only the modes the driver enabled.
-    string BookingMode);
+    string BookingMode,
+    // Whether the driver opted this vehicle into multi-day tours.
+    bool AvailableForTour);
 
 /// <summary>
 /// A vehicle currently online near the customer, for the home-screen map.
@@ -87,4 +89,6 @@ public sealed record NearbyVehicleDto(
     double DistanceKm,
     int EtaMinutes,
     string BookingMode,
-    decimal Rating);
+    decimal Rating,
+    int PassengerCapacity,
+    bool AvailableForTour);

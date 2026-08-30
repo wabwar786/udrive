@@ -17,12 +17,14 @@ class NearbyVehicleRepository {
     required double longitude,
     double radiusKm = 5,
     String? category,
+    bool tourOnly = false,
   }) async {
     final parameters = <String, String>{
       'lat': '$latitude',
       'lng': '$longitude',
       'radiusKm': '$radiusKm',
       if (category != null && category.isNotEmpty) 'category': category,
+      if (tourOnly) 'tourOnly': 'true',
     };
 
     try {

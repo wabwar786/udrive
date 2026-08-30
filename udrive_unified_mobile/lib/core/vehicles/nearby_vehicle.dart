@@ -18,6 +18,8 @@ class NearbyVehicle {
     required this.etaMinutes,
     required this.bookingMode,
     required this.rating,
+    required this.passengerCapacity,
+    required this.availableForTour,
   });
 
   final String id;
@@ -28,6 +30,12 @@ class NearbyVehicle {
   final int etaMinutes;
   final VehicleBookingMode bookingMode;
   final double rating;
+
+  /// Drives the per-seat rule: 5 or fewer seats is whole-vehicle only.
+  final int passengerCapacity;
+
+  /// Set by the driver. Only these vehicles appear under the Tour service.
+  final bool availableForTour;
 
   LatLng get point => LatLng(latitude, longitude);
 
@@ -63,6 +71,8 @@ class NearbyVehicle {
         bookingMode:
             VehicleBookingModeInfo.fromApi(json['bookingMode']?.toString()),
         rating: _toDouble(json['rating']) ?? 0,
+        passengerCapacity: (json['passengerCapacity'] as num?)?.toInt() ?? 4,
+        availableForTour: json['availableForTour'] == true,
       );
 
   static double? _toDouble(Object? value) {

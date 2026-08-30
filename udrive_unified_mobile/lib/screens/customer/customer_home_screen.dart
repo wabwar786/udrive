@@ -9,16 +9,18 @@ import 'package:latlong2/latlong.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/maps/ud_map.dart';
+import '../../core/routing/route_repository.dart';
 import '../../core/vehicles/nearby_repository.dart';
 import '../../core/vehicles/nearby_vehicle.dart';
 import '../../core/booking/trip_operations_repository.dart';
-import '../../core/booking/travel_mode.dart';
+import '../../core/booking/booking_options.dart';
 import '../../core/booking/vehicle_booking_mode.dart';
 import '../../core/config/app_config.dart';
 import '../../core/services/place_search_service.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/brand.dart';
 import '../../core/widgets/route_fields.dart';
 import '../../core/widgets/service_selector.dart';
 import '../../core/widgets/ud_controls.dart';
@@ -57,6 +59,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
 
   final _places = PlaceSearchService();
+  final _routes = RouteRepository();
 
   Timer? _tripTimer;
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
@@ -70,9 +73,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   List<NearbyVehicle> _nearby = const [];
   bool _nearbyLoading = true;
 
+  /// Driving routes for the current pickup → destination pair.
+  TripRouteResult _routeResult = const TripRouteResult();
+  int _selectedRoute = 0;
+  bool _routeLoading = false;
+
+  TripRoute? get _activeRoute => _routeResult.routes.isEmpty
+      ? null
+      : _routeResult.routes[
+          _selectedRoute.clamp(0, _routeResult.routes.length - 1)];
+
   // ------------------------------------------------------------------- state
   HomeService _service = HomeService.car;
-  TravelMode _travelMode = TravelMode.wholeVehicle;
+  BookingType _bookingType = BookingType.wholeVehicle;
 
   /// Seats requested in per-seat mode.
   int _seats = 1;
@@ -159,7 +172,45 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _hotelCity.dispose();
     _tourOffer.dispose();
     _places.dispose();
+    _routes.dispose();
     super.dispose();
+  }
+
+  /// Fetches the driving route once both ends are known, then frames it.
+  ///
+  /// Called on destination change rather than on a timer: a route between two
+  /// fixed points does not move, and Directions is billed per request.
+  Future<void> _refreshRoute() async {
+    final destination = _destinationPoint;
+    if (destination == null) {
+      setState(() {
+        _routeResult = const TripRouteResult();
+        _selectedRoute = 0;
+      });
+      return;
+    }
+
+    setState(() => _routeLoading = true);
+    final result = await _routes.route(
+      origin: _pickupPoint,
+      destination: destination,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _routeResult = result;
+      _selectedRoute = 0;
+      _routeLoading = false;
+    });
+
+    // Frame the whole trip so the customer sees where they are going, not just
+    // where they are standing.
+    final points = result.best?.points;
+    if (points != null && points.isNotEmpty) {
+      await _mapController.fitBounds(points, padding: 70);
+    } else {
+      await _mapController.fitBounds([_pickupPoint, destination], padding: 80);
+    }
   }
 
   /// Refreshes the vehicles around the customer.
@@ -178,19 +229,56 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       latitude: _pickupPoint.latitude,
       longitude: _pickupPoint.longitude,
       radiusKm: AppConfig.nearbyVehiclesRadiusKm,
+      tourOnly: _service.isTour,
     );
     if (!mounted) return;
     setState(() {
       _nearby = results;
       _nearbyLoading = false;
+      _clampBookingType();
     });
   }
 
   List<NearbyVehicle> get _visibleVehicles {
     if (!_service.isVehicle) return const [];
+    // Tour is not a vehicle category: any vehicle the driver opted into tours
+    // qualifies, whatever its make.
+    if (_service.isTour) {
+      return _nearby
+          .where((vehicle) => vehicle.availableForTour)
+          .toList(growable: false);
+    }
     return _nearby
         .where((vehicle) => vehicle.service == _service)
         .toList(growable: false);
+  }
+
+  /// Booking types the vehicles actually nearby can offer.
+  ///
+  /// Derived from real capacity rather than assumed from the service: a
+  /// 7-seat van under "Car" can still be sold by the seat. With nothing nearby
+  /// yet, whole vehicle is the safe default — it is always allowed.
+  List<BookingType> get _availableBookingTypes {
+    if (!_service.isVehicle) return const [BookingType.wholeVehicle];
+
+    final vehicles = _visibleVehicles;
+    if (vehicles.isEmpty) return const [BookingType.wholeVehicle];
+
+    final anyShareable = vehicles.any(
+      (vehicle) =>
+          SeatRules.allowsPerSeat(vehicle.passengerCapacity) &&
+          vehicle.bookingMode.allowsPerSeat,
+    );
+    return anyShareable
+        ? BookingType.values
+        : const [BookingType.wholeVehicle];
+  }
+
+  /// Snaps the selection back to something legal after the fleet changes.
+  void _clampBookingType() {
+    if (!_availableBookingTypes.contains(_bookingType)) {
+      _bookingType = _availableBookingTypes.first;
+    }
   }
 
   void _showVehicleSheet(NearbyVehicle vehicle) {
@@ -324,7 +412,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (_pickup.text.trim().isEmpty || _destination.text.trim().isEmpty) {
       return false;
     }
-    if (_travelMode.isTour) {
+    if (_service.isTour) {
       final offer = int.tryParse(_tourOffer.text.trim());
       return offer != null && offer > 0;
     }
@@ -333,15 +421,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   String get _ctaLabel {
     if (_service == HomeService.hotel) return 'Find Hotels';
-    if (_travelMode.isTour) return 'Find Tour Vehicle';
+    if (_service.isTour) return 'Find Tour Vehicle';
 
     final noun = switch (_service) {
       HomeService.bus => 'Coaster / Bus',
       HomeService.car => 'a Car',
       HomeService.bike => 'a Bike',
       HomeService.hotel => 'Hotels',
+      HomeService.tour => 'Tour Vehicle',
     };
-    if (_travelMode == TravelMode.perSeat) {
+    if (_bookingType == BookingType.perSeat) {
       return 'Find $_seats seat${_seats == 1 ? '' : 's'}';
     }
     return 'Find $noun';
@@ -367,7 +456,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       return;
     }
 
-    if (_travelMode.isTour) {
+    if (_service.isTour) {
       await _submitTour();
       return;
     }
@@ -415,7 +504,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           // Whole vehicle maps to the private-vehicle service; per seat uses
           // the shared city service. The next screen still narrows this to what
           // the chosen vehicle's driver actually allows.
-          serviceType: _travelMode == TravelMode.wholeVehicle
+          serviceType: _bookingType == BookingType.wholeVehicle
               ? UDriveServiceType.privateVehicle
               : UDriveServiceType.city,
           pickupLabel: _pickup.text.trim(),
@@ -473,7 +562,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         'destinationLatitude': destinationPoint.latitude,
         'destinationLongitude': destinationPoint.longitude,
         'pickupAt': departure.toUtc().toIso8601String(),
-        'bookingType': _travelMode.apiBookingType,
+        'bookingType': _bookingType.apiValue,
         'seatsRequested': _tourPassengers,
         'adults': _tourPassengers,
         'children': 0,
@@ -678,12 +767,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
           ),
 
-          // The booking sheet.
+          // The booking sheet. Wrapped so pointers landing on it never reach
+          // the map: opaque hit-test behaviour plus an empty drag handler
+          // claims the gesture before the platform view can.
           Align(
             alignment: Alignment.bottomCenter,
             child: ConstrainedBox(
               constraints: BoxConstraints(maxHeight: sheetMaxHeight),
-              child: _buildSheet(),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragStart: (_) {},
+                onVerticalDragUpdate: (_) {},
+                onHorizontalDragStart: (_) {},
+                onHorizontalDragUpdate: (_) {},
+                child: _buildSheet(),
+              ),
             ),
           ),
         ],
@@ -702,11 +800,31 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       routeOrigin: _pickupPoint,
       routeDestination: _destinationPoint ?? _pickupPoint,
       circles: [
-        UdCircle(
-          id: 'radius',
-          centre: _pickupPoint,
-          radiusMetres: AppConfig.nearbyVehiclesRadiusKm * 1000,
-        ),
+        // The search ring only makes sense while browsing. Once a trip is
+        // plotted it just clutters the route.
+        if (_activeRoute == null)
+          UdCircle(
+            id: 'radius',
+            centre: _pickupPoint,
+            radiusMetres: AppConfig.nearbyVehiclesRadiusKm * 1000,
+          ),
+      ],
+      polylines: [
+        for (var i = _routeResult.routes.length - 1; i >= 0; i--)
+          if (i != _selectedRoute)
+            UdPolyline(
+              id: 'route-$i',
+              points: _routeResult.routes[i].points,
+              color: AppText.disabled,
+              width: 4,
+            ),
+        if (_activeRoute != null)
+          UdPolyline(
+            id: 'route-active',
+            points: _activeRoute!.points,
+            color: AppColors.secondary,
+            width: 6,
+          ),
       ],
       markers: [
         for (final vehicle in vehicles)
@@ -777,7 +895,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     _service = service;
                     // Hotels are not a vehicle, so per-seat and tour do not apply.
                     if (service == HomeService.hotel) {
-                      _travelMode = TravelMode.wholeVehicle;
+                      _bookingType = BookingType.wholeVehicle;
                     }
                   });
                 },
@@ -816,9 +934,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       children: [
         // The three travel modes sit above the addresses because they change
         // what the customer is buying, not just a detail of it.
-        _TravelModeSelector(
-          value: _travelMode,
-          onChanged: (mode) => setState(() => _travelMode = mode),
+        _BookingTypeSelector(
+          value: _bookingType,
+          available: _availableBookingTypes,
+          onChanged: (mode) => setState(() => _bookingType = mode),
         ),
         const SizedBox(height: 13),
         _RouteSummaryFields(
@@ -833,8 +952,24 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           duration: AppConfig.panelSwitch,
           curve: Curves.easeOut,
           alignment: Alignment.topCenter,
-          child: switch (_travelMode) {
-            TravelMode.perSeat => Padding(
+          child: _TripSummary(
+            loading: _routeLoading,
+            result: _routeResult,
+            selected: _selectedRoute,
+            hasDestination: _destination.text.trim().isNotEmpty,
+            onSelect: (index) {
+              setState(() => _selectedRoute = index);
+              final points = _routeResult.routes[index].points;
+              _mapController.fitBounds(points, padding: 70);
+            },
+          ),
+        ),
+        AnimatedSize(
+          duration: AppConfig.panelSwitch,
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: switch (_bookingType) {
+            BookingType.perSeat => Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: UdStepper(
                   label: 'Seats',
@@ -845,8 +980,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   onChanged: (value) => setState(() => _seats = value),
                 ),
               ),
-            TravelMode.wholeVehicle => const SizedBox.shrink(),
-            TravelMode.tour => _buildTourPanel(),
+            BookingType.wholeVehicle => const SizedBox.shrink(),
           },
         ),
       ],
@@ -887,10 +1021,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       }
     });
 
-    if (result.point != null) {
-      await _mapController.moveTo(result.point!, zoom: AppConfig.focusedMapZoom);
-      if (field == RouteFieldKind.pickup) await _refreshNearby();
+    if (field == RouteFieldKind.pickup && result.point != null) {
+      await _refreshNearby();
     }
+    // A route needs both ends; _refreshRoute clears itself when one is missing.
+    await _refreshRoute();
   }
 
   Widget _buildTourPanel() {
@@ -921,6 +1056,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       _destinationPoint =
                           LatLng(place.latitude, place.longitude);
                     });
+                    _refreshRoute();
                   },
                   child: Container(
                     padding:
@@ -1072,24 +1208,7 @@ class _LocationControl extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppColors.secondary,
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: const Text(
-                'U',
-                style: TextStyle(
-                  color: AppColors.secondary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                ),
-              ),
-            ),
+            const UDriveMark(size: 38),
             AnimatedSize(
               duration: AppConfig.pillExpand,
               curve: Curves.easeOut,
@@ -1218,6 +1337,7 @@ class _NearbyCountChip extends StatelessWidget {
       HomeService.car => count == 1 ? 'car' : 'cars',
       HomeService.bike => count == 1 ? 'bike' : 'bikes',
       HomeService.hotel => 'hotels',
+      HomeService.tour => count == 1 ? 'tour vehicle' : 'tour vehicles',
     };
     if (count == 0) return 'No $noun nearby right now';
     return '$count $noun within '
@@ -1592,14 +1712,259 @@ class _NotificationsPopup extends StatelessWidget {
 /// These three sit together because they are three different products, not
 /// three settings — the choice changes what the customer buys, so it belongs
 /// above the addresses rather than hidden in a toggle.
-class _TravelModeSelector extends StatelessWidget {
-  const _TravelModeSelector({required this.value, required this.onChanged});
+/// Per seat / whole vehicle.
+///
+/// Only the types the nearby vehicles can actually offer are shown. With five
+/// seats or fewer there is nothing to share, so per seat is hidden rather than
+/// shown-and-rejected — a disabled control the customer cannot use is worse
+/// than one that was never there.
+/// Distance, travel time and the road the trip takes.
+///
+/// Shown only once a destination exists. When Directions cannot answer, this
+/// says so plainly rather than falling back to straight-line distance — a
+/// straight line through Kashmir's mountains can be a third of the real road,
+/// so a made-up figure would misprice the trip and mislead about arrival.
+class _TripSummary extends StatelessWidget {
+  const _TripSummary({
+    required this.loading,
+    required this.result,
+    required this.selected,
+    required this.hasDestination,
+    required this.onSelect,
+  });
 
-  final TravelMode value;
-  final ValueChanged<TravelMode> onChanged;
+  final bool loading;
+  final TripRouteResult result;
+  final int selected;
+  final bool hasDestination;
+  final ValueChanged<int> onSelect;
 
   @override
   Widget build(BuildContext context) {
+    if (!hasDestination) return const SizedBox.shrink();
+
+    if (loading) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceAlt,
+            borderRadius: AppRadii.all(AppRadii.row),
+          ),
+          child: const Row(
+            children: [
+              SizedBox(
+                width: 15,
+                height: 15,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 11),
+              Text(
+                'Working out the route…',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppText.secondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (!result.hasRoute) {
+      final message = switch (result.failure) {
+        RouteFailure.noKey =>
+          'Travel time is unavailable until an admin adds the Google key.',
+        RouteFailure.notFound =>
+          'No driving route found between these two points.',
+        _ => 'Could not work out the route. Check your connection.',
+      };
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          decoration: BoxDecoration(
+            color: AppTint.warning,
+            borderRadius: AppRadii.all(AppRadii.row),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.route_outlined,
+                  size: 16, color: AppTint.warningText),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                    color: AppTint.warningText,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final active = result.routes[selected.clamp(0, result.routes.length - 1)];
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppTint.brand,
+              borderRadius: AppRadii.all(AppRadii.row),
+              border: Border.all(
+                color: AppColors.secondary.withValues(alpha: .35),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.schedule_rounded,
+                    size: 19, color: AppColors.secondary),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${active.durationLabel}  ·  ${active.distanceLabel}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: AppText.primary,
+                        ),
+                      ),
+                      if (active.summary.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'via ${active.summary}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppText.secondary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Alternatives, when Google offered any. One line each: road name and
+          // how much slower it is than the fastest.
+          if (result.routes.length > 1) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 34,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: result.routes.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 7),
+                itemBuilder: (context, index) {
+                  final route = result.routes[index];
+                  final isSelected = index == selected;
+                  final slower =
+                      route.durationSeconds - result.routes.first.durationSeconds;
+                  final extra = (slower / 60).round();
+
+                  return GestureDetector(
+                    onTap: () => onSelect(index),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.surfaceHigh
+                            : AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(99),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.secondary
+                              : Colors.transparent,
+                        ),
+                      ),
+                      child: Text(
+                        route.summary.isEmpty
+                            ? route.durationLabel
+                            : '${route.summary} · ${route.durationLabel}'
+                                '${extra > 0 ? '  +$extra min' : ''}',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight:
+                              isSelected ? FontWeight.w800 : FontWeight.w600,
+                          color: isSelected
+                              ? AppText.primary
+                              : AppText.secondary,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BookingTypeSelector extends StatelessWidget {
+  const _BookingTypeSelector({
+    required this.value,
+    required this.available,
+    required this.onChanged,
+  });
+
+  final BookingType value;
+  final List<BookingType> available;
+  final ValueChanged<BookingType> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (available.length < 2) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Icon(available.first.icon, size: 18, color: AppColors.secondary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                available.first == BookingType.wholeVehicle
+                    ? 'Whole vehicle — nearby vehicles seat 5 or fewer'
+                    : 'Per seat only',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppText.secondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -1607,7 +1972,7 @@ class _TravelModeSelector extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
-        children: TravelMode.values.map((mode) {
+        children: available.map((mode) {
           final selected = mode == value;
           return Expanded(
             child: Semantics(
@@ -1621,9 +1986,8 @@ class _TravelModeSelector extends StatelessWidget {
                   duration: const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: selected
-                        ? AppColors.secondary
-                        : Colors.transparent,
+                    color:
+                        selected ? AppColors.secondary : Colors.transparent,
                     borderRadius: BorderRadius.circular(11),
                   ),
                   child: Column(
@@ -1632,16 +1996,14 @@ class _TravelModeSelector extends StatelessWidget {
                       Icon(
                         mode.icon,
                         size: 19,
-                        color: selected
-                            ? AppText.onBrand
-                            : AppText.disabled,
+                        color:
+                            selected ? AppText.onBrand : AppText.disabled,
                       ),
                       const SizedBox(height: 4),
                       Text(
                         mode.label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 11.5,
                           height: 1.2,
@@ -1664,10 +2026,6 @@ class _TravelModeSelector extends StatelessWidget {
   }
 }
 
-/// Pickup and destination shown as tappable rows rather than live text fields.
-///
-/// Typing happens on the dedicated search screen, so this only has to read
-/// well: no borders, no boxes, just the route with a connector down the side.
 class _RouteSummaryFields extends StatelessWidget {
   const _RouteSummaryFields({
     required this.pickupLabel,

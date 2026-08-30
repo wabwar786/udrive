@@ -801,6 +801,72 @@ public sealed class BookingService(
                 "The selected Driver offer has expired.");
         }
 
+        // Booking-type rules belong here, not only in the app. The client can be
+        // out of date, modified, or bypassed entirely, so the vehicle's own
+        // capacity and configuration decide what is allowed.
+        const string vehicleRulesSql = """
+            SELECT passenger_capacity,
+                   COALESCE(NULLIF(booking_mode, ''), 'WholeVehicle'),
+                   COALESCE(available_for_tour, false)
+            FROM udrive.vehicles
+            WHERE id = @vehicleId;
+            """;
+
+        int vehicleCapacity;
+        string vehicleBookingMode;
+        await using (var rulesCommand = new NpgsqlCommand(vehicleRulesSql, connection, transaction))
+        {
+            rulesCommand.Parameters.AddWithValue("vehicleId", vehicleId);
+            await using var reader = await rulesCommand.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return ServiceResult<BookingDto>.Fail(
+                    StatusCodes.Status404NotFound,
+                    "vehicle_not_found",
+                    "The vehicle for this offer was not found.");
+            }
+
+            vehicleCapacity = reader.GetInt32(0);
+            vehicleBookingMode = reader.GetString(1);
+        }
+
+        var wantsPerSeat = bookingType.Contains("Seat", StringComparison.OrdinalIgnoreCase);
+
+        // Selling individual seats needs spare seats to sell. Five or fewer is a
+        // private car, and splitting it between strangers is not a product we
+        // offer.
+        if (wantsPerSeat && vehicleCapacity <= 5)
+        {
+            return ServiceResult<BookingDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "per_seat_not_allowed",
+                "This vehicle has 5 seats or fewer and can only be booked as a whole vehicle.");
+        }
+
+        if (wantsPerSeat && vehicleBookingMode.Equals("WholeVehicle", StringComparison.OrdinalIgnoreCase))
+        {
+            return ServiceResult<BookingDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "per_seat_not_allowed",
+                "The driver offers this vehicle as a whole vehicle only.");
+        }
+
+        if (!wantsPerSeat && vehicleBookingMode.Equals("PerSeat", StringComparison.OrdinalIgnoreCase))
+        {
+            return ServiceResult<BookingDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "whole_vehicle_not_allowed",
+                "The driver offers this vehicle by the seat only.");
+        }
+
+        if (wantsPerSeat && seats > vehicleCapacity)
+        {
+            return ServiceResult<BookingDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "too_many_seats",
+                $"This vehicle seats {vehicleCapacity}.");
+        }
+
         var advanceAmount = Math.Clamp(request.AdvanceAmount, 0, totalAmount);
         var remainingAmount = totalAmount - advanceAmount;
         var bookingId = Guid.NewGuid();

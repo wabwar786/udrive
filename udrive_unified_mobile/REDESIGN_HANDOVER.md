@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 12)
+# UDrive Redesign — Delivery 1 & 2 (revision 14)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,101 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 14 — route, distance and travel time
+
+### Enable Directions API first
+
+This needs one more Google API: **Directions**. Distance Matrix gives distance
+and duration but no geometry, so the road cannot be highlighted. Directions
+returns distance, duration, the road name and the polyline in one call, plus
+alternative routes.
+
+Console → APIs & Services → enable **Directions API**, and add it to the
+`udrive-server` key's API restrictions alongside Places and Geocoding.
+
+### What happens after picking a destination
+
+1. `GET /api/v1/places/directions` through the same proxy (key stays server-side)
+2. The route is drawn on the map in brand green; alternatives sit behind in grey
+3. The camera zooms out to fit the whole trip with padding
+4. A summary appears above the button: **"45 min · 23 km — via Neelum Road"**
+5. If Google returned alternatives, one-line chips let the customer switch, each
+   showing its road and how much slower it is
+
+`departure_time=now` is sent, so `duration_in_traffic` comes back and the
+estimate reflects current conditions.
+
+### No straight-line fallback, deliberately
+
+When Directions cannot answer, the summary says so — it does not fall back to
+straight-line distance. The road from Muzaffarabad to Kel is roughly three times
+the direct line. A straight-line figure would misprice the fare and mislead the
+customer about when they would arrive, which is worse than showing nothing.
+
+The three failure cases each get their own message: no key configured, no
+drivable route, or a network problem.
+
+### Cost
+
+Fetched on destination change, not on a timer — a route between two fixed points
+does not move. The response is cached for 120 seconds server-side.
+
+### Also
+
+`UdMapController.fitBounds()` added, working on both renderers. Polyline
+decoding is implemented inline (about twenty lines) rather than adding a package.
+The 5 km search ring now hides once a route is drawn, since it only clutters the
+trip.
+
+## Revision 13 — Tour as a service, seat rules, gesture fix
+
+### Tour moved to the service row
+
+`HomeService` gained `tour`, so the row is now Coaster/Bus · Car · Bike · Hotel
+· Tour. The booking-type row below is just **Per seat | Whole vehicle** —
+`TravelMode` is gone.
+
+Tour is filtered on a vehicle property, not a category: migration 030 adds
+`vehicles.available_for_tour`, defaulting to **false**. A driver opts in.
+Defaulting everyone to true would put drivers on multi-day mountain trips they
+never agreed to.
+
+### Seat rules
+
+Per seat is offered only when a nearby vehicle actually has seats to share —
+more than 5, and a driver who allows per-seat. Otherwise the row collapses to a
+single line explaining why.
+
+Enforced again in `BookingService.SelectDriverOfferAsync`, which reads the
+vehicle's own capacity and mode before writing the booking. A client can be out
+of date or bypassed, so UI-only validation is not validation.
+
+Migration 030 also resets `booking_mode` to `WholeVehicle` for any existing
+vehicle seating 5 or fewer.
+
+### Map moving behind the sheet
+
+Two fixes, because the cause is two-sided:
+
+1. `GoogleMap` now declares its `gestureRecognizers`. As a platform view it was
+   winning the gesture arena for drags that began on Flutter widgets above it.
+2. The sheet sits in an opaque `GestureDetector` with drag handlers attached, so
+   it claims the pointer before the platform view sees it.
+
+Map pan and zoom still work when the gesture starts on the visible map.
+
+### Naming collision found
+
+`data/models.dart` already declared `enum BookingType { perSeat, wholeVehicle }`
+— identical to the one I was about to add. Two enums with the same name would
+collide in any file importing both. The new file now re-exports the existing
+enum and only adds presentation helpers. Renamed `travel_mode.dart` to
+`booking_options.dart` to match what it holds.
+
+### Also
+
+The plain green square top-left is now the real `UDriveMark` logo.
 
 ## Revision 12 — layout now matches the mockup
 
