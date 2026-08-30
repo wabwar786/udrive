@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/network/api_config.dart';
+import '../../core/booking/vehicle_booking_mode.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/booking_models.dart';
 import 'driver_offers_screen.dart';
@@ -727,6 +728,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       safetyScore: 94,
       isOnline: true,
       category: 'Bike',
+      bookingMode: VehicleBookingMode.wholeVehicle,
       make: 'Honda',
       model: 'CB 150F',
       year: 2025,
@@ -799,6 +801,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       safetyScore: 98,
       isOnline: true,
       category: 'Coster',
+      bookingMode: VehicleBookingMode.both,
       make: 'Toyota',
       model: 'Coaster',
       year: 2023,
@@ -845,6 +848,45 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   bool _autoAccept = false;
   DateTime _tourDate = DateTime.now().add(const Duration(days: 1));
   _FareBookingMode _bookingMode = _FareBookingMode.perSeat;
+
+  /// Booking mode of the vehicle the customer currently has selected. Drivers
+  /// set this per vehicle; whole-vehicle is the default.
+  VehicleBookingMode get _selectedVehicleBookingMode {
+    final id = _selectedVehicleId;
+    if (id == null) return VehicleBookingMode.both;
+    for (final vehicle in _availableVehicles) {
+      if (vehicle.id == id) return vehicle.bookingMode;
+    }
+    return VehicleBookingMode.both;
+  }
+
+  bool get _canBookPerSeat => _selectedVehicleBookingMode.allowsPerSeat;
+  bool get _canBookWholeVehicle =>
+      _selectedVehicleBookingMode.allowsWholeVehicle;
+
+  /// Both modes are only offered when the driver actually allows both. With a
+  /// single permitted mode the toggle is hidden and that mode is forced, so a
+  /// seat-only vehicle can never be booked whole and vice versa.
+  bool get _showBookingModeToggle => _canBookPerSeat && _canBookWholeVehicle;
+
+  /// Keeps [_bookingMode] legal after the customer switches vehicle.
+  void _clampBookingMode() {
+    if (_bookingMode == _FareBookingMode.perSeat && !_canBookPerSeat) {
+      _bookingMode = _FareBookingMode.wholeVehicle;
+    } else if (_bookingMode == _FareBookingMode.wholeVehicle &&
+        !_canBookWholeVehicle) {
+      _bookingMode = _FareBookingMode.perSeat;
+    }
+  }
+
+  /// One-line explanation shown in place of the toggle when the driver only
+  /// permits a single mode, so the customer understands why there is no choice.
+  String? get _bookingModeNotice {
+    if (_showBookingModeToggle) return null;
+    return _canBookPerSeat
+        ? 'This vehicle is offered per seat only.'
+        : 'This vehicle is booked as a whole vehicle only.';
+  }
   int _seats = 1;
   final _perSeatOffer = TextEditingController();
   final _wholeVehicleOffer = TextEditingController();
@@ -1065,6 +1107,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       );
       if (index >= 0) _selected = index;
       _seats = _seats.clamp(1, vehicle.passengerCapacity.clamp(1, 50)).toInt();
+      // A different vehicle may permit a different set of booking modes, so
+      // snap back to a legal one rather than carrying an illegal choice over.
+      _clampBookingMode();
     }
 
     if (notify) {
@@ -1971,7 +2016,29 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               );
             }),
             const SizedBox(height: 8),
-            if (widget.serviceType != UDriveServiceType.privateVehicle)
+            // Only offer modes the driver enabled on this vehicle. When just one
+            // is allowed we show a short reason instead of a dead toggle.
+            if (widget.serviceType != UDriveServiceType.privateVehicle &&
+                !_showBookingModeToggle)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F4),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.info_outline_rounded, size: 15, color: Color(0xFF667085)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _bookingModeNotice ?? '',
+                      style: const TextStyle(fontSize: 11.5, color: Color(0xFF667085), fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ]),
+              ),
+            if (widget.serviceType != UDriveServiceType.privateVehicle &&
+                _showBookingModeToggle)
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(14)),
@@ -2222,14 +2289,20 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(color: const Color(0xFF252826), borderRadius: BorderRadius.circular(14)),
-                    child: Row(children: [
-                      Expanded(child: _ModeButton(label: 'Per seat', selected: _bookingMode == _FareBookingMode.perSeat, onTap: () => setState(() => _bookingMode = _FareBookingMode.perSeat))),
-                      Expanded(child: _ModeButton(label: 'Whole vehicle', selected: _bookingMode == _FareBookingMode.wholeVehicle, onTap: () => setState(() => _bookingMode = _FareBookingMode.wholeVehicle))),
-                    ]),
-                  ),
+                  if (_showBookingModeToggle)
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(color: const Color(0xFF252826), borderRadius: BorderRadius.circular(14)),
+                      child: Row(children: [
+                        Expanded(child: _ModeButton(label: 'Per seat', selected: _bookingMode == _FareBookingMode.perSeat, onTap: () => setState(() => _bookingMode = _FareBookingMode.perSeat))),
+                        Expanded(child: _ModeButton(label: 'Whole vehicle', selected: _bookingMode == _FareBookingMode.wholeVehicle, onTap: () => setState(() => _bookingMode = _FareBookingMode.wholeVehicle))),
+                      ]),
+                    )
+                  else
+                    Text(
+                      _bookingModeNotice ?? '',
+                      style: const TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w600),
+                    ),
                   if (_bookingMode == _FareBookingMode.perSeat) ...[
                     const SizedBox(height: 8),
                     Row(children: [
@@ -2555,6 +2628,7 @@ class _PublicVehicle {
     required this.imageUrl,
     required this.serviceAreas,
     required this.isDemo,
+    this.bookingMode = VehicleBookingMode.wholeVehicle,
   });
 
   factory _PublicVehicle.fromJson(Map<String, dynamic> json) {
@@ -2590,6 +2664,8 @@ class _PublicVehicle {
       imageUrl: ApiConfig.absoluteUrl(json['imageUrl']?.toString()),
       serviceAreas: areas,
       isDemo: json['isDemo'] == true,
+      bookingMode:
+          VehicleBookingModeInfo.fromApi(json['bookingMode']?.toString()),
     );
   }
 
@@ -2615,6 +2691,10 @@ class _PublicVehicle {
   final String imageUrl;
   final List<String> serviceAreas;
   final bool isDemo;
+
+  /// How the driver allows this vehicle to be booked. Drives which fare modes
+  /// the customer is offered.
+  final VehicleBookingMode bookingMode;
 }
 
 class _VehicleChoiceData {

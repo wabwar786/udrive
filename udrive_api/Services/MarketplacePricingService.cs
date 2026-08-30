@@ -66,7 +66,8 @@ public sealed class MarketplacePricingService(string connectionString)
                    v.mountain_readiness_score,
                    NULLIF(v.image_url, ''),
                    dp.service_areas,
-                   COALESCE(u.email LIKE 'demo.%@udrive.local', false)
+                   COALESCE(u.email LIKE 'demo.%@udrive.local', false),
+                   COALESCE(NULLIF(v.booking_mode, ''), 'WholeVehicle')
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
@@ -126,7 +127,8 @@ public sealed class MarketplacePricingService(string connectionString)
                 reader.GetInt32(18),
                 reader.IsDBNull(19) ? null : reader.GetString(19),
                 reader.GetFieldValue<string[]>(20),
-                reader.GetBoolean(21)));
+                reader.GetBoolean(21),
+                reader.GetString(22)));
         }
 
         return list;

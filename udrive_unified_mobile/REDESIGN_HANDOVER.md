@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 5)
+# UDrive Redesign — Delivery 1 & 2 (revision 6)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,55 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 6 — layout, sticky CTA, per-vehicle booking mode
+
+### Home layout
+
+- Hero shortened from `topInset + 330` to `topInset + 268`, so the service
+  blocks sit higher. Title 26→23px, fade 150→130px.
+- **The CTA is now pinned to the bottom.** Home is a `Column` of a scrolling
+  `ListView` plus a fixed `_StickyCta` footer, so "Find a Car" is always
+  reachable — no scrolling back down after editing an address.
+- **Per-seat / full-vehicle and the passenger stepper are gone from Home.**
+  Those choices belong on the next screen, where the actual vehicle and its
+  rules are known. `_BusFareMode`, `_seats`, `_passengers` and the now-unused
+  `UdSegmented` widget were all removed rather than left as dead code.
+
+### Booking mode is set per vehicle by the driver
+
+A driver decides how their vehicle can be booked, and the customer is only ever
+offered what that vehicle allows.
+
+```
+WholeVehicle   default — customer books the entire vehicle
+PerSeat        customer books individual seats
+Both           customer chooses
+```
+
+**Driver side** (`vehicle_registration_screen.dart`): a "How can customers book
+this vehicle?" card in the capacity step, with all three options and a
+description each. Whole-vehicle is preselected, so a driver has to actively opt
+into per-seat. On a one-seat vehicle the per-seat options are disabled with a
+stated reason rather than silently missing.
+
+**Customer side** (`udrive_route_flow_screen.dart`): the per-seat / whole-vehicle
+toggle appears only when the driver allows both. With one permitted mode the
+toggle is replaced by a short line — "This vehicle is offered per seat only." —
+and that mode is forced. `_clampBookingMode()` runs whenever the customer
+switches vehicle, so an illegal mode can never carry over.
+
+**Backend:**
+
+- `Migrations/028_vehicle_booking_mode.sql` — adds `booking_mode` to
+  `udrive.vehicles`, defaulting to `WholeVehicle` with a CHECK constraint.
+  Vehicles with 10+ seats are seeded to `Both`, since large vehicles are
+  commonly sold either way; drivers can change theirs at any time.
+- `PublicVehicleDto` gains `BookingMode`, and the catalog query selects it.
+
+Run migration 028. `VehicleBookingModeInfo.fromApi` defaults to whole-vehicle on
+any unknown or missing value, so an un-migrated database cannot accidentally
+open per-seat booking.
 
 ## Revision 5 — blank screen fix
 

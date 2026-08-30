@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/booking/vehicle_booking_mode.dart';
+
 enum UserMode { customer, driver, hotel }
 
 enum VerificationStatus { verified, pending, draft, rejected, suspended, expired }
@@ -400,6 +402,7 @@ class VehicleRecord {
     this.roofCarrier = false,
     this.childSeat = false,
     this.routeEligibility = const <String>['City', 'Intercity'],
+    this.bookingMode = VehicleBookingMode.wholeVehicle,
   });
   final String id;
   final String make;
@@ -420,6 +423,11 @@ class VehicleRecord {
   final bool roofCarrier;
   final bool childSeat;
   final List<String> routeEligibility;
+
+  /// How customers may book this vehicle. Whole-vehicle by default; the driver
+  /// can switch to per-seat or allow both.
+  final VehicleBookingMode bookingMode;
+
   VerificationStatus status;
   final Map<String, bool> documents;
 

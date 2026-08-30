@@ -61,4 +61,7 @@ public sealed record PublicVehicleDto(
     int MountainReadinessScore,
     string? ImageUrl,
     IReadOnlyList<string> ServiceAreas,
-    bool IsDemo);
+    bool IsDemo,
+    // How this vehicle may be booked: WholeVehicle, PerSeat or Both.
+    // The customer app offers only the modes the driver enabled.
+    string BookingMode);

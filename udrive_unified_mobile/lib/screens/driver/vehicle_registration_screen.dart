@@ -3,6 +3,7 @@ import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../core/booking/vehicle_booking_mode.dart';
 import '../../data/models.dart';
 
 class VehicleListScreen extends StatelessWidget {
@@ -94,6 +95,11 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
   late final TextEditingController _color = TextEditingController(text: widget.existing?.color ?? 'Pearl White');
   late final TextEditingController _registration = TextEditingController(text: widget.existing?.registration ?? 'AJK-2026');
   late String _category = widget.existing?.category ?? 'SUV';
+
+  /// How customers may book this vehicle. Whole-vehicle is the default; the
+  /// driver opts into per-seat only if they want to sell individual seats.
+  late VehicleBookingMode _bookingMode =
+      widget.existing?.bookingMode ?? VehicleBookingMode.wholeVehicle;
   late int _seats = widget.existing?.seats ?? 6;
   late int _luggage = widget.existing?.luggage ?? 4;
   late bool _ac = widget.existing?.airConditioning ?? true;
@@ -185,6 +191,12 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
         const SizedBox(height: 12),
         _ValueSelector(label: context.tr('luggageCapacity'), icon: Icons.luggage_rounded, value: _luggage, min: 0, max: 20, onChanged: (v) => setState(() => _luggage = v)),
         const SizedBox(height: 12),
+        _BookingModeSelector(
+          value: _bookingMode,
+          seats: _seats,
+          onChanged: (mode) => setState(() => _bookingMode = mode),
+        ),
+        const SizedBox(height: 12),
         PremiumCard(child: Column(children: [
           _CapabilitySwitch(icon: Icons.ac_unit_rounded, title: context.tr('airConditioning'), subtitle: 'Working cooling system for passenger comfort.', value: _ac, onChanged: (v) => setState(() => _ac = v)),
           const Divider(),
@@ -241,6 +253,7 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
         _ReviewRow(label: 'Vehicle', value: '${_make.text} ${_model.text} ${_year.text}'),
         _ReviewRow(label: context.tr('registrationNo'), value: _registration.text.toUpperCase()),
         _ReviewRow(label: context.tr('category'), value: _category),
+        _ReviewRow(label: 'Booking type', value: _bookingMode.label),
         _ReviewRow(label: 'Capacity', value: '$_seats seats · $_luggage bags'),
         _ReviewRow(label: context.tr('fourWheelDrive'), value: _fourByFour ? 'Yes' : 'No'),
         _ReviewRow(label: 'Tourism safety kit', value: '${[_firstAidKit, _fireExtinguisher, _spareTyre].where((e) => e).length}/3 ready'),
@@ -277,6 +290,7 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
         color: _color.text.trim(),
         registration: _registration.text.trim().toUpperCase(),
         category: _category,
+        bookingMode: _bookingMode,
         seats: _seats,
         luggage: _luggage,
         airConditioning: _ac,
@@ -366,4 +380,70 @@ class _ReviewRow extends StatelessWidget {
   final bool last;
   @override
   Widget build(BuildContext context) => Column(children: [Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 12))), Expanded(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)))])), if (!last) const Divider(height: 1)]);
+}
+
+/// Lets a driver choose how customers may book this vehicle.
+///
+/// Whole-vehicle is preselected — a driver has to actively opt into per-seat.
+/// A one-seat vehicle cannot be sold per seat, so that option is disabled with
+/// a reason rather than silently missing.
+class _BookingModeSelector extends StatelessWidget {
+  const _BookingModeSelector({
+    required this.value,
+    required this.seats,
+    required this.onChanged,
+  });
+
+  final VehicleBookingMode value;
+  final int seats;
+  final ValueChanged<VehicleBookingMode> onChanged;
+
+  bool get _perSeatPossible => seats > 1;
+
+  @override
+  Widget build(BuildContext context) {
+    return PremiumCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 2, 4, 2),
+            child: Text(
+              'How can customers book this vehicle?',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
+            child: Text(
+              'Customers will only be offered what you allow here. You can '
+              'change it any time.',
+              style: TextStyle(fontSize: 11.5, color: Color(0xFF667085)),
+            ),
+          ),
+          ...VehicleBookingMode.values.map((mode) {
+            final disabled =
+                !_perSeatPossible && mode != VehicleBookingMode.wholeVehicle;
+            return RadioListTile<VehicleBookingMode>(
+              value: mode,
+              groupValue: value,
+              onChanged: disabled ? null : (v) => v == null ? null : onChanged(v),
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                mode.label,
+                style: const TextStyle(
+                    fontSize: 13.5, fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                disabled
+                    ? 'Not available for a one-seat vehicle.'
+                    : mode.description,
+                style: const TextStyle(fontSize: 11.5),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
 }

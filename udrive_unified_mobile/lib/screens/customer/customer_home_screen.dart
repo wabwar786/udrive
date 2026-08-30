@@ -44,8 +44,6 @@ class CustomerHomeScreen extends StatefulWidget {
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
 }
 
-enum _BusFareMode { perSeat, wholeVehicle }
-
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   // ------------------------------------------------------------- controllers
   final _pickup = TextEditingController(text: 'Detecting current address…');
@@ -83,11 +81,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   RouteFieldKind? _activeField;
   List<PlaceSuggestion> _suggestions = const [];
   bool _searching = false;
-
-  // Non-tour vehicle options
-  _BusFareMode _busFareMode = _BusFareMode.perSeat;
-  int _seats = 1;
-  int _passengers = 1;
 
   // Tour options
   DateTime _tourDate = DateTime.now().add(const Duration(days: 1));
@@ -435,10 +428,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => UDriveRouteFlowScreen(
-          serviceType: _busFareMode == _BusFareMode.wholeVehicle &&
-                  _service == HomeService.bus
-              ? UDriveServiceType.privateVehicle
-              : UDriveServiceType.city,
+          // The next screen decides per-seat vs whole vehicle from what the
+          // driver allows on the chosen vehicle.
+          serviceType: UDriveServiceType.city,
           pickupLabel: _pickup.text.trim(),
           pickupPoint: _pickupPoint,
           initialDestinationLabel: _destination.text.trim(),
@@ -592,42 +584,51 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
     return Container(
       color: AppColors.background,
-      child: ListView(
-        padding: EdgeInsets.zero,
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      child: Column(
         children: [
-          _buildServiceHero(controller),
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _buildBookingCard(),
-                ),
-                if (_offline)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _OfflineNotice(),
-                  ),
-                if (_activeTrip != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _ActiveTripBanner(
-                      trip: _activeTrip!,
-                      onTrack: _openActiveTrip,
-                    ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _InviteRow(onShare: _shareApp),
-                ),
-                const SizedBox(height: 26),
-              ],
-            ),
+          Expanded(child: _buildScrollingContent(controller)),
+          // The action stays reachable at all times, so a customer never has to
+          // scroll back down after editing an address.
+          _StickyCta(
+            label: _ctaLabel,
+            enabled: _ctaEnabled,
+            busy: _submitting,
+            onTap: _submit,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildScrollingContent(AppController controller) {
+    return ListView(
+      padding: EdgeInsets.zero,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      children: [
+        _buildServiceHero(controller),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _buildBookingCard(),
+        ),
+        if (_offline)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: _OfflineNotice(),
+          ),
+        if (_activeTrip != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: _ActiveTripBanner(
+              trip: _activeTrip!,
+              onTrack: _openActiveTrip,
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: _InviteRow(onShare: _shareApp),
+        ),
+        const SizedBox(height: 20),
+      ],
     );
   }
 
@@ -639,7 +640,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// colour with no visible cut line.
   Widget _buildServiceHero(AppController controller) {
     final topInset = MediaQuery.paddingOf(context).top;
-    final heroHeight = topInset + 330;
+    final heroHeight = topInset + 268;
 
     return SizedBox(
       height: heroHeight,
@@ -675,7 +676,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             top: topInset + 54,
             left: 0,
             right: 0,
-            bottom: 78,
+            bottom: 74,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 320),
               switchInCurve: Curves.easeOutCubic,
@@ -707,7 +708,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             left: 0,
             right: 0,
             bottom: 0,
-            height: 150,
+            height: 130,
             child: const IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -730,7 +731,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           Positioned(
             left: 20,
             right: 20,
-            bottom: 42,
+            bottom: 26,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -738,7 +739,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   _service.heroTitle,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    fontSize: 26,
+                    fontSize: 23,
                     fontWeight: FontWeight.w900,
                     color: AppText.primary,
                     height: 1.1,
@@ -847,13 +848,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   : _buildVehiclePanel(),
             ),
           ),
-          const SizedBox(height: 14),
-          _PrimaryCta(
-            label: _ctaLabel,
-            enabled: _ctaEnabled,
-            busy: _submitting,
-            onTap: _submit,
-          ),
         ],
       ),
     );
@@ -916,11 +910,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           value: _tourMode,
           onChanged: (value) => setState(() => _tourMode = value),
         ),
+        // Seats, passenger count and per-seat vs whole-vehicle are chosen on
+        // the next screen, where the actual vehicle and its rules are known.
         AnimatedSize(
           duration: AppConfig.panelSwitch,
           curve: Curves.easeOut,
           alignment: Alignment.topCenter,
-          child: _tourMode ? _buildTourPanel() : _buildStandardOptions(),
+          child: _tourMode ? _buildTourPanel() : const SizedBox.shrink(),
         ),
       ],
     );
@@ -976,45 +972,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           const _AdvanceDisclosure(),
         ],
       ),
-    );
-  }
-
-  Widget _buildStandardOptions() {
-    if (_service == HomeService.bike) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: _service == HomeService.bus
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                UdSegmented<_BusFareMode>(
-                  value: _busFareMode,
-                  options: const [
-                    (value: _BusFareMode.perSeat, label: 'Per seat'),
-                    (value: _BusFareMode.wholeVehicle, label: 'Full vehicle'),
-                  ],
-                  onChanged: (value) => setState(() => _busFareMode = value),
-                ),
-                if (_busFareMode == _BusFareMode.perSeat) ...[
-                  const SizedBox(height: 9),
-                  UdStepper(
-                    label: 'Seats',
-                    value: _seats,
-                    min: 1,
-                    max: 40,
-                    onChanged: (value) => setState(() => _seats = value),
-                  ),
-                ],
-              ],
-            )
-          : UdStepper(
-              label: 'Passengers',
-              value: _passengers,
-              min: 1,
-              max: 7,
-              onChanged: (value) => setState(() => _passengers = value),
-            ),
     );
   }
 
@@ -1551,8 +1508,12 @@ class _TapField extends StatelessWidget {
   }
 }
 
-class _PrimaryCta extends StatelessWidget {
-  const _PrimaryCta({
+/// Action bar pinned above the bottom navigation.
+///
+/// Sits on an opaque background with a soft upward shadow so scrolling content
+/// passes behind it cleanly.
+class _StickyCta extends StatelessWidget {
+  const _StickyCta({
     required this.label,
     required this.enabled,
     required this.busy,
@@ -1566,32 +1527,39 @@ class _PrimaryCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 56,
-      child: Material(
-        color: enabled ? AppColors.navy : AppColors.border,
-        borderRadius: AppRadii.all(AppRadii.cta),
-        child: InkWell(
-          onTap: enabled ? onTap : null,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        boxShadow: AppShadows.navBar,
+      ),
+      child: SizedBox(
+        height: 54,
+        child: Material(
+          color: enabled ? AppColors.navy : AppColors.border,
           borderRadius: AppRadii.all(AppRadii.cta),
-          child: Center(
-            child: busy
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+          child: InkWell(
+            onTap: enabled ? onTap : null,
+            borderRadius: AppRadii.all(AppRadii.cta),
+            child: Center(
+              child: busy
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w800,
+                        color: enabled ? Colors.white : AppText.disabled,
+                      ),
                     ),
-                  )
-                : Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 16.5,
-                      fontWeight: FontWeight.w800,
-                      color: enabled ? Colors.white : AppText.disabled,
-                    ),
-                  ),
+            ),
           ),
         ),
       ),
