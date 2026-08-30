@@ -272,8 +272,23 @@ class _UdMapState extends State<UdMap> {
   /// The camera then sat wherever the initial position put it.
   ({LatLng target, double zoom})? _pendingCamera;
 
+  /// flutter_map only accepts camera commands once it has reported itself
+  /// ready. Before that, `move()` throws.
+  bool _offlineReady = false;
+
   Future<void> _moveTo(LatLng target, {double? zoom}) async {
-    final nextZoom = zoom ?? _zoom;
+    // Refuse coordinates that cannot be real. A null island (0, 0) or a NaN
+    // slipping through a calculation puts the camera in the Atlantic, which is
+    // what the flat grey-and-cyan map was.
+    if (!target.latitude.isFinite ||
+        !target.longitude.isFinite ||
+        (target.latitude.abs() < 0.01 && target.longitude.abs() < 0.01)) {
+      return;
+    }
+
+    var nextZoom = zoom ?? _zoom;
+    if (!nextZoom.isFinite) nextZoom = AppConfig.defaultMapZoom;
+    nextZoom = nextZoom.clamp(widget.minZoom ?? 3.0, 21.0);
     _center = target;
     _zoom = nextZoom;
 
@@ -293,7 +308,18 @@ class _UdMapState extends State<UdMap> {
         ),
       );
     } else {
-      _offlineController.move(target, nextZoom);
+      if (!_offlineReady) {
+        _pendingCamera = (target: target, zoom: nextZoom);
+        return;
+      }
+      try {
+        _offlineController.move(target, nextZoom);
+      } catch (_) {
+        // The controller can still refuse if the map is mid-teardown. Holding
+        // the request is better than losing it silently, which is how the map
+        // ended up sitting at its initial camera showing open ocean.
+        _pendingCamera = (target: target, zoom: nextZoom);
+      }
     }
   }
 
@@ -505,7 +531,16 @@ class _UdMapState extends State<UdMap> {
               ? fmap.InteractiveFlag.pinchZoom | fmap.InteractiveFlag.drag
               : fmap.InteractiveFlag.none,
         ),
-        minZoom: widget.minZoom,
+        minZoom: widget.minZoom ?? 3,
+        maxZoom: 21,
+        // Keeps the camera on the map rather than letting a drag fling it into
+        // empty space beyond the tile coverage.
+        cameraConstraint: fmap.CameraConstraint.contain(
+          bounds: fmap.LatLngBounds(
+            const LatLng(85, -180),
+            const LatLng(-85, 180),
+          ),
+        ),
         onPositionChanged: (position, hasGesture) {
           _cameraTarget = position.center;
           if (hasGesture) widget.onCameraMoveStarted?.call();
@@ -515,6 +550,14 @@ class _UdMapState extends State<UdMap> {
               event is fmap.MapEventFlingAnimationEnd) {
             final target = _cameraTarget;
             if (target != null) widget.onCameraIdle?.call(target);
+          }
+        },
+        onMapReady: () {
+          _offlineReady = true;
+          final pending = _pendingCamera;
+          if (pending != null) {
+            _pendingCamera = null;
+            _offlineController.move(pending.target, pending.zoom);
           }
         },
         onTap: widget.onTap == null

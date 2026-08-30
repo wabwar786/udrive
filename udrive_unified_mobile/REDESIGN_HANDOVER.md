@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 33) · build label `rev 33`
+# UDrive Redesign — Delivery 1 & 2 (revision 34) · build label `rev 34`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,35 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 34 — the same camera bug, on the other renderer
+
+flutter_map was rendering — the attribution proved it — but showing flat grey
+and cyan, which is open ocean at a very low zoom.
+
+`_moveTo` called `_offlineController.move()` directly. **flutter_map throws if
+that is called before the map reports itself ready**, so the camera move was
+lost and the map stayed at whatever it started with. Exactly the fault fixed for
+Google in revision 28, on the path I had not touched.
+
+Camera moves for flutter_map are now queued and applied in `onMapReady`, with a
+try/catch that re-queues rather than dropping if the controller refuses.
+
+### Guards, so this class of failure is visible instead of silent
+
+- `_moveTo` rejects non-finite coordinates and anything within 0.01° of (0, 0).
+  Null island is in the Atlantic; a NaN or an unset coordinate reaching the
+  camera is a bug, and the map should not quietly fly there.
+- Zoom is clamped to the configured floor and 21, and falls back to the default
+  if it arrives as NaN.
+- flutter_map gets an explicit `cameraConstraint` covering the usable latitude
+  range, so a drag cannot fling the view past the tile coverage.
+
+### On repeating myself
+
+This is the third camera fix. The first two each covered one renderer; the paths
+were never made to share the guarantee. They do now — both queue, both clamp,
+both refuse impossible input.
 
 ## Revision 33 — Google's map, without the platform view
 
