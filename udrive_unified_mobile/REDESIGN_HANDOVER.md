@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 21)
+# UDrive Redesign — Delivery 1 & 2 (revision 22)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,39 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 22 — the map going white, properly
+
+My previous explanation was wrong. The real cause is platform-view stacking on
+web.
+
+Every `PointerInterceptor` is itself a platform view. I had three of them
+stacked over the Google Map, which is also a platform view. Picking a
+destination changes the widget tree — the pin disappears, the chip changes, the
+route summary appears — the platform view slots get reordered, and the map's DOM
+element is detached. What is left is a blank white div.
+
+That was also why the interceptors were there: on web, Flutter widgets drawn
+over a platform view do not reliably receive taps, so the header buttons needed
+them. Both problems come from the same root — putting things on top of the map.
+
+**The map no longer has anything interactive on it.** The layout is a Column:
+
+```
+header      logo · language · driver mode · notifications
+map         210–380px, only the pickup pin over it (IgnorePointer)
+chip row    "6 cars within 5 km" + locate button
+sheet       fills the rest, scrolls internally
+```
+
+Removed as a result: the `pointer_interceptor` dependency, all four
+interceptors, and the `gestureRecognizers` set added in revision 21 — with
+nothing overlapping, the map cannot steal a drag from anything.
+
+The full-bleed look is gone. It could not be made reliable on web, and a map
+that vanishes is worse than a map that does not bleed behind a panel.
+
+**Run `flutter pub get`** — a dependency was removed.
 
 ## Revision 21 — the map going white
 

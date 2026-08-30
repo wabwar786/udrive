@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/maps/ud_map.dart';
@@ -776,154 +775,108 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
-    final topInset = MediaQuery.paddingOf(context).top;
     final height = MediaQuery.sizeOf(context).height;
 
-    // The sheet is capped so a real amount of map stays visible. Without the
-    // cap a tall tour panel covers the map entirely and the screen stops being
-    // map-first; with too generous a cap the map becomes a sliver.
+    // Nothing interactive sits on top of the map.
     //
-    // The sheet scrolls internally, so capping it costs nothing — it just means
-    // the customer scrolls the panel rather than losing the map.
-    final sheetMaxHeight = (height * .55).clamp(320.0, 560.0);
+    // On web the map is a DOM element in its own layer: Flutter widgets drawn
+    // over it do not reliably receive taps, and stacking PointerInterceptors to
+    // fix that turned out to detach the map whenever the tree changed — the
+    // white area after picking a destination. Header, chip and locate button
+    // therefore live above and below the map rather than on it. Only the pickup
+    // pin overlaps, and it ignores pointers entirely.
+    final mapHeight = (height * .36).clamp(210.0, 380.0);
 
     return Container(
       color: AppColors.background,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _buildMap(),
-
-          // Centre pickup pin. Ignores pointers so the drag underneath reaches
-          // the map — the pin is an indicator, not a control.
-          if (_pinActive)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              bottom: sheetMaxHeight * .52,
-              child: IgnorePointer(
-                child: Center(
-                  child: _CentrePin(
-                    lifted: _draggingMap,
-                    label: _pickup.text.trim(),
-                    resolving: _resolvingPin,
-                  ),
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              child: SizedBox(
+                height: 40,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const UDriveMark(size: 38),
+                    const Spacer(),
+                    _LanguagePill(
+                      isEnglish: controller.locale.languageCode != 'ur',
+                      onTap: () => _toggleLanguage(controller),
+                    ),
+                    const SizedBox(width: 8),
+                    _MapIconButton(
+                      icon: Icons.swap_horiz_rounded,
+                      semanticLabel: 'Switch to driver mode',
+                      onTap: () => controller.switchMode(UserMode.driver),
+                    ),
+                    const SizedBox(width: 8),
+                    _MapIconButton(
+                      icon: Icons.notifications_none_rounded,
+                      semanticLabel: 'Notifications',
+                      showDot: _unreadNotifications,
+                      onTap: _openNotifications,
+                    ),
+                  ],
                 ),
               ),
             ),
 
-          // Header chrome floats directly on the map.
-          Positioned(
-            top: topInset + 10,
-            left: 16,
-            right: 16,
-            child: PointerInterceptor(
-              child: SizedBox(
-              height: 40,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+            SizedBox(
+              height: mapHeight,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Expanded(
-                    child: _LocationControl(
-                      expanded: _locationExpanded,
-                      placeName: _resolvedPlaceName,
-                      onTap: () => setState(
-                        () => _locationExpanded = !_locationExpanded,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _LanguagePill(
-                        isEnglish: controller.locale.languageCode != 'ur',
-                        onTap: () => _toggleLanguage(controller),
-                      ),
-                      const SizedBox(width: 8),
-                      _MapIconButton(
-                        icon: Icons.swap_horiz_rounded,
-                        semanticLabel: 'Switch to driver mode',
-                        onTap: () => controller.switchMode(UserMode.driver),
-                      ),
-                      const SizedBox(width: 8),
-                      _MapIconButton(
-                        icon: Icons.notifications_none_rounded,
-                        semanticLabel: 'Notifications',
-                        showDot: _unreadNotifications,
-                        onTap: _openNotifications,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            ),
-          ),
-
-          // Status strip, sitting just above the sheet.
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: sheetMaxHeight * .5 + 12,
-            child: PointerInterceptor(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_activeTrip != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _ActiveTripBanner(
-                        trip: _activeTrip!,
-                        onTrack: _openActiveTrip,
-                      ),
-                    ),
-                  Row(
-                    children: [
-                      if (_service.isVehicle)
-                        Flexible(
-                          child: _NearbyCountChip(
-                            service: _service,
-                            count: _visibleVehicles.length,
-                            loading: _nearbyLoading,
-                            offline: _offline,
+                  _buildMap(),
+                  if (_pinActive)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Center(
+                          child: _CentrePin(
+                            lifted: _draggingMap,
+                            label: _pickup.text.trim(),
+                            resolving: _resolvingPin,
                           ),
                         ),
-                      const Spacer(),
-                      _LocateButton(busy: _locating, onTap: _loadLocation),
-                    ],
-                  ),
+                      ),
+                    ),
                 ],
               ),
             ),
-          ),
 
-          // The booking sheet. Wrapped so pointers landing on it never reach
-          // the map: opaque hit-test behaviour plus an empty drag handler
-          // claims the gesture before the platform view can.
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: sheetMaxHeight),
-              // PointerInterceptor stops web pointer events reaching the map's
-              // DOM element; the GestureDetector claims drags on mobile, where
-              // the platform view can otherwise win the gesture arena.
-              child: PointerInterceptor(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onVerticalDragStart: (_) {},
-                  onVerticalDragUpdate: (_) {},
-                  onHorizontalDragStart: (_) {},
-                  onHorizontalDragUpdate: (_) {},
-                  child: _buildSheet(),
-                ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              child: Row(
+                children: [
+                  if (_service.isVehicle && _pinActive)
+                    Flexible(
+                      child: _NearbyCountChip(
+                        service: _service,
+                        count: _visibleVehicles.length,
+                        loading: _nearbyLoading,
+                        offline: _offline,
+                      ),
+                    ),
+                  const Spacer(),
+                  _LocateButton(busy: _locating, onTap: _loadLocation),
+                ],
               ),
             ),
-          ),
-        ],
+
+            if (_activeTrip != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                child: _ActiveTripBanner(
+                  trip: _activeTrip!,
+                  onTrack: _openActiveTrip,
+                ),
+              ),
+
+            Expanded(child: _buildSheet()),
+          ],
+        ),
       ),
     );
   }
@@ -1007,33 +960,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-        boxShadow: [
-          BoxShadow(
-              color: Color(0x66000000), blurRadius: 26, offset: Offset(0, -6)),
-        ],
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
         top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Center(
-                child: Container(
-                  width: 38,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceHigh,
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-
               const Padding(
                 padding: EdgeInsets.only(left: 2, bottom: 12),
                 child: Text(

@@ -24,11 +24,6 @@ dependencies:
   latlong2: ^0.9.1
   google_maps_flutter: ^2.10.0
   share_plus: ^11.0.0
-  # Blocks pointer events from reaching HtmlElementView platform views on web.
-  # Without it, dragging anything drawn over the Google Map still pans the map,
-  # because the map is a DOM element in its own layer rather than part of
-  # Flutter's canvas.
-  pointer_interceptor: ^0.10.1+2
   url_launcher: ^6.3.2
   record: ^6.2.1
   google_fonts: ^8.2.0

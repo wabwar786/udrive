@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmap;
@@ -180,19 +178,6 @@ class UdMap extends StatefulWidget {
 }
 
 class _UdMapState extends State<UdMap> {
-  /// Created once and reused.
-  ///
-  /// These must be identical across rebuilds. Allocating a new Set of new
-  /// Factory instances each build looks like a configuration change to
-  /// google_maps_flutter, which recreates the platform view — and a recreated
-  /// view on web renders as a blank white area until it reinitialises.
-  static final Set<Factory<OneSequenceGestureRecognizer>> _mapGestures = {
-    Factory<OneSequenceGestureRecognizer>(() => PanGestureRecognizer()),
-    Factory<OneSequenceGestureRecognizer>(() => ScaleGestureRecognizer()),
-    Factory<OneSequenceGestureRecognizer>(() => TapGestureRecognizer()),
-  };
-
-  static const Set<Factory<OneSequenceGestureRecognizer>> _noGestures = {};
 
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
   final Completer<gmap.GoogleMapController> _googleController =
@@ -382,7 +367,6 @@ class _UdMapState extends State<UdMap> {
       // which is why dragging the booking sheet used to pan the map underneath.
       // Declaring the recognisers keeps the map to gestures that begin on the
       // map itself and lets Flutter's own widgets claim the rest.
-      gestureRecognizers: widget.interactive ? _mapGestures : _noGestures,
       markers: widget.markers
           .map(
             (marker) => gmap.Marker(
