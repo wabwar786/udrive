@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 41) · build label `rev 41`
+# UDrive Redesign — Delivery 1 & 2 (revision 42) · build label `rev 42`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,59 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 42 — choose a vehicle, name a price
+
+Tapping the button on Home now opens `VehicleChoiceScreen`: route on the map,
+the chosen vehicle with a fare stepper, the other vehicles priced below it, and
+**Find offers**.
+
+### Pricing
+
+Fares come from the admin's own `service-rates`, applied to the **real road
+distance** from the route already computed on Home — no second Directions call
+for a line we already have. A time component is included so a short trip through
+heavy traffic is not priced as though it were quick.
+
+Rounded to the nearest 5 rupees. "PKR 1,217" implies a precision the estimate
+does not have, and nobody negotiates in single rupees.
+
+If the rates endpoint cannot be reached, built-in per-kilometre figures apply.
+A customer with no prices cannot book at all, and a rough number they can adjust
+beats an empty screen.
+
+### The stepper
+
+Steps scale with the fare: 50 rupees below PKR 3,000, 100 below 10,000, 500
+above. A fixed step is a meaningful nudge on a city ride and meaningless on a
+tour.
+
+The caption states the trade-off rather than just the number — "12% below
+recommended · may take longer" — because in a bidding model the customer is
+choosing between price and waiting, and should be able to see which way they are
+leaning. Tapping the figure allows typing it directly.
+
+The floor is half the recommendation. An offer below that will not be answered,
+and letting it be made only wastes the customer's time.
+
+### Two things I did not build
+
+**The auto-accept toggle** from the app you showed me. The API has no such flag,
+and a switch that silently did nothing would be worse than its absence — the
+customer would believe a ride had been agreed when it had not. Doing it properly
+means a server-side rule (accept the first offer at or below this fare), which
+is a real feature rather than a checkbox. Say the word and I will build it.
+
+**Per-vehicle ETAs.** The screenshots show "3 min" per vehicle type. That needs
+a Distance Matrix call per category per search, which is billed each time.
+Worth doing, but it should be a deliberate cost decision rather than something
+that appears on the bill unannounced.
+
+### One bug avoided
+
+The ride request needs `instantRide: true`. Without it the API rejects a pickup
+set to now, because advance bookings must be at least 30 minutes ahead. I
+checked the contract before shipping rather than after.
 
 ## Revision 41 — build fix, and the check that would have caught it
 

@@ -31,6 +31,7 @@ import '../hotels/hotel_list_screen.dart';
 import '../operations/live_trip_navigation_screen.dart';
 import 'place_search_screen.dart';
 import 'tour_map_screen.dart';
+import 'vehicle_choice_screen.dart';
 import 'udrive_route_flow_screen.dart';
 
 /// Map-first, service-first Home.
@@ -605,34 +606,48 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final destinationPoint = await _resolveDestination();
     if (!mounted) return;
 
+    // With both ends placed, go straight to choosing a vehicle and naming a
+    // price. The route is handed over so that screen does not pay for a second
+    // Directions call to draw a line we already have.
+    if (destinationPoint != null) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VehicleChoiceScreen(
+            pickupLabel: _pickup.text.trim(),
+            destinationLabel: _destination.text.trim(),
+            pickupPoint: _pickupPoint,
+            destinationPoint: destinationPoint,
+            route: _activeRoute,
+            service: _service,
+            bookingType: _bookingType,
+            seats: _seats,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // The typed address could not be geocoded. Fall back to the full route
+    // screen, pre-filled, rather than blocking the customer on a place the
+    // geocoder does not know.
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => UDriveRouteFlowScreen(
-          // Whole vehicle maps to the private-vehicle service; per seat uses
-          // the shared city service. The next screen still narrows this to what
-          // the chosen vehicle's driver actually allows.
           serviceType: _bookingType == BookingType.wholeVehicle
               ? UDriveServiceType.privateVehicle
               : UDriveServiceType.city,
           pickupLabel: _pickup.text.trim(),
           pickupPoint: _pickupPoint,
           initialDestinationLabel: _destination.text.trim(),
-          initialDestinationLatitude: destinationPoint?.latitude,
-          initialDestinationLongitude: destinationPoint?.longitude,
-          // Only the service the customer picked is offered next — Car shows
-          // cars, Bike shows bikes, Coaster shows coasters.
           onlyVehicleKey: _service.vehicleFilterKey,
-          // When the typed address could not be geocoded we open the full
-          // route screen (pre-filled) rather than blocking the customer.
-          skipRouteEntry: destinationPoint != null,
+          skipRouteEntry: false,
         ),
       ),
     );
   }
 
-  /// Tour: create the ride request now, then show nearby drivers on a map so
-  /// the customer can pick whichever price suits them.
   Future<void> _submitTour() async {
     final destinationPoint = await _resolveDestination();
     if (!mounted) return;
