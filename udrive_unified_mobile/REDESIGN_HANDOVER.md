@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 46) · build label `rev 46`
+# UDrive Redesign — Delivery 1 & 2 (revision 47) · build label `rev 47`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,32 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 47 — build fix: static called on an instance
+
+`cached()` was declared `static` and called as `images.cached()`. Dart allows
+neither, and the class had `refresh()` as an instance method beside it — one
+static, one not, on the same object. That is a trap for exactly the mistake it
+caused.
+
+`cached()` is now an instance method, matching `refresh()`. Nothing about
+reading a cache needed to be static.
+
+### The audit now catches this class of error
+
+It collects static method names per class across the whole project, then flags
+any call where the receiver is lowercase — a variable rather than the class.
+
+Two exclusions keep it trustworthy rather than noisy:
+
+- Names declared static in more than one class are skipped; a call site cannot
+  be attributed to either.
+- Common verbs (`get`, `post`, `of`, `from`, `parse`…) are skipped entirely.
+  Without that, `http.get(...)` was reported as a misuse of an unrelated static
+  — and a check that cries wolf is one nobody reads.
+
+Verified by making `cached()` static again, confirming the report names the
+class, the method, the variable and the line, then reverting.
 
 ## Revision 46 — bigger type, and vehicle pictures you control
 

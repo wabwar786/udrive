@@ -39,7 +39,11 @@ class VehicleImageRepository {
   }
 
   /// Cached URLs, read instantly so the picker never waits on the network.
-  static Future<Map<String, String>> cached() async {
+  ///
+  /// An instance method, matching [refresh]. Mixing a static reader with an
+  /// instance writer on one class invites calling one the way you call the
+  /// other, which is exactly what happened.
+  Future<Map<String, String>> cached() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_cacheKey);

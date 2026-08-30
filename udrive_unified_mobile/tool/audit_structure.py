@@ -15,6 +15,56 @@ for f in ('lib/core/theme/app_tokens.dart', 'lib/core/theme/app_theme.dart'):
     theme += open(f, encoding='utf-8').read()
 TOKENS = set(re.findall(r'static (?:const )?(?:double |int |Color |BorderRadius |List<BoxShadow> )?(?:get )?(\w+)\s*[=({]', theme))
 
+def collect_static_members():
+    """Static method names, keyed by the class that declares them.
+
+    Built once over the whole project, because a call site and its declaration
+    are usually in different files.
+    """
+    members = {}
+    for path in glob.glob('lib/**/*.dart', recursive=True):
+        src = open(path, encoding='utf-8').read()
+        for cls_match in re.finditer(r'\bclass\s+(\w+)[^{]*\{', src):
+            cls = cls_match.group(1)
+            # Scan to the end of the class body.
+            start = cls_match.end()
+            depth = 1
+            i = start
+            while i < len(src) and depth > 0:
+                if src[i] == '{':
+                    depth += 1
+                elif src[i] == '}':
+                    depth -= 1
+                i += 1
+            body = src[start:i]
+            for name in re.findall(
+                    r'\bstatic\s+(?:[\w<>,\?\s]+?)\s(\w+)\s*\(', body):
+                members.setdefault(cls, set()).add(name)
+
+    # Drop names that are ambiguous or ordinary.
+    #
+    # A name declared static in two classes cannot be attributed to either from
+    # a call site. And common verbs — `get`, `post`, `of`, `from` — appear on
+    # packages and framework types constantly; matching them reports
+    # `http.get(...)` as a misuse of some unrelated static. A check that does
+    # that is a check nobody reads.
+    common = {
+        'get', 'post', 'put', 'delete', 'patch', 'head', 'of', 'from',
+        'read', 'write', 'parse', 'value', 'lerp', 'fromJson', 'toString',
+    }
+    counts = {}
+    for names in members.values():
+        for name in names:
+            counts[name] = counts.get(name, 0) + 1
+    return {
+        cls: {n for n in names if counts[n] == 1 and n not in common}
+        for cls, names in members.items()
+    }
+
+
+STATIC_MEMBERS = collect_static_members()
+
+
 def audit(path):
     s = open(path, encoding='utf-8').read()
     lines = s.split('\n')
@@ -77,6 +127,26 @@ def audit(path):
         # being read.
         if len(re.findall(r'\b(?:class|enum|mixin|extension)\s+\w+\s*(?:extends|implements|with|\{)', line)) > 1:
             issues.append(f'TWO DECLARATIONS ON ONE LINE @{n}: {line.strip()[:60]}')
+
+    # Static methods called on an instance.
+    #
+    # `cached()` was declared static and called as `images.cached()`. Dart
+    # rejects that, but only at compile time — and the audit had nothing to say.
+    #
+    # Cross-file, so it collects static method names per class from the whole
+    # project and checks call sites against them. Only names that are static in
+    # exactly one class are considered, to avoid guessing when two classes share
+    # a method name.
+    for cls, member in STATIC_MEMBERS.items():
+        for name in member:
+            for m in re.finditer(r'\b(\w+)\.' + re.escape(name) + r'\s*\(', s):
+                receiver = m.group(1)
+                # A capitalised receiver is the class itself, which is correct.
+                if receiver and receiver[0].islower():
+                    line = s[:m.start()].count('\n') + 1
+                    issues.append(
+                        f'STATIC {cls}.{name} CALLED ON INSTANCE '
+                        f'`{receiver}` @{line}')
 
     # Private widgets used but not declared in this file.
     #
