@@ -10,10 +10,15 @@ class PlacePickResult {
   const PlacePickResult({
     required this.label,
     required this.point,
+    this.useCurrentLocation = false,
   });
 
   final String label;
   final LatLng? point;
+
+  /// Set when the customer chose "Use my current location" rather than an
+  /// address. The caller re-reads GPS instead of using [label].
+  final bool useCurrentLocation;
 }
 
 /// Full-screen address entry.
@@ -26,7 +31,9 @@ class PlacePickResult {
 class PlaceSearchScreen extends StatefulWidget {
   const PlaceSearchScreen({
     required this.title,
+    required this.editingPickup,
     required this.pickupLabel,
+    required this.destinationLabel,
     this.initialQuery = '',
     this.bias,
     this.onChooseOnMap,
@@ -34,7 +41,13 @@ class PlaceSearchScreen extends StatefulWidget {
   });
 
   final String title;
+
+  /// Which end the customer is editing. The other end stays visible but
+  /// static, so the route being built is always readable.
+  final bool editingPickup;
+
   final String pickupLabel;
+  final String destinationLabel;
   final String initialQuery;
 
   /// Biases results towards the customer, so "bazaar" finds the near one.
@@ -116,6 +129,93 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
     Navigator.pop(context, PlacePickResult(label: text, point: null));
   }
 
+  Widget _endRow({
+    required String caption,
+    required bool editable,
+    required String staticValue,
+    required String hint,
+  }) {
+    if (!editable) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              caption,
+              style: const TextStyle(fontSize: 11, color: AppText.disabled),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              staticValue.isEmpty ? 'Not set' : staticValue,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: staticValue.isEmpty
+                    ? AppText.disabled
+                    : AppText.primary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            caption,
+            style: const TextStyle(fontSize: 11, color: AppColors.secondary),
+          ),
+          TextField(
+            controller: _query,
+            focusNode: _focus,
+            onChanged: _run,
+            onSubmitted: (_) => _useTyped(),
+            textInputAction: TextInputAction.search,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppText.primary,
+            ),
+            decoration: InputDecoration(
+              isDense: true,
+              filled: false,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 4),
+              hintText: hint,
+              hintStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppText.disabled,
+              ),
+              suffixIcon: _query.text.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: () {
+                        _query.clear();
+                        _run('');
+                      },
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      color: AppText.disabled,
+                      tooltip: 'Clear',
+                    ),
+            ),
+          ),
+          Container(height: 1.6, color: AppColors.secondary),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final typed = _query.text.trim();
@@ -149,15 +249,17 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
               ),
             ),
 
-            // Both ends stay visible while typing, so the customer can see the
-            // route they are building rather than one field in isolation.
+            // Both ends stay visible while typing, so the customer can see
+            // the route they are building rather than one field in isolation.
+            // Whichever end is being edited becomes the input; the other is
+            // read-only but still tappable to switch.
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.only(top: 16),
+                    padding: const EdgeInsets.only(top: 18),
                     child: Column(
                       children: [
                         Container(
@@ -187,74 +289,18 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'From',
-                                style: TextStyle(
-                                    fontSize: 11, color: AppText.disabled),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                widget.pickupLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppText.primary,
-                                ),
-                              ),
-                            ],
-                          ),
+                        _endRow(
+                          caption: 'From',
+                          editable: widget.editingPickup,
+                          staticValue: widget.pickupLabel,
+                          hint: 'Search a pickup point',
                         ),
                         Container(height: 1, color: AppColors.border),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'To',
-                                style: TextStyle(
-                                    fontSize: 11, color: AppColors.secondary),
-                              ),
-                              TextField(
-                                controller: _query,
-                                focusNode: _focus,
-                                onChanged: _run,
-                                onSubmitted: (_) => _useTyped(),
-                                textInputAction: TextInputAction.search,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppText.primary,
-                                ),
-                                decoration: const InputDecoration(
-                                  isDense: true,
-                                  filled: false,
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  contentPadding:
-                                      EdgeInsets.symmetric(vertical: 4),
-                                  hintText: 'Search any address or landmark',
-                                  hintStyle: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppText.disabled,
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                height: 1.6,
-                                color: AppColors.secondary,
-                              ),
-                            ],
-                          ),
+                        _endRow(
+                          caption: 'To',
+                          editable: !widget.editingPickup,
+                          staticValue: widget.destinationLabel,
+                          hint: 'Search any address or landmark',
                         ),
                       ],
                     ),
@@ -318,6 +364,20 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+
+                  if (widget.editingPickup)
+                    _ActionRow(
+                      icon: Icons.my_location_rounded,
+                      label: 'Use my current location',
+                      onTap: () => Navigator.pop(
+                        context,
+                        const PlacePickResult(
+                          label: '',
+                          point: null,
+                          useCurrentLocation: true,
+                        ),
                       ),
                     ),
 

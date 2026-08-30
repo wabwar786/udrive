@@ -997,15 +997,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           title: field == RouteFieldKind.pickup
               ? 'Set pickup'
               : 'Set destination',
+          editingPickup: field == RouteFieldKind.pickup,
           pickupLabel: _pickup.text.trim(),
+          destinationLabel: _destination.text.trim(),
           initialQuery: field == RouteFieldKind.pickup
-              ? ''
+              ? _pickup.text.trim()
               : _destination.text.trim(),
           bias: _pickupPoint,
         ),
       ),
     );
     if (result == null || !mounted) return;
+
+    // "Use my current location" re-reads GPS rather than trusting a label.
+    if (result.useCurrentLocation) {
+      await _loadLocation();
+      if (!mounted) return;
+      // Nearby vehicles are measured from the pickup, so both refresh.
+      await _refreshNearby();
+      await _refreshRoute();
+      return;
+    }
 
     setState(() {
       if (field == RouteFieldKind.pickup) {

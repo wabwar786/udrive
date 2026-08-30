@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 14)
+# UDrive Redesign — Delivery 1 & 2 (revision 15)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -9,17 +9,61 @@ API contract was changed except where a new module required new endpoints
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
 
+## Revision 15 — pickup is editable, Routes API
+
+### Pickup was not blocked — the search screen was one-sided
+
+Tapping the From row already opened the search screen. The screen itself was
+hardcoded for destination editing: From was always rendered as static text and
+the input was always labelled "To". So editing pickup put you in a field
+labelled To, which looked like pickup could not be changed.
+
+`PlaceSearchScreen` now takes `editingPickup`. Whichever end is being edited
+becomes the live input; the other stays visible as read-only text so the route
+being built is always readable. Both ends now also carry their current value
+into the screen, and the input has a clear button.
+
+Editing pickup additionally offers **"Use my current location"** as the first
+option, which re-reads GPS rather than trusting a stored label, then refreshes
+both the nearby vehicles and the route — nearby is measured from the pickup, so
+moving it has to move both.
+
+### Routes API, not Directions
+
+Google moved Directions API and Distance Matrix API to legacy on 1 March 2025.
+Projects that had not already enabled them cannot enable them at all, which is
+why neither appeared in the console. The proxy now calls
+`routes.googleapis.com/directions/v2:computeRoutes`.
+
+Routes is a POST with a JSON body and a required `X-Goog-FieldMask`. The mask
+is a billing control as much as a correctness one — Google charges by which
+fields you request, so the proxy asks only for duration, distance, polyline and
+description. Duration comes back as a protobuf string like `"1234s"` and is
+parsed accordingly.
+
+Errors now return Google's own message in a `detail` field, so a failure shows
+its cause in the API log instead of a bare status code.
+
 ## Revision 14 — route, distance and travel time
 
-### Enable Directions API first
+### Enable Routes API first
 
-This needs one more Google API: **Directions**. Distance Matrix gives distance
-and duration but no geometry, so the road cannot be highlighted. Directions
-returns distance, duration, the road name and the polyline in one call, plus
-alternative routes.
+This needs one more Google API: **Routes API**.
 
-Console → APIs & Services → enable **Directions API**, and add it to the
+Not Directions — Google moved Directions API and Distance Matrix API to legacy
+status on 1 March 2025. Projects that had already enabled them keep working, but
+a project that had not cannot enable them at all. A new project has to use
+Routes, which merges both.
+
+(Your enabled list includes Distance Matrix API, which is also legacy. It may
+not work either.)
+
+Console → APIs & Services → enable **Routes API**, and add it to the
 `udrive-server` key's API restrictions alongside Places and Geocoding.
+
+Routes is a POST with a JSON body and a required `X-Goog-FieldMask`. The mask
+matters for cost as well as correctness — Google bills by which fields you ask
+for, so the proxy requests only duration, distance, polyline and description.
 
 ### What happens after picking a destination
 

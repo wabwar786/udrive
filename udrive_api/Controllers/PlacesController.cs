@@ -119,15 +119,22 @@ public sealed class PlacesController(
     /// and the encoded polyline to draw on the map.
     /// </summary>
     /// <remarks>
-    /// Distance Matrix would give distance and duration but no geometry, so the
-    /// road could not be highlighted. Directions returns both in one call, plus
-    /// alternatives, which is why it is used here.
+    /// Uses the <b>Routes API</b> (<c>routes.googleapis.com/computeRoutes</c>),
+    /// not the older Directions API. Google moved Directions and Distance
+    /// Matrix to legacy status in March 2025: projects that had not already
+    /// enabled them can no longer do so, so a new project like this one has to
+    /// use Routes.
+    ///
+    /// Routes is a POST with a JSON body and requires a field mask — it will
+    /// not return anything you did not explicitly ask for. That is a billing
+    /// feature as much as an API one: you are charged by which fields you
+    /// request, so the mask below asks only for duration, distance, the polyline
+    /// and the road description.
     ///
     /// Straight-line distance is not an acceptable fallback in Kashmir: the road
     /// from Muzaffarabad to Kel is roughly three times the direct line, so a
-    /// fare or an ETA built on the straight line would be badly wrong. When
-    /// Directions is unavailable this returns no route at all rather than a
-    /// misleading number.
+    /// fare or an ETA built on it would be badly wrong. When Routes cannot
+    /// answer, this returns no route rather than a misleading number.
     /// </remarks>
     [HttpGet("directions")]
     [ResponseCache(Duration = 120, Location = ResponseCacheLocation.Any)]
@@ -154,87 +161,113 @@ public sealed class PlacesController(
 
         try
         {
-            var url =
-                "https://maps.googleapis.com/maps/api/directions/json" +
-                $"?origin={originLat},{originLng}" +
-                $"&destination={destinationLat},{destinationLng}" +
-                $"&alternatives={(alternatives ? "true" : "false")}" +
-                "&mode=driving&region=pk&departure_time=now" +
-                $"&key={Uri.EscapeDataString(key!)}";
+            var payload = new
+            {
+                origin = new
+                {
+                    location = new
+                    {
+                        latLng = new { latitude = originLat, longitude = originLng }
+                    }
+                },
+                destination = new
+                {
+                    location = new
+                    {
+                        latLng = new
+                        {
+                            latitude = destinationLat,
+                            longitude = destinationLng
+                        }
+                    }
+                },
+                travelMode = "DRIVE",
+                routingPreference = "TRAFFIC_AWARE",
+                computeAlternativeRoutes = alternatives,
+                languageCode = "en",
+                regionCode = "PK",
+                units = "METRIC"
+            };
 
-            using var response = await client.GetAsync(url, cancellationToken);
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                "https://routes.googleapis.com/directions/v2:computeRoutes")
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(payload),
+                    System.Text.Encoding.UTF8,
+                    "application/json")
+            };
+
+            request.Headers.Add("X-Goog-Api-Key", key);
+            // Ask for the minimum that answers "how long, how far, which road".
+            request.Headers.Add(
+                "X-Goog-FieldMask",
+                "routes.duration,routes.distanceMeters," +
+                "routes.polyline.encodedPolyline,routes.description");
+
+            using var response = await client.SendAsync(request, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
             if (!response.IsSuccessStatusCode)
             {
+                // Routes puts the reason in the body; surface it so the cause is
+                // visible in logs rather than a bare status code.
                 return Ok(ApiResponse<object>.Ok(new
                 {
                     routes = Array.Empty<object>(),
-                    reason = "upstream_error"
+                    reason = "upstream_error",
+                    detail = body.Length > 500 ? body[..500] : body
                 }));
             }
 
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
             using var document = JsonDocument.Parse(body);
-            var root = document.RootElement;
-
-            var status = root.TryGetProperty("status", out var st)
-                ? st.GetString()
-                : "UNKNOWN";
-
-            if (status != "OK" || !root.TryGetProperty("routes", out var items))
+            if (!document.RootElement.TryGetProperty("routes", out var items))
             {
                 return Ok(ApiResponse<object>.Ok(new
                 {
                     routes = Array.Empty<object>(),
-                    reason = status
+                    reason = "ZERO_RESULTS"
                 }));
             }
 
             foreach (var route in items.EnumerateArray().Take(3))
             {
-                if (!route.TryGetProperty("legs", out var legs) ||
-                    legs.GetArrayLength() == 0)
-                {
-                    continue;
-                }
-
-                // A single origin-to-destination request has exactly one leg.
-                var leg = legs[0];
-
-                var distanceMetres = leg.TryGetProperty("distance", out var dist) &&
-                                     dist.TryGetProperty("value", out var dv)
-                    ? dv.GetInt32()
-                    : 0;
-
-                // duration_in_traffic is present because departure_time=now was
-                // sent; it reflects current conditions, so prefer it.
-                var seconds = leg.TryGetProperty("duration_in_traffic", out var traffic) &&
-                              traffic.TryGetProperty("value", out var tv)
-                    ? tv.GetInt32()
-                    : leg.TryGetProperty("duration", out var dur) &&
-                      dur.TryGetProperty("value", out var duv)
-                        ? duv.GetInt32()
+                var distanceMetres =
+                    route.TryGetProperty("distanceMeters", out var dm)
+                        ? dm.GetInt32()
                         : 0;
+
+                // Routes returns duration as a protobuf string like "1234s".
+                var seconds = 0;
+                if (route.TryGetProperty("duration", out var dur))
+                {
+                    var raw = dur.GetString() ?? "0s";
+                    int.TryParse(raw.TrimEnd('s'), out seconds);
+                }
 
                 routes.Add(new
                 {
-                    summary = route.TryGetProperty("summary", out var sum)
-                        ? sum.GetString()
+                    summary = route.TryGetProperty("description", out var desc)
+                        ? desc.GetString()
                         : string.Empty,
                     distanceMetres,
                     durationSeconds = seconds,
-                    polyline = route.TryGetProperty("overview_polyline", out var poly) &&
-                               poly.TryGetProperty("points", out var pts)
-                        ? pts.GetString()
-                        : string.Empty
+                    polyline =
+                        route.TryGetProperty("polyline", out var poly) &&
+                        poly.TryGetProperty("encodedPolyline", out var pts)
+                            ? pts.GetString()
+                            : string.Empty
                 });
             }
         }
-        catch
+        catch (Exception ex)
         {
             return Ok(ApiResponse<object>.Ok(new
             {
                 routes = Array.Empty<object>(),
-                reason = "exception"
+                reason = "exception",
+                detail = ex.Message
             }));
         }
 

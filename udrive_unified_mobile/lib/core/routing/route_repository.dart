@@ -116,6 +116,10 @@ class TripRouteResult {
 }
 
 /// Fetches driving routes through the UDrive proxy.
+///
+/// The proxy calls Google's Routes API. Directions and Distance Matrix went
+/// legacy in March 2025 and cannot be enabled on new Cloud projects, so Routes
+/// is the only option available to this project.
 class RouteRepository {
   RouteRepository({http.Client? client}) : _client = client ?? http.Client();
 
@@ -164,7 +168,7 @@ class RouteRepository {
       return TripRouteResult(
         failure: switch (reason) {
           'no_key' => RouteFailure.noKey,
-          'ZERO_RESULTS' || 'NOT_FOUND' => RouteFailure.notFound,
+          'ZERO_RESULTS' => RouteFailure.notFound,
           _ => RouteFailure.unavailable,
         },
       );
