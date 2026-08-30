@@ -137,12 +137,26 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
     if (_query.text.trim().length >= 2) _run(_query.text);
   }
 
-  void _pick(PlaceSuggestion place) {
+  bool _resolving = false;
+
+  /// Autocomplete predictions carry no coordinates, so a chosen one is looked
+  /// up before returning. Without this the caller receives a name with no
+  /// position and silently falls back to the slow route screen.
+  Future<void> _pick(PlaceSuggestion place) async {
+    if (_resolving) return;
+    setState(() => _resolving = true);
+
+    final resolved = await _places.resolve(place);
+    if (!mounted) return;
+    setState(() => _resolving = false);
+
     Navigator.pop(
       context,
       PlacePickResult(
+        // Fall back to the name alone if the lookup failed: the customer can
+        // still proceed, and the booking flow geocodes it again later.
         label: place.title,
-        point: place.point,
+        point: resolved?.point,
         forPickup: _editingPickup,
       ),
     );
@@ -360,7 +374,18 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
-                  if (_searching)
+                  if (_resolving)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 26),
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    )
+                  else if (_searching)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 26),
                       child: Center(

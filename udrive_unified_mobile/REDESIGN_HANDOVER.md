@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 47) · build label `rev 47`
+# UDrive Redesign — Delivery 1 & 2 (revision 48) · build label `rev 48`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,56 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 48 — search breadth, route choice, order, spelling
+
+### Why "Dhirkot" returned one suggestion
+
+The proxy used Google **Text Search**, which looks for places fully matching a
+phrase — a small town returns one or two results. **Autocomplete** is built for
+partial input and returns the breadth people expect while typing.
+
+Switched. Predictions carry no coordinates, so those come from a Details call
+when the customer picks one: one extra request per booking rather than per
+keystroke. A session token ties the typing and the lookup into a single billable
+session, and Details asks for two fields rather than the default everything,
+which Google bills several times higher.
+
+### Pick a route by pointing at it
+
+Alternatives are drawn again, muted and **tappable**. Tapping a road selects it,
+the way a taxi app works, instead of reading street names off a chip.
+
+Selecting deliberately does **not** move the camera: the customer is comparing
+two roads on screen, and re-framing under them would undo the comparison they
+are in the middle of.
+
+flutter_map has no per-polyline tap, so hit-testing is done by hand with a
+tolerance that scales with zoom — at street level a tap must land almost on the
+line; on a 100 km view the same tolerance in degrees would be a few pixels and
+impossible to hit.
+
+### Order and size
+
+Vehicles now run **Car, Car with AC, Bike, Coaster, Hiace**. You listed four; I
+placed Car with AC immediately after Car since it is a Car variant. Say if you
+would rather it sat elsewhere or came out entirely.
+
+Fare raised from 38 to **46**, already at the heaviest weight.
+
+### Spelling
+
+Swept the app, API and admin portal. The real finding was **"Coster"**, which
+appeared in customer-facing labels across four screens.
+
+Fixed in the labels only. The lowercase `'coster'` is an internal matching key
+used by `_normaliseVehicle` and the rate tables, and renaming it would break
+matching against vehicle data already in the database for a spelling nobody
+sees. Both normalisers accept `'coaster'` and `'coster'`, so the labels changing
+breaks nothing.
+
+Everything else the sweep flagged was a false positive — `DriverRequest` and
+`driverRating` matching a pattern for "driverr".
 
 ## Revision 47 — build fix: static called on an instance
 

@@ -32,8 +32,8 @@ extension UDriveServiceTypeLabel on UDriveServiceType {
 
   String get subtitle => switch (this) {
         UDriveServiceType.city => 'car, bike, rickshaw',
-        UDriveServiceType.tours => 'coster, car',
-        UDriveServiceType.privateVehicle => 'coster, car, bike',
+        UDriveServiceType.tours => 'coaster, car',
+        UDriveServiceType.privateVehicle => 'coaster, car, bike',
       };
 }
 
@@ -802,7 +802,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       completedTrips: 128,
       safetyScore: 98,
       isOnline: true,
-      category: 'Coster',
+      category: 'Coaster',
       bookingMode: VehicleBookingMode.both,
       make: 'Toyota',
       model: 'Coaster',
@@ -1208,15 +1208,15 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
             _VehicleChoiceData('Bike', '1 seat', 'Fast city travel', 1, 'assets/vehicles_photo/bike_clean.png'),
             _VehicleChoiceData('Car', '4 seats', 'Comfortable city ride', 4, 'assets/vehicles_photo/car_clean.png'),
             _VehicleChoiceData('Rickshaw', '3 seats', 'Economical local ride', 3, 'assets/vehicles_photo/rickshaw_clean.png'),
-            _VehicleChoiceData('Coster', '22 seats', 'Shared seat or complete vehicle', 22, 'assets/vehicles_photo/coaster_clean.png'),
+            _VehicleChoiceData('Coaster', '22 seats', 'Shared seat or complete vehicle', 22, 'assets/vehicles_photo/coaster_clean.png'),
           ],
         UDriveServiceType.tours => const [
             _VehicleChoiceData('Car', '4 seats', 'Tour car or shared seat', 4, 'assets/vehicles_photo/car_clean.png'),
-            _VehicleChoiceData('Coster', '22 seats', 'Group tour and per-seat travel', 22, 'assets/vehicles_photo/coaster_clean.png'),
+            _VehicleChoiceData('Coaster', '22 seats', 'Group tour and per-seat travel', 22, 'assets/vehicles_photo/coaster_clean.png'),
           ],
         UDriveServiceType.privateVehicle => const [
             _VehicleChoiceData('Car', '4 seats', 'Book the complete car', 4, 'assets/vehicles_photo/private_car_clean.png'),
-            _VehicleChoiceData('Coster', '22 seats', 'Private vehicle for groups', 22, 'assets/vehicles_photo/coaster_clean.png'),
+            _VehicleChoiceData('Coaster', '22 seats', 'Private vehicle for groups', 22, 'assets/vehicles_photo/coaster_clean.png'),
             _VehicleChoiceData('Bike', '1 seat', 'Private bike ride', 1, 'assets/vehicles_photo/bike_clean.png'),
           ],
       };

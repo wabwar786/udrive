@@ -953,9 +953,9 @@ class _FarePanel extends StatelessWidget {
                         Text(
                           'PKR ${grouped(fare)}',
                           style: const TextStyle(
-                            fontSize: 38,
+                            fontSize: 46,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: -1.1,
+                            letterSpacing: -1.4,
                             color: AppText.primary,
                           ),
                         ),

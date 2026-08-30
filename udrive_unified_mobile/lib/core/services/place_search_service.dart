@@ -14,7 +14,19 @@ class PlaceSuggestion {
     required this.subtitle,
     required this.latitude,
     required this.longitude,
+    this.placeId,
   });
+
+  /// Google's identifier, when the suggestion came from Autocomplete.
+  ///
+  /// Predictions carry no coordinates — those are fetched with
+  /// [PlaceSearchService.resolve] once the customer picks one, which is a
+  /// request per booking rather than per keystroke.
+  final String? placeId;
+
+  /// Whether coordinates still need fetching.
+  bool get needsResolving =>
+      (latitude == 0 && longitude == 0) && placeId != null;
 
   final String title;
   final String subtitle;
@@ -131,17 +143,55 @@ class PlaceSearchService {
           final map = Map<String, dynamic>.from(raw);
           final lat = _toDouble(map['latitude']);
           final lng = _toDouble(map['longitude']);
-          if (lat == null || lng == null) return null;
+          final placeId = map['placeId']?.toString();
+          // A suggestion needs either coordinates or an id to look them up.
+          if (lat == null && placeId == null) return null;
           return PlaceSuggestion(
             title: '${map['title'] ?? ''}'.trim(),
             subtitle: '${map['subtitle'] ?? ''}'.trim(),
-            latitude: lat,
-            longitude: lng,
+            latitude: lat ?? 0,
+            longitude: lng ?? 0,
+            placeId: map['placeId']?.toString(),
           );
         })
         .whereType<PlaceSuggestion>()
         .where((item) => item.title.isNotEmpty)
         .toList(growable: false);
+  }
+
+  /// Fetches coordinates for a prediction the customer chose.
+  ///
+  /// Returns the suggestion unchanged when it already has them, so callers can
+  /// pass every selection through without checking first.
+  Future<PlaceSuggestion?> resolve(PlaceSuggestion suggestion) async {
+    if (!suggestion.needsResolving) return suggestion;
+
+    try {
+      final uri = ApiConfig.uri('/api/v1/places/details', {
+        'placeId': suggestion.placeId,
+      });
+      final response =
+          await _client.get(uri).timeout(AppConfig.networkTimeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+
+      final decoded = jsonDecode(response.body);
+      final payload = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+      if (payload is! Map) return null;
+
+      final lat = _toDouble(payload['latitude']);
+      final lng = _toDouble(payload['longitude']);
+      if (lat == null || lng == null) return null;
+
+      return PlaceSuggestion(
+        title: suggestion.title,
+        subtitle: suggestion.subtitle,
+        latitude: lat,
+        longitude: lng,
+        placeId: suggestion.placeId,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Human-readable address for a coordinate, via the same proxy.

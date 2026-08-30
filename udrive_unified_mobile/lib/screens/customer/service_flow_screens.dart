@@ -72,13 +72,13 @@ const _cityVehicles = <_VehicleType>[
   _VehicleType('Bike', 1, 'Fast city travel', 'assets/vehicles_photo/bike_clean.png'),
   _VehicleType('Car', 4, 'Comfortable city ride', 'assets/vehicles_photo/car_clean.png'),
   _VehicleType('Rickshaw', 3, 'Economical local ride', 'assets/vehicles_photo/rickshaw_clean.png'),
-  _VehicleType('Coster', 22, 'Shared seat or full vehicle', 'assets/vehicles_photo/coaster_clean.png'),
+  _VehicleType('Coaster', 22, 'Shared seat or full vehicle', 'assets/vehicles_photo/coaster_clean.png'),
 ];
 
 const _privateVehicles = <_VehicleType>[
   _VehicleType('Car', 4, 'Sedan • city & highway', 'assets/vehicles_photo/car_clean.png'),
   _VehicleType('SUV', 6, 'Higher clearance for hills', 'assets/vehicles_photo/private_car_clean.png'),
-  _VehicleType('Coster', 22, 'Group & family travel', 'assets/vehicles_photo/coaster_clean.png'),
+  _VehicleType('Coaster', 22, 'Group & family travel', 'assets/vehicles_photo/coaster_clean.png'),
   _VehicleType('Bike', 1, 'Solo private ride', 'assets/vehicles_photo/bike_clean.png'),
 ];
 
@@ -1062,7 +1062,7 @@ class _PrivateVehiclesScreenState extends State<PrivateVehiclesScreen> {
             style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.white70),
-              hintText: 'Search vehicle type (car, SUV, coster, bike)',
+              hintText: 'Search vehicle type (car, SUV, coaster, bike)',
               hintStyle: const TextStyle(color: _muted, fontSize: 12.5),
               isDense: true,
               filled: true,

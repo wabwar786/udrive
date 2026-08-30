@@ -49,12 +49,18 @@ class UdPolyline {
     required this.points,
     this.color = AppColors.primary,
     this.width = 4,
+    this.onTap,
   });
 
   final String id;
   final List<LatLng> points;
   final Color color;
   final double width;
+
+  /// Tapping the line selects it. Used for choosing between alternative
+  /// routes the way a taxi app does — the customer points at the road they
+  /// want rather than reading a list.
+  final VoidCallback? onTap;
 }
 
 /// A translucent circle, used for the "vehicles within N km" ring on Home.
@@ -376,6 +382,36 @@ class _UdMapState extends State<UdMap> {
   static double _log2(double value) =>
       value <= 0 ? 0 : math.log(value) / math.ln2;
 
+  /// The tappable polyline closest to [point], if one is within reach.
+  ///
+  /// The threshold scales with zoom: at street level a tap must land almost on
+  /// the line, while on a zoomed-out view of a 100 km route the same tolerance
+  /// in degrees would be metres on screen and impossible to hit.
+  UdPolyline? _polylineNear(LatLng point) {
+    final tappable =
+        widget.polylines.where((line) => line.onTap != null).toList();
+    if (tappable.isEmpty) return null;
+
+    // Roughly 12 screen pixels expressed in degrees at the current zoom.
+    final tolerance = 12 * 360 / (256 * math.pow(2, _zoom));
+
+    UdPolyline? best;
+    var bestDistance = double.infinity;
+
+    for (final line in tappable) {
+      for (final vertex in line.points) {
+        final distance = (vertex.latitude - point.latitude).abs() +
+            (vertex.longitude - point.longitude).abs();
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = line;
+        }
+      }
+    }
+
+    return bestDistance <= tolerance ? best : null;
+  }
+
   // --------------------------------------------------------------- rendering
 
   double _googleHue(UdMarkerHue hue) => switch (hue) {
@@ -494,6 +530,8 @@ class _UdMapState extends State<UdMap> {
               startCap: gmap.Cap.roundCap,
               endCap: gmap.Cap.roundCap,
               jointType: gmap.JointType.round,
+              consumeTapEvents: line.onTap != null,
+              onTap: line.onTap,
               points: line.points
                   .map((point) => gmap.LatLng(point.latitude, point.longitude))
                   .toList(growable: false),

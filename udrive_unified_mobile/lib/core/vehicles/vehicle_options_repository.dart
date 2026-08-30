@@ -171,18 +171,15 @@ class VehicleOptionsRepository {
   /// Kashmir rather than precise. They only apply when the rates endpoint
   /// cannot be reached; the admin's own figures win whenever they are
   /// available.
+  /// The vehicle types offered, in the order they appear in the picker.
+  ///
+  /// Order is deliberate and follows demand: Car first because it is most of
+  /// the traffic, then Bike, then the two group vehicles.
+  ///
+  /// Fallback rates are per kilometre in rupees, plausible for Azad Kashmir
+  /// rather than precise. They apply only when the rates endpoint cannot be
+  /// reached; the admin's own figures win whenever they are available.
   static const List<_CatalogueEntry> _catalogue = [
-    _CatalogueEntry(
-      category: 'Bike',
-      label: 'Bike',
-      description: 'One passenger, quickest through traffic',
-      seats: 1,
-      icon: Icons.two_wheeler_rounded,
-      asset: 'assets/vehicles_photo/bike_clean.png',
-      fallbackPerKm: 22,
-      minimumFare: 120,
-      service: HomeService.bike,
-    ),
     _CatalogueEntry(
       category: 'Car',
       label: 'Car',
@@ -206,15 +203,15 @@ class VehicleOptionsRepository {
       service: HomeService.car,
     ),
     _CatalogueEntry(
-      category: 'Hiace',
-      label: 'Hiace',
-      description: 'Up to 12 passengers, luggage space',
-      seats: 12,
-      icon: Icons.airport_shuttle_rounded,
-      asset: 'assets/vehicles_photo/coaster_clean.png',
-      fallbackPerKm: 95,
-      minimumFare: 1500,
-      service: HomeService.bus,
+      category: 'Bike',
+      label: 'Bike',
+      description: 'One passenger, quickest through traffic',
+      seats: 1,
+      icon: Icons.two_wheeler_rounded,
+      asset: 'assets/vehicles_photo/bike_clean.png',
+      fallbackPerKm: 22,
+      minimumFare: 120,
+      service: HomeService.bike,
     ),
     _CatalogueEntry(
       category: 'Coaster',
@@ -225,6 +222,17 @@ class VehicleOptionsRepository {
       asset: 'assets/vehicles_photo/coaster_clean.png',
       fallbackPerKm: 135,
       minimumFare: 2500,
+      service: HomeService.bus,
+    ),
+    _CatalogueEntry(
+      category: 'Hiace',
+      label: 'Hiace',
+      description: 'Up to 12 passengers, luggage space',
+      seats: 12,
+      icon: Icons.airport_shuttle_rounded,
+      asset: 'assets/vehicles_photo/coaster_clean.png',
+      fallbackPerKm: 95,
+      minimumFare: 1500,
       service: HomeService.bus,
     ),
   ];

@@ -68,6 +68,7 @@ public sealed class PlacesController(
         [FromQuery] double? lat = null,
         [FromQuery] double? lng = null,
         [FromQuery] string country = "pk",
+        [FromQuery] string? sessionToken = null,
         CancellationToken cancellationToken = default)
     {
         var query = (q ?? string.Empty).Trim();
@@ -81,7 +82,9 @@ public sealed class PlacesController(
 
         if (!string.IsNullOrWhiteSpace(key))
         {
-            var results = await GoogleSearchAsync(client, query, lat, lng, key!, cancellationToken);
+            var results = await GoogleSearchAsync(
+                client, query, lat, lng, key!, sessionToken ?? string.Empty,
+                cancellationToken);
             if (results.Count > 0)
             {
                 return Ok(ApiResponse<object>.Ok(new
@@ -599,30 +602,48 @@ public sealed class PlacesController(
     // ------------------------------------------------------------------ google
 
     /// <summary>
-    /// Text Search rather than Autocomplete: it returns coordinates in the same
-    /// response, so one call answers what would otherwise take two (predict,
-    /// then fetch place details) and costs half as much.
+    /// Google Places Autocomplete predictions.
     /// </summary>
+    /// <remarks>
+    /// Autocomplete, not Text Search. Text Search looks for places that fully
+    /// match a phrase, so a small town returns one or two results — searching
+    /// "Dhirkot" gave a single suggestion where other apps show five.
+    /// Autocomplete is built for partial input and returns the breadth people
+    /// expect while typing.
+    ///
+    /// The trade-off is that predictions carry no coordinates: those come from
+    /// a Details call when the customer picks one, which is one extra request
+    /// per booking rather than per keystroke.
+    ///
+    /// A session token ties the keystrokes and the eventual Details call into
+    /// one billable session instead of several.
+    /// </remarks>
     private static async Task<List<object>> GoogleSearchAsync(
         HttpClient client,
         string query,
         double? lat,
         double? lng,
         string key,
+        string sessionToken,
         CancellationToken cancellationToken)
     {
         var results = new List<object>();
         try
         {
             var url =
-                "https://maps.googleapis.com/maps/api/place/textsearch/json" +
-                $"?query={Uri.EscapeDataString(query)}" +
-                "&region=pk" +
+                "https://maps.googleapis.com/maps/api/place/autocomplete/json" +
+                $"?input={Uri.EscapeDataString(query)}" +
+                "&components=country:pk" +
+                "&language=en" +
+                $"&sessiontoken={Uri.EscapeDataString(sessionToken)}" +
                 $"&key={Uri.EscapeDataString(key)}";
 
+            // Bias towards the customer without excluding anywhere else: they
+            // usually want the nearby Bazaar, but must still be able to search
+            // another city.
             if (lat.HasValue && lng.HasValue)
             {
-                url += $"&location={lat.Value},{lng.Value}&radius=50000";
+                url += $"&location={lat.Value},{lng.Value}&radius=80000";
             }
 
             using var response = await client.GetAsync(url, cancellationToken);
@@ -631,29 +652,46 @@ public sealed class PlacesController(
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             using var document = JsonDocument.Parse(body);
 
-            if (!document.RootElement.TryGetProperty("results", out var items))
+            if (!document.RootElement.TryGetProperty("predictions", out var items))
             {
                 return results;
             }
 
             foreach (var item in items.EnumerateArray().Take(8))
             {
-                if (!item.TryGetProperty("geometry", out var geometry) ||
-                    !geometry.TryGetProperty("location", out var location))
+                var placeId = item.TryGetProperty("place_id", out var id)
+                    ? id.GetString()
+                    : null;
+                if (string.IsNullOrWhiteSpace(placeId)) continue;
+
+                var main = string.Empty;
+                var secondary = string.Empty;
+                if (item.TryGetProperty("structured_formatting", out var formatting))
                 {
-                    continue;
+                    main = formatting.TryGetProperty("main_text", out var m)
+                        ? m.GetString() ?? string.Empty
+                        : string.Empty;
+                    secondary =
+                        formatting.TryGetProperty("secondary_text", out var sec)
+                            ? sec.GetString() ?? string.Empty
+                            : string.Empty;
+                }
+
+                if (main.Length == 0 &&
+                    item.TryGetProperty("description", out var description))
+                {
+                    main = description.GetString() ?? string.Empty;
                 }
 
                 results.Add(new
                 {
-                    title = item.TryGetProperty("name", out var name)
-                        ? name.GetString()
-                        : string.Empty,
-                    subtitle = item.TryGetProperty("formatted_address", out var address)
-                        ? address.GetString()
-                        : string.Empty,
-                    latitude = location.GetProperty("lat").GetDouble(),
-                    longitude = location.GetProperty("lng").GetDouble()
+                    title = main,
+                    subtitle = secondary,
+                    // No coordinates yet — resolved by /places/details when the
+                    // customer picks this one.
+                    latitude = (double?)null,
+                    longitude = (double?)null,
+                    placeId
                 });
             }
         }
@@ -663,6 +701,74 @@ public sealed class PlacesController(
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Coordinates for a prediction the customer chose.
+    /// </summary>
+    /// <remarks>
+    /// Asks for the two fields it needs. Google bills Details by field set, so
+    /// requesting the default everything would cost several times as much for
+    /// data nothing reads.
+    /// </remarks>
+    [HttpGet("details")]
+    public async Task<ActionResult<object>> Details(
+        [FromQuery] string placeId,
+        [FromQuery] string? sessionToken = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(placeId))
+        {
+            return BadRequest(new { success = false, message = "placeId is required." });
+        }
+
+        var key = await GoogleKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return Ok(ApiResponse<object>.Ok(new { latitude = (double?)null }));
+        }
+
+        var client = httpClientFactory.CreateClient("places");
+        try
+        {
+            var url =
+                "https://maps.googleapis.com/maps/api/place/details/json" +
+                $"?place_id={Uri.EscapeDataString(placeId)}" +
+                "&fields=geometry/location,formatted_address" +
+                (string.IsNullOrWhiteSpace(sessionToken)
+                    ? string.Empty
+                    : $"&sessiontoken={Uri.EscapeDataString(sessionToken)}") +
+                $"&key={Uri.EscapeDataString(key!)}";
+
+            using var response = await client.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return Ok(ApiResponse<object>.Ok(new { latitude = (double?)null }));
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(body);
+
+            if (document.RootElement.TryGetProperty("result", out var result) &&
+                result.TryGetProperty("geometry", out var geometry) &&
+                geometry.TryGetProperty("location", out var location))
+            {
+                return Ok(ApiResponse<object>.Ok(new
+                {
+                    latitude = location.GetProperty("lat").GetDouble(),
+                    longitude = location.GetProperty("lng").GetDouble(),
+                    address = result.TryGetProperty("formatted_address", out var a)
+                        ? a.GetString()
+                        : null
+                }));
+            }
+        }
+        catch
+        {
+            // Reported as "no coordinates", which the app already handles.
+        }
+
+        return Ok(ApiResponse<object>.Ok(new { latitude = (double?)null }));
     }
 
     private static async Task<string?> GoogleReverseAsync(

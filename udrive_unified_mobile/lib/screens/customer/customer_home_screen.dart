@@ -269,6 +269,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     await _refreshNearby();
   }
 
+  /// Selects one of the alternative routes.
+  ///
+  /// Deliberately does not re-frame the camera. The customer is comparing two
+  /// roads on screen; moving the map under them while they choose would undo
+  /// the comparison they are in the middle of.
+  void _selectRoute(int index) {
+    if (index < 0 || index >= _routeResult.routes.length) return;
+    setState(() => _selectedRoute = index);
+  }
+
   /// Fetches the driving route once both ends are known, then frames it.
   ///
   /// Called on destination change rather than on a timer: a route between two
@@ -929,19 +939,35 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             radiusMetres: AppConfig.nearbyVehiclesRadiusKm * 1000,
           ),
       ],
-      // One polyline only.
-      //
-      // The casing and the alternatives were three overlapping lines on the
-      // same ground. Until the route renders correctly there is no value in
-      // layering, and fewer moving parts makes the next screenshot readable.
       polylines: [
-        if (_activeRoute != null)
+        // Alternatives first so they sit underneath, muted and tappable. The
+        // customer picks a road by pointing at it, as they would in any taxi
+        // app, rather than reading a list of street names.
+        for (var i = _routeResult.routes.length - 1; i >= 0; i--)
+          if (i != _selectedRoute)
+            UdPolyline(
+              id: 'route-$i',
+              points: _routeResult.routes[i].points,
+              color: AppText.disabled,
+              width: 5,
+              onTap: () => _selectRoute(i),
+            ),
+        // The chosen route is drawn twice: a dark casing and the brand green on
+        // top. A single stroke disappears against roads of a similar tone.
+        if (_activeRoute != null) ...[
+          UdPolyline(
+            id: 'route-casing',
+            points: _activeRoute!.points,
+            color: AppColors.primary,
+            width: 10,
+          ),
           UdPolyline(
             id: 'route-active',
             points: _activeRoute!.points,
             color: AppColors.secondary,
             width: 6,
           ),
+        ],
       ],
       markers: [
         for (final vehicle in vehicles)
