@@ -576,107 +576,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
+    final topInset = MediaQuery.paddingOf(context).top;
+    final height = MediaQuery.sizeOf(context).height;
+
+    // The sheet is capped so a slice of map is always visible above it. Without
+    // the cap a tall tour panel would cover the map entirely and the screen
+    // would stop reading as map-first.
+    final sheetMaxHeight = height * .62;
 
     return Container(
       color: AppColors.background,
-      child: Column(
-        children: [
-          Expanded(child: _buildScrollingContent(controller)),
-          // The action stays reachable at all times, so a customer never has to
-          // scroll back down after editing an address.
-          _StickyCta(
-            label: _ctaLabel,
-            enabled: _ctaEnabled,
-            busy: _submitting,
-            onTap: _submit,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildScrollingContent(AppController controller) {
-    return ListView(
-      padding: EdgeInsets.zero,
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      children: [
-        _buildMapHero(controller),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _buildBookingCard(),
-        ),
-        if (_offline)
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: _OfflineNotice(),
-          ),
-        if (_activeTrip != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: _ActiveTripBanner(
-              trip: _activeTrip!,
-              onTrack: _openActiveTrip,
-            ),
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: _InviteRow(onShare: _shareApp),
-        ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-
-  /// Live map hero.
-  ///
-  /// Shows the customer's position, a ring at the search radius and every
-  /// online vehicle of the selected service inside it. Markers carry no driver
-  /// identity — tapping one opens a sheet with type, distance and ETA only.
-  Widget _buildMapHero(AppController controller) {
-    final topInset = MediaQuery.paddingOf(context).top;
-    final vehicles = _visibleVehicles;
-
-    return SizedBox(
-      height: topInset + 340,
-      width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          UdMap(
-            controller: _mapController,
-            initialCenter: _pickupPoint,
-            zoom: 13.4,
-            myLocation: _pickupPoint,
-            routeOrigin: _pickupPoint,
-            routeDestination: _destinationPoint ?? _pickupPoint,
-            circles: [
-              UdCircle(
-                id: 'radius',
-                centre: _pickupPoint,
-                radiusMetres: AppConfig.nearbyVehiclesRadiusKm * 1000,
-              ),
-            ],
-            markers: [
-              for (final vehicle in vehicles)
-                UdMarker(
-                  id: vehicle.id,
-                  position: vehicle.point,
-                  label: '${vehicle.category} · '
-                      '${vehicle.distanceKm.toStringAsFixed(1)} km',
-                  hue: UdMarkerHue.navy,
-                  onTap: () => _showVehicleSheet(vehicle),
-                ),
-              if (_destinationPoint != null)
-                UdMarker(
-                  id: 'destination',
-                  position: _destinationPoint!,
-                  label: _destination.text.trim(),
-                  hue: UdMarkerHue.info,
-                ),
-            ],
-          ),
+          _buildMap(),
 
-          // Top chrome.
+          // Header chrome floats directly on the map.
           Positioned(
             top: topInset + 10,
             left: 16,
@@ -724,25 +639,51 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
           ),
 
-          // Count chip and locate button.
+          // Status strip, sitting just above the sheet.
           Positioned(
             left: 16,
             right: 16,
-            bottom: 16,
-            child: Row(
-              children: [
-                if (_service.isVehicle)
-                  Flexible(
-                    child: _NearbyCountChip(
-                      service: _service,
-                      count: vehicles.length,
-                      loading: _nearbyLoading,
-                      offline: _offline,
+            bottom: sheetMaxHeight * .5 + 12,
+            child: IgnorePointer(
+              ignoring: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_activeTrip != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _ActiveTripBanner(
+                        trip: _activeTrip!,
+                        onTrack: _openActiveTrip,
+                      ),
                     ),
+                  Row(
+                    children: [
+                      if (_service.isVehicle)
+                        Flexible(
+                          child: _NearbyCountChip(
+                            service: _service,
+                            count: _visibleVehicles.length,
+                            loading: _nearbyLoading,
+                            offline: _offline,
+                          ),
+                        ),
+                      const Spacer(),
+                      _LocateButton(busy: _locating, onTap: _loadLocation),
+                    ],
                   ),
-                const Spacer(),
-                _LocateButton(busy: _locating, onTap: _loadLocation),
-              ],
+                ],
+              ),
+            ),
+          ),
+
+          // The booking sheet.
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: sheetMaxHeight),
+              child: _buildSheet(),
             ),
           ),
         ],
@@ -750,45 +691,120 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  Widget _buildBookingCard() {
+  Widget _buildMap() {
+    final vehicles = _visibleVehicles;
+
+    return UdMap(
+      controller: _mapController,
+      initialCenter: _pickupPoint,
+      zoom: 13.4,
+      myLocation: _pickupPoint,
+      routeOrigin: _pickupPoint,
+      routeDestination: _destinationPoint ?? _pickupPoint,
+      circles: [
+        UdCircle(
+          id: 'radius',
+          centre: _pickupPoint,
+          radiusMetres: AppConfig.nearbyVehiclesRadiusKm * 1000,
+        ),
+      ],
+      markers: [
+        for (final vehicle in vehicles)
+          UdMarker(
+            id: vehicle.id,
+            position: vehicle.point,
+            label: '${vehicle.category} · '
+                '${vehicle.distanceKm.toStringAsFixed(1)} km',
+            hue: UdMarkerHue.navy,
+            onTap: () => _showVehicleSheet(vehicle),
+          ),
+        if (_destinationPoint != null)
+          UdMarker(
+            id: 'destination',
+            position: _destinationPoint!,
+            label: _destination.text.trim(),
+            hue: UdMarkerHue.info,
+          ),
+      ],
+    );
+  }
+
+  /// The panel that rides on top of the map.
+  Widget _buildSheet() {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.panel),
-        boxShadow: AppShadows.panel,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ServiceSelector(
-            selected: _service,
-            onChanged: (service) {
-              FocusScope.of(context).unfocus();
-              setState(() {
-                _service = service;
-                // Hotels are not a vehicle, so per-seat and tour do not apply.
-                if (service == HomeService.hotel) {
-                  _travelMode = TravelMode.wholeVehicle;
-                }
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          const Divider(height: 1, color: AppColors.border),
-          const SizedBox(height: 14),
-          AnimatedSize(
-            duration: AppConfig.panelSwitch,
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
-            child: AnimatedSwitcher(
-              duration: AppConfig.panelSwitch,
-              child: _service == HomeService.hotel
-                  ? _buildHotelPanel()
-                  : _buildVehiclePanel(),
-            ),
-          ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        boxShadow: [
+          BoxShadow(color: Color(0x66000000), blurRadius: 26, offset: Offset(0, -6)),
         ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceHigh,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Where to?',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -.4,
+                  color: AppText.primary,
+                ),
+              ),
+              const SizedBox(height: 13),
+              ServiceSelector(
+                selected: _service,
+                onChanged: (service) {
+                  FocusScope.of(context).unfocus();
+                  setState(() {
+                    _service = service;
+                    // Hotels are not a vehicle, so per-seat and tour do not apply.
+                    if (service == HomeService.hotel) {
+                      _travelMode = TravelMode.wholeVehicle;
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 13),
+              if (_offline) ...[
+                const _OfflineNotice(),
+                const SizedBox(height: 12),
+              ],
+              AnimatedSize(
+                duration: AppConfig.panelSwitch,
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: _service == HomeService.hotel
+                    ? _buildHotelPanel()
+                    : _buildVehiclePanel(),
+              ),
+              const SizedBox(height: 14),
+              _StickyCta(
+                label: _ctaLabel,
+                enabled: _ctaEnabled,
+                busy: _submitting,
+                onTap: _submit,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2051,10 +2067,7 @@ class _TapField extends StatelessWidget {
   }
 }
 
-/// Action bar pinned above the bottom navigation.
-///
-/// Sits on an opaque background with a soft upward shadow so scrolling content
-/// passes behind it cleanly.
+/// The primary action at the foot of the booking sheet.
 class _StickyCta extends StatelessWidget {
   const _StickyCta({
     required this.label,
@@ -2070,39 +2083,32 @@ class _StickyCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        boxShadow: AppShadows.navBar,
-      ),
-      child: SizedBox(
-        height: 54,
-        child: Material(
-          color: enabled ? AppColors.secondary : AppColors.border,
+    return SizedBox(
+      height: 54,
+      child: Material(
+        color: enabled ? AppColors.secondary : AppColors.border,
+        borderRadius: AppRadii.all(AppRadii.cta),
+        child: InkWell(
+          onTap: enabled ? onTap : null,
           borderRadius: AppRadii.all(AppRadii.cta),
-          child: InkWell(
-            onTap: enabled ? onTap : null,
-            borderRadius: AppRadii.all(AppRadii.cta),
-            child: Center(
-              child: busy
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppText.onBrand,
-                      ),
-                    )
-                  : Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 16.5,
-                        fontWeight: FontWeight.w800,
-                        color: enabled ? AppText.onBrand : AppText.disabled,
-                      ),
+          child: Center(
+            child: busy
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppText.onBrand,
                     ),
-            ),
+                  )
+                : Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 16.5,
+                      fontWeight: FontWeight.w800,
+                      color: enabled ? AppText.onBrand : AppText.disabled,
+                    ),
+                  ),
           ),
         ),
       ),
@@ -2204,72 +2210,6 @@ class _ActiveTripBanner extends StatelessWidget {
                     color: AppText.onBrand,
                   ),
                 ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InviteRow extends StatelessWidget {
-  const _InviteRow({required this.onShare});
-
-  final VoidCallback onShare;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(13, 12, 13, 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.card),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppTint.brand,
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: const Icon(Icons.ios_share_rounded,
-                size: 18, color: AppColors.secondary),
-          ),
-          const SizedBox(width: 11),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Invite a friend',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppText.primary,
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  'Share the UDrive app link',
-                  style: TextStyle(fontSize: 12.5, color: AppText.secondary),
-                ),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: onShare,
-            child: const Text(
-              'Share',
-              style: TextStyle(
-                fontSize: 14.5,
-                fontWeight: FontWeight.w800,
-                color: AppColors.secondary,
               ),
             ),
           ),

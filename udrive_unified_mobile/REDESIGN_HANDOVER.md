@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 11)
+# UDrive Redesign — Delivery 1 & 2 (revision 12)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,44 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 12 — layout now matches the mockup
+
+The shipped screen did not match the design I showed, because I changed the
+Home layout but never changed `ServiceSelector` — it was still drawing four
+bordered blocks with illustrations. Four cards plus a mode row plus addresses
+pushed everything apart and left the map as a strip.
+
+Two changes:
+
+**Service pills.** `ServiceSelector` is now a horizontal pill row. One control
+instead of four cards, and the map stays visible behind the sheet.
+
+**Full-bleed map.** Home is a `Stack`: the map fills the screen, the sheet rides
+on top with a 26px rounded top and is capped at 62% of screen height so a slice
+of map is always showing. Header chrome, the vehicle-count chip, the locate
+button and the active-trip banner all float over the map. The CTA moved inside
+the sheet rather than being a separate bar, and the "Invite a friend" row was
+dropped from Home — it is in the drawer already and was only adding height.
+
+### Search is working — it needs the Google key
+
+The empty result for "Bank Colony Dhamial" is not a bug in the proxy. The
+request went out, came back, and the fallback UI rendered. The proxy is
+answering from OpenStreetMap, and OSM simply does not have most Pakistani
+colony, sector and street names.
+
+Google does. Set `places.google.apiKey` in the admin portal under **Maps and
+artwork** and the same search starts resolving street addresses and house
+numbers. Nothing else needs to change — no rebuild, no redeploy.
+
+### Structural audit
+
+The checks from revision 11 now run over every file: duplicate class members,
+emptied control bodies, undeclared private calls, brace balance. All clean.
+The two remaining flags are known false positives — a generic `_list<T>` the
+regex cannot see, and a brace inside a string literal in
+`customer_operations_screen.dart` that is present in the original upload.
 
 ## Revision 11 — duplicate code fix
 
