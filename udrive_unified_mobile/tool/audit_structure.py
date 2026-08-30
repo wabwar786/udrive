@@ -78,6 +78,19 @@ def audit(path):
         if len(re.findall(r'\b(?:class|enum|mixin|extension)\s+\w+\s*(?:extends|implements|with|\{)', line)) > 1:
             issues.append(f'TWO DECLARATIONS ON ONE LINE @{n}: {line.strip()[:60]}')
 
+    # Private widgets used but not declared in this file.
+    #
+    # Caught a real one immediately: removing three dead widgets took
+    # `_StepButton` with them, and the file still referenced it. Private classes
+    # cannot be imported, so if the name is not declared here it does not exist.
+    # Matched anywhere on the line, not just at its start: minified files in
+    # this project put several classes on one line, and anchoring to ^ reported
+    # every one of them as undeclared.
+    declared_types = set(re.findall(r'\bclass\s+(\w+)', s))
+    for used in set(re.findall(r'\b(_[A-Z]\w+)\s*\(', s)):
+        if used not in declared_types:
+            issues.append(f'UNDECLARED WIDGET {used}')
+
     # Uninitialised final fields.
     #
     # A `final` field with no initialiser must be set by every constructor. When

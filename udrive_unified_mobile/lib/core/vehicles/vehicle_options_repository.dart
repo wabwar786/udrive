@@ -12,7 +12,8 @@ class VehicleOption {
     required this.seats,
     required this.icon,
     required this.asset,
-    required this.recommendedFare,
+    required this.wholeVehicleFare,
+    required this.perSeatFare,
     required this.service,
     this.etaMinutes,
     this.availableCount = 0,
@@ -30,9 +31,24 @@ class VehicleOption {
   /// image cannot be loaded.
   final String asset;
 
-  /// What UDrive suggests paying. The customer can go above or below it: the
-  /// whole point of the model is that they name a price and drivers answer.
-  final int recommendedFare;
+  /// Suggested price for taking the whole vehicle.
+  ///
+  /// The customer can go above or below it — the whole point of the model is
+  /// that they name a price and drivers answer.
+  final int wholeVehicleFare;
+
+  /// Suggested price per seat. Only meaningful when [allowsPerSeat].
+  final int perSeatFare;
+
+  /// Whether this vehicle can be sold by the seat.
+  ///
+  /// Five seats or fewer is a private car: there is nothing spare to share, so
+  /// per-seat is not offered and the customer is never shown a choice that
+  /// would be refused at booking. The same rule is enforced server-side.
+  bool get allowsPerSeat => seats > 5;
+
+  int fareFor({required bool perSeat, required int seats}) =>
+      perSeat ? perSeatFare * seats : wholeVehicleFare;
 
   final HomeService service;
 
@@ -49,7 +65,8 @@ class VehicleOption {
         seats: seats,
         icon: icon,
         asset: asset,
-        recommendedFare: recommendedFare,
+        wholeVehicleFare: wholeVehicleFare,
+        perSeatFare: perSeatFare,
         service: service,
         etaMinutes: etaMinutes ?? this.etaMinutes,
         availableCount: availableCount ?? this.availableCount,
@@ -73,11 +90,14 @@ class VehicleOptionsRepository {
   /// Falls back to built-in rates if the endpoint is unavailable, because a
   /// customer with no prices cannot book at all — and a rough number they can
   /// adjust is far better than an empty screen.
+  /// Every vehicle, priced both ways.
+  ///
+  /// Both figures are computed up front so switching between per seat and whole
+  /// vehicle is instant and costs no request — the customer is comparing, and
+  /// a spinner between the two would make comparison feel expensive.
   Future<List<VehicleOption>> optionsFor({
     required double distanceKm,
     required int durationMinutes,
-    required bool perSeat,
-    required int seats,
   }) async {
     List<Map<String, dynamic>> rates = const [];
     try {
@@ -107,16 +127,22 @@ class VehicleOptionsRepository {
             orElse: () => const <String, dynamic>{},
           );
 
-          final perKm = _toDouble(
-                perSeat ? rate['perSeatRate'] : rate['wholeVehicleRate'],
-              ) ??
-              entry.fallbackPerKm;
-
           // Distance is the bulk of it; the time component keeps a short trip
           // through heavy traffic from being priced as though it were quick.
-          var fare = perKm * distanceKm + durationMinutes * 2.0;
-          if (perSeat) fare *= seats;
-          fare = fare.clamp(entry.minimumFare.toDouble(), 500000.0);
+          double priced(double perKm, double minimum) =>
+              (perKm * distanceKm + durationMinutes * 2.0)
+                  .clamp(minimum, 500000.0);
+
+          final wholeKm = _toDouble(rate['wholeVehicleRate']) ??
+              entry.fallbackPerKm;
+          final whole = priced(wholeKm, entry.minimumFare.toDouble());
+
+          // Per seat falls back to the whole-vehicle price divided by the
+          // seats, which is what a driver would charge to break even on a full
+          // load — a sensible default when the admin has not set a seat rate.
+          final seatKm = _toDouble(rate['perSeatRate']) ??
+              (entry.fallbackPerKm / entry.seats * 1.35);
+          final perSeatPrice = priced(seatKm, entry.minimumFare / entry.seats);
 
           return VehicleOption(
             category: entry.category,
@@ -125,11 +151,11 @@ class VehicleOptionsRepository {
             seats: entry.seats,
             icon: entry.icon,
             asset: entry.asset,
-            recommendedFare: _round(fare),
+            wholeVehicleFare: _round(whole),
+            perSeatFare: _round(perSeatPrice),
             service: entry.service,
           );
         })
-        .where((option) => !perSeat || option.seats > 5)
         .toList(growable: false);
   }
 

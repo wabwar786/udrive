@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 44) · build label `rev 44`
+# UDrive Redesign — Delivery 1 & 2 (revision 45) · build label `rev 45`
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,54 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 45 — the tabs picker, and per-seat where it belongs
+
+Design 4, as chosen.
+
+### Nothing moves
+
+You caught a real fault: tapping a vehicle removed it from the list and
+promoted it to the top. That was mine, and it made the screen feel unstable.
+
+The pill row now keeps every vehicle in place and in order. The fare panel is
+pinned to the bottom and never moves — whatever changes above, the number the
+customer is actually deciding stays under their thumb.
+
+### Per seat only where there are seats to spare
+
+A vehicle with more than 5 seats shows both **Per seat** and **Whole vehicle**.
+Everything else shows neither: the row is simply absent rather than disabled,
+because a control that cannot be used is worse than one that was never there.
+
+Switching from a coaster to a car snaps the booking type back to whole vehicle,
+so the screen can never submit a combination the server would reject. The same
+rule is enforced in `BookingService`.
+
+Per seat adds a seat stepper capped at the vehicle's capacity, with the per-seat
+price shown beneath it.
+
+### Both prices computed up front
+
+`optionsFor` now returns a per-seat and a whole-vehicle fare for every vehicle.
+Switching between them is instant and costs no request — the customer is
+comparing, and a spinner between two numbers would make comparing feel
+expensive.
+
+Where the admin has set no per-seat rate, it falls back to the whole-vehicle
+rate divided across the seats with a small margin: roughly what a driver needs
+to break even on a full load.
+
+### Audit gained a check that immediately paid for itself
+
+Removing three superseded widgets took `_StepButton` with them, and the file
+still referenced it. Private classes cannot be imported, so an undeclared one is
+always a build failure. The audit now checks for it — and caught this before
+the build did.
+
+It matches class names anywhere on a line rather than only at the start, because
+anchoring to the line start reported every class in the project's minified files
+as missing.
 
 ## Revision 44 — vehicle picker without a second map
 

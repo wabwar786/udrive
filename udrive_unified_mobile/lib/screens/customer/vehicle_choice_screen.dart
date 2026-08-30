@@ -51,22 +51,30 @@ class VehicleChoiceScreen extends StatefulWidget {
 class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   List<VehicleOption> _options = const [];
   VehicleOption? _selected;
+
+  /// Per seat or the whole vehicle, for the vehicle currently shown.
+  ///
+  /// Held per screen rather than per vehicle: switching from a coaster to a car
+  /// has to fall back to whole vehicle, because a car cannot be sold by the
+  /// seat. `_clampBooking` enforces that on every change.
+  late BookingType _bookingType = widget.bookingType;
+
+  late int _seats = widget.seats;
   int _fare = 0;
   bool _loading = true;
   bool _submitting = false;
   String? _error;
 
-  bool get _perSeat => widget.bookingType == BookingType.perSeat;
+  bool get _perSeat => _bookingType == BookingType.perSeat;
 
-  /// How much each tap of the stepper moves the fare.
-  ///
-  /// Proportional rather than fixed: 50 rupees is a meaningful nudge on a
-  /// PKR 600 city ride and meaningless on a PKR 24,000 tour.
   int get _step {
     if (_fare >= 10000) return 500;
     if (_fare >= 3000) return 100;
     return 50;
   }
+
+  int get _recommended =>
+      _selected?.fareFor(perSeat: _perSeat, seats: _seats) ?? 0;
 
   @override
   void initState() {
@@ -93,8 +101,6 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     final options = await repository.optionsFor(
       distanceKm: distanceKm,
       durationMinutes: minutes,
-      perSeat: _perSeat,
-      seats: widget.seats,
     );
     if (!mounted) return;
 
@@ -110,31 +116,56 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     setState(() {
       _options = options;
       _selected = preferred;
-      _fare = preferred?.recommendedFare ?? 0;
       _loading = false;
       if (preferred == null) {
         _error = 'No vehicles are available for this trip right now.';
+      } else {
+        _clampBooking();
+        _fare = _recommended;
       }
     });
+  }
 
+  /// Keeps the booking type legal for the vehicle on screen.
+  void _clampBooking() {
+    final option = _selected;
+    if (option == null) return;
+    if (!option.allowsPerSeat) _bookingType = BookingType.wholeVehicle;
+    if (_seats > option.seats) _seats = option.seats;
   }
 
   void _select(VehicleOption option) {
     setState(() {
       _selected = option;
+      _clampBooking();
       // Reset to the recommendation for the new vehicle. Carrying a coaster
       // price onto a bike would be nonsense.
-      _fare = option.recommendedFare;
+      _fare = _recommended;
+    });
+  }
+
+  void _setBookingType(BookingType type) {
+    setState(() {
+      _bookingType = type;
+      if (type == BookingType.perSeat && _seats < 1) _seats = 1;
+      _fare = _recommended;
+    });
+  }
+
+  void _setSeats(int value) {
+    final option = _selected;
+    setState(() {
+      _seats = value.clamp(1, option?.seats ?? 12);
+      _fare = _recommended;
     });
   }
 
   void _nudge(int direction) {
-    final option = _selected;
-    if (option == null) return;
+    if (_selected == null) return;
     setState(() {
       // Never below half the recommendation: an offer that low will not be
       // answered, and letting it be made wastes the customer's time.
-      final floor = (option.recommendedFare * 0.5).round();
+      final floor = (_recommended * 0.5).round();
       _fare = (_fare + direction * _step).clamp(floor, 500000);
     });
   }
@@ -160,9 +191,9 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         'destinationLatitude': widget.destinationPoint.latitude,
         'destinationLongitude': widget.destinationPoint.longitude,
         'pickupAt': DateTime.now().toUtc().toIso8601String(),
-        'bookingType': widget.bookingType.apiValue,
-        'seatsRequested': _perSeat ? widget.seats : 1,
-        'adults': _perSeat ? widget.seats : 1,
+        'bookingType': _bookingType.apiValue,
+        'seatsRequested': _perSeat ? _seats : 1,
+        'adults': _perSeat ? _seats : 1,
         'children': 0,
         'luggageCount': 0,
         'customerOffer': _fare,
@@ -197,188 +228,6 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _RouteHeader(
-              pickup: widget.pickupLabel,
-              destination: widget.destinationLabel,
-              route: widget.route,
-              onBack: () => Navigator.pop(context),
-            ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _buildSheet(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSheet() {
-    final selected = _selected;
-
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            children: [
-              if (selected != null) ...[
-                _SelectedVehicleCard(
-                  option: selected,
-                  perSeat: _perSeat,
-                  seats: widget.seats,
-                  fare: _fare,
-                  onDecrease: () => _nudge(-1),
-                  onIncrease: () => _nudge(1),
-                  onEdit: _editFare,
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              ..._options
-                  .where((option) => option.category != selected?.category)
-                  .map(
-                    (option) => _VehicleRow(
-                      option: option,
-                      perSeat: _perSeat,
-                      seats: widget.seats,
-                      onTap: () => _select(option),
-                    ),
-                  ),
-
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 13, vertical: 11),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceAlt,
-                  borderRadius: AppRadii.all(AppRadii.row),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.info_outline_rounded,
-                        size: 16, color: AppText.disabled),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Fare does not include tolls, parking or entry fees. '
-                        'Settle those with your driver.',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          height: 1.45,
-                          color: AppText.secondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        ),
-
-        if (_error != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppTint.warning,
-                borderRadius: AppRadii.all(AppRadii.row),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline_rounded,
-                      size: 16, color: AppTint.warningText),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        height: 1.4,
-                        color: AppTint.warningText,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            border: Border(
-              top: BorderSide(color: AppColors.border, width: 1),
-            ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // No auto-accept toggle here.
-                //
-                // The API has no such flag, and a switch that silently did
-                // nothing would be worse than its absence: the customer would
-                // believe a ride had been agreed when it had not. Accepting an
-                // offer stays a deliberate tap on the next screen.
-                //
-                // Adding it properly means a server-side rule — accept the
-                // first offer at or below this fare — which is a real feature,
-                // not a checkbox.
-                SizedBox(
-                  height: 54,
-                  width: double.infinity,
-                  child: Material(
-                    color: AppColors.secondary,
-                    borderRadius: AppRadii.all(AppRadii.cta),
-                    child: InkWell(
-                      onTap: _submitting ? null : _findOffers,
-                      borderRadius: AppRadii.all(AppRadii.cta),
-                      child: Center(
-                        child: _submitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppText.onBrand,
-                                ),
-                              )
-                            : const Text(
-                                'Find offers',
-                                style: TextStyle(
-                                  fontSize: 16.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppText.onBrand,
-                                ),
-                              ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Lets the fare be typed, for when the stepper would take too many taps.
   Future<void> _editFare() async {
     final controller = TextEditingController(text: '$_fare');
     final value = await showDialog<int>(
@@ -412,6 +261,161 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     if (value != null && value > 0 && mounted) {
       setState(() => _fare = value.clamp(50, 500000));
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _RouteHeader(
+              pickup: widget.pickupLabel,
+              destination: widget.destinationLabel,
+              route: widget.route,
+              onBack: () => Navigator.pop(context),
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _buildBody(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    final selected = _selected;
+
+    return Column(
+      children: [
+        // Vehicle types as pills. They stay in place and in order whichever is
+        // chosen — nothing is promoted out of the row.
+        SizedBox(
+          height: 44,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            itemCount: _options.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 7),
+            itemBuilder: (context, index) {
+              final option = _options[index];
+              return _VehiclePill(
+                option: option,
+                selected: option.category == selected?.category,
+                onTap: () => _select(option),
+              );
+            },
+          ),
+        ),
+
+        Expanded(
+          child: selected == null
+              ? const SizedBox.shrink()
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  children: [
+                    _VehicleHero(option: selected),
+                    const SizedBox(height: 18),
+
+                    // Only a vehicle with seats to spare can be sold by the
+                    // seat. For everything else the row is absent rather than
+                    // disabled: a control that cannot be used is worse than one
+                    // that was never there.
+                    if (selected.allowsPerSeat) ...[
+                      _BookingTypeToggle(
+                        value: _bookingType,
+                        onChanged: _setBookingType,
+                      ),
+                      const SizedBox(height: 12),
+                      if (_perSeat) ...[
+                        _SeatStepper(
+                          seats: _seats,
+                          maximum: selected.seats,
+                          perSeatFare: selected.perSeatFare,
+                          onChanged: _setSeats,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ],
+
+                    if (_error != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppTint.warning,
+                          borderRadius: AppRadii.all(AppRadii.row),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded,
+                                size: 16, color: AppTint.warningText),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: AppTint.warningText,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 13, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceAlt,
+                        borderRadius: AppRadii.all(AppRadii.row),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded,
+                              size: 16, color: AppText.disabled),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Fare does not include tolls, parking or entry '
+                              'fees. Settle those with your driver.',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                height: 1.45,
+                                color: AppText.secondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+
+        // The fare and the action never move. Whatever the customer changes
+        // above, the thing they are actually deciding stays under their thumb.
+        _FarePanel(
+          fare: _fare,
+          recommended: _recommended,
+          perSeat: _perSeat,
+          seats: _seats,
+          submitting: _submitting,
+          onDecrease: () => _nudge(-1),
+          onIncrease: () => _nudge(1),
+          onEdit: _editFare,
+          onSubmit: _findOffers,
+        ),
+      ],
+    );
   }
 }
 
@@ -554,103 +558,343 @@ class _RouteHeader extends StatelessWidget {
   }
 }
 
-class _SelectedVehicleCard extends StatelessWidget {
-  const _SelectedVehicleCard({
+/// A vehicle type in the pill row.
+class _VehiclePill extends StatelessWidget {
+  const _VehiclePill({
     required this.option,
-    required this.perSeat,
-    required this.seats,
-    required this.fare,
-    required this.onDecrease,
-    required this.onIncrease,
-    required this.onEdit,
+    required this.selected,
+    required this.onTap,
   });
 
   final VehicleOption option;
-  final bool perSeat;
-  final int seats;
-  final int fare;
-  final VoidCallback onDecrease;
-  final VoidCallback onIncrease;
-  final VoidCallback onEdit;
+  final bool selected;
+  final VoidCallback onTap;
 
-  String get _caption {
-    if (fare == option.recommendedFare) return 'Recommended fare';
-    final difference =
-        ((fare - option.recommendedFare) / option.recommendedFare * 100).round();
-    if (difference > 0) return '$difference% above · faster pickup';
-    return '${difference.abs()}% below · may take longer';
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: option.label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 170),
+          padding: const EdgeInsets.symmetric(horizontal: 15),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? AppColors.secondary : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: Text(
+            option.label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
+              color: selected ? AppText.onBrand : AppText.secondary,
+            ),
+          ),
+        ),
+      ),
+    );
   }
+}
+
+/// The chosen vehicle, shown large.
+class _VehicleHero extends StatelessWidget {
+  const _VehicleHero({required this.option});
+
+  final VehicleOption option;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SizedBox(
+          height: 96,
+          child: Image.asset(
+            option.asset,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => Icon(
+              option.icon,
+              size: 76,
+              color: AppColors.secondary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          option.label,
+          style: const TextStyle(
+            fontSize: 21,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -.3,
+            color: AppText.primary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.person_rounded,
+                size: 15, color: AppText.secondary),
+            const SizedBox(width: 4),
+            Text(
+              '${option.seats}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppText.secondary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '·',
+              style: TextStyle(color: AppText.disabled.withValues(alpha: .8)),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                option.description,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: AppText.secondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Per seat or whole vehicle. Only shown for vehicles with seats to spare.
+class _BookingTypeToggle extends StatelessWidget {
+  const _BookingTypeToggle({required this.value, required this.onChanged});
+
+  final BookingType value;
+  final ValueChanged<BookingType> onChanged;
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _VehicleImage(option: option, size: 68),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+      child: Row(
+        children: BookingType.values.map((type) {
+          final selected = type == value;
+          return Expanded(
+            child: Semantics(
+              button: true,
+              selected: selected,
+              label: type.label,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(type),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 170),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  decoration: BoxDecoration(
+                    color:
+                        selected ? AppColors.secondary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        option.label,
-                        style: const TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -.2,
-                          color: AppText.primary,
-                        ),
+                      Icon(
+                        type.icon,
+                        size: 17,
+                        color: selected ? AppText.onBrand : AppText.disabled,
                       ),
-                      const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          const Icon(Icons.person_rounded,
-                              size: 15, color: AppText.secondary),
-                          const SizedBox(width: 3),
-                          Text(
-                            perSeat ? '$seats' : '${option.seats}',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: AppText.secondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
+                      const SizedBox(width: 7),
                       Text(
-                        option.description,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: AppText.disabled,
+                        type.label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight:
+                              selected ? FontWeight.w900 : FontWeight.w600,
+                          color:
+                              selected ? AppText.onBrand : AppText.secondary,
                         ),
                       ),
                     ],
                   ),
                 ),
-                IconButton(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_rounded, size: 18),
-                  color: AppText.secondary,
-                  tooltip: 'Type a fare',
+              ),
+            ),
+          );
+        }).toList(growable: false),
+      ),
+    );
+  }
+}
+
+class _SeatStepper extends StatelessWidget {
+  const _SeatStepper({
+    required this.seats,
+    required this.maximum,
+    required this.perSeatFare,
+    required this.onChanged,
+  });
+
+  final int seats;
+  final int maximum;
+  final int perSeatFare;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '$seats ${seats == 1 ? 'seat' : 'seats'}',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'About PKR $perSeatFare each',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppText.secondary,
+                  ),
                 ),
               ],
             ),
           ),
+          _SmallStep(
+            icon: Icons.remove_rounded,
+            enabled: seats > 1,
+            onTap: () => onChanged(seats - 1),
+          ),
+          const SizedBox(width: 8),
+          _SmallStep(
+            icon: Icons.add_rounded,
+            enabled: seats < maximum,
+            onTap: () => onChanged(seats + 1),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 14),
-            child: Row(
+class _SmallStep extends StatelessWidget {
+  const _SmallStep({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surfaceHigh,
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled ? AppText.primary : AppText.disabled,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The fare and the action, pinned to the bottom.
+///
+/// Nothing here moves when the vehicle, booking type or seat count changes —
+/// only the numbers do. The customer's thumb stays where the decision is.
+class _FarePanel extends StatelessWidget {
+  const _FarePanel({
+    required this.fare,
+    required this.recommended,
+    required this.perSeat,
+    required this.seats,
+    required this.submitting,
+    required this.onDecrease,
+    required this.onIncrease,
+    required this.onEdit,
+    required this.onSubmit,
+  });
+
+  final int fare;
+  final int recommended;
+  final bool perSeat;
+  final int seats;
+  final bool submitting;
+  final VoidCallback onDecrease;
+  final VoidCallback onIncrease;
+  final VoidCallback onEdit;
+  final VoidCallback onSubmit;
+
+  String get _caption {
+    if (recommended == 0) return '';
+    if (fare == recommended) {
+      return perSeat ? 'Recommended for $seats seats' : 'Recommended fare';
+    }
+    final difference = ((fare - recommended) / recommended * 100).round();
+    if (difference > 0) return '$difference% above · faster pickup';
+    return '${difference.abs()}% below · may take longer';
+  }
+
+  static String grouped(int value) {
+    final digits = value.toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(digits[i]);
+    }
+    return buffer.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
                 _StepButton(icon: Icons.remove_rounded, onTap: onDecrease),
                 Expanded(
@@ -661,20 +905,20 @@ class _SelectedVehicleCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'PKR ${_grouped(fare)}',
+                          'PKR ${grouped(fare)}',
                           style: const TextStyle(
-                            fontSize: 30,
+                            fontSize: 29,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: -.8,
+                            letterSpacing: -.7,
                             color: AppText.primary,
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Text(
                           _caption,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 11.5,
                             color: AppText.secondary,
                           ),
                         ),
@@ -685,48 +929,46 @@ class _SelectedVehicleCard extends StatelessWidget {
                 _StepButton(icon: Icons.add_rounded, onTap: onIncrease),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _grouped(int value) {
-    final digits = value.toString();
-    final buffer = StringBuffer();
-    for (var i = 0; i < digits.length; i++) {
-      if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
-      buffer.write(digits[i]);
-    }
-    return buffer.toString();
-  }
-}
-
-/// Vehicle photograph, falling back to its icon if the image is missing.
-class _VehicleImage extends StatelessWidget {
-  const _VehicleImage({required this.option, required this.size});
-
-  final VehicleOption option;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size * .68,
-      child: Image.asset(
-        option.asset,
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => Icon(
-          option.icon,
-          size: size * .5,
-          color: AppText.secondary,
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 54,
+              width: double.infinity,
+              child: Material(
+                color: AppColors.secondary,
+                borderRadius: AppRadii.all(AppRadii.cta),
+                child: InkWell(
+                  onTap: submitting ? null : onSubmit,
+                  borderRadius: AppRadii.all(AppRadii.cta),
+                  child: Center(
+                    child: submitting
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppText.onBrand,
+                            ),
+                          )
+                        : const Text(
+                            'Find offers',
+                            style: TextStyle(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppText.onBrand,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
+/// The large circular buttons either side of the fare.
 class _StepButton extends StatelessWidget {
   const _StepButton({required this.icon, required this.onTap});
 
@@ -736,7 +978,7 @@ class _StepButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surfaceHigh,
+      color: AppColors.surfaceAlt,
       shape: const CircleBorder(),
       child: InkWell(
         onTap: onTap,
@@ -745,88 +987,6 @@ class _StepButton extends StatelessWidget {
           width: 52,
           height: 52,
           child: Icon(icon, size: 24, color: AppText.primary),
-        ),
-      ),
-    );
-  }
-}
-
-class _VehicleRow extends StatelessWidget {
-  const _VehicleRow({
-    required this.option,
-    required this.perSeat,
-    required this.seats,
-    required this.onTap,
-  });
-
-  final VehicleOption option;
-  final bool perSeat;
-  final int seats;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-        child: Row(
-          children: [
-            _VehicleImage(option: option, size: 58),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    option.label,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: AppText.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      const Icon(Icons.person_rounded,
-                          size: 14, color: AppText.secondary),
-                      const SizedBox(width: 3),
-                      Text(
-                        perSeat ? '$seats' : '${option.seats}',
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: AppText.secondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    option.description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppText.disabled,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'PKR ${_SelectedVehicleCard._grouped(option.recommendedFare)}',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: AppText.primary,
-              ),
-            ),
-          ],
         ),
       ),
     );
