@@ -137,6 +137,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   bool _submitting = false;
   bool _locationExpanded = false;
 
+  /// True when the booking card has been pulled up over the map.
+  ///
+  /// The card carries the products and both addresses, and on a short phone
+  /// the bottom of it sat under the fold. Rather than shrink the map for
+  /// everyone, the customer decides: the handle above "Where to?" lifts the
+  /// card over the map and drops it back.
+  bool _sheetLifted = false;
+
   LatLng _pickupPoint =
       const LatLng(AppConfig.fallbackLatitude, AppConfig.fallbackLongitude);
   LatLng? _destinationPoint;
@@ -550,7 +558,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (_service.isTour) return 'Find Tour Vehicle';
 
     final noun = switch (_service) {
-      HomeService.bus => 'Coaster / Bus',
+      HomeService.bus => 'a Coster / Hiace',
       HomeService.car => 'a Car',
       HomeService.bike => 'a Bike',
       HomeService.hotel => 'Hotels',
@@ -809,6 +817,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
+  /// Raises or lowers the booking card over the map.
+  ///
+  /// The keyboard is dismissed first: leaving it up while the panel resizes
+  /// makes the card jump twice for one gesture.
+  void _toggleSheet() {
+    FocusScope.of(context).unfocus();
+    setState(() => _sheetLifted = !_sheetLifted);
+  }
+
   Future<void> _toggleLanguage(AppController controller) async {
     final next = controller.locale.languageCode == 'ur' ? 'en' : 'ur';
     await controller.setLanguage(next);
@@ -821,7 +838,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final controller = AppControllerScope.of(context);
     final height = MediaQuery.sizeOf(context).height;
 
-    final mapHeight = (height * .52).clamp(320.0, 560.0);
+    // Lifted, the map keeps just enough of itself to stay a map — the pin, the
+    // vehicles around it and the locate button. Hiding it entirely would leave
+    // the customer setting a pickup they cannot see.
+    final mapHeight = _sheetLifted
+        ? (height * .20).clamp(150.0, 230.0)
+        : (height * .52).clamp(320.0, 560.0);
 
     return Container(
       color: AppColors.background,
@@ -866,7 +888,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ),
 
-            SizedBox(
+            AnimatedContainer(
+              duration: AppConfig.panelSwitch,
+              curve: Curves.easeOutCubic,
               height: mapHeight,
               child: Stack(
                 fit: StackFit.expand,
@@ -1038,11 +1062,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       color: AppColors.surface,
       child: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          controller: _sheetScroll,
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          child: Column(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Sits above "Where to?" and outside the scroll view, so it stays
+            // reachable however far down the card the customer has scrolled.
+            _SheetHandle(lifted: _sheetLifted, onToggle: _toggleSheet),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _sheetScroll,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1133,8 +1165,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   ),
                 ),
               ],
-            ],
-          ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1152,10 +1187,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     // Tour queries a different vehicle set, so the map has to refetch.
     _refreshNearby();
 
-    // Carry them to the next step rather than leaving them to scroll and hunt
-    // for it. Hotels ask for dates instead of a destination, so they are left
-    // where they are.
-    if (service != HomeService.hotel && _destination.text.trim().isEmpty) {
+    // Choosing a product is the customer saying what they want; the next thing
+    // they have to give is where they are going. Opening the destination
+    // search straight away with the cursor already in the field removes the
+    // separate tap on the To row that used to sit between the two.
+    //
+    // This now happens whether or not a destination is already set: tapping a
+    // product means they are starting the trip again, and re-entering with the
+    // old text selected is faster than clearing it by hand. Hotels are the
+    // exception — that flow asks for dates and a city, not a destination.
+    if (service != HomeService.hotel) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (_sheetScroll.hasClients) {
@@ -1456,6 +1497,74 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
 /// Collapsed: a plain 30x30 navy square with the green U mark, no card.
 /// Expanded: animates open left-to-right into a translucent white pill.
+/// The grab handle above "Where to?".
+///
+/// Tapping it lifts the booking card over the map or drops it back; dragging it
+/// does the same, because a bar that looks draggable and is not reads as a
+/// broken control. The label states which way the next press goes rather than
+/// showing a bare chevron nobody has to guess about.
+class _SheetHandle extends StatelessWidget {
+  const _SheetHandle({required this.lifted, required this.onToggle});
+
+  final bool lifted;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: lifted ? 'Show more map' : 'Show more of the booking card',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onToggle,
+        // A drag in the direction it is not already in toggles it. Dragging
+        // the way it already sits does nothing, so the gesture cannot fight
+        // itself mid-flick.
+        onVerticalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          if (velocity < -80 && !lifted) onToggle();
+          if (velocity > 80 && lifted) onToggle();
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(width: 10),
+              AnimatedRotation(
+                turns: lifted ? .5 : 0,
+                duration: AppConfig.panelSwitch,
+                child: const Icon(
+                  Icons.keyboard_arrow_up_rounded,
+                  size: 18,
+                  color: AppText.disabled,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                lifted ? 'Show map' : 'More',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppText.disabled,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _LocationControl extends StatelessWidget {
   const _LocationControl({
     required this.expanded,
@@ -2137,8 +2246,8 @@ class _ServiceCards extends StatelessWidget {
             child: _ProductCard(
               title: 'Ride now',
               subtitle: nearbyCount > 0
-                  ? 'Car · Coaster · Bike  ·  $nearbyCount nearby'
-                  : 'Car · Coaster · Bike',
+                  ? 'Car · Bike · Coster · Hiace  ·  $nearbyCount nearby'
+                  : 'Car · Bike · Coster · Hiace',
               icon: Icons.directions_car_rounded,
               surface: AppProduct.rideSurface,
               accent: AppProduct.rideAccent,

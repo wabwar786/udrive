@@ -687,6 +687,84 @@ public sealed class BookingService(
         return ServiceResult<bool>.Ok(true);
     }
 
+    /// <summary>
+    /// Stops an open search at the Customer's request.
+    /// </summary>
+    /// <remarks>
+    /// Without this the "Cancel request" button could only walk the Customer
+    /// back a screen while Drivers kept answering a request nobody was
+    /// watching. The request is only cancellable while it is still open — once
+    /// an offer has been selected there is a booking, and that has its own
+    /// cancellation rules and its own refund consequences.
+    ///
+    /// Pending offers are expired in the same transaction, so a Driver is not
+    /// left holding an offer against a request that no longer exists.
+    /// </remarks>
+    public async Task<ServiceResult<bool>> CancelRideRequestAsync(
+        Guid customerUserId,
+        Guid rideRequestId,
+        CancellationToken cancellationToken)
+    {
+        const string cancelSql = """
+            UPDATE udrive.ride_requests
+            SET status='Cancelled', version=version+1, updated_at=now()
+            WHERE id=@rideRequestId
+              AND customer_user_id=@customerUserId
+              AND status IN ('Open','SearchingDrivers','ReceivingOffers')
+            RETURNING id;
+            """;
+
+        const string expireOffersSql = """
+            UPDATE udrive.driver_offers
+            SET status='Expired', responded_at=now(), updated_at=now(),
+                version=version+1
+            WHERE ride_request_id=@rideRequestId
+              AND status IN ('Pending','Countered','Accepted');
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
+            cancellationToken);
+
+        await using (var command = new NpgsqlCommand(cancelSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            command.Parameters.AddWithValue("customerUserId", customerUserId);
+            var value = await command.ExecuteScalarAsync(cancellationToken);
+            if (value is null || value is DBNull)
+            {
+                return ServiceResult<bool>.Fail(
+                    StatusCodes.Status404NotFound,
+                    "ride_request_not_cancellable",
+                    "This ride request is no longer open, so it cannot be cancelled.");
+            }
+        }
+
+        await using (var command = new NpgsqlCommand(expireOffersSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await AddHistoryAsync(
+            connection,
+            transaction,
+            "RideRequest",
+            rideRequestId,
+            null,
+            "ReceivingOffers",
+            "Cancelled",
+            customerUserId,
+            "Customer cancelled the ride request.",
+            "{}",
+            cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+        return ServiceResult<bool>.Ok(true);
+    }
+
     public async Task<ServiceResult<BookingDto>> SelectDriverOfferAsync(
         Guid customerUserId,
         Guid rideRequestId,

@@ -82,7 +82,17 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focus.requestFocus();
+      // Opening from a product tap carries the previous destination in. It is
+      // selected rather than left after the cursor, so the first keystroke
+      // replaces it — the customer tapping a product is starting again, and
+      // clearing an old address by hand is the step this was meant to remove.
+      final text = _query.text;
+      if (text.isNotEmpty) {
+        _query.selection = TextSelection(baseOffset: 0, extentOffset: text.length);
+      }
+    });
     if (widget.initialQuery.trim().length >= 2) _run(widget.initialQuery);
   }
 

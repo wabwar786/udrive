@@ -63,6 +63,15 @@ public sealed class BookingsController(BookingService bookingService) : Controll
             request,
             cancellationToken));
 
+    [HttpPost("ride-requests/{rideRequestId:guid}/cancel")]
+    public async Task<IActionResult> CancelRideRequest(
+        Guid rideRequestId,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await bookingService.CancelRideRequestAsync(
+            User.GetRequiredUserId(),
+            rideRequestId,
+            cancellationToken));
+
     [HttpGet("my")]
     public async Task<IActionResult> GetMyBookings(
         CancellationToken cancellationToken) =>

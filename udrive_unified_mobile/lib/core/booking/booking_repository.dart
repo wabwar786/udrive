@@ -94,6 +94,24 @@ class BookingRepository {
     return _list(response, LiveBooking.fromJson);
   }
 
+  /// Stops an open search so no further Driver offers arrive.
+  ///
+  /// Tolerant by design: an older API has no such route, and the customer
+  /// pressing "Cancel request" must always be able to leave the screen. The
+  /// request expires server-side on its own, so a failure here costs nothing
+  /// but a slightly later cleanup.
+  Future<bool> cancelRideRequest(String rideRequestId) async {
+    try {
+      await client.postJson(
+        '/api/v1/bookings/ride-requests/$rideRequestId/cancel',
+        const {},
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<LiveBooking> cancelBooking(String bookingId, String reason) async {
     final response = await client.postJson(
       '/api/v1/bookings/$bookingId/cancel',

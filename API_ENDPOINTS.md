@@ -18,3 +18,13 @@
 ## Driver Finance
 - `GET /api/v1/driver/finance`
 - `POST /api/v1/driver/finance/payouts`
+
+## Bookings — added in rev 51
+
+- `POST /api/v1/bookings/ride-requests/{rideRequestId}/cancel`
+
+  Cancels an open ride request and expires its pending Driver offers in the
+  same transaction. Only valid while the request is `Open`,
+  `SearchingDrivers` or `ReceivingOffers`; once an offer has been selected
+  there is a booking, and `POST /api/v1/bookings/{bookingId}/cancel` applies
+  instead. Returns `404 ride_request_not_cancellable` otherwise.

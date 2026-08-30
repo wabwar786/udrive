@@ -2,11 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/booking/booking_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
+import '../../core/maps/ud_map.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../models/booking_models.dart';
 import '../operations/live_trip_navigation_screen.dart';
 
@@ -18,6 +22,9 @@ class DriverOffersScreen extends StatefulWidget {
     required this.customerOffer,
     required this.vehicleName,
     this.autoMatch = false,
+    this.pickupPoint,
+    this.destinationPoint,
+    this.routePoints,
     super.key,
   });
 
@@ -27,6 +34,17 @@ class DriverOffersScreen extends StatefulWidget {
   final int customerOffer;
   final String vehicleName;
   final bool autoMatch;
+
+  /// Drawn behind the offers when supplied. Optional because several older
+  /// flows push this screen with labels only, and a screen that crashed
+  /// without coordinates would be worse than one that shows a plain backdrop.
+  final LatLng? pickupPoint;
+  final LatLng? destinationPoint;
+
+  /// The route already computed upstream. Passed rather than recomputed: this
+  /// screen must not pay for a second Directions call to draw a line the
+  /// previous screen already has.
+  final List<LatLng>? routePoints;
 
   @override
   State<DriverOffersScreen> createState() => _DriverOffersScreenState();
@@ -43,10 +61,22 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   final Set<String> _declinedOfferIds = <String>{};
   final Set<String> _declineInFlight = <String>{};
 
+  final _mapController = UdMapController();
+  bool _cancelling = false;
+
+  /// Length of the Customer's decision window, in seconds.
+  ///
+  /// Named because the countdown pill, the Accept fill and the expiry sweep all
+  /// have to agree — three separate literals drifted apart once already.
+  static const int _decisionSeconds = 10;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refresh();
+      _frameRoute();
+    });
     _poller = Timer.periodic(const Duration(seconds: 2), (_) => _refresh(silent: true));
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || _resolved) return;
@@ -59,7 +89,30 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   void dispose() {
     _poller?.cancel();
     _ticker?.cancel();
+    _mapController.dispose();
     super.dispose();
+  }
+
+  /// Frames the trip once the map surface exists.
+  ///
+  /// Called on a delay rather than in the first frame: the renderer is chosen
+  /// after a connectivity check, so a fit issued immediately lands on nothing.
+  void _frameRoute() {
+    final points = _mapPoints;
+    if (points.length < 2) return;
+    Future<void>.delayed(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      _mapController.fitBounds(points, padding: 70);
+    });
+  }
+
+  List<LatLng> get _mapPoints {
+    final route = widget.routePoints;
+    if (route != null && route.length >= 2) return route;
+    final pickup = widget.pickupPoint;
+    final destination = widget.destinationPoint;
+    if (pickup != null && destination != null) return [pickup, destination];
+    return const [];
   }
 
   Future<void> _refresh({bool silent = false}) async {
@@ -96,7 +149,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       // expire while the Customer is pressing Approve.
       _customerDecisionDeadline.putIfAbsent(
         offer.id,
-        () => now.add(const Duration(seconds: 10)),
+        () => now.add(const Duration(seconds: _decisionSeconds)),
       );
     }
   }
@@ -118,7 +171,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   int _secondsLeft(LiveDriverOffer offer) {
     final deadline = _customerDecisionDeadline[offer.id] ?? offer.expiresAt;
     final seconds = deadline.difference(DateTime.now()).inSeconds + 1;
-    return seconds.clamp(0, 10);
+    return seconds.clamp(0, _decisionSeconds);
   }
 
   List<LiveDriverOffer> _visibleOffers(AppController controller) {
@@ -217,6 +270,60 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     return true;
   }
 
+  /// Stops the search and leaves the screen.
+  ///
+  /// Confirmed first: pressing it by mistake would throw away a request the
+  /// Customer has already priced and would have to build again.
+  Future<void> _cancelRequest() async {
+    if (_cancelling || _resolved) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceHigh,
+        title: Text(_t('Cancel this request?', 'یہ درخواست منسوخ کریں؟')),
+        content: Text(
+          _t(
+            'Drivers will stop sending offers and you will go back to choosing a vehicle.',
+            'ڈرائیور آفر بھیجنا بند کر دیں گے اور آپ دوبارہ گاڑی منتخب کرنے پر واپس چلے جائیں گے۔',
+          ),
+          style: const TextStyle(fontSize: 12.5, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(_t('Keep waiting', 'انتظار جاری رکھیں')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              _t('Cancel request', 'درخواست منسوخ کریں'),
+              style: const TextStyle(color: AppColors.danger),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _cancelling = true);
+    _poller?.cancel();
+    _ticker?.cancel();
+    _resolved = true;
+
+    final controller = AppControllerScope.of(context);
+    final navigator = Navigator.of(context);
+    // The result is deliberately ignored. The request expires on its own, so a
+    // route an older API does not have must not trap the Customer on a screen
+    // they have asked to leave.
+    await BookingRepository(controller.apiClient)
+        .cancelRideRequest(widget.rideRequestId);
+
+    if (!mounted) return;
+    navigator.pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
@@ -224,99 +331,161 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     final offers = _visibleOffers(controller);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(
-        title: Text(_t('Choose a driver', 'ڈرائیور منتخب کریں')),
-        actions: [
-          IconButton(
-            tooltip: _t('Refresh', 'تازہ کریں'),
-            onPressed: controller.marketplaceBusy ? null : _refresh,
-            icon: const Icon(Icons.refresh_rounded),
+      backgroundColor: AppColors.background,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          _backdrop(),
+
+          // The list sits over the map and only takes the height it needs, so
+          // the route stays visible underneath while offers arrive.
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                  child: _CancelPill(
+                    busy: _cancelling,
+                    label: _t('Cancel request', 'درخواست منسوخ کریں'),
+                    onTap: _cancelRequest,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                  child: Text(
+                    _t('Choose a driver', 'ڈرائیور منتخب کریں'),
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -.4,
+                      color: AppText.primary,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.verified_user_rounded,
+                          size: 17, color: AppColors.info),
+                      const SizedBox(width: 7),
+                      Text(
+                        _t('All drivers verified', 'تمام ڈرائیور تصدیق شدہ'),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppText.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                    children: offers.isEmpty
+                        ? [_waitingCard()]
+                        : offers.map(_offerCard).toList(growable: false),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
-          children: [
-            _routeSummary(offers.length),
-            const SizedBox(height: 12),
-            if (_loading && offers.isEmpty)
-              _waitingCard()
-            else if (offers.isEmpty)
-              _waitingCard()
-            else
-              ...offers.map(_offerCard),
-          ],
-        ),
       ),
     );
   }
 
-  Widget _routeSummary(int offerCount) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
+  /// The route behind the offers, or a plain surface when this screen was
+  /// pushed without coordinates.
+  Widget _backdrop() {
+    final points = _mapPoints;
+    if (points.length < 2) {
+      return const ColoredBox(color: AppTint.mapBackdrop);
+    }
+
+    return UdMap(
+      controller: _mapController,
+      initialCenter: points.first,
+      // Not interactive: the customer is choosing a driver here, and a map
+      // that pans under a list they are trying to scroll fights them.
+      interactive: false,
+      showMyLocation: false,
+      routeOrigin: widget.pickupPoint,
+      routeDestination: widget.destinationPoint,
+      polylines: [
+        UdPolyline(
+          id: 'offer-route-casing',
+          points: points,
+          color: AppColors.primary,
+          width: 9,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.verified_user_rounded, size: 18, color: AppColors.primary),
-                const SizedBox(width: 7),
-                Text(
-                  _t('Verified driver offers', 'تصدیق شدہ ڈرائیور آفرز'),
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
-                ),
-                const Spacer(),
-                Text(
-                  '$offerCount ${offerCount == 1 ? 'offer' : 'offers'}',
-                  style: const TextStyle(color: AppColors.muted, fontSize: 11, fontWeight: FontWeight.w800),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '${widget.pickup}  →  ${widget.destination}',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              _t(
-                'Compare fares and arrival time. Each new offer gives you 10 seconds to approve or reject.',
-                'کرایہ اور پہنچنے کا وقت دیکھیں۔ ہر نئی آفر پر آپ کے پاس منظور یا مسترد کرنے کے لیے 10 سیکنڈ ہیں۔',
-              ),
-              style: const TextStyle(color: AppColors.muted, fontSize: 11.5, height: 1.35),
-            ),
-          ],
+        UdPolyline(
+          id: 'offer-route',
+          points: points,
+          color: AppColors.secondary,
+          width: 5,
         ),
-      );
+      ],
+      markers: [
+        if (widget.pickupPoint != null)
+          UdMarker(
+            id: 'offer-pickup',
+            position: widget.pickupPoint!,
+            label: widget.pickup,
+          ),
+        if (widget.destinationPoint != null)
+          UdMarker(
+            id: 'offer-destination',
+            position: widget.destinationPoint!,
+            label: widget.destination,
+            hue: UdMarkerHue.danger,
+          ),
+      ],
+    );
+  }
 
   Widget _waitingCard() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 28),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 26),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          color: AppColors.surface,
+          borderRadius: AppRadii.all(AppRadii.largeCard),
           border: Border.all(color: AppColors.border),
+          boxShadow: AppShadows.card,
         ),
         child: Column(
           children: [
-            const Icon(Icons.radar_rounded, color: AppColors.primary, size: 34),
-            const SizedBox(height: 10),
-            Text(
-              _t('Waiting for driver fares…', 'ڈرائیورز کے کرایوں کا انتظار ہے…'),
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            const SizedBox(
+              width: 26,
+              height: 26,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: AppColors.secondary,
+              ),
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 14),
             Text(
-              _t('Nearby Drivers can send their fare. New offers appear here automatically.', 'قریبی ڈرائیور اپنا کرایہ بھیج سکتے ہیں۔ نئی آفر یہاں خودکار ظاہر ہوگی۔'),
+              _t('Waiting for driver offers…', 'ڈرائیورز کی آفرز کا انتظار ہے…'),
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+                color: AppText.primary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _t(
+                'Nearby drivers can answer with their own fare. New offers appear here automatically.',
+                'قریبی ڈرائیور اپنا کرایہ بھیج سکتے ہیں۔ نئی آفر یہاں خودکار ظاہر ہوگی۔',
+              ),
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.muted, fontSize: 11.5, height: 1.35),
+              style: const TextStyle(
+                color: AppText.secondary,
+                fontSize: 12,
+                height: 1.45,
+              ),
             ),
           ],
         ),
@@ -325,132 +494,142 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   Widget _offerCard(LiveDriverOffer offer) {
     final seconds = _secondsLeft(offer);
     final busy = _approvingOfferId == offer.id;
-    final distanceText = offer.pickupDistanceKm < 0.1
-        ? '<0.1 km'
-        : '${offer.pickupDistanceKm.toStringAsFixed(1)} km';
+    final blocked = busy || seconds <= 0;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-        boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 4))],
+        color: AppColors.surface,
+        borderRadius: AppRadii.all(AppRadii.panel),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Fare and arrival on one line, the fare carrying the weight. It is
+          // the number the customer is comparing between cards.
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'PKR ${NumberFormat('#,###').format(offer.finalAmount)}',
-                      style: const TextStyle(fontSize: 28, height: 1, fontWeight: FontWeight.w900, color: AppColors.surface),
-                    ),
-                    const SizedBox(height: 7),
-                    Row(
-                      children: [
-                        const Icon(Icons.schedule_rounded, size: 16, color: AppColors.primary),
-                        const SizedBox(width: 4),
-                        Text(
-                          '~${offer.estimatedArrivalMinutes} min to pickup',
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
-                        ),
-                        const SizedBox(width: 10),
-                        const Icon(Icons.near_me_rounded, size: 15, color: AppColors.muted),
-                        const SizedBox(width: 3),
-                        Flexible(
-                          child: Text('$distanceText away', style: const TextStyle(color: AppColors.muted, fontSize: 11.5)),
-                        ),
-                      ],
-                    ),
-                  ],
+              Text(
+                'PKR ${NumberFormat('#,###').format(offer.finalAmount)}',
+                style: const TextStyle(
+                  fontSize: 32,
+                  height: 1.1,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -1,
+                  color: AppText.primary,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                decoration: BoxDecoration(
-                  color: seconds <= 3 ? const Color(0xFFFFE9E7) : const Color(0xFFEAF7F0),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '${seconds}s',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
-                    color: seconds <= 3 ? const Color(0xFFB42318) : AppColors.primaryDark,
-                  ),
+              const SizedBox(width: 12),
+              Text(
+                '${offer.estimatedArrivalMinutes} min',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -.4,
+                  color: AppText.secondary,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 13),
+          const SizedBox(height: 12),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 23,
-                backgroundColor: AppColors.primary.withValues(alpha: .12),
-                child: Text(
-                  offer.driverName.isEmpty ? 'D' : offer.driverName.characters.first.toUpperCase(),
-                  style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark, fontSize: 18),
-                ),
-              ),
-              const SizedBox(width: 10),
+              _DriverAvatar(name: offer.driverName),
+              const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Flexible(child: Text(offer.driverName, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5))),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.verified_rounded, color: AppColors.info, size: 16),
+                        Flexible(
+                          child: Text(
+                            offer.driverName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppText.primary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.star_rounded,
+                            size: 16, color: AppText.primary),
+                        const SizedBox(width: 2),
+                        Text(
+                          offer.driverRating.toStringAsFixed(2),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: AppText.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                          '${offer.completedTrips} '
+                          '${_t('rides', 'سفر')}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppText.secondary,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      offer.vehicle,
+                      offer.vehicle.trim().isEmpty
+                          ? offer.vehicleCategory
+                          : offer.vehicle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF374151)),
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppText.primary,
+                      ),
                     ),
-                    if (offer.registrationNumber.isNotEmpty)
-                      Text(offer.registrationNumber, style: const TextStyle(color: AppColors.muted, fontSize: 10.5)),
+                    if (offer.registrationNumber.trim().isNotEmpty)
+                      Text(
+                        offer.registrationNumber,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: AppText.disabled,
+                        ),
+                      ),
                   ],
                 ),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.star_rounded, size: 15, color: Color(0xFFF59E0B)),
-                  Text(' ${offer.driverRating.toStringAsFixed(1)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11.5)),
-                ],
-              ),
             ],
           ),
-          const SizedBox(height: 13),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
-                child: OutlinedButton(
-                  onPressed: busy || seconds <= 0 ? null : () => _declineOffer(offer.id),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-                  child: Text(_t('Reject', 'مسترد کریں')),
+                child: _DeclineButton(
+                  label: _t('Decline', 'مسترد کریں'),
+                  onTap: blocked ? null : () => _declineOffer(offer.id),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 11),
               Expanded(
-                child: FilledButton(
-                  onPressed: busy || seconds <= 0 || _approvingOfferId != null ? null : () => _approveOffer(offer),
-                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-                  child: busy
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(_t('Approve', 'منظور کریں')),
+                child: _AcceptButton(
+                  label: _t('Accept', 'قبول کریں'),
+                  busy: busy,
+                  // The fill drains with the decision window, so the pressure
+                  // the customer is under is visible on the control itself
+                  // rather than only in a number beside it.
+                  remaining: seconds / _decisionSeconds,
+                  onTap: blocked || _approvingOfferId != null
+                      ? null
+                      : () => _approveOffer(offer),
                 ),
               ),
             ],
@@ -534,6 +713,212 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
 
   String _t(String en, String ur) =>
       AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
+}
+
+/// The red "Cancel request" pill above the heading.
+class _CancelPill extends StatelessWidget {
+  const _CancelPill({
+    required this.label,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: AppTint.danger,
+        borderRadius: BorderRadius.circular(99),
+        child: InkWell(
+          onTap: busy ? null : onTap,
+          borderRadius: BorderRadius.circular(99),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (busy)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.danger,
+                    ),
+                  )
+                else
+                  const Icon(Icons.close_rounded,
+                      size: 18, color: AppColors.danger),
+                const SizedBox(width: 9),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.danger,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Initials on a tinted circle.
+///
+/// The offers endpoint exposes no photograph, and a generic silhouette on every
+/// card tells the customer nothing. Initials at least distinguish one driver
+/// from the next.
+class _DriverAvatar extends StatelessWidget {
+  const _DriverAvatar({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = name.trim();
+    final initial =
+        trimmed.isEmpty ? 'D' : trimmed.characters.first.toUpperCase();
+
+    return Container(
+      width: 44,
+      height: 44,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: AppTint.brand,
+        shape: BoxShape.circle,
+      ),
+      child: Text(
+        initial,
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w900,
+          color: AppColors.secondary,
+        ),
+      ),
+    );
+  }
+}
+
+class _DeclineButton extends StatelessWidget {
+  const _DeclineButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surfaceAlt,
+      borderRadius: AppRadii.all(AppRadii.cta),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadii.all(AppRadii.cta),
+        child: SizedBox(
+          height: 48,
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: onTap == null ? AppText.disabled : AppText.primary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Accept, with the decision window draining across it.
+class _AcceptButton extends StatelessWidget {
+  const _AcceptButton({
+    required this.label,
+    required this.busy,
+    required this.remaining,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool busy;
+
+  /// 1.0 at the start of the window, 0.0 when it closes.
+  final double remaining;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = remaining.clamp(0.0, 1.0);
+
+    return ClipRRect(
+      borderRadius: AppRadii.all(AppRadii.cta),
+      child: Stack(
+        children: [
+          // Two flexed halves rather than a fractionally-sized box: a Row of
+          // Expanded children fills the height under any constraints, where a
+          // FractionallySizedBox with no height factor can collapse to nothing
+          // inside a Stack.
+          Positioned.fill(
+            child: Row(
+              children: [
+                Expanded(
+                  flex: (fraction * 1000).round().clamp(1, 1000),
+                  child: const ColoredBox(color: AppColors.secondary),
+                ),
+                Expanded(
+                  flex: ((1 - fraction) * 1000).round().clamp(1, 1000),
+                  child: ColoredBox(
+                    // The spent part stays visible but dimmed, so the bar reads
+                    // as one control draining rather than two colours meeting.
+                    color: AppColors.secondary.withValues(alpha: .38),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              child: SizedBox(
+                height: 48,
+                width: double.infinity,
+                child: Center(
+                  child: busy
+                      ? const SizedBox(
+                          width: 19,
+                          height: 19,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppText.onBrand,
+                          ),
+                        )
+                      : Text(
+                          label,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: AppText.onBrand,
+                          ),
+                        ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ResultLine extends StatelessWidget {

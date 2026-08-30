@@ -31,6 +31,9 @@ class VehicleImageRepository {
         return 'vehicle.image.ac_car';
       case 'hiace':
         return 'vehicle.image.hiace';
+      // Both spellings map to the one setting the admin portal already
+      // creates, so renaming the category did not orphan an uploaded picture.
+      case 'coster':
       case 'coaster':
         return 'vehicle.image.coaster';
       default:

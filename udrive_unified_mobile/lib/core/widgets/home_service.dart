@@ -9,7 +9,7 @@ enum HomeService { bus, car, bike, hotel, tour }
 
 extension HomeServiceInfo on HomeService {
   String get label => switch (this) {
-        HomeService.bus => 'Coaster/Bus',
+        HomeService.bus => 'Coster/Hiace',
         HomeService.car => 'Car',
         HomeService.bike => 'Bike',
         HomeService.hotel => 'Hotel',
@@ -26,7 +26,7 @@ extension HomeServiceInfo on HomeService {
 
   /// Caption under the illustration.
   String get heroTitle => switch (this) {
-        HomeService.bus => 'Coaster / Bus',
+        HomeService.bus => 'Coster / Hiace',
         HomeService.car => 'Car',
         HomeService.bike => 'Bike',
         HomeService.hotel => 'Hotel',
@@ -55,7 +55,7 @@ extension HomeServiceInfo on HomeService {
 
   /// Vehicle category sent to the ride-request API. Null for Hotel.
   String? get vehicleCategory => switch (this) {
-        HomeService.bus => 'Coaster',
+        HomeService.bus => 'Coster',
         HomeService.car => 'Car',
         HomeService.bike => 'Bike',
         HomeService.hotel => null,

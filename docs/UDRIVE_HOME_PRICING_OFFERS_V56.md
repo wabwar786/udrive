@@ -1,0 +1,157 @@
+# Revision 51 — movable Home card, one-tap destination, real pricing, driver offers
+
+Three things were asked for. The third turned up two pricing bugs that had to be
+fixed before the rest of it made any sense.
+
+**Deploy both services.** This touches `Controllers/`, `Services/` and
+`Migrations/`, so a mobile-only deploy leaves the cancel button and the Hiace
+rate broken.
+
+---
+
+## 1. The booking card can be pulled over the map
+
+`customer_home_screen.dart`
+
+A grab handle sits directly above "Where to?" — outside the scroll view, so it
+stays reachable however far down the card you have scrolled. Tapping it, or
+flicking it up, lifts the card over the map; tapping again drops it back. The
+map band is an `AnimatedContainer` that goes from 52% of the screen to about
+20%.
+
+The map is not hidden completely. Pickup is set by the centre pin, and a
+customer cannot confirm a pickup they cannot see.
+
+Resizing the map does not rewrite the pickup: the camera target does not change
+when the viewport does, so the existing 40-metre guard in `_onMapSettled`
+swallows the resulting idle event without spending a geocode.
+
+## 2. Tapping a product goes straight to the destination field
+
+`customer_home_screen.dart`, `place_search_screen.dart`
+
+`_selectService` already opened the destination search — but only when the
+destination was empty. The condition is gone: tapping Ride, Tour, Coster or Bike
+now always opens it, and `PlaceSearchScreen` already focuses its field on the
+first frame, so the keyboard comes up with it.
+
+Any existing destination arrives selected rather than sitting behind the cursor.
+Tapping a product means starting the trip again, and clearing an old address by
+hand is exactly the step this was meant to remove.
+
+Hotel is excluded. That flow asks for a city and dates, not a destination.
+
+## 3. Vehicles, fares and the offers screen
+
+### Two bugs in how the fare was calculated
+
+Both were in `vehicle_options_repository.dart`.
+
+**The admin's rates were never being read.** The app looked for
+`row['vehicleType']` and `row['category']`. The API serialises
+`ServiceVehicleRateDto` in camelCase, so the field is `vehicleCategory`. Neither
+key ever matched, `firstWhere` fell through to its `orElse`, and every fare on
+every trip came from the built-in fallback table. Changing a rate in the admin
+portal did nothing at all.
+
+**`wholeVehicleRate` was being treated as a rate per kilometre.** Car's figure
+is 1,600 — a flat whole-vehicle price. The code computed
+`1600 × distanceKm`, so a ten-kilometre town trip would have been quoted around
+PKR 16,000. The only reason nobody saw it is the first bug: the rates never
+loaded, so the multiplication never ran on a real figure. Fixing the lookup
+without fixing this would have shipped the mispricing.
+
+### What the fare is now
+
+```
+fare = max(perKmRate × roadKm + 2 × minutes,  wholeVehicleRate)
+```
+
+rounded to the nearest 5 rupees.
+
+`per_km_rate` is what scales with the trip — it arrived with migration 025 and
+the app had never used it. `whole_vehicle_rate` and `per_seat_rate` are flat
+**minimums**: a short trip still costs the floor, because a driver does not
+start the engine for less. The three columns now carry SQL comments saying so,
+because the distinction is not guessable from the names.
+
+Per seat is the whole-vehicle fare shared across the seats with a small margin,
+never below the admin's own per-seat floor.
+
+### The stepper floor
+
+Was half the recommendation — a guess. It is now the admin's minimum for that
+vehicle. The minus button disables at the floor and the caption says "Minimum
+fare for this trip" rather than a percentage that implies there is further to
+go. Typing a figure obeys the same floor; letting one route around it would only
+mean waiting for offers that never come.
+
+### Four vehicles
+
+Car, Bike, Coster, Hiace. "AC Car" is gone.
+
+"Coaster" is now **"Coster"**, because that is the spelling in
+`udrive.service_vehicle_rates` and the two never matched. Driver eligibility does
+not filter on category — `GetEligibleRideRequestsAsync` matches on distance and
+presence only — so the rename affects pricing and labels, nothing else. Both
+spellings still resolve to the `vehicle.image.coaster` setting, so an already
+uploaded photograph was not orphaned.
+
+Hiace had no row in the rate table at all. Migration `033_travel_vehicle_rates`
+adds it for City and PrivateVehicle. Rickshaw is set `is_active = false` rather
+than deleted, so an admin who wants it back flips one column.
+
+### The offers screen
+
+`driver_offers_screen.dart`, rebuilt to the design supplied.
+
+The route sits behind the offers on a non-interactive map — non-interactive
+because the customer is choosing a driver, and a map that pans under a list they
+are scrolling fights them. The route points are passed down from
+`VehicleChoiceScreen` rather than fetched again, so drawing the line costs no
+Directions call.
+
+The list is `Flexible` with `shrinkWrap`, so it takes only the height it needs
+and the map stays visible while offers arrive.
+
+Each card: fare large, arrival beside it in grey, then the driver's initials
+avatar, name, rating, completed-trip count and vehicle, then Decline and Accept.
+The ten-second decision window drains across the Accept button itself, so the
+pressure is on the control rather than in a number off to one side. The two
+halves are flexed rather than fractionally sized — a `FractionallySizedBox` with
+no height factor collapses to nothing inside a `Stack`.
+
+The offers endpoint exposes no driver photograph, so the avatar is initials. A
+generic silhouette on every card would distinguish nothing.
+
+**Cancel request** needed an endpoint. `POST
+/api/v1/bookings/ride-requests/{id}/cancel` sets the request to `Cancelled` and
+expires pending offers in the same transaction, so no driver is left holding an
+offer against a request that no longer exists. It only works while the request
+is open; once an offer is selected there is a booking, with its own cancellation
+rules.
+
+The client ignores the result. The request expires on its own, so a route an
+older API does not have must never trap the customer on a screen they have asked
+to leave.
+
+---
+
+## Not done
+
+- **Per-vehicle ETAs.** Still a Distance Matrix call per category per search,
+  still a billing decision rather than a code one.
+- **Auto-accept.** Still needs a server rule, not a checkbox.
+- **A `Coster` row in the demo fleet.** The seeded coaches in migration 010 are
+  category `Bus`. Pricing does not read that column, so nothing is broken, but
+  the demo fleet and the rate table disagree and it is worth tidying.
+
+## Before deploying
+
+```bash
+cd udrive_unified_mobile && python3 tool/audit_structure.py
+```
+
+Clean as of this ZIP. Push, wait for the Actions run to go green, then deploy
+**both** `udrive-api` and `udrive Mobile`. Hard refresh afterwards and check the
+build label reads `rev 51`.

@@ -81,6 +81,13 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   int get _recommended =>
       _selected?.fareFor(perSeat: _perSeat, seats: _seats) ?? 0;
 
+  /// The lowest offer this vehicle will take, from the admin's own rate table.
+  ///
+  /// This replaces the old floor of half the recommendation. Half was a guess;
+  /// the admin has set an actual figure, and an offer below it is one no driver
+  /// answers.
+  int get _minimum => _selected?.minimumFor(perSeat: _perSeat, seats: _seats) ?? 0;
+
   @override
   void initState() {
     super.initState();
@@ -179,9 +186,8 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   void _nudge(int direction) {
     if (_selected == null) return;
     setState(() {
-      // Never below half the recommendation: an offer that low will not be
-      // answered, and letting it be made wastes the customer's time.
-      final floor = (_recommended * 0.5).round();
+      // Never below the admin's minimum for this vehicle.
+      final floor = _minimum;
       _fare = (_fare + direction * _step).clamp(floor, 500000);
     });
   }
@@ -232,6 +238,9 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
             destination: widget.destinationLabel,
             customerOffer: _fare,
             vehicleName: option.label,
+            pickupPoint: widget.pickupPoint,
+            destinationPoint: widget.destinationPoint,
+            routePoints: widget.route?.points,
           ),
         ),
       );
@@ -275,7 +284,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     );
 
     if (value != null && value > 0 && mounted) {
-      setState(() => _fare = value.clamp(50, 500000));
+      // Typed figures obey the same floor as the stepper. Allowing one route
+      // around it would mean the customer waits for offers that never come.
+      final floor = _minimum > 0 ? _minimum : 50;
+      setState(() => _fare = value.clamp(floor, 500000));
     }
   }
 
@@ -428,6 +440,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         _FarePanel(
           fare: _fare,
           recommended: _recommended,
+          minimum: _minimum,
           perSeat: _perSeat,
           seats: _seats,
           submitting: _submitting,
@@ -888,6 +901,7 @@ class _FarePanel extends StatelessWidget {
   const _FarePanel({
     required this.fare,
     required this.recommended,
+    required this.minimum,
     required this.perSeat,
     required this.seats,
     required this.submitting,
@@ -899,6 +913,7 @@ class _FarePanel extends StatelessWidget {
 
   final int fare;
   final int recommended;
+  final int minimum;
   final bool perSeat;
   final int seats;
   final bool submitting;
@@ -909,6 +924,12 @@ class _FarePanel extends StatelessWidget {
 
   String get _caption {
     if (recommended == 0) return '';
+    // At the floor, say so plainly. "31% below" reads like there is further to
+    // go; there is not, and the customer pressing minus again needs to know
+    // why nothing moves.
+    if (minimum > 0 && fare <= minimum) {
+      return 'Minimum fare for this trip · may take longer';
+    }
     if (fare == recommended) {
       return perSeat ? 'Recommended for $seats seats' : 'Recommended fare';
     }
@@ -942,7 +963,11 @@ class _FarePanel extends StatelessWidget {
           children: [
             Row(
               children: [
-                _StepButton(icon: Icons.remove_rounded, onTap: onDecrease),
+                _StepButton(
+                  icon: Icons.remove_rounded,
+                  enabled: minimum <= 0 || fare > minimum,
+                  onTap: onDecrease,
+                ),
                 Expanded(
                   child: GestureDetector(
                     onTap: onEdit,
@@ -1016,10 +1041,15 @@ class _FarePanel extends StatelessWidget {
 
 /// The large circular buttons either side of the fare.
 class _StepButton extends StatelessWidget {
-  const _StepButton({required this.icon, required this.onTap});
+  const _StepButton({
+    required this.icon,
+    required this.onTap,
+    this.enabled = true,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -1027,12 +1057,16 @@ class _StepButton extends StatelessWidget {
       color: AppColors.surfaceAlt,
       shape: const CircleBorder(),
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         customBorder: const CircleBorder(),
         child: SizedBox(
           width: 48,
           height: 48,
-          child: Icon(icon, size: 22, color: AppText.primary),
+          child: Icon(
+            icon,
+            size: 22,
+            color: enabled ? AppText.primary : AppText.disabled,
+          ),
         ),
       ),
     );

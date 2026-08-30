@@ -14,6 +14,8 @@ class VehicleOption {
     required this.asset,
     required this.wholeVehicleFare,
     required this.perSeatFare,
+    required this.wholeVehicleMinimum,
+    required this.perSeatMinimum,
     required this.service,
     this.etaMinutes,
     this.availableCount = 0,
@@ -40,6 +42,17 @@ class VehicleOption {
   /// Suggested price per seat. Only meaningful when [allowsPerSeat].
   final int perSeatFare;
 
+  /// The lowest whole-vehicle offer this vehicle will accept.
+  ///
+  /// This is the admin's own `wholeVehicleRate` — a flat floor, not a rate per
+  /// kilometre. A trip long enough to price above it is priced on distance;
+  /// anything shorter still costs the floor, because a driver does not start
+  /// the engine for less.
+  final int wholeVehicleMinimum;
+
+  /// The same floor expressed per seat, from `perSeatRate`.
+  final int perSeatMinimum;
+
   /// Whether this vehicle can be sold by the seat.
   ///
   /// Five seats or fewer is a private car: there is nothing spare to share, so
@@ -49,6 +62,14 @@ class VehicleOption {
 
   int fareFor({required bool perSeat, required int seats}) =>
       perSeat ? perSeatFare * seats : wholeVehicleFare;
+
+  /// The floor for the fare stepper.
+  ///
+  /// The customer names the price, but not below what the admin has set: an
+  /// offer under this is never answered, and letting it be made only wastes
+  /// the customer's time waiting for silence.
+  int minimumFor({required bool perSeat, required int seats}) =>
+      perSeat ? perSeatMinimum * seats : wholeVehicleMinimum;
 
   final HomeService service;
 
@@ -67,6 +88,8 @@ class VehicleOption {
         asset: asset,
         wholeVehicleFare: wholeVehicleFare,
         perSeatFare: perSeatFare,
+        wholeVehicleMinimum: wholeVehicleMinimum,
+        perSeatMinimum: perSeatMinimum,
         service: service,
         etaMinutes: etaMinutes ?? this.etaMinutes,
         availableCount: availableCount ?? this.availableCount,
@@ -118,31 +141,45 @@ class VehicleOptionsRepository {
 
     return _catalogue
         .map((entry) {
+          // The API serialises `ServiceVehicleRateDto` with camelCase names, so
+          // the category arrives as `vehicleCategory`. The older keys are still
+          // read first for safety, but `vehicleCategory` is the one that
+          // actually matches — reading only the old names silently fell through
+          // to the built-in table on every single request, which is why the
+          // admin's rates never appeared to take effect.
           final rate = rates.firstWhere(
-            (row) =>
-                '${row['vehicleType'] ?? row['category'] ?? ''}'
-                    .toLowerCase()
-                    .trim() ==
-                entry.category.toLowerCase(),
+            (row) => _categoryOf(row) == entry.category.toLowerCase(),
             orElse: () => const <String, dynamic>{},
           );
 
+          // Per kilometre is the rate that scales with the trip. `perKmRate`
+          // came with the ambulance migration and is what the admin edits;
+          // `wholeVehicleRate` and `perSeatRate` are flat floors, not rates,
+          // and multiplying either by the distance produced fares in the tens
+          // of thousands for an ordinary town trip.
+          final perKm = _toDouble(rate['perKmRate']) ?? entry.fallbackPerKm;
+
+          // Floors. The admin's figure wins; the built-in one is only a
+          // fallback for a database that has not been migrated.
+          final wholeFloor =
+              (_toDouble(rate['wholeVehicleRate']) ?? entry.minimumFare.toDouble())
+                  .clamp(1.0, 500000.0);
+          final seatFloor = (_toDouble(rate['perSeatRate']) ??
+                  (entry.minimumFare / entry.seats * 1.35))
+              .clamp(1.0, 500000.0);
+
           // Distance is the bulk of it; the time component keeps a short trip
           // through heavy traffic from being priced as though it were quick.
-          double priced(double perKm, double minimum) =>
-              (perKm * distanceKm + durationMinutes * 2.0)
-                  .clamp(minimum, 500000.0);
+          final metered = perKm * distanceKm + durationMinutes * 2.0;
 
-          final wholeKm = _toDouble(rate['wholeVehicleRate']) ??
-              entry.fallbackPerKm;
-          final whole = priced(wholeKm, entry.minimumFare.toDouble());
+          // Never below the floor, and never absurd.
+          final whole = metered.clamp(wholeFloor, 500000.0);
 
-          // Per seat falls back to the whole-vehicle price divided by the
-          // seats, which is what a driver would charge to break even on a full
-          // load — a sensible default when the admin has not set a seat rate.
-          final seatKm = _toDouble(rate['perSeatRate']) ??
-              (entry.fallbackPerKm / entry.seats * 1.35);
-          final perSeatPrice = priced(seatKm, entry.minimumFare / entry.seats);
+          // Per seat is the whole-vehicle price shared across the seats with a
+          // small margin — what a driver needs to break even on a full load —
+          // and never below the admin's own per-seat floor.
+          final perSeatPrice =
+              (whole / entry.seats * 1.35).clamp(seatFloor, 500000.0);
 
           return VehicleOption(
             category: entry.category,
@@ -153,10 +190,25 @@ class VehicleOptionsRepository {
             asset: entry.asset,
             wholeVehicleFare: _round(whole),
             perSeatFare: _round(perSeatPrice),
+            wholeVehicleMinimum: _round(wholeFloor),
+            perSeatMinimum: _round(seatFloor),
             service: entry.service,
           );
         })
         .toList(growable: false);
+  }
+
+  /// The vehicle category on a rates row, lowercased.
+  ///
+  /// Checked in the order the API is most likely to send: the current
+  /// camelCase serialisation first, then the two names earlier builds looked
+  /// for, so a rates payload from an older API still matches.
+  static String _categoryOf(Map<String, dynamic> row) {
+    for (final key in const ['vehicleCategory', 'vehicleType', 'category']) {
+      final value = '${row[key] ?? ''}'.trim();
+      if (value.isNotEmpty) return value.toLowerCase();
+    }
+    return '';
   }
 
   static double? _toDouble(Object? value) {
@@ -187,19 +239,8 @@ class VehicleOptionsRepository {
       seats: 4,
       icon: Icons.directions_car_rounded,
       asset: 'assets/vehicles_photo/car_clean.png',
-      fallbackPerKm: 48,
-      minimumFare: 300,
-      service: HomeService.car,
-    ),
-    _CatalogueEntry(
-      category: 'AC Car',
-      label: 'Car with AC',
-      description: 'Up to 4 passengers, air conditioned',
-      seats: 4,
-      icon: Icons.ac_unit_rounded,
-      asset: 'assets/vehicles_photo/private_car_clean.png',
-      fallbackPerKm: 62,
-      minimumFare: 400,
+      fallbackPerKm: 65,
+      minimumFare: 1600,
       service: HomeService.car,
     ),
     _CatalogueEntry(
@@ -209,19 +250,23 @@ class VehicleOptionsRepository {
       seats: 1,
       icon: Icons.two_wheeler_rounded,
       asset: 'assets/vehicles_photo/bike_clean.png',
-      fallbackPerKm: 22,
-      minimumFare: 120,
+      fallbackPerKm: 32,
+      minimumFare: 250,
       service: HomeService.bike,
     ),
+    // Named 'Coster' rather than 'Coaster' because that is the spelling in
+    // `udrive.service_vehicle_rates`. The two did not match, so the admin's
+    // coaster rate was never found. Driver eligibility does not filter on
+    // category, so the rename changes pricing only.
     _CatalogueEntry(
-      category: 'Coaster',
-      label: 'Coaster',
+      category: 'Coster',
+      label: 'Coster',
       description: 'Up to 22 passengers, groups and tours',
       seats: 22,
       icon: Icons.directions_bus_rounded,
       asset: 'assets/vehicles_photo/coaster_clean.png',
-      fallbackPerKm: 135,
-      minimumFare: 2500,
+      fallbackPerKm: 160,
+      minimumFare: 7500,
       service: HomeService.bus,
     ),
     _CatalogueEntry(
@@ -231,8 +276,8 @@ class VehicleOptionsRepository {
       seats: 12,
       icon: Icons.airport_shuttle_rounded,
       asset: 'assets/vehicles_photo/coaster_clean.png',
-      fallbackPerKm: 95,
-      minimumFare: 1500,
+      fallbackPerKm: 110,
+      minimumFare: 4500,
       service: HomeService.bus,
     ),
   ];
