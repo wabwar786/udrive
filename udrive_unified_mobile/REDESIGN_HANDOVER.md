@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 22)
+# UDrive Redesign — Delivery 1 & 2 (revision 23)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,43 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 23 — the blank map, actually solved
+
+The last screenshot told a different story from the earlier ones: Google's
+branding, "Map data ©2026" and "Terms" were all visible. The map was mounted and
+initialised — only the tiles were missing. That is not a detached platform view.
+
+**The cause was my own zoom floor.** I set `minZoom: 11` in revision 17 to stop
+the map opening at continent scale. At zoom 11 a 380px-tall map covers about
+29 km. The Islamabad → Dhirkot route is 145 km, needing roughly zoom 8. Google
+could not fit the bounds without breaking the floor, and the camera ended up in
+a state that rendered no tiles.
+
+That also explains the earlier "white after selecting a destination": it always
+happened at the moment `fitBounds` ran on a route longer than 29 km.
+
+The floor is now 5 — low enough for any journey in Kashmir, high enough to catch
+something absurd. The opening-scale problem it was meant to solve is already
+fixed properly, by centring on the GPS fix and by not fitting bounds for two
+points a few metres apart.
+
+Two guards added alongside:
+
+- Fit padding is clamped to a fifth of the map's shorter side. Padding larger
+  than the viewport leaves Google no room to place a camera.
+- If `newLatLngBounds` fails for any reason, the camera falls back to centring
+  at zoom 10 rather than being left wherever it broke.
+
+Zoom coverage for reference, at a 380px map height:
+
+```
+zoom  8   232 km
+zoom  9   116 km
+zoom 10    58 km
+zoom 11    29 km   ← the old floor
+zoom 13     7 km
+```
 
 ## Revision 22 — the map going white, properly
 

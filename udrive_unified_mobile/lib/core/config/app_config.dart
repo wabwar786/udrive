@@ -28,9 +28,18 @@ class AppConfig {
   static const double defaultMapZoom = 14.8;
   static const double focusedMapZoom = 15.8;
 
-  /// Street level. The home map never zooms out past this, because below it
-  /// road names disappear and the map stops helping anyone.
-  static const double homeMinZoom = 11.0;
+  /// Absolute floor for the home map.
+  ///
+  /// This was 11 — street level — to stop the map opening at continent scale.
+  /// That was the wrong tool: a 145 km trip needs about zoom 8 to fit, so the
+  /// floor made it impossible for Google to satisfy the bounds and the camera
+  /// ended up in a state that rendered no tiles at all.
+  ///
+  /// The opening-scale problem is fixed properly by centring on the GPS fix and
+  /// by not fitting bounds for two points a few metres apart. This value now
+  /// only guards against something absurd, and stays well below any real
+  /// journey in Kashmir.
+  static const double homeMinZoom = 5.0;
 
   /// Zoom used when the app first fixes the customer's position.
   static const double pickupZoom = 16.2;

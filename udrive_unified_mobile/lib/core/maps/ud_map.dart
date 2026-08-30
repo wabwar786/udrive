@@ -254,6 +254,14 @@ class _UdMapState extends State<UdMap> {
 
   Future<void> _fitBounds(List<LatLng> points, {double padding = 60}) async {
     if (points.isEmpty) return;
+
+    // Padding larger than the map itself leaves Google no room to place the
+    // camera. Clamp it to a fraction of the smaller side.
+    final size = context.size;
+    if (size != null) {
+      final limit = (size.shortestSide / 5).clamp(8.0, 80.0);
+      if (padding > limit) padding = limit;
+    }
     if (points.length == 1) {
       await _moveTo(points.first, zoom: AppConfig.focusedMapZoom);
       return;
@@ -285,15 +293,29 @@ class _UdMapState extends State<UdMap> {
     if (_online) {
       if (!_googleController.isCompleted) return;
       final controller = await _googleController.future;
-      await controller.animateCamera(
-        gmap.CameraUpdate.newLatLngBounds(
-          gmap.LatLngBounds(
-            southwest: gmap.LatLng(minLat, minLng),
-            northeast: gmap.LatLng(maxLat, maxLng),
+      try {
+        await controller.animateCamera(
+          gmap.CameraUpdate.newLatLngBounds(
+            gmap.LatLngBounds(
+              southwest: gmap.LatLng(minLat, minLng),
+              northeast: gmap.LatLng(maxLat, maxLng),
+            ),
+            padding,
           ),
-          padding,
-        ),
-      );
+        );
+      } catch (_) {
+        // If the camera cannot satisfy the bounds for any reason, centre
+        // instead. A map showing roughly the right area beats a map showing
+        // nothing, which is what a failed camera update leaves behind.
+        await controller.animateCamera(
+          gmap.CameraUpdate.newCameraPosition(
+            gmap.CameraPosition(
+              target: gmap.LatLng(_center.latitude, _center.longitude),
+              zoom: 10,
+            ),
+          ),
+        );
+      }
     } else {
       _offlineController.fitCamera(
         fmap.CameraFit.bounds(
