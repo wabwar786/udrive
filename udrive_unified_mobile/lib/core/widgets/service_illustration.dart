@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import 'service_selector.dart';
+import 'home_service.dart';
 
 /// Vector illustrations for the four Home services.
 ///

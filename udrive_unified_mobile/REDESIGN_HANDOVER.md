@@ -1,4 +1,4 @@
-# UDrive Redesign — Delivery 1 & 2 (revision 3)
+# UDrive Redesign — Delivery 1 & 2 (revision 4)
 
 Implements the Home & Tour Booking redesign handoff against the existing
 `udrive_unified_mobile` app. Presentation layer only — no repository, model or
@@ -8,6 +8,71 @@ API contract was changed except where a new module required new endpoints
 **This code has not been compiled.** Run `flutter pub get` then
 `flutter analyze` before building. Fix anything that surfaces and tell me — I'd
 rather correct it than have you work around it.
+
+## Revision 4 — service blocks, admin artwork, vehicle filtering
+
+### Bigger service blocks with the picture inside
+
+Each service is now a single 104px-tall block containing its illustration and
+its name, instead of a small icon tile with the label floating underneath.
+Selected blocks get the brand tint, a 1.6px green border and a soft shadow.
+
+### Admin-controlled hero image
+
+You can now change the large Home picture from the admin portal — no app build
+needed.
+
+**Admin portal:** new page at **Home screen artwork** (left nav, Control Centre
+section). Four fields, one per service, each with a live preview. Paste an
+`https://` image URL, or leave it empty to keep the built-in illustration.
+
+**How it works:**
+
+```
+Admin saves  →  udrive.system_settings   (is_public = true)
+                home.hero.bus.imageUrl
+                home.hero.car.imageUrl
+                home.hero.bike.imageUrl
+                home.hero.hotel.imageUrl
+                        ↓
+App reads    →  GET /api/v1/settings/public   (no auth, 60s cache)
+                        ↓
+Home hero    →  URL set and loads   → show that image
+                URL empty / fails   → built-in vector illustration
+```
+
+The app caches the last good response in shared preferences, so the right
+artwork paints instantly on launch instead of flashing the fallback.
+
+**New backend files:**
+
+- `Controllers/PublicSettingsController.cs` — returns only rows flagged
+  `is_public`, so operational settings never leak. Unwraps jsonb scalars so
+  clients get `https://…` rather than `"\"https://…\""`.
+- `Infrastructure/Persistence/Migrations/027_home_hero_images.sql` — seeds the
+  four keys as public and empty.
+
+Run migration 027 before using the admin page.
+
+A bad URL cannot break Home — `errorBuilder` and `loadingBuilder` both fall
+back to the illustration, and non-`https` values are rejected client-side.
+
+### One vehicle type per service
+
+"Find a Car" now shows only cars. Bike shows only bikes, Coaster/Bus only
+coasters — no mixing.
+
+`HomeService.vehicleFilterKey` (`'car'`, `'bike'`, `'coster'`) is threaded from
+Home → `UDriveRouteFlowScreen` → `UDriveVehicleSelectionScreen`, which filters
+`_choices` against `_normaliseVehicle`. If a filter ever matches nothing, the
+unfiltered list is returned rather than an empty screen, so the customer is
+never stuck.
+
+### Structural cleanup
+
+`HomeService` moved to `lib/core/widgets/home_service.dart`. The selector and
+the illustration widget were importing each other; the enum now lives on its own
+and `service_selector.dart` re-exports it, so existing imports still work.
 
 ## Revision 3 — full-bleed hero + correct artwork
 

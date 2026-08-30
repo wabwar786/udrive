@@ -43,6 +43,7 @@ class UDriveRouteFlowScreen extends StatefulWidget {
     this.initialDestinationLatitude,
     this.initialDestinationLongitude,
     this.skipRouteEntry = false,
+    this.onlyVehicleKey,
     super.key,
   });
 
@@ -53,6 +54,11 @@ class UDriveRouteFlowScreen extends StatefulWidget {
   final double? initialDestinationLatitude;
   final double? initialDestinationLongitude;
   final bool skipRouteEntry;
+
+  /// Restricts the next screen to a single vehicle type ('car', 'bike',
+  /// 'coster'). Set when the customer already chose a service on Home, so
+  /// "Find a Car" never shows bikes or coasters.
+  final String? onlyVehicleKey;
 
   @override
   State<UDriveRouteFlowScreen> createState() => _UDriveRouteFlowScreenState();
@@ -111,6 +117,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
             builder: (_) => UDriveVehicleSelectionScreen(
               serviceType: _serviceType,
               initialWholeVehicle: _initialWholeVehicle,
+              onlyVehicleKey: widget.onlyVehicleKey,
               pickupLabel: _pickupLabel,
               pickupPoint: _pickupPoint,
               destination: _PlaceResult(
@@ -691,6 +698,7 @@ class UDriveVehicleSelectionScreen extends StatefulWidget {
     required this.pickupPoint,
     required this.destination,
     this.initialWholeVehicle = false,
+    this.onlyVehicleKey,
     super.key,
   });
 
@@ -699,6 +707,10 @@ class UDriveVehicleSelectionScreen extends StatefulWidget {
   final LatLng pickupPoint;
   final _PlaceResult destination;
   final bool initialWholeVehicle;
+
+  /// When set, only this vehicle type is offered. Values match
+  /// [_normaliseVehicle]: 'car', 'bike', 'coster', 'rickshaw'.
+  final String? onlyVehicleKey;
 
   @override
   State<UDriveVehicleSelectionScreen> createState() => _UDriveVehicleSelectionScreenState();
@@ -1126,7 +1138,25 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     super.dispose();
   }
 
-  List<_VehicleChoiceData> get _choices => switch (widget.serviceType) {
+  /// Vehicle options offered on this screen.
+  ///
+  /// When the customer already picked a service on Home, [onlyVehicleKey]
+  /// narrows this to that one type — "Find a Car" must never list bikes or
+  /// coasters. If the filter matches nothing (a service/type combination that
+  /// does not exist) the unfiltered list is returned rather than an empty
+  /// screen, so the customer always has something to book.
+  List<_VehicleChoiceData> get _choices {
+    final all = _choicesForService;
+    final key = widget.onlyVehicleKey;
+    if (key == null || key.isEmpty) return all;
+
+    final filtered = all
+        .where((choice) => _normaliseVehicle(choice.name) == key)
+        .toList(growable: false);
+    return filtered.isEmpty ? all : filtered;
+  }
+
+  List<_VehicleChoiceData> get _choicesForService => switch (widget.serviceType) {
         UDriveServiceType.city => const [
             _VehicleChoiceData('Bike', '1 seat', 'Fast city travel', 1, 'assets/vehicles_photo/bike_clean.png'),
             _VehicleChoiceData('Car', '4 seats', 'Comfortable city ride', 4, 'assets/vehicles_photo/car_clean.png'),

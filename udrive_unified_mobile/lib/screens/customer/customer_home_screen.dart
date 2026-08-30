@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/appearance/appearance_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/config/app_config.dart';
 import '../../core/services/place_search_service.dart';
@@ -60,6 +61,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Timer? _tripTimer;
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
   TripOperationsRepository? _tripRepository;
+  AppearanceRepository? _appearance;
+
+  /// Admin-configured hero images, keyed by service. Empty means "use the
+  /// built-in illustration", which is also the fallback on any load error.
+  Map<HomeService, String> _heroImages = const {};
 
   // ------------------------------------------------------------------- state
   HomeService _service = HomeService.car;
@@ -124,6 +130,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     super.didChangeDependencies();
     _tripRepository ??=
         TripOperationsRepository(AppControllerScope.of(context).apiClient);
+    if (_appearance == null) {
+      _appearance = AppearanceRepository(AppControllerScope.of(context).apiClient);
+      _loadHeroImages();
+    }
     _refreshActiveTrip();
     _tripTimer ??= Timer.periodic(
       const Duration(seconds: 12),
@@ -145,6 +155,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _destinationFocus.dispose();
     _places.dispose();
     super.dispose();
+  }
+
+  /// Paints from cache first, then refreshes in the background so a change made
+  /// in the admin portal shows up without the customer waiting on a request.
+  Future<void> _loadHeroImages() async {
+    final repository = _appearance;
+    if (repository == null) return;
+
+    final cached = await repository.cached();
+    if (mounted && cached.isNotEmpty) {
+      setState(() => _heroImages = cached);
+    }
+
+    final live = await repository.refresh();
+    if (mounted && live.isNotEmpty) {
+      setState(() => _heroImages = live);
+    }
   }
 
   void _applyConnectivity(List<ConnectivityResult> results) {
@@ -417,6 +444,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           initialDestinationLabel: _destination.text.trim(),
           initialDestinationLatitude: destinationPoint?.latitude,
           initialDestinationLongitude: destinationPoint?.longitude,
+          // Only the service the customer picked is offered next — Car shows
+          // cars, Bike shows bikes, Coaster shows coasters.
+          onlyVehicleKey: _service.vehicleFilterKey,
           // When the typed address could not be geocoded we open the full
           // route screen (pre-filled) rather than blocking the customer.
           skipRouteEntry: destinationPoint != null,
@@ -661,9 +691,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
               ),
               child: Padding(
-                key: ValueKey(_service),
+                key: ValueKey('$_service|${_heroImages[_service] ?? ''}'),
                 padding: const EdgeInsets.symmetric(horizontal: 22),
-                child: ServiceIllustration(service: _service),
+                child: _HeroArtwork(
+                  service: _service,
+                  imageUrl: _heroImages[_service],
+                ),
               ),
             ),
           ),
@@ -1181,6 +1214,32 @@ class _MapIconButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Hero artwork: the admin-configured picture when one is set, otherwise the
+/// built-in vector illustration. A failed or slow image never leaves a blank
+/// hero — the illustration stands in.
+class _HeroArtwork extends StatelessWidget {
+  const _HeroArtwork({required this.service, this.imageUrl});
+
+  final HomeService service;
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = imageUrl;
+    if (url == null || url.isEmpty) {
+      return ServiceIllustration(service: service);
+    }
+
+    return Image.network(
+      url,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => ServiceIllustration(service: service),
+      loadingBuilder: (context, child, progress) =>
+          progress == null ? child : ServiceIllustration(service: service),
     );
   }
 }
