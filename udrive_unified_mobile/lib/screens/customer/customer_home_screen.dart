@@ -907,34 +907,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             radiusMetres: AppConfig.nearbyVehiclesRadiusKm * 1000,
           ),
       ],
+      // One polyline only.
+      //
+      // The casing and the alternatives were three overlapping lines on the
+      // same ground. Until the route renders correctly there is no value in
+      // layering, and fewer moving parts makes the next screenshot readable.
       polylines: [
-        // Alternatives sit behind, thin and muted, so they read as options
-        // rather than competing with the chosen route.
-        for (var i = _routeResult.routes.length - 1; i >= 0; i--)
-          if (i != _selectedRoute)
-            UdPolyline(
-              id: 'route-$i',
-              points: _routeResult.routes[i].points,
-              color: AppText.disabled,
-              width: 5,
-            ),
-        // The chosen route is drawn twice: a dark casing underneath and the
-        // brand green on top. A single stroke disappears against roads of a
-        // similar tone; the casing keeps it legible wherever it runs.
-        if (_activeRoute != null) ...[
-          UdPolyline(
-            id: 'route-casing',
-            points: _activeRoute!.points,
-            color: AppColors.primary,
-            width: 11,
-          ),
+        if (_activeRoute != null)
           UdPolyline(
             id: 'route-active',
             points: _activeRoute!.points,
             color: AppColors.secondary,
-            width: 7,
+            width: 6,
           ),
-        ],
       ],
       markers: [
         for (final vehicle in vehicles)
