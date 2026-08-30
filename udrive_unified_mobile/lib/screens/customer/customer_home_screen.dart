@@ -891,7 +891,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       controller: _mapController,
       initialCenter: _pickupPoint,
       zoom: AppConfig.pickupZoom,
-      minZoom: AppConfig.homeMinZoom,
       myLocation: _pickupPoint,
       onCameraMoveStarted: _onMapDragStart,
       onCameraIdle: _onMapSettled,

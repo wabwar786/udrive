@@ -257,31 +257,6 @@ class _UdMapState extends State<UdMap> {
     widget.onSourceChanged?.call(_source);
   }
 
-  /// Nudges the camera by an imperceptible amount and back.
-  ///
-  /// Google only redraws tiles when it thinks the viewport changed. If the map
-  /// element is resized underneath it — a layout change, an orientation change,
-  /// a browser window drag — it can keep tiles for the old viewport and leave
-  /// the rest grey. Moving the camera forces a fresh tile fetch.
-  Future<void> _forceRedraw() async {
-    if (!_useGoogle || !_googleController.isCompleted) return;
-    final controller = await _googleController.future;
-    await controller.moveCamera(gmap.CameraUpdate.zoomBy(0.0001));
-    await controller.moveCamera(gmap.CameraUpdate.zoomBy(-0.0001));
-  }
-
-  /// A camera move requested before the map existed.
-  ///
-  /// Dropping these was the bug behind "the route is drawn but the map is
-  /// zoomed into a street": a route arrives in a few hundred milliseconds,
-  /// the map takes longer to create, and the fit was discarded with no error.
-  /// The camera then sat wherever the initial position put it.
-  ({LatLng target, double zoom})? _pendingCamera;
-
-  /// flutter_map only accepts camera commands once it has reported itself
-  /// ready. Before that, `move()` throws.
-  bool _offlineReady = false;
-
   Future<void> _moveTo(LatLng target, {double? zoom}) async {
     // Refuse coordinates that cannot be real. A null island (0, 0) or a NaN
     // slipping through a calculation puts the camera in the Atlantic, which is
@@ -537,12 +512,13 @@ class _UdMapState extends State<UdMap> {
               ? fmap.InteractiveFlag.pinchZoom | fmap.InteractiveFlag.drag
               : fmap.InteractiveFlag.none,
         ),
-        minZoom: widget.minZoom ?? 3,
-        maxZoom: 21,
-        // No cameraConstraint. `contain` repositions the camera itself to keep
-        // the viewport inside the bounds, and with world-sized bounds it moved
-        // the map somewhere unrelated. The guards in _moveTo already stop
-        // impossible coordinates.
+        // No minZoom, maxZoom or cameraConstraint here.
+        //
+        // Each limit added during debugging caused a failure rather than
+        // preventing one: a zoom floor made long routes impossible to frame,
+        // and a camera constraint repositioned the map on its own. The only
+        // remaining protection is in _moveTo, which refuses coordinates that
+        // cannot be real.
         onPositionChanged: (position, hasGesture) {
           _cameraTarget = position.center;
           if (hasGesture) widget.onCameraMoveStarted?.call();
@@ -569,7 +545,14 @@ class _UdMapState extends State<UdMap> {
       children: [
         // Resolves to a downloaded PMTiles pack when one covers this route,
         // otherwise to online OSM tiles.
-        OfflineAwareTileLayer(origin: origin, destination: destination),
+        OfflineAwareTileLayer(
+          origin: origin,
+          destination: destination,
+          onSourceChanged: (source) {
+            if (source == _tileSource || !mounted) return;
+            setState(() => _tileSource = source);
+          },
+        ),
         if (widget.circles.isNotEmpty)
           fmap.CircleLayer(
             circles: widget.circles
@@ -615,10 +598,13 @@ class _UdMapState extends State<UdMap> {
                 color: const Color(0xCC000000),
                 child: Text(
                   'cam ${_center.latitude.toStringAsFixed(4)}, '
-                  '${_center.longitude.toStringAsFixed(4)}  z'
-                  '${_zoom.toStringAsFixed(1)}\n'
-                  'pts ${widget.polylines.fold<int>(0, (a, l) => a + l.points.length)}'
-                  '  ready $_offlineReady',
+                  '${_center.longitude.toStringAsFixed(4)}\n'
+                  'zoom ${_zoom.toStringAsFixed(2)}   '
+                  'ready $_offlineReady\n'
+                  'route pts '
+                  '${widget.polylines.fold<int>(0, (a, l) => a + l.points.length)}'
+                  '   markers ${widget.markers.length}\n'
+                  'tiles $_tileSource',
                   style: const TextStyle(
                     fontSize: 9,
                     height: 1.3,
@@ -694,25 +680,8 @@ class _UdMapState extends State<UdMap> {
     );
   }
 
-  Size? _lastLayoutSize;
-
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = constraints.biggest;
-        if (_lastLayoutSize != null && _lastLayoutSize != size) {
-          // The element resized. Google may still be holding tiles for the old
-          // viewport, so ask it to redraw once the frame is committed.
-          WidgetsBinding.instance.addPostFrameCallback((_) => _forceRedraw());
-        }
-        _lastLayoutSize = size;
-        return _buildStack();
-      },
-    );
-  }
-
-  Widget _buildStack() {
     return ColoredBox(
       color: AppTint.mapBackdrop,
       child: Stack(
