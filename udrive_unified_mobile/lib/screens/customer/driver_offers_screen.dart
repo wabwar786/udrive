@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -7,10 +8,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/booking/booking_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
+import '../../core/config/app_config.dart';
 import '../../core/maps/ud_map.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/vehicles/nearby_repository.dart';
+import '../../core/vehicles/nearby_vehicle.dart';
 import '../../models/booking_models.dart';
 import '../operations/live_trip_navigation_screen.dart';
 
@@ -64,6 +68,17 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   final _mapController = UdMapController();
   bool _cancelling = false;
 
+  /// When the search began, for the elapsed clock in the waiting card.
+  final DateTime _searchStartedAt = DateTime.now();
+
+  /// Vehicles online around the pickup.
+  ///
+  /// Shown both as a count ("14 drivers nearby") and as cars on the map behind
+  /// the card. Waiting in front of an empty map gives the customer no way to
+  /// tell whether the request went anywhere; seeing the vehicles it went to
+  /// answers that without them having to ask.
+  List<NearbyVehicle> _nearby = const [];
+
   /// Length of the Customer's decision window, in seconds.
   ///
   /// Named because the countdown pill, the Accept fill and the expiry sweep all
@@ -77,6 +92,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       _refresh();
       _frameRoute();
     });
+    unawaited(_loadNearby());
     _poller = Timer.periodic(const Duration(seconds: 2), (_) => _refresh(silent: true));
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || _resolved) return;
@@ -104,6 +120,37 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       if (!mounted) return;
       _mapController.fitBounds(points, padding: 70);
     });
+  }
+
+  /// Reads the vehicles around the pickup, once.
+  ///
+  /// Not polled: this is context for the wait, not a live feed, and another
+  /// timer on a screen that already runs two would buy very little.
+  Future<void> _loadNearby() async {
+    final pickup = widget.pickupPoint;
+    if (pickup == null) return;
+
+    final controller = AppControllerScope.of(context);
+    final vehicles = await NearbyVehicleRepository(controller.apiClient).nearby(
+      latitude: pickup.latitude,
+      longitude: pickup.longitude,
+      radiusKm: AppConfig.nearbyVehiclesRadiusKm,
+    );
+
+    if (!mounted) return;
+    setState(() => _nearby = vehicles);
+  }
+
+  /// How long the customer has been waiting, as m:ss.
+  ///
+  /// Counts up rather than down. A countdown would have to be counting towards
+  /// something, and the request stays open for an hour — a bar draining to zero
+  /// in sixty seconds would be telling the customer their request is about to
+  /// die when it is not.
+  String get _elapsed {
+    final seconds = DateTime.now().difference(_searchStartedAt).inSeconds;
+    final minutes = seconds ~/ 60;
+    return '$minutes:${(seconds % 60).toString().padLeft(2, '0')}';
   }
 
   List<LatLng> get _mapPoints {
@@ -408,7 +455,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
 
     return UdMap(
       controller: _mapController,
-      initialCenter: points.first,
+      initialCenter: widget.pickupPoint ?? points.first,
       // Not interactive: the customer is choosing a driver here, and a map
       // that pans under a list they are trying to scroll fights them.
       interactive: false,
@@ -429,7 +476,28 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
           width: 5,
         ),
       ],
+      circles: [
+        // The area the request went to. Static, not a pulsing sweep: an
+        // animation here would rebuild the whole map every frame, and on the
+        // cheap phones most of these customers use that stutter costs more
+        // than the effect is worth.
+        if (widget.pickupPoint != null)
+          UdCircle(
+            id: 'offer-search-radius',
+            centre: widget.pickupPoint!,
+            radiusMetres: AppConfig.nearbyVehiclesRadiusKm * 1000,
+          ),
+      ],
       markers: [
+        // The drivers the fare went out to, drawn the same way Home draws
+        // them — cars lying on the road, pointing where they are facing.
+        for (final vehicle in _nearby)
+          UdMarker(
+            id: 'offer-nearby-${vehicle.id}',
+            position: vehicle.point,
+            sprite: vehicle.sprite,
+            headingDegrees: vehicle.headingDegrees,
+          ),
         if (widget.pickupPoint != null)
           UdMarker(
             id: 'offer-pickup',
@@ -447,49 +515,80 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     );
   }
 
-  Widget _waitingCard() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 26),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: AppRadii.all(AppRadii.largeCard),
-          border: Border.all(color: AppColors.border),
-          boxShadow: AppShadows.card,
-        ),
-        child: Column(
-          children: [
-            const SizedBox(
-              width: 26,
-              height: 26,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.4,
-                color: AppColors.secondary,
+  /// What the customer sees while nobody has answered yet.
+  ///
+  /// Status, an elapsed clock and a working bar, over the vehicles the request
+  /// went out to. Deliberately not a countdown: the request stays open for an
+  /// hour, and a bar draining to zero would say it is about to expire.
+  Widget _waitingCard() {
+    final drivers = _nearby.length;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadii.all(AppRadii.panel),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _t('Searching for drivers', 'ڈرائیورز تلاش کیے جا رہے ہیں'),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
+                  ),
+                ),
               ),
+              Text(
+                _elapsed,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                  color: AppText.secondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            drivers > 0
+                ? '$drivers ${_t('drivers nearby', 'ڈرائیور قریب ہیں')}'
+                : _t('You choose your driver', 'ڈرائیور آپ خود چنیں گے'),
+            style: const TextStyle(fontSize: 12.5, color: AppText.secondary),
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: const LinearProgressIndicator(
+              minHeight: 3,
+              backgroundColor: AppColors.surfaceAlt,
+              color: AppColors.secondary,
             ),
-            const SizedBox(height: 14),
-            Text(
-              _t('Waiting for driver offers…', 'ڈرائیورز کی آفرز کا انتظار ہے…'),
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 15,
-                color: AppText.primary,
-              ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            _t(
+              'Your fare has gone out to the drivers around you. Offers appear here as they answer.',
+              'آپ کا کرایہ قریبی ڈرائیورز کو بھیج دیا گیا ہے۔ جواب آتے ہی آفرز یہاں ظاہر ہوں گی۔',
             ),
-            const SizedBox(height: 6),
-            Text(
-              _t(
-                'Nearby drivers can answer with their own fare. New offers appear here automatically.',
-                'قریبی ڈرائیور اپنا کرایہ بھیج سکتے ہیں۔ نئی آفر یہاں خودکار ظاہر ہوگی۔',
-              ),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppText.secondary,
-                fontSize: 12,
-                height: 1.45,
-              ),
+            style: const TextStyle(
+              color: AppText.secondary,
+              fontSize: 12,
+              height: 1.45,
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _offerCard(LiveDriverOffer offer) {
     final seconds = _secondsLeft(offer);

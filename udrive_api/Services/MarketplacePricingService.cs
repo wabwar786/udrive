@@ -209,7 +209,8 @@ public sealed class MarketplacePricingService(string connectionString)
                    COALESCE(NULLIF(v.booking_mode, ''), 'WholeVehicle'),
                    COALESCE(dp.average_rating, 0),
                    v.passenger_capacity,
-                   COALESCE(v.available_for_tour, false)
+                   COALESCE(v.available_for_tour, false),
+                   dpl.heading
             FROM udrive.driver_presence_locations dpl
             JOIN udrive.driver_profiles dp ON dp.id = dpl.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
@@ -257,7 +258,11 @@ public sealed class MarketplacePricingService(string connectionString)
                 reader.GetString(5),
                 reader.GetDecimal(6),
                 reader.GetInt32(7),
-                reader.GetBoolean(8)));
+                reader.GetBoolean(8),
+                // Deliberately not fuzzed. Heading says which way a car is
+                // pointing, not where it is, so rounding it would only make the
+                // marker point wrong.
+                reader.IsDBNull(9) ? null : reader.GetDouble(9)));
         }
 
         return list;
@@ -293,11 +298,12 @@ public sealed class MarketplacePricingService(string connectionString)
     {
         const string sql = """
             INSERT INTO udrive.driver_presence_locations
-                (driver_profile_id, location, accuracy_meters,
+                (driver_profile_id, location, accuracy_meters, heading,
                  device_timestamp, server_timestamp, updated_at)
             SELECT dp.id,
                    ST_SetSRID(ST_MakePoint(@lng, @lat), 4326)::geography,
                    @accuracy,
+                   @heading,
                    @device,
                    now(),
                    now()
@@ -307,6 +313,11 @@ public sealed class MarketplacePricingService(string connectionString)
             ON CONFLICT(driver_profile_id) DO UPDATE SET
                 location = excluded.location,
                 accuracy_meters = excluded.accuracy_meters,
+                -- A parked phone reports no heading. Keeping the last known one
+                -- leaves the car pointing the way it was last seen driving,
+                -- which is better than snapping every stationary car to north.
+                heading = COALESCE(excluded.heading,
+                                   udrive.driver_presence_locations.heading),
                 device_timestamp = excluded.device_timestamp,
                 server_timestamp = now(),
                 updated_at = now();
@@ -321,6 +332,9 @@ public sealed class MarketplacePricingService(string connectionString)
         command.Parameters.AddWithValue(
             "accuracy",
             (object?)request.Accuracy ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "heading",
+            (object?)request.Heading ?? DBNull.Value);
         command.Parameters.AddWithValue(
             "device",
             request.DeviceTimestamp.ToUniversalTime());

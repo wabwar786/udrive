@@ -174,13 +174,85 @@ used, so selecting it and then finding nothing happened was the only outcome
 unless a destination happened to be set. Hotel now opens its own city/dates/
 guests panel immediately, and the route rows stay hidden for it.
 
+## 5. Drivers on the map, from the video
+
+The reference app draws nearby drivers as **small top-down cars lying on the
+road, rotated to the way they are facing** — no pin, no label, no price bubble.
+UDrive was drawing them as Google's default azure teardrop pins with a
+`"Car · 1.2 km"` info bubble on each. That is a different thing entirely: a pin
+says something is here, a car pointing down a street says a driver is here and
+which way they are going, which is the question the customer is actually asking.
+
+### Heading, end to end
+
+Rotation needs a bearing and presence was storing only position and accuracy.
+
+- Migration `034_driver_presence_heading` adds a nullable `heading` column.
+- `DriverPresenceUpdateRequest` and `NearbyVehicleDto` carry it.
+- The presence upsert keeps the last known heading when a new reading has none
+  (`COALESCE`), so a parked car stays pointing the way it was last driving
+  instead of snapping to north.
+- The Driver app sends `position.heading`, filtering the negative and non-finite
+  values a stationary phone reports.
+- Heading is **not** fuzzed the way the coordinates are. Which way a car points
+  reveals nothing about where it is, and rounding it would only make the marker
+  face wrong.
+
+### The sprites are drawn, not shipped
+
+`ud_vehicle_sprites.dart` paints car, bike and van shapes with `Canvas`. Two
+reasons over shipping PNGs: they stay crisp at any device pixel ratio, where a
+fixed asset either blurs on a dense screen or wastes bytes on a cheap one; and
+they take their colours from the theme, so they cannot drift out of step the way
+a hand-exported image quietly does.
+
+Rasterised once per shape per pixel ratio and cached — Home rebuilds its markers
+on every presence poll, and rasterising per vehicle per poll is the kind of work
+that shows as stutter on the phones most of these customers have. Google gets a
+bitmap with `flat: true`, `rotation`, and a centre anchor; `flutter_map` gets the
+same shapes through a painter, so the online and offline maps cannot disagree
+about what a car looks like.
+
+A bike and a coach are unmistakably different objects from above, so `Bike` gets
+two wheels and a crossbar and `Coster`/`Hiace` get a boxier van outline.
+
+### Pickup pin
+
+Now a white tile with a waiting passenger on it, a stem and a blue ground dot,
+with the "Pickup point / <place> ›" chip above it. White because the map beneath
+is dark and already carries a green route line and green vehicle lamps — a green
+pin disappeared into its own app.
+
+### While waiting for offers
+
+Status, an elapsed clock and a working bar, over the vehicles the request went
+out to and the area it covered.
+
+The clock counts **up**. The reference shows a sixty-second countdown, but a
+UDrive request stays open for an hour — a bar draining to zero would be telling
+the customer their request is about to die when it is not. For the same reason
+the search circle is static rather than a pulsing sweep: animating it would
+rebuild the whole map every frame for an effect that costs more than it gives.
+
+The driver count beside it is real, read once from the nearby-vehicles endpoint.
+Waiting in front of an empty map gives no way to tell whether the request went
+anywhere; seeing the cars it went to answers that without asking.
+
 ---
 
 ## Not done
 
 - **Per-vehicle ETAs.** Still a Distance Matrix call per category per search,
   still a billing decision rather than a code one.
-- **Auto-accept.** Still needs a server rule, not a checkbox.
+- **Auto-accept.** The reference has an "Auto-accept an offer of PKR X up to
+  5 min away" toggle. Not built: it needs a server rule, and a switch that
+  silently does nothing is worse than no switch.
+- **Raising your fare while waiting.** The reference keeps the stepper live on
+  the searching screen. There is no endpoint to change `customer_offer` on an
+  open request, so the fare is fixed once sent.
+- **"Searching further — expanding search area."** Driver eligibility uses a
+  fixed radius, so there is nothing to expand and saying otherwise would be a
+  caption over a thing that is not happening.
 - **A `Coster` row in the demo fleet.** The seeded coaches in migration 010 are
   category `Bus`. Pricing does not read that column, so nothing is broken, but
   the demo fleet and the rate table disagree and it is worth tidying.
@@ -193,4 +265,4 @@ cd udrive_unified_mobile && python3 tool/audit_structure.py
 
 Clean as of this ZIP. Push, wait for the Actions run to go green, then deploy
 **both** `udrive-api` and `udrive Mobile`. Hard refresh afterwards and check the
-build label reads `rev 52`.
+build label reads `rev 53`.

@@ -91,4 +91,5 @@ public sealed record NearbyVehicleDto(
     string BookingMode,
     decimal Rating,
     int PassengerCapacity,
-    bool AvailableForTour);
+    bool AvailableForTour,
+    double? Heading);

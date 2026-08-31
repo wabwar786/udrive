@@ -89,6 +89,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         'latitude': position.latitude,
         'longitude': position.longitude,
         'accuracy': position.accuracy,
+        // Lets the customer's map point this vehicle down the road it is
+        // actually on. A stationary phone reports a negative or NaN heading,
+        // and sending that would spin the car to a direction nobody is facing.
+        'heading': position.heading.isFinite && position.heading >= 0
+            ? position.heading
+            : null,
         'deviceTimestamp': DateTime.now().toUtc().toIso8601String(),
       });
     } catch (_) {}

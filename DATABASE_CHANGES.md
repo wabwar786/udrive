@@ -27,3 +27,12 @@ A PostgreSQL trigger calls `udrive.ensure_driver_earning(booking_id)` when a boo
   `per_km_rate` scales with distance; `whole_vehicle_rate` and `per_seat_rate`
   are flat **minimums**, not per-kilometre figures. The mobile app had been
   multiplying `whole_vehicle_rate` by the trip distance.
+
+## 034_driver_presence_heading (rev 53)
+
+- Adds a nullable `heading` column to `udrive.driver_presence_locations`, so the
+  customer's map can rotate each vehicle to the direction its driver is facing.
+- Nullable on purpose: a stationary phone reports no heading and an older Driver
+  build sends none. Those vehicles are drawn unrotated rather than pointed
+  somewhere invented. The upsert keeps the last known heading when a new reading
+  has none.

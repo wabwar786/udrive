@@ -1021,13 +1021,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ],
       ],
       markers: [
+        // Drawn as top-down vehicles lying on the road, rotated to the way
+        // the driver is facing — not as pins. A pin says something is here; a
+        // car pointing down a street says a driver is here and moving, which
+        // is what the customer is looking for. Tapping one still opens its
+        // details, so nothing is lost by dropping the caption.
         for (final vehicle in vehicles)
           UdMarker(
             id: vehicle.id,
             position: vehicle.point,
-            label: '${vehicle.category} · '
-                '${vehicle.distanceKm.toStringAsFixed(1)} km',
-            hue: UdMarkerHue.navy,
+            sprite: vehicle.sprite,
+            headingDegrees: vehicle.headingDegrees,
             onTap: () => _showVehicleSheet(vehicle),
           ),
         if (_destinationPoint != null)
@@ -2311,71 +2315,89 @@ class _CentrePin extends StatelessWidget {
           duration: const Duration(milliseconds: 150),
           opacity: lifted ? 0 : 1,
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 210),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            constraints: const BoxConstraints(maxWidth: 230),
+            padding: const EdgeInsets.fromLTRB(12, 7, 8, 7),
             decoration: BoxDecoration(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(
-                color: AppColors.secondary.withValues(alpha: .45),
-              ),
+              color: AppColors.surfaceHigh,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: AppShadows.card,
             ),
-            child: Column(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Pickup point',
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.secondary,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                resolving
-                    ? const SizedBox(
-                        height: 15,
-                        width: 15,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(
-                        label.isEmpty ? 'Move the map' : label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
+                Flexible(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Pickup point',
+                        style: TextStyle(
+                          fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: AppText.primary,
+                          color: AppText.secondary,
                         ),
                       ),
+                      const SizedBox(height: 1),
+                      resolving
+                          ? const SizedBox(
+                              height: 15,
+                              width: 15,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(
+                              label.isEmpty ? 'Move the map' : label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: AppText.primary,
+                              ),
+                            ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.chevron_right_rounded,
+                    size: 18, color: AppText.secondary),
               ],
             ),
           ),
         ),
         const SizedBox(height: 5),
-        // The head lifts on drag; the dot below stays on the ground point, so
-        // the customer can see exactly which spot will be used.
+        // A white tile with a waiting passenger on it, not a coloured teardrop.
+        // The map underneath is dark and full of green route line and green
+        // vehicle lamps; a green pin on top of that disappears into its own
+        // app. White is the one tone nothing else on this map uses.
+        //
+        // The head lifts on drag while the dot below stays on the ground point,
+        // so the customer can see exactly which spot will be used.
         AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           transform: Matrix4.translationValues(0, lifted ? -7 : 0, 0),
-          width: 34,
-          height: 34,
+          width: 36,
+          height: 36,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppProduct.rideAccent,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(11),
+            boxShadow: AppShadows.card,
           ),
-          child: const Icon(Icons.place_rounded,
-              size: 19, color: AppProduct.rideInk),
+          child: const Icon(
+            Icons.emoji_people_rounded,
+            size: 22,
+            color: AppColors.primary,
+          ),
         ),
-        Container(width: 2, height: 13, color: AppColors.secondary),
+        Container(width: 2, height: 12, color: Colors.white),
         Container(
-          width: 9,
-          height: 9,
-          decoration: const BoxDecoration(
-            color: AppColors.secondary,
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: AppColors.info,
             shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
           ),
         ),
       ],

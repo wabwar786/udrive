@@ -1,6 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
 import '../booking/vehicle_booking_mode.dart';
+import '../maps/ud_vehicle_sprites.dart';
 import '../widgets/home_service.dart';
 
 /// A vehicle currently online near the customer, shown as a map marker.
@@ -20,6 +21,7 @@ class NearbyVehicle {
     required this.rating,
     required this.passengerCapacity,
     required this.availableForTour,
+    this.headingDegrees,
   });
 
   final String id;
@@ -37,7 +39,25 @@ class NearbyVehicle {
   /// Set by the driver. Only these vehicles appear under the Tour service.
   final bool availableForTour;
 
+  /// Compass bearing, 0 = north, or null when the device reported none.
+  ///
+  /// Drives the rotation of the car drawn on the map. Unlike the coordinates
+  /// this is not fuzzed — which way a car points says nothing about where it
+  /// is, and rounding it would only make the marker face the wrong way.
+  final double? headingDegrees;
+
   LatLng get point => LatLng(latitude, longitude);
+
+  /// Which shape to draw on the map.
+  ///
+  /// Read from above, a bike and a coach are unmistakably different objects,
+  /// and using the same rectangle for both would throw away the one thing the
+  /// customer can tell at a glance without tapping anything.
+  UdVehicleSprite get sprite => switch (service) {
+        HomeService.bike => UdVehicleSprite.bike,
+        HomeService.bus => UdVehicleSprite.van,
+        _ => UdVehicleSprite.car,
+      };
 
   /// Which Home service this vehicle belongs under, so markers can be filtered
   /// to the service the customer selected.
@@ -73,6 +93,7 @@ class NearbyVehicle {
         rating: _toDouble(json['rating']) ?? 0,
         passengerCapacity: (json['passengerCapacity'] as num?)?.toInt() ?? 4,
         availableForTour: json['availableForTour'] == true,
+        headingDegrees: _toDouble(json['heading']),
       );
 
   static double? _toDouble(Object? value) {

@@ -13,6 +13,7 @@ import '../offline_maps/offline_aware_tile_layer.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
 import 'map_styles.dart';
+import 'ud_vehicle_sprites.dart';
 
 /// Which renderer [UdMap] is currently using.
 enum UdMapSource {
@@ -30,6 +31,8 @@ class UdMarker {
     required this.position,
     this.label,
     this.hue = UdMarkerHue.brand,
+    this.sprite,
+    this.headingDegrees,
     this.onTap,
   });
 
@@ -37,6 +40,20 @@ class UdMarker {
   final LatLng position;
   final String? label;
   final UdMarkerHue hue;
+
+  /// Draw a top-down vehicle lying on the map instead of a teardrop pin.
+  ///
+  /// Used for the live vehicles around the customer. A pin says something is
+  /// here; a car pointing down the road says a driver is here and which way
+  /// they are facing, which is the question actually being asked.
+  final UdVehicleSprite? sprite;
+
+  /// Compass bearing for a [sprite], 0 = north.
+  ///
+  /// Null leaves the sprite unrotated. A stationary phone reports no heading,
+  /// and pointing every parked car north would be inventing information.
+  final double? headingDegrees;
+
   final VoidCallback? onTap;
 }
 
@@ -227,6 +244,16 @@ class _UdMapState extends State<UdMap> {
   /// flutter_map only accepts camera commands after `onMapReady`.
   bool _offlineReady = false;
 
+  /// Rasterised vehicle sprites for the Google renderer, by shape.
+  ///
+  /// Built once when the map first needs them and reused after that. Google
+  /// takes a bitmap rather than a widget, and rasterising one per vehicle per
+  /// presence poll is the sort of work that shows as stutter on a cheap phone.
+  final Map<UdVehicleSprite, gmap.BitmapDescriptor> _spriteBitmaps =
+      <UdVehicleSprite, gmap.BitmapDescriptor>{};
+
+  bool _loadingSprites = false;
+
   late LatLng _center;
   late double _zoom;
 
@@ -245,12 +272,55 @@ class _UdMapState extends State<UdMap> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ensureSprites();
+  }
+
+  @override
   void didUpdateWidget(covariant UdMap oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.controller, widget.controller)) {
       oldWidget.controller?._detach(this);
       widget.controller?._attach(this);
     }
+    _ensureSprites();
+  }
+
+  /// Rasterises any vehicle sprite this map needs and has not built yet.
+  ///
+  /// Only the shapes actually asked for: a screen showing cars should not pay
+  /// to draw a coach it will never display.
+  Future<void> _ensureSprites() async {
+    if (_loadingSprites || !_useGoogle) return;
+
+    final wanted = <UdVehicleSprite>{
+      for (final marker in widget.markers)
+        if (marker.sprite != null) marker.sprite!,
+    }..removeWhere(_spriteBitmaps.containsKey);
+    if (wanted.isEmpty) return;
+
+    _loadingSprites = true;
+    final ratio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 2.0;
+
+    try {
+      for (final sprite in wanted) {
+        final bytes =
+            await UdVehicleSprites.bytes(sprite, pixelRatio: ratio);
+        if (!mounted) return;
+        _spriteBitmaps[sprite] = gmap.BitmapDescriptor.bytes(
+          bytes,
+          imagePixelRatio: ratio,
+        );
+      }
+    } catch (_) {
+      // A sprite that will not rasterise is not worth losing the map over.
+      // Those markers keep the teardrop pin.
+    } finally {
+      _loadingSprites = false;
+    }
+
+    if (mounted) setState(() {});
   }
 
   @override
@@ -542,18 +612,39 @@ class _UdMapState extends State<UdMap> {
       // map itself and lets Flutter's own widgets claim the rest.
       markers: widget.markers
           .map(
-            (marker) => gmap.Marker(
-              markerId: gmap.MarkerId(marker.id),
-              position:
-                  gmap.LatLng(marker.position.latitude, marker.position.longitude),
-              icon: gmap.BitmapDescriptor.defaultMarkerWithHue(
-                _googleHue(marker.hue),
-              ),
-              infoWindow: marker.label == null
-                  ? gmap.InfoWindow.noText
-                  : gmap.InfoWindow(title: marker.label),
-              onTap: marker.onTap,
-            ),
+            (marker) {
+              final sprite = marker.sprite;
+              // Sprites are rasterised off the build, so the first frame after
+              // a presence poll may not have one yet. Falling back to the pin
+              // for that frame is better than dropping the vehicle entirely
+              // and making the map flicker.
+              final bitmap = sprite == null ? null : _spriteBitmaps[sprite];
+
+              return gmap.Marker(
+                markerId: gmap.MarkerId(marker.id),
+                position: gmap.LatLng(
+                  marker.position.latitude,
+                  marker.position.longitude,
+                ),
+                icon: bitmap ??
+                    gmap.BitmapDescriptor.defaultMarkerWithHue(
+                      _googleHue(marker.hue),
+                    ),
+                // A vehicle lies flat on the road and turns with it. A pin
+                // stands up and always faces the reader.
+                flat: bitmap != null,
+                rotation: bitmap == null ? 0 : (marker.headingDegrees ?? 0),
+                anchor: bitmap == null
+                    ? const Offset(.5, 1)
+                    : const Offset(.5, .5),
+                // No bubble on a vehicle. The real app shows none, and a
+                // caption over every car buries the map it is drawn on.
+                infoWindow: marker.label == null || bitmap != null
+                    ? gmap.InfoWindow.noText
+                    : gmap.InfoWindow(title: marker.label),
+                onTap: marker.onTap,
+              );
+            },
           )
           .toSet(),
       circles: widget.circles
@@ -723,23 +814,44 @@ class _UdMapState extends State<UdMap> {
           ),
         if (widget.markers.isNotEmpty)
           fmap.MarkerLayer(
-            markers: widget.markers
-                .map(
-                  (marker) => fmap.Marker(
-                    point: marker.position,
-                    width: 34,
-                    height: 34,
-                    child: GestureDetector(
-                      onTap: marker.onTap,
-                      child: Icon(
-                        Icons.place_rounded,
-                        size: 32,
-                        color: _flutterMapColor(marker.hue),
-                      ),
+            markers: widget.markers.map((marker) {
+              final sprite = marker.sprite;
+              if (sprite == null) {
+                return fmap.Marker(
+                  point: marker.position,
+                  width: 34,
+                  height: 34,
+                  child: GestureDetector(
+                    onTap: marker.onTap,
+                    child: Icon(
+                      Icons.place_rounded,
+                      size: 32,
+                      color: _flutterMapColor(marker.hue),
                     ),
                   ),
-                )
-                .toList(growable: false),
+                );
+              }
+
+              // Same shapes as the online map, painted rather than rasterised.
+              // Two maps that disagree about what a car looks like would be a
+              // strange thing for a customer to discover offline.
+              final size = UdVehicleSprites.size;
+              return fmap.Marker(
+                point: marker.position,
+                width: size.width,
+                height: size.height,
+                child: GestureDetector(
+                  onTap: marker.onTap,
+                  child: Transform.rotate(
+                    angle: (marker.headingDegrees ?? 0) * math.pi / 180,
+                    child: CustomPaint(
+                      painter: UdVehicleSpritePainter(sprite),
+                      size: size,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(growable: false),
           ),
       ],
     );
