@@ -457,9 +457,12 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     return UdMap(
       controller: _mapController,
       initialCenter: widget.pickupPoint ?? points.first,
-      // Not interactive: the customer is choosing a driver here, and a map
-      // that pans under a list they are trying to scroll fights them.
-      interactive: false,
+      // Interactive. It was locked to stop it panning under the offers list,
+      // but that also stopped the customer checking where the pickup actually
+      // is while they wait — which is the one useful thing to do with the map
+      // on this screen. The list is a sized box over the top, so a drag that
+      // starts on the map reaches the map and a drag on the list scrolls it.
+      interactive: true,
       showMyLocation: false,
       routeOrigin: widget.pickupPoint,
       routeDestination: widget.destinationPoint,

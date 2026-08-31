@@ -974,12 +974,18 @@ class _DashboardRequestCard extends StatelessWidget {
                       child: Text(
                         'PKR ${NumberFormat('#,###').format(request.customerOffer)}',
                         maxLines: 1,
+                        // Not primaryDark, which on a white card reads as plain
+                        // black and lets the one number the Driver is deciding
+                        // on sink into the rest of the text. Not AppColors
+                        // .success either — that mint is tuned for the dark
+                        // Customer theme and washes out here. This is a green
+                        // dark enough to carry weight on white.
                         style: const TextStyle(
                           fontSize: 26,
                           height: 1.1,
                           fontWeight: FontWeight.w900,
                           letterSpacing: -.8,
-                          color: AppColors.primaryDark,
+                          color: Color(0xFF148A5A),
                         ),
                       ),
                     ),

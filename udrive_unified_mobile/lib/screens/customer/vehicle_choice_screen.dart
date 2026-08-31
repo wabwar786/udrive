@@ -93,7 +93,14 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   final _mapController = UdMapController();
 
   /// How far around the pickup counts as nearby, in kilometres.
-  static const double _nearbyRadiusKm = 3;
+  ///
+  /// One kilometre, not three. At three the circle covered most of a town and
+  /// a car on the far side of it read as "nearby" when it was twenty minutes
+  /// away. One is the distance a customer can reasonably expect someone to
+  /// reach them from.
+  static const double _nearbyRadiusKm = 1;
+
+  Timer? _nearbyTimer;
 
   /// The fixed fare covering the vehicle currently shown, if there is one.
   SeatFareQuote? get _fixedSeatFare {
@@ -163,22 +170,25 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   @override
   void dispose() {
     _pages.dispose();
+    _nearbyTimer?.cancel();
     _mapController.dispose();
     super.dispose();
   }
 
-  /// Reads the drivers around the pickup, once.
+  /// Reads the drivers around the pickup, and keeps reading.
   ///
-  /// Not polled. This screen is a decision about price, not a live tracker, and
-  /// vehicles sliding around under the customer while they set a fare would be
-  /// motion without information.
+  /// Refreshed every five seconds. A driver who has moved on is worse than no
+  /// driver at all: a customer counts the cars before deciding what to offer,
+  /// and counting stale ones leads them to offer too little.
   Future<void> _loadNearby(AppController controller) async {
     final vehicles = await NearbyVehicleRepository(controller.apiClient).nearby(
       latitude: widget.pickupPoint.latitude,
       longitude: widget.pickupPoint.longitude,
       radiusKm: _nearbyRadiusKm,
     );
-    if (!mounted || vehicles.isEmpty) return;
+    if (!mounted) return;
+    // An empty answer is an answer. Keeping the previous set on screen would
+    // show cars that have gone.
     setState(() => _nearby = vehicles);
   }
 
@@ -220,6 +230,11 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     // Asking for a bike's route fare would be a request that can only ever come
     // back empty.
     unawaited(_loadNearby(controller));
+    _nearbyTimer?.cancel();
+    _nearbyTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => unawaited(_loadNearby(controller)),
+    );
     unawaited(_loadSeatFares(
       controller,
       options.where((option) => option.allowsPerSeat),

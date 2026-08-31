@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../network/api_client.dart';
+import '../network/api_config.dart';
 
 /// Admin-supplied photographs for each vehicle type.
 ///
@@ -75,8 +76,20 @@ class VehicleImageRepository {
       payload.forEach((key, value) {
         final name = '$key';
         if (!name.startsWith('vehicle.image.')) return;
+
         final url = '${value ?? ''}'.trim();
-        if (url.startsWith('http')) images[name] = url;
+        if (url.isEmpty) return;
+
+        // A relative path is a real answer, not a broken one. An upload stored
+        // as `/uploads/car.png` was being discarded by a `startsWith('http')`
+        // test, so a picture the admin could see in the portal never appeared
+        // in the app — and only the categories that happened to be saved as
+        // absolute URLs worked.
+        if (url.startsWith('http')) {
+          images[name] = url;
+        } else if (url.startsWith('/')) {
+          images[name] = '${ApiConfig.baseUrl}$url';
+        }
       });
 
       final prefs = await SharedPreferences.getInstance();
