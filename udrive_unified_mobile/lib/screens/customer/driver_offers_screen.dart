@@ -283,16 +283,45 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       _poller?.cancel();
       _ticker?.cancel();
       await _showBookingConfirmed(booking, etaMinutes: offer.estimatedArrivalMinutes);
-    } catch (_) {
+    } catch (error) {
+      // The server's own message, captured before anything else runs.
+      //
+      // This used to refresh first and then read `controller.marketplaceError`,
+      // but a successful refresh clears that field — so the real reason was
+      // thrown away and every failure, whatever it was, became "this offer is
+      // no longer available". That sent the customer looking for another driver
+      // when the driver was fine and the request had merely lost a race.
+      final reason = _message(error);
+
       await controller.refreshCustomerRideState();
       if (!mounted) return;
+
+      // A retry is worth one attempt: the common failure was a transient
+      // conflict, and the offer is usually still there a moment later.
       if (await _openExistingBookingIfAny(controller)) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(controller.marketplaceError ?? 'This offer is no longer available. Please choose another Driver.')),
+        SnackBar(content: Text(reason)),
       );
     } finally {
       if (mounted && !_resolved) setState(() => _approvingOfferId = null);
     }
+  }
+
+  /// The message a server error actually carried, or a plain fallback.
+  ///
+  /// Never invents a diagnosis. If the server said the request was closed, the
+  /// customer is told that, because "choose another driver" is the wrong advice
+  /// for half the things that can go wrong here.
+  String _message(Object error) {
+    final text = error.toString().replaceFirst('Exception: ', '').trim();
+    if (text.isEmpty) {
+      return _t(
+        'That did not go through. Please try again.',
+        'یہ مکمل نہیں ہوا۔ دوبارہ کوشش کریں۔',
+      );
+    }
+    return text;
   }
 
   Future<bool> _openExistingBookingIfAny(AppController controller) async {

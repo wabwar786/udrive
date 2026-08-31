@@ -501,6 +501,22 @@ class _DriverLiveNavigationScreenState
                                 widget.trip.customerName,
                                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                               ),
+                              const SizedBox(height: 2),
+                              // Who is being carried, in one line. A Driver
+                              // pulling up needs to know how many people to
+                              // expect and whether the vehicle was hired whole
+                              // or by the seat before they open the door.
+                              Text(
+                                '${widget.trip.passengerCount} passenger'
+                                '${widget.trip.passengerCount == 1 ? '' : 's'}'
+                                '  ·  ${widget.trip.bookingType}'
+                                '  ·  ${widget.trip.paymentStatus}',
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                               const SizedBox(height: 3),
                               Text(
                                 _targetLabel,
@@ -508,6 +524,30 @@ class _DriverLiveNavigationScreenState
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: Colors.black54),
                               ),
+                              if ((widget.trip.instructions ?? '').trim().isNotEmpty) ...[
+                                const SizedBox(height: 5),
+                                // What the Customer asked for. Buried anywhere
+                                // else it may as well not have been written.
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 9, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFF6E5),
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                  child: Text(
+                                    widget.trip.instructions!.trim(),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      height: 1.35,
+                                      color: Color(0xFF7A5200),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),

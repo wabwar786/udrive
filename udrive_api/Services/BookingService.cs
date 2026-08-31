@@ -787,8 +787,17 @@ public sealed class BookingService(
         await ExpireRideRequestsAsync(cancellationToken);
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
+
+        // Read committed, not serializable.
+        //
+        // The row this transaction cares about is locked with FOR UPDATE a few
+        // lines below, and that is what actually stops two Customers selecting
+        // the same offer. Serializable added nothing on top of that except a
+        // much wider surface for 40001 aborts against unrelated concurrent
+        // writes — and an abort here reached the Customer as "this offer is no
+        // longer available" for an offer that was perfectly good.
         await using var transaction = await connection.BeginTransactionAsync(
-            IsolationLevel.Serializable,
+            IsolationLevel.ReadCommitted,
             cancellationToken);
 
         const string rideSql = """
@@ -1565,7 +1574,55 @@ public sealed class BookingService(
         return ServiceResult<BookingDto>.Ok(ReadBooking(reader, tripOtp));
     }
 
+    /// <summary>When the expiry sweep last ran in this process.</summary>
+    private static DateTimeOffset _lastExpirySweep = DateTimeOffset.MinValue;
+    private static readonly SemaphoreSlim ExpirySweepGate = new(1, 1);
+
+    /// <summary>
+    /// Moves timed-out ride requests to their terminal status.
+    /// </summary>
+    /// <remarks>
+    /// Throttled to once every thirty seconds per process, and this matters
+    /// more than it looks. It is an UPDATE over <c>ride_requests</c>, and it
+    /// was running on every list call — which the Customer app, the Driver app
+    /// and the offers screen all make every few seconds. Those writes took row
+    /// locks on the very rows a Customer's Serializable "select this offer"
+    /// transaction was reading, and Postgres resolved the conflict by aborting
+    /// one of them.
+    ///
+    /// The Customer saw that abort as "this offer is no longer available"
+    /// seconds after a Driver had accepted, because the offer was fine — the
+    /// transaction had simply lost a race with a housekeeping UPDATE fired by
+    /// its own screen's polling.
+    ///
+    /// Nothing is expired late by this: a request that ages out between sweeps
+    /// is caught by the next one, and every read path already filters on
+    /// <c>expires_at</c> in its own WHERE clause.
+    /// </remarks>
     private async Task ExpireRideRequestsAsync(CancellationToken cancellationToken)
+    {
+        if (DateTimeOffset.UtcNow - _lastExpirySweep < TimeSpan.FromSeconds(30))
+        {
+            return;
+        }
+
+        if (!await ExpirySweepGate.WaitAsync(0, cancellationToken)) return;
+        try
+        {
+            if (DateTimeOffset.UtcNow - _lastExpirySweep < TimeSpan.FromSeconds(30))
+            {
+                return;
+            }
+            _lastExpirySweep = DateTimeOffset.UtcNow;
+            await RunExpirySweepAsync(cancellationToken);
+        }
+        finally
+        {
+            ExpirySweepGate.Release();
+        }
+    }
+
+    private async Task RunExpirySweepAsync(CancellationToken cancellationToken)
     {
         const string sql = """
             UPDATE udrive.ride_requests

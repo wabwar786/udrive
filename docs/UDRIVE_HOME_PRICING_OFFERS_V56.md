@@ -652,6 +652,55 @@ Solid green now, full width. The countdown moved to a 3px bar along the bottom
 edge: still visible, no longer taking the colour out of the thing the Customer
 is meant to press.
 
+## 16. "This offer is no longer available" — the real cause
+
+The expiry theory in rev 62 was not it. A Driver accepted, sent a fare, and the
+Customer pressed Accept five seconds later and still got the message. Five
+seconds is nowhere near any expiry window.
+
+**The transaction was losing a race with its own screen's polling.**
+
+`SelectDriverOfferAsync` ran at `IsolationLevel.Serializable`. Meanwhile
+`ExpireRideRequestsAsync` — three UPDATE statements over `ride_requests` — ran
+at the top of *every* list call: the Customer's ride-request poll, the Driver's
+marketplace poll, the offers screen's own refresh. All of those fire every few
+seconds while the offers screen is open.
+
+Those UPDATEs took row locks on the exact rows the Serializable transaction was
+reading with `SELECT ... FOR UPDATE`, and Postgres resolved the conflict by
+aborting one side. The abort surfaced in the app as a generic failure, and the
+Customer was told to go and find another Driver — for an offer that was
+completely fine.
+
+Three changes:
+
+**The sweep is throttled to once every thirty seconds per process.** It is
+housekeeping, not a read. Nothing expires late as a result: every read path
+already filters on `expires_at` in its own WHERE clause, and a request that ages
+out between sweeps is caught by the next one.
+
+**The select dropped to `ReadCommitted`.** The `FOR UPDATE` on the request row
+is what actually stops two Customers taking the same offer. Serializable added
+nothing on top of that except a much wider surface for 40001 aborts against
+unrelated writes.
+
+**The client stopped throwing the reason away.** `_approveOffer` refreshed state
+first and *then* read `controller.marketplaceError` — but a successful refresh
+clears that field, so the real message was destroyed and every failure became
+"this offer is no longer available". The error is now captured before anything
+else runs and shown as the server wrote it. "Choose another driver" is the wrong
+advice for most of what can actually go wrong here.
+
+## 17. What each side sees once the ride is on
+
+The Customer's tracking screen already carries the driver's name, vehicle,
+registration, fare, booking type, OTP, a call button and the live road ETA.
+
+The Driver's panel now shows who they are collecting: **passenger count,
+booking type and payment status** on one line under the name, and any
+**instructions the Customer left** in a highlighted box. Buried anywhere else,
+a note the Customer took the trouble to write may as well not have been written.
+
 ---
 
 ## Not done
