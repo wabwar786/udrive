@@ -553,21 +553,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return true;
   }
 
+  /// The label on the button that sends the request.
+  ///
+  /// "Find Now" for every vehicle, rather than naming the one currently
+  /// selected. The vehicle is chosen on the next screen anyway, so spelling it
+  /// out here promised a decision that had not been made — and the label
+  /// changing under the customer's thumb as they switched products made the
+  /// button look like a different button each time.
+  ///
+  /// Hotel and Tour keep their own words because they lead somewhere genuinely
+  /// different.
   String get _ctaLabel {
     if (_service == HomeService.hotel) return 'Find Hotels';
     if (_service.isTour) return 'Find Tour Vehicle';
-
-    final noun = switch (_service) {
-      HomeService.bus => 'a Coster / Hiace',
-      HomeService.car => 'a Car',
-      HomeService.bike => 'a Bike',
-      HomeService.hotel => 'Hotels',
-      HomeService.tour => 'Tour Vehicle',
-    };
     if (_bookingType == BookingType.perSeat) {
       return 'Find $_seats seat${_seats == 1 ? '' : 's'}';
     }
-    return 'Find $noun';
+    return 'Find Now';
   }
 
   Future<void> _submit() async {
@@ -815,6 +817,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         subject: '${AppConfig.appName} — travel across Kashmir',
       ),
     );
+  }
+
+  /// Raises the card and leaves it raised.
+  ///
+  /// Called when a destination is chosen. From that point the card carries the
+  /// route, the vehicle panel and the button, and letting it settle back over
+  /// the map would drop the button under the fold — the customer would pick a
+  /// place and then have to scroll to act on it. The handle still works, so
+  /// anyone who wants the map back can have it; it just no longer happens on
+  /// its own.
+  void _liftSheet() {
+    if (_sheetLifted || !mounted) return;
+    setState(() => _sheetLifted = true);
   }
 
   /// Raises or lowers the booking card over the map.
@@ -1206,6 +1221,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   void _selectService(HomeService service) {
     FocusScope.of(context).unfocus();
+    // Hotel opens its own panel straight away, so it needs the room now rather
+    // than after a destination it never asks for.
+    if (service == HomeService.hotel) _liftSheet();
     setState(() {
       _service = service;
       if (service == HomeService.hotel) {
@@ -1246,6 +1264,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _destinationPoint = place.point;
     });
     await _refreshRoute();
+    _liftSheet();
 
     // A recent is a destination the customer has already been to and has just
     // named again. Stopping here to make them press a second button would be
@@ -1361,6 +1380,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
     // A route needs both ends; _refreshRoute clears itself when one is missing.
     await _refreshRoute();
+
+    // With a destination the card carries the route, the vehicle panel and the
+    // button, so it comes up over the map and stays there.
+    if (_destination.text.trim().isNotEmpty) _liftSheet();
 
     // Picking a destination is the customer saying where they want to go, so
     // carry them straight to choosing a vehicle. Requiring a separate button

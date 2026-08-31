@@ -6,16 +6,13 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/brand.dart';
-import '../../core/widgets/home_service.dart';
-import '../../core/widgets/service_illustration.dart';
 import '../../models/auth_models.dart';
 import 'otp_screen.dart';
 
 /// Sign-in.
 ///
-/// The vehicle artwork fills the screen behind a dark scrim, and the form rides
-/// on a raised sheet at the bottom. Content scrolls over the artwork rather than
-/// sitting in a boxed hero, so the screen reads as one piece.
+/// Logo centred, form directly beneath it, drawn shapes behind. One thing to
+/// look at, then one thing to do.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -51,11 +48,13 @@ class _LoginScreenState extends State<LoginScreen> {
           SafeArea(
             child: Column(
               children: [
+                // Only the language switch sits up here now. The wordmark moved
+                // to the middle of the screen, and two logos on one screen made
+                // neither of them read as the mark.
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 16, 0),
                   child: Row(
                     children: [
-                      const UDriveWordmark(compact: true),
                       const Spacer(),
                       const _LanguageToggle(),
                     ],
@@ -63,36 +62,30 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Logo centred, form directly beneath it. One thing to
+                        // look at, then one thing to do.
+                        const SizedBox(height: 18),
+                        const Center(child: UDriveMark(size: 72)),
+                        const SizedBox(height: 12),
+                        const Center(child: UDriveWordmark(compact: true)),
+                        const SizedBox(height: 6),
                         Text(
                           urdu
                               ? 'کشمیر کا محفوظ اور آسان سفر'
-                              : 'Your safer way to\nexplore Kashmir',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            height: 1.18,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -.8,
-                            color: AppText.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          urdu
-                              ? 'ایک ہی اکاؤنٹ سے کسٹمر اور منظور شدہ ڈرائیور موڈ استعمال کریں۔'
-                              : 'One secure account for Customer mode and approved '
-                                  'Driver mode.',
+                              : 'Your safer way to explore Kashmir',
+                          textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: 14,
                             height: 1.5,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                             color: AppText.secondary,
                           ),
                         ),
-                        const SizedBox(height: 26),
+                        const SizedBox(height: 24),
                         _FormSheet(
                           formKey: _formKey,
                           name: _name,
@@ -156,6 +149,17 @@ class _LoginScreenState extends State<LoginScreen> {
 ///
 /// Uses the same vector illustration the home hero does, so the car is sharp at
 /// any screen size and needs no bundled photograph.
+/// The background behind the sign-in form.
+///
+/// No photograph. The car illustration used to sit in the upper third and the
+/// form sheet rode over the top of it, so the vehicle was cut in half by a
+/// panel edge on almost every screen size — the artwork and the form were each
+/// laid out as though the other were not there.
+///
+/// What replaces it is drawn rather than placed: a vertical wash and two soft
+/// brand circles, all of it out at the edges. Shapes have no fixed proportions
+/// to protect, so nothing can be cropped through the middle no matter how tall
+/// the phone or how far the keyboard pushes the form up.
 class _BackdropArtwork extends StatelessWidget {
   const _BackdropArtwork();
 
@@ -163,68 +167,61 @@ class _BackdropArtwork extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF14301F), AppColors.background],
-            ),
-          ),
-        ),
-        Positioned(
-          top: -size.height * .04,
-          right: -size.width * .30,
-          child: IgnorePointer(
-            child: Container(
-              width: size.width * .95,
-              height: size.width * .95,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.secondary.withValues(alpha: .10),
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: [0, .45, 1],
+                colors: [
+                  Color(0xFF16332A),
+                  Color(0xFF0C1A1B),
+                  AppColors.background,
+                ],
               ),
             ),
           ),
-        ),
-        // The car sits in the upper third, large and bleeding off the right
-        // edge, then the scrim below keeps the form legible over it.
-        Positioned(
-          top: size.height * .10,
-          left: -size.width * .12,
-          right: -size.width * .12,
-          height: size.height * .30,
-          child: const IgnorePointer(
-            child: Opacity(
-              opacity: .85,
-              child: ServiceIllustration(service: HomeService.car),
-            ),
+
+          // Top right, mostly off-screen.
+          Positioned(
+            top: -size.width * .42,
+            right: -size.width * .34,
+            child: _Glow(diameter: size.width * .96, opacity: .12),
           ),
-        ),
-        const Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: [0, .34, .52, 1],
-                  colors: [
-                    Color(0x660B1417),
-                    Color(0x330B1417),
-                    Color(0xE60B1417),
-                    AppColors.background,
-                  ],
-                ),
-              ),
-            ),
+
+          // Bottom left, smaller and fainter, so the eye travels down the
+          // screen towards the form rather than settling in a corner.
+          Positioned(
+            bottom: -size.width * .30,
+            left: -size.width * .28,
+            child: _Glow(diameter: size.width * .70, opacity: .07),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
+}
+
+/// A soft circle of brand colour.
+class _Glow extends StatelessWidget {
+  const _Glow({required this.diameter, required this.opacity});
+
+  final double diameter;
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: diameter,
+        height: diameter,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.secondary.withValues(alpha: opacity),
+        ),
+      );
 }
 
 class _FormSheet extends StatelessWidget {

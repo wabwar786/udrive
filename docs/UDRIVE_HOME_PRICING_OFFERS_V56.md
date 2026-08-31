@@ -238,6 +238,54 @@ The driver count beside it is real, read once from the nearby-vehicles endpoint.
 Waiting in front of an empty map gives no way to tell whether the request went
 anywhere; seeing the cars it went to answers that without asking.
 
+## 6. Splash, sign-in and the CTA
+
+### Splash
+
+One mark, centred, on the app's own dark background. It was carrying the
+wordmark, a tagline and three photographs of vehicles stacked at angles — a lot
+of screen to build and throw away in under a second, and the first impression
+the app made.
+
+### Sign-in
+
+The car illustration sat in the upper third and the form sheet rode over the top
+of it, so on most screen sizes the vehicle was cut in half by a panel edge. The
+artwork and the form were each laid out as though the other were not there.
+
+The photograph is gone. What replaces it is drawn rather than placed: a vertical
+wash and two soft brand circles, all of them out past the edges. Shapes have no
+proportions to protect, so nothing can be cropped through the middle however
+tall the phone or however far the keyboard pushes the form up.
+
+The layout is now logo centred, wordmark and one line under it, then the
+"Continue with mobile" card directly beneath. The wordmark that used to sit in
+the top-left corner is gone — two logos on one screen meant neither read as the
+mark. Only the language switch stays up there.
+
+`ServiceIllustration` now has no callers. Left in place rather than deleted; it
+is a public widget and may be wanted again.
+
+### The card stays up once a destination is chosen
+
+Picking a destination lifts the booking card over the map and leaves it there.
+From that point the card carries the route, the vehicle panel and the button,
+and letting it settle back would drop the button under the fold — the customer
+would choose a place and then have to scroll to act on it. Hotel lifts on
+selection for the same reason, since it opens its panel immediately.
+
+The handle still works, so anyone who wants the map back can have it. It just no
+longer happens on its own.
+
+### "Find Now"
+
+The button read "Find a Car", "Find a Bike", "Find a Coster / Hiace" depending
+on the product selected. The vehicle is actually chosen on the next screen, so
+naming one here promised a decision that had not been made — and the label
+changing under the customer's thumb made it look like a different button each
+time. It is "Find Now" for every vehicle. Hotel and Tour keep their own words,
+because they lead somewhere genuinely different.
+
 ---
 
 ## Not done
@@ -265,4 +313,4 @@ cd udrive_unified_mobile && python3 tool/audit_structure.py
 
 Clean as of this ZIP. Push, wait for the Actions run to go green, then deploy
 **both** `udrive-api` and `udrive Mobile`. Hard refresh afterwards and check the
-build label reads `rev 53`.
+build label reads `rev 54`.
