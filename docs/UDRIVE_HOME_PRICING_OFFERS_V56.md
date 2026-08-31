@@ -553,6 +553,58 @@ customer should not receive an offer from a driver who saw the request four
 minutes ago and has since driven away. The deadline starts when *this* driver
 first sees the request, not from a server timestamp.
 
+## 12. After the accept: tracking, road routes, real ETAs
+
+### The straight line was the bug behind both screens
+
+Both live screens drew a straight line from the Driver to their target and
+estimated arrival from that distance over an assumed speed.
+
+In Azad Kashmir that is not an approximation, it is a different number. A road
+through the mountains is routinely two or three times the crow-flight distance,
+so a Customer told "4 minutes" waited twenty, and a Driver planning their next
+hour planned it wrong.
+
+`LiveLeg` now asks the routing service for the actual road and re-asks only when
+the Driver has moved more than 150 metres — roughly a street. Below that the
+road ahead is unchanged and the redraw would be invisible, so it would be
+spending a paid request to move a line by a few pixels. A failed lookup keeps
+the previous route rather than blanking the map over one bad request.
+
+Distances are labelled **"by road"** or **"direct"**, so the fallback is never
+passed off as something it is not.
+
+### The camera stopped fighting the user
+
+Both maps recentred on every poll — the Customer's every five seconds. Zooming
+out to see the whole approach was impossible; the map snapped back before you
+finished looking. Once either side pans or zooms, the camera is theirs and
+auto-follow stops.
+
+The Customer's map also frames the **whole route** rather than centring on the
+car. "Where is it and how far off" is the question, and a close-up of the car
+answers neither half.
+
+### Accepting a driver goes straight to the map
+
+The confirmation sheet is gone from the normal path. The moment a driver is
+confirmed the only question left is where the car is and when it arrives — and
+that is a screen, not a summary. Driver, vehicle, fare and OTP are all on the
+tracking screen anyway, so the sheet was a list of things to dismiss before
+seeing the one thing wanted. It still appears if the trip cannot be opened,
+because a summary beats nothing.
+
+### Turn-by-turn is handed to the phone
+
+The Driver screen shows the route, the road distance and the arrival time, and a
+**Directions** button that opens their own navigation app at the pickup — `geo:`
+first so Android uses whatever they actually run, the Maps web URL as fallback
+for iOS and browsers.
+
+Not built in. Doing it here would mean re-implementing lane guidance, rerouting
+and voice for roads Google already covers, and doing it worse — on mountain
+roads where being wrong costs a driver an hour.
+
 ---
 
 ## Not done

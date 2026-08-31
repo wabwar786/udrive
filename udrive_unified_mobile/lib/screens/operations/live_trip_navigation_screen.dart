@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/booking/trip_operations_repository.dart';
+import '../../core/routing/live_leg.dart';
 import '../../core/services/trip_location_service.dart';
 import '../../models/trip_operations_models.dart';
 
@@ -40,6 +41,16 @@ class _DriverLiveNavigationScreenState
   bool _actionBusy = false;
   String _mapSource = 'ONLINE_OSM';
   late String _currentStatus;
+
+  /// The real road ahead, not a straight line.
+  final _leg = LiveLeg();
+
+  /// True once the Driver has moved the map themselves.
+  ///
+  /// After that the camera stops following. A map that snaps back every ten
+  /// seconds cannot be used to look at the junction ahead, which is the only
+  /// reason a Driver would touch it while driving.
+  bool _cameraHeld = false;
 
   @override
   void initState() {
@@ -88,9 +99,54 @@ class _DriverLiveNavigationScreenState
         _currentStatus = tracking.tripStatus;
         _error = null;
       });
+
+      // The road to whichever end of the trip is next. Recomputed only when
+      // the Driver has actually moved, so following a route does not mean a
+      // paid request every ten seconds.
+      final from = _currentPoint;
+      final to = _targetPoint;
+      if (from != null && to != null) {
+        final changed = await _leg.update(from: from, to: to);
+        if (changed && mounted) setState(() {});
+      }
+
       _fitMap();
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
+    }
+  }
+
+  /// Opens the phone's navigation app at whichever end of the trip is next.
+  ///
+  /// A geo: URI first, which Android hands to whatever the Driver actually
+  /// uses; the Google Maps web URL as the fallback, which works on iOS and in
+  /// a browser.
+  Future<void> _openExternalNavigation() async {
+    final target = _targetPoint;
+    if (target == null) return;
+
+    final lat = target.latitude;
+    final lng = target.longitude;
+
+    for (final uri in [
+      Uri.parse('google.navigation:q=$lat,$lng&mode=d'),
+      Uri.parse(
+          'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving'),
+    ]) {
+      try {
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          return;
+        }
+      } catch (_) {
+        // Try the next form rather than failing the whole action.
+      }
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No navigation app available.')),
+      );
     }
   }
 
@@ -187,11 +243,20 @@ class _DriverLiveNavigationScreenState
   }
 
   void _fitMap() {
-    final points = <LatLng>[];
-    final current = _currentPoint;
-    if (current != null) points.add(current);
-    final target = _targetPoint;
-    if (target != null) points.add(target);
+    // Once the Driver has panned or zoomed, the camera is theirs. Snapping it
+    // back every ten seconds makes the map useless for the one thing they would
+    // touch it for while driving — looking at the junction ahead.
+    if (_cameraHeld) return;
+
+    final points = <LatLng>[
+      ..._leg.points,
+    ];
+    if (points.isEmpty) {
+      final current = _currentPoint;
+      if (current != null) points.add(current);
+      final target = _targetPoint;
+      if (target != null) points.add(target);
+    }
     if (points.isEmpty) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -242,14 +307,31 @@ class _DriverLiveNavigationScreenState
   String get _targetLabel =>
       _headingToPickup ? widget.trip.pickupLabel : widget.trip.destinationLabel;
 
+  /// Road distance where it is known, straight-line only as a stopgap.
+  ///
+  /// The two are not close in this terrain, so the fallback is marked as such
+  /// in the label rather than passed off as a road figure.
   double? get _distanceKm {
+    final road = _leg.distanceKm;
+    if (road != null) return road;
+
     final from = _currentPoint;
     final target = _targetPoint;
     if (from == null || target == null) return null;
-    return Distance().as(LengthUnit.Kilometer, from, target);
+    return const Distance().as(LengthUnit.Kilometer, from, target);
   }
 
+  bool get _distanceIsRoad => _leg.distanceKm != null;
+
+  /// Minutes to arrival, from the routing service where possible.
+  ///
+  /// The old estimate divided crow-flight distance by an assumed speed. On a
+  /// mountain road that told a Driver they were four minutes away when they
+  /// were twenty, and a Customer was told the same.
   int? get _etaMinutes {
+    final routed = _leg.etaMinutes;
+    if (routed != null) return routed;
+
     final distance = _distanceKm;
     if (distance == null) return null;
     final speed = math.max(20.0, _tracking?.driverLocation?.speedKph ?? 28.0);
@@ -271,17 +353,29 @@ class _DriverLiveNavigationScreenState
     final destination = _destinationPoint;
     final target = _targetPoint;
     final center = current ?? target ?? const LatLng(33.6844, 73.0479);
-    final routePoints = [
-      if (current != null) current,
-      if (target != null) target,
-    ];
+    // The road when it is known, a straight line until then. An approximate
+    // line for the first second or two is better than an empty map.
+    final routePoints = _leg.points.isNotEmpty
+        ? _leg.points
+        : [
+            if (current != null) current,
+            if (target != null) target,
+          ];
 
     return Scaffold(
       body: Stack(
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: MapOptions(initialCenter: center, initialZoom: 13),
+            options: MapOptions(
+              initialCenter: center,
+              initialZoom: 13,
+              onPositionChanged: (_, hasGesture) {
+                if (hasGesture && !_cameraHeld) {
+                  setState(() => _cameraHeld = true);
+                }
+              },
+            ),
             children: [
               OfflineAwareTileLayer(
                 origin: current ?? pickup ?? center,
@@ -441,8 +535,35 @@ class _DriverLiveNavigationScreenState
                     ]),
                     const SizedBox(height: 6),
                     Text(
-                      '${_distanceKm?.toStringAsFixed(1) ?? '—'} km to ${_headingToPickup ? 'pickup' : 'destination'} · ${widget.trip.passengerCount} passenger(s)',
+                      '${_distanceKm?.toStringAsFixed(1) ?? '—'} km'
+                      '${_distanceIsRoad ? ' by road' : ' direct'}'
+                      '${_etaMinutes == null ? '' : ' · ~$_etaMinutes min'}'
+                      ' to ${_headingToPickup ? 'pickup' : 'destination'}'
+                      ' · ${widget.trip.passengerCount} passenger(s)',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    // Turn-by-turn is handed to the phone's own navigation app.
+                    //
+                    // Building spoken directions into this screen would mean
+                    // re-implementing lane guidance, rerouting and voice for
+                    // roads that Google already covers — and doing it worse, on
+                    // mountain roads where being wrong costs a driver an hour.
+                    // The route and the arrival time are shown here; the
+                    // turn-by-turn is one tap away in the app that does it
+                    // properly.
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _openExternalNavigation,
+                        icon: const Icon(Icons.near_me_rounded, size: 18),
+                        label: Text(
+                          'Directions to '
+                          '${_headingToPickup ? 'pickup' : 'destination'}',
+                          style: const TextStyle(
+                              fontSize: 12.5, fontWeight: FontWeight.w800),
+                        ),
+                      ),
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 7),
@@ -535,6 +656,16 @@ class _CustomerFullScreenTrackingScreenState
   String? _error;
   String _mapSource = 'ONLINE_OSM';
 
+  /// The road the Driver is actually taking to reach the Customer.
+  final _leg = LiveLeg();
+
+  /// True once the Customer has moved the map themselves.
+  ///
+  /// The camera used to recentre on the Driver every five seconds, which meant
+  /// a Customer could not zoom out to see the whole approach — the map snapped
+  /// back before they finished looking.
+  bool _cameraHeld = false;
+
   @override
   void initState() {
     super.initState();
@@ -546,18 +677,55 @@ class _CustomerFullScreenTrackingScreenState
     try {
       final tracking = await widget.repository.tracking(widget.trip.bookingId);
       if (!mounted) return;
-      setState(() { _tracking = tracking; _error = null; });
+      setState(() {
+        _tracking = tracking;
+        _error = null;
+      });
+
       final location = tracking.driverLocation;
-      if (location != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _mapController.move(
-              LatLng(location.latitude, location.longitude),
-              14,
-            );
-          }
-        });
+      if (location == null) return;
+      final driver = LatLng(location.latitude, location.longitude);
+
+      // Route to whichever end matters now: the pickup while the Driver is on
+      // their way, the destination once the Customer is aboard.
+      final headingToPickup = tracking.tripStatus != 'TripStarted';
+      final target = headingToPickup
+          ? (tracking.pickupLatitude == null || tracking.pickupLongitude == null
+              ? null
+              : LatLng(tracking.pickupLatitude!, tracking.pickupLongitude!))
+          : (tracking.destinationLatitude == null ||
+                  tracking.destinationLongitude == null
+              ? null
+              : LatLng(
+                  tracking.destinationLatitude!,
+                  tracking.destinationLongitude!,
+                ));
+
+      if (target != null) {
+        final changed = await _leg.update(from: driver, to: target);
+        if (changed && mounted) setState(() {});
       }
+
+      if (_cameraHeld) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _cameraHeld) return;
+        // Frame the whole approach rather than centring on the car. "Where is
+        // it and how far off" is the question; a close-up of the car answers
+        // neither half.
+        final points = _leg.points.isNotEmpty
+            ? _leg.points
+            : <LatLng>[driver, if (target != null) target];
+        if (points.length < 2) {
+          _mapController.move(points.first, 14);
+        } else {
+          _mapController.fitCamera(
+            CameraFit.coordinates(
+              coordinates: points,
+              padding: const EdgeInsets.fromLTRB(48, 90, 48, 240),
+            ),
+          );
+        }
+      });
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     }
@@ -632,26 +800,45 @@ class _CustomerFullScreenTrackingScreenState
     final distanceKm = driver != null && target != null
         ? Distance().as(LengthUnit.Kilometer, driver, target)
         : null;
+    // Road figures where the routing service has answered. The straight-line
+    // fallback stays only for the first second or two: through these mountains
+    // it can be a third of the real distance, and a Customer told "4 minutes"
+    // who then waits twenty stops believing the app.
+    final roadKm = _leg.distanceKm;
     final speed = math.max(20.0, t?.driverLocation?.speedKph ?? 28.0);
-    final eta = distanceKm == null ? null : math.max(1, (distanceKm / speed * 60).ceil());
+    final eta = _leg.etaMinutes ??
+        (distanceKm == null
+            ? null
+            : math.max(1, (distanceKm / speed * 60).ceil()));
 
     return Scaffold(
       body: Stack(
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: MapOptions(initialCenter: center, initialZoom: 13),
+            options: MapOptions(
+              initialCenter: center,
+              initialZoom: 13,
+              onPositionChanged: (_, hasGesture) {
+                if (hasGesture && !_cameraHeld) {
+                  setState(() => _cameraHeld = true);
+                }
+              },
+            ),
             children: [
               OfflineAwareTileLayer(
                 origin: driver ?? pickup ?? center,
                 destination: destination ?? target ?? center,
                 onSourceChanged: (value) { if (mounted && value != _mapSource) setState(() => _mapSource = value); },
               ),
-              if ([driver, target].whereType<LatLng>().length > 1)
+              if (_leg.points.isNotEmpty ||
+                  [driver, target].whereType<LatLng>().length > 1)
                 PolylineLayer(
                   polylines: [
                     Polyline(
-                      points: [driver, target].whereType<LatLng>().toList(),
+                      points: _leg.points.isNotEmpty
+                          ? _leg.points
+                          : [driver, target].whereType<LatLng>().toList(),
                       strokeWidth: 5,
                       color: const Color(0xFF0A8A62),
                     ),
@@ -787,7 +974,16 @@ class _CustomerFullScreenTrackingScreenState
                     Text(
                       driver == null
                           ? 'Waiting for the Driver’s next GPS update.'
-                          : '${distanceKm?.toStringAsFixed(1)} km to ${headingToPickup ? 'pickup' : 'destination'} · updated every 5 seconds',
+                          // Road distance once it is known. The straight-line
+                          // figure is labelled as such rather than passed off
+                          // as a road number it is nowhere near.
+                          : roadKm != null
+                              ? '${roadKm.toStringAsFixed(1)} km by road to '
+                                  '${headingToPickup ? 'pickup' : 'destination'}'
+                                  ' · updated every 5 seconds'
+                              : '${distanceKm?.toStringAsFixed(1)} km direct to '
+                                  '${headingToPickup ? 'pickup' : 'destination'}'
+                                  ' · finding the road…',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                     if (t?.driverLocation != null)

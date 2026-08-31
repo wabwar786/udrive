@@ -318,6 +318,38 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     return true;
   }
 
+  /// Pushes the live tracking map for a confirmed booking.
+  ///
+  /// Returns false when the trip is not readable yet, so the caller can fall
+  /// back to the summary sheet rather than leaving the customer on a screen
+  /// that has just stopped meaning anything.
+  Future<bool> _openTracking(
+    AppController controller,
+    LiveBooking booking,
+  ) async {
+    final navigator = Navigator.of(context);
+    final repository = TripOperationsRepository(controller.apiClient);
+
+    try {
+      final trips = await repository.customerTrips();
+      final trip = trips.firstWhere((item) => item.bookingId == booking.id);
+      if (!mounted) return false;
+
+      await navigator.pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => CustomerFullScreenTrackingScreen(
+            trip: trip,
+            repository: repository,
+            tripOtp: booking.tripOtp,
+          ),
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Stops the search and leaves the screen.
   ///
   /// Confirmed first: pressing it by mistake would throw away a request the
@@ -745,6 +777,19 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   Future<void> _showBookingConfirmed(LiveBooking booking, {int? etaMinutes}) async {
     if (!mounted) return;
     final controller = AppControllerScope.of(context);
+
+    // Straight to the map, without a sheet in between.
+    //
+    // The moment a driver is confirmed the only question left is where the car
+    // is and when it arrives, and that is a screen, not a summary. The driver,
+    // vehicle, fare and OTP are all on the tracking screen anyway, so the sheet
+    // was a list of things the customer had to dismiss before they could see
+    // the one thing they wanted.
+    //
+    // It is still shown if the trip cannot be opened — better a summary than
+    // nothing at all.
+    if (await _openTracking(controller, booking)) return;
+    if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
