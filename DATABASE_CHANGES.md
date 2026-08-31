@@ -75,3 +75,12 @@ A PostgreSQL trigger calls `udrive.ensure_driver_earning(booking_id)` when a boo
   Rawalakot once instead of twice and the two halves cannot drift apart.
 - Only affects per-seat trips. Hiring a whole Coster is still priced per
   kilometre and still negotiable.
+
+## 038_trip_messages (rev 64)
+
+- New table `udrive.trip_messages`, scoped to a booking. `sender_role` is
+  denormalised so the app can lay a message left or right without a join.
+- `read_at` drives the unread badge and nothing else is inferred from it.
+- Passenger standing is computed from the existing `udrive.trip_ratings`, which
+  has recorded ratings in both directions since phase 14 — nobody was reading
+  the Customer half. No new rating capture was added.

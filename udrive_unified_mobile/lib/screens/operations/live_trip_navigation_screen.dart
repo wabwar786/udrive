@@ -10,7 +10,9 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/booking/trip_operations_repository.dart';
+import '../../core/booking/trip_chat_repository.dart';
 import '../../core/routing/live_leg.dart';
+import 'trip_chat_screen.dart';
 import '../../core/services/trip_location_service.dart';
 import '../../models/trip_operations_models.dart';
 
@@ -45,6 +47,9 @@ class _DriverLiveNavigationScreenState
   /// The real road ahead, not a straight line.
   final _leg = LiveLeg();
 
+  /// Who the Driver is collecting, from their history on the platform.
+  PassengerStanding? _passenger;
+
   /// True once the Driver has moved the map themselves.
   ///
   /// After that the camera stops following. A map that snaps back every ten
@@ -58,6 +63,7 @@ class _DriverLiveNavigationScreenState
     _locationService = TripLocationService(widget.repository);
     _currentStatus = widget.trip.tripStatus;
     _begin();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPassenger());
   }
 
   Future<void> _begin() async {
@@ -148,6 +154,31 @@ class _DriverLiveNavigationScreenState
         const SnackBar(content: Text('No navigation app available.')),
       );
     }
+  }
+
+  /// Reads the passenger's standing, once.
+  ///
+  /// Their history does not change during a trip, so polling it would be pure
+  /// noise on a screen that already runs two timers.
+  Future<void> _loadPassenger() async {
+    final controller = AppControllerScope.of(context);
+    final standing = await TripChatRepository(controller.apiClient)
+        .passenger(widget.trip.bookingId);
+    if (!mounted || standing == null) return;
+    setState(() => _passenger = standing);
+  }
+
+  void _openChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TripChatScreen(
+          bookingId: widget.trip.bookingId,
+          myRole: 'Driver',
+          otherPartyName: widget.trip.customerName,
+        ),
+      ),
+    );
   }
 
   Future<void> _callCustomer() async {
@@ -502,6 +533,10 @@ class _DriverLiveNavigationScreenState
                                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                               ),
                               const SizedBox(height: 2),
+                              if (_passenger != null) ...[
+                                _PassengerChip(standing: _passenger!),
+                                const SizedBox(height: 4),
+                              ],
                               // Who is being carried, in one line. A Driver
                               // pulling up needs to know how many people to
                               // expect and whether the vehicle was hired whole
@@ -571,6 +606,8 @@ class _DriverLiveNavigationScreenState
                     const SizedBox(height: 10),
                     Row(children: [
                       Expanded(child: Text('PKR ${widget.trip.fare.toStringAsFixed(0)} · ${widget.trip.bookingType}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12))),
+                      IconButton.filledTonal(onPressed: _openChat, icon: const Icon(Icons.chat_bubble_outline_rounded), tooltip: 'Message Customer'),
+                      const SizedBox(width: 6),
                       IconButton.filledTonal(onPressed: _callCustomer, icon: const Icon(Icons.call_rounded), tooltip: 'Call Customer'),
                     ]),
                     const SizedBox(height: 6),
@@ -777,6 +814,20 @@ class _CustomerFullScreenTrackingScreenState
     super.dispose();
   }
 
+  void _openChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TripChatScreen(
+          bookingId: widget.trip.bookingId,
+          myRole: 'Customer',
+          otherPartyName:
+              _tracking?.driverName ?? widget.trip.driverName ?? 'Driver',
+        ),
+      ),
+    );
+  }
+
   Future<void> _callDriver() async {
     final phone = widget.trip.driverPhone?.trim();
     if (phone == null || phone.isEmpty) return;
@@ -973,6 +1024,12 @@ class _CustomerFullScreenTrackingScreenState
                             ],
                           ),
                         ),
+                        IconButton.filledTonal(
+                          onPressed: _openChat,
+                          icon: const Icon(Icons.chat_bubble_outline_rounded),
+                          tooltip: 'Message Driver',
+                        ),
+                        const SizedBox(width: 6),
                         if (eta != null)
                           Text('≈ $eta min', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF087654))),
                       ],
@@ -1054,6 +1111,57 @@ class _CustomerFullScreenTrackingScreenState
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The passenger's history, in one line the Driver can read at a glance.
+///
+/// Three plain outcomes rather than a tier ladder. "Gold" and "Silver" would
+/// imply the platform is ranking people; a Driver deciding whether to take a
+/// fare needs a fact, not a loyalty grade.
+///
+/// "New" is not a warning. Everyone is new once, and the word says only that
+/// there is nothing to go on yet.
+class _PassengerChip extends StatelessWidget {
+  const _PassengerChip({required this.standing});
+
+  final PassengerStanding standing;
+
+  @override
+  Widget build(BuildContext context) {
+    final (background, ink) = switch (standing.standing) {
+      'Trusted' => (const Color(0xFFE7F7EF), const Color(0xFF0B6B4A)),
+      'Mixed' => (const Color(0xFFFFF1E6), const Color(0xFF8A4B12)),
+      'New' => (const Color(0xFFEDF1F5), const Color(0xFF44525E)),
+      _ => (const Color(0xFFEAF2FF), const Color(0xFF1B4E9B)),
+    };
+
+    // The rating is only shown when someone actually gave one. A default of
+    // five would be a reassurance nobody earned.
+    final parts = <String>[
+      standing.standing,
+      if (standing.rating != null)
+        '${standing.rating!.toStringAsFixed(1)}★ (${standing.ratingCount})',
+      '${standing.completedTrips} trip'
+          '${standing.completedTrips == 1 ? '' : 's'}',
+      if (standing.cancelledTrips > 0) '${standing.cancelledTrips} cancelled',
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        parts.join('  ·  '),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: ink,
+        ),
       ),
     );
   }

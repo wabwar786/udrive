@@ -142,3 +142,33 @@ public sealed record SeatFareQuoteDto(
     decimal PerSeatFare,
     bool Reversed,
     string? Notes);
+
+/// <summary>One message on a booking.</summary>
+public sealed record TripMessageDto(
+    Guid Id,
+    Guid SenderUserId,
+    string SenderRole,
+    string SenderName,
+    string Body,
+    DateTimeOffset? ReadAt,
+    DateTimeOffset CreatedAt);
+
+public sealed record SendTripMessageRequest(
+    [Required, StringLength(1000, MinimumLength = 1)] string Body);
+
+/// <summary>
+/// What a Driver can know about the passenger before they meet.
+/// </summary>
+/// <param name="Rating">
+/// Null when no Driver has ever rated this Customer. Deliberately not defaulted
+/// to five — a reassurance nobody earned is worse than no reassurance.
+/// </param>
+/// <param name="Standing">One of New, Regular, Trusted or Mixed.</param>
+public sealed record PassengerStandingDto(
+    string FullName,
+    DateTimeOffset MemberSince,
+    int CompletedTrips,
+    int CancelledTrips,
+    decimal? Rating,
+    int RatingCount,
+    string Standing);

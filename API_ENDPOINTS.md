@@ -93,3 +93,21 @@ Customer:
 - `POST /api/v1/driver/marketplace/presence/offline` clears it, for when the
   Driver app gets an online switch wired to the server. The ninety-second
   presence freshness window still hides a driver whose app has stopped.
+
+## Trip chat and passenger standing — rev 64
+
+Both parties to a booking:
+
+- `GET /api/v1/trips/{bookingId}/messages?after=<iso>`
+- `POST /api/v1/trips/{bookingId}/messages`
+
+Driver only:
+
+- `GET /api/v1/trips/{bookingId}/passenger`
+
+Every route proves the caller is one of the two people on the booking before it
+returns anything. There is no inbox and no way to message someone you are not
+currently travelling with — a Driver must not be able to keep contacting a
+Customer after the ride. Reading the thread is what marks the other side's
+messages read; a separate call could fail on its own and leave a badge that
+never clears.
