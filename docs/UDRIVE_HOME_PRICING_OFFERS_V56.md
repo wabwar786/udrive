@@ -774,6 +774,39 @@ colours, but their brand-carrying values — the route line, the ETA green, the
 pickup and destination pins — now come from the new palette. The last
 hard-coded lime, in `udrive_route_flow_screen.dart`, is gone.
 
+## 20. The build break, and the check that would have caught it
+
+`rev 65` did not compile. `live_trip_navigation_screen.dart` called
+`AppControllerScope.of(context)` — added for the passenger-standing lookup —
+without importing `app_controller.dart`. One missing line.
+
+Import added. But the more useful outcome is `tool/check_imports.py`.
+
+`audit_structure.py` checks shape and brace balance, and this passed it cleanly.
+The failure only surfaced after dart2js had been running for twenty seconds in
+CI, which is a slow and expensive way to learn about a missing import.
+
+The new check builds the set of every top-level declaration under `lib/`, walks
+each file's transitive project imports, and flags any name a file uses that is
+declared in the project but not reachable from that file. It is deliberately
+narrow: because it only considers project symbols, it needs no list of Flutter
+or package names and produces almost no noise.
+
+Run it before packaging:
+
+```bash
+cd udrive_unified_mobile
+python3 tool/audit_structure.py
+python3 tool/check_imports.py
+```
+
+Both are clean on this ZIP. The single remaining line — `'S'` in
+`driver_home_screen.dart` — is a false positive: the letter appears inside a
+nested string in an interpolation that the crude stripper does not fully clear.
+
+It is not a typechecker and not a substitute for `flutter analyze`. It catches
+one common, expensive mistake early.
+
 ---
 
 ## Not done

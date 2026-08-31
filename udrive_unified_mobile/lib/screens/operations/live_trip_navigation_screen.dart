@@ -12,8 +12,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/booking/trip_chat_repository.dart';
 import '../../core/routing/live_leg.dart';
-import 'trip_chat_screen.dart';
 import '../../core/services/trip_location_service.dart';
+import '../../core/state/app_controller.dart';
+import 'trip_chat_screen.dart';
 import '../../models/trip_operations_models.dart';
 
 class DriverLiveNavigationScreen extends StatefulWidget {
