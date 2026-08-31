@@ -701,6 +701,79 @@ booking type and payment status** on one line under the name, and any
 **instructions the Customer left** in a highlighted box. Buried anywhere else,
 a note the Customer took the trouble to write may as well not have been written.
 
+## 18. The accept bug, actually found
+
+It was never a timing problem, and the two previous theories — expiry, then
+transaction contention — were both wrong. It failed on the first attempt, the
+fastest attempt and every attempt, because the statement could not commit at
+all.
+
+At the end of a successful selection, `SelectDriverOfferAsync` records the
+outcome against the Driver's decision on that request:
+
+```sql
+INSERT INTO udrive.driver_ride_request_decisions (..., decision, ...)
+VALUES (..., 'Accepted', ...)
+```
+
+Migration 012 constrained that column:
+
+```sql
+CONSTRAINT ck_driver_request_decision CHECK (decision IN ('Rejected', 'Offered'))
+```
+
+`'Accepted'` was never allowed. Postgres raised 23514, the whole transaction
+rolled back, and the customer got a generic failure — which the app rendered as
+"this offer is no longer available. Please choose another driver."
+
+Everything before it was correct. The booking, the trip operation, the
+assignment and the notification were all written and then thrown away four
+statements later.
+
+Migration 039 widens the constraint. The code has written `'Accepted'` since the
+marketplace flow was built, so the constraint is what was wrong, not the value.
+
+**Why it hid for so long:** `GlobalExceptionHandler` mapped CHECK violations
+into the catch-all 500, "This service is temporarily unavailable." A schema
+disagreement was being reported as a server hiccup. Check and foreign-key
+violations now return 409 and name the constraint and table, so the next one
+takes a minute rather than three rounds of guessing.
+
+The two earlier changes were still worth making — the expiry sweep really was
+firing on every list call, and Serializable really was over-strict — but neither
+was this bug.
+
+## 19. New palette: deep teal and amber
+
+Lime on black had two problems. Lime is what every ride-hailing app in the
+region already uses, so nothing on screen said which app you were in. And a
+green action colour sat one hue away from the green success states and the green
+route line, which left the button competing with the map underneath it.
+
+| Role | Hex |
+|---|---|
+| Background | `#0A1614` |
+| Surface | `#102422` |
+| Surface alt | `#1A3330` |
+| Border | `#24423E` |
+| Primary (structure) | `#0E4F4F` |
+| Secondary (action) | `#F5A524` |
+| Ink on action | `#1A1200` |
+| Text / secondary / disabled | `#F2F7F5` / `#9BB3AE` / `#5F7A75` |
+| Success / danger / warning / info | `#2FB27C` / `#E5484D` / `#E8A33D` / `#4C9AFF` |
+
+Ink on the action colour is near-black, not white: amber is a light colour and
+white on it fails contrast at button sizes.
+
+The Ride product tile moved from the action colour to teal. A product tile and
+the button that acts on it should not be the same hue, or the tile starts
+reading as something already pressed.
+
+The live trip screens sit on white cards over a map and keep light-surface
+colours, but their brand-carrying values — the route line, the ETA green, the
+pickup and destination pins — now come from the new palette. The last
+hard-coded lime, in `udrive_route_flow_screen.dart`, is gone.
+
 ---
 
 ## Not done

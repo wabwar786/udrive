@@ -11,35 +11,39 @@ class AppTint {
   const AppTint._();
 
   /// Selected service tile and active bottom-nav pill — a low-opacity wash of
-  /// the brand green rather than a pale tint, so it reads on dark surfaces.
-  static const brand = Color(0xFF1F3A1B);
+  /// the amber action colour rather than a pale tint, so it reads on the dark
+  /// teal surfaces.
+  static const brand = Color(0xFF3A2A0E);
 
   /// Secondary surface — inset rows such as the tour-booking toggle strip.
   static const surface = AppColors.surfaceAlt;
 
-  static const success = Color(0xFF11302A);
-  static const successText = Color(0xFF6EE7B0);
+  static const success = Color(0xFF0F2E26);
+  static const successText = Color(0xFF6FE0B4);
 
-  static const danger = Color(0xFF3A1A18);
+  static const danger = Color(0xFF3A1B1C);
 
-  static const warning = Color(0xFF3A2E14);
-  static const warningText = Color(0xFFFFC96B);
+  static const warning = Color(0xFF382C13);
+  static const warningText = Color(0xFFF0C071);
 
   /// Behind the map while tiles are still loading.
-  static const mapBackdrop = Color(0xFF16242B);
+  static const mapBackdrop = Color(0xFF142624);
 }
 
 class AppText {
   const AppText._();
 
-  static const primary = Color(0xFFF1F6F7);
-  static const secondary = Color(0xFF9FB3BB);
+  static const primary = Color(0xFFF2F7F5);
+  static const secondary = Color(0xFF9BB3AE);
 
   /// Disabled labels and unselected icons.
-  static const disabled = Color(0xFF64808A);
+  static const disabled = Color(0xFF5F7A75);
 
-  /// Text placed ON the brand green.
-  static const onBrand = Color(0xFF07120A);
+  /// Text placed ON the amber action colour.
+  ///
+  /// Near-black rather than white: amber is a light colour, and white on it
+  /// fails contrast at the sizes buttons use.
+  static const onBrand = Color(0xFF1A1200);
 }
 
 /// Per-product colours.
@@ -55,22 +59,24 @@ class AppText {
 class AppProduct {
   const AppProduct._();
 
-  // Ride — the brand green.
-  static const rideSurface = Color(0xFF1F3A1B);
-  static const rideAccent = Color(0xFFA6FF2E);
-  static const rideTitle = Color(0xFFEAF7D6);
-  static const rideSub = Color(0xFFA8C98A);
-  static const rideInk = Color(0xFF07120A);
+  // Ride — teal. Deliberately not the action colour: a product tile and the
+  // button that acts on it should not be the same hue, or the tile starts
+  // reading as something already pressed.
+  static const rideSurface = Color(0xFF14403E);
+  static const rideAccent = Color(0xFF4FD1C5);
+  static const rideTitle = Color(0xFFD8F5F1);
+  static const rideSub = Color(0xFF8FBDB7);
+  static const rideInk = Color(0xFF06201F);
 
   // Tour — amber.
   static const tourSurface = Color(0xFF3A2A12);
-  static const tourAccent = Color(0xFFFFB84D);
-  static const tourTitle = Color(0xFFFFD79A);
-  static const tourSub = Color(0xFFC99C56);
+  static const tourAccent = Color(0xFFF5A524);
+  static const tourTitle = Color(0xFFFAD9A0);
+  static const tourSub = Color(0xFFC59A57);
 
   // Hotel — blue.
-  static const hotelSurface = Color(0xFF12293D);
-  static const hotelAccent = Color(0xFF5AA9FF);
+  static const hotelSurface = Color(0xFF122A3D);
+  static const hotelAccent = Color(0xFF4C9AFF);
   static const hotelTitle = Color(0xFFB8DCFF);
   static const hotelSub = Color(0xFF6FA3CE);
 

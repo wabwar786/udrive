@@ -84,3 +84,13 @@ A PostgreSQL trigger calls `udrive.ensure_driver_earning(booking_id)` when a boo
 - Passenger standing is computed from the existing `udrive.trip_ratings`, which
   has recorded ratings in both directions since phase 14 — nobody was reading
   the Customer half. No new rating capture was added.
+
+## 039_driver_decision_accepted (rev 65)
+
+- Widens `ck_driver_request_decision` to allow `'Accepted'`.
+- Migration 012 constrained `driver_ride_request_decisions.decision` to
+  `('Rejected','Offered')`, but `SelectDriverOfferAsync` has always written
+  `'Accepted'` at the end of a successful selection. Every accept therefore
+  raised 23514 and rolled back the entire transaction — the booking, the trip
+  operation, the assignment and the notification were all written correctly and
+  then discarded a few statements later.

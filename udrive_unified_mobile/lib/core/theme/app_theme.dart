@@ -5,44 +5,57 @@ import 'package:google_fonts/google_fonts.dart';
 ///
 /// One scheme for the whole app — customer, driver and owner modes all read
 /// from here, so nothing has to hard-code a hex value.
+/// UDrive's palette: deep teal ground, amber action.
+///
+/// One scheme for the whole app — customer, driver and owner modes all read
+/// from here, so nothing has to hard-code a hex value.
+///
+/// The lime-on-black scheme this replaces had two problems. Lime is what every
+/// ride-hailing app in the region already uses, so nothing on screen said which
+/// app you were in. And a green action colour sat one hue away from the green
+/// success states and the green route line, which left the button competing
+/// with the map underneath it.
+///
+/// Teal and amber are far enough apart that the thing to press is never in
+/// doubt, and amber is the one warm tone that does not collide with the red
+/// used for danger.
 class AppColors {
-  /// Brand green. The only saturated colour in the system; it carries every
-  /// primary action, so it stays loud against the dark surfaces.
-  /// Brightened from #8ED12B. The old value was mixed for light surfaces and
-  /// sat flat against the dark theme; this lifts without leaving the family.
-  static const secondary = Color(0xFFA6FF2E);
-  static const accent = Color(0xFFA6FF2E);
+  /// Amber. The only saturated colour in the system; it carries every primary
+  /// action, so it stays loud against the dark surfaces.
+  static const secondary = Color(0xFFF5A524);
+  static const accent = Color(0xFFF5A524);
 
   /// Deepest layer — the app background behind everything.
-  static const background = Color(0xFF080F12);
+  static const background = Color(0xFF0A1614);
 
   /// Cards and panels sit one step above the background.
-  static const surface = Color(0xFF0E1A21);
+  static const surface = Color(0xFF102422);
 
   /// Inset rows, chips and pressed states sit one step above [surface].
-  static const surfaceAlt = Color(0xFF182833);
+  static const surfaceAlt = Color(0xFF1A3330);
 
   /// Elevated sheets and dialogs.
-  static const surfaceHigh = Color(0xFF213741);
+  static const surfaceHigh = Color(0xFF204340);
 
-  /// Kept as the dark ink used for text ON the brand green.
-  static const primary = Color(0xFF07120A);
-  static const primaryDark = Color(0xFF060E11);
-  static const navy = Color(0xFF07120A);
+  /// Deep teal. Structural rather than decorative: headings, the casing under
+  /// the route line, and the dark ink that sits ON the amber action colour.
+  static const primary = Color(0xFF0E4F4F);
 
-  static const muted = Color(0xFF9FB3BB);
-  static const border = Color(0xFF233A44);
+  /// Near-black with a teal cast, for text on light driver surfaces.
+  static const primaryDark = Color(0xFF06201F);
+  static const navy = Color(0xFF0E4F4F);
 
-  /// Redesign token. Previously 0xFFE5484D — the handoff pins danger to
-  /// #D92D20 so the SOS control and cancellation states match the spec.
-  // Status colours, brightened so they stay legible on dark surfaces.
-  static const danger = Color(0xFFFF5A4E);
-  static const success = Color(0xFF3DD68C);
-  static const info = Color(0xFF5AA9FF);
-  static const warning = Color(0xFFFFB84D);
+  static const muted = Color(0xFF9BB3AE);
+  static const border = Color(0xFF24423E);
+
+  // Status colours, tuned to stay legible on the teal surfaces.
+  static const danger = Color(0xFFE5484D);
+  static const success = Color(0xFF2FB27C);
+  static const info = Color(0xFF4C9AFF);
+  static const warning = Color(0xFFE8A33D);
 
   /// Body copy on dark surfaces.
-  static const text = Color(0xFFF1F6F7);
+  static const text = Color(0xFFF2F7F5);
 }
 
 class AppTheme {

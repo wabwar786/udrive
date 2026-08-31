@@ -419,7 +419,7 @@ class _DriverLiveNavigationScreenState
                     Polyline(
                       points: routePoints,
                       strokeWidth: 5,
-                      color: const Color(0xFF0A8A62),
+                      color: const Color(0xFF0E4F4F),
                     ),
                   ],
                 ),
@@ -432,7 +432,7 @@ class _DriverLiveNavigationScreenState
                       height: 54,
                       child: const _MapMarker(
                         icon: Icons.directions_car_filled_rounded,
-                        color: Color(0xFF0B3B2E),
+                        color: Color(0xFF06201F),
                       ),
                     ),
                   if (_headingToPickup && pickup != null)
@@ -442,7 +442,7 @@ class _DriverLiveNavigationScreenState
                       height: 48,
                       child: const _MapMarker(
                         icon: Icons.person_pin_circle_rounded,
-                        color: Color(0xFF165DFF),
+                        color: Color(0xFF4C9AFF),
                       ),
                     ),
                   if (!_headingToPickup && destination != null)
@@ -452,7 +452,7 @@ class _DriverLiveNavigationScreenState
                       height: 48,
                       child: const _MapMarker(
                         icon: Icons.flag_rounded,
-                        color: Color(0xFFE46A25),
+                        color: Color(0xFFE5484D),
                       ),
                     ),
                 ],
@@ -491,7 +491,7 @@ class _DriverLiveNavigationScreenState
                             width: 9,
                             height: 9,
                             decoration: const BoxDecoration(
-                              color: Color(0xFF18A66A),
+                              color: Color(0xFF148A5A),
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -590,13 +590,13 @@ class _DriverLiveNavigationScreenState
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEAF8F2),
+                              color: const Color(0xFFE4F2F0),
                               borderRadius: BorderRadius.circular(13),
                             ),
                             child: Text(
                               '≈ ${_etaMinutes} min',
                               style: const TextStyle(
-                                color: Color(0xFF087654),
+                                color: Color(0xFF0E4F4F),
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
@@ -931,7 +931,7 @@ class _CustomerFullScreenTrackingScreenState
                           ? _leg.points
                           : [driver, target].whereType<LatLng>().toList(),
                       strokeWidth: 5,
-                      color: const Color(0xFF0A8A62),
+                      color: const Color(0xFF0E4F4F),
                     ),
                   ],
                 ),
@@ -942,21 +942,21 @@ class _CustomerFullScreenTrackingScreenState
                       point: driver,
                       width: 56,
                       height: 56,
-                      child: const _MapMarker(icon: Icons.directions_car, color: Color(0xFF0B3B2E)),
+                      child: const _MapMarker(icon: Icons.directions_car, color: Color(0xFF06201F)),
                     ),
                   if (headingToPickup && pickup != null)
                     Marker(
                       point: pickup,
                       width: 48,
                       height: 48,
-                      child: const _MapMarker(icon: Icons.person_pin_circle, color: Color(0xFF165DFF)),
+                      child: const _MapMarker(icon: Icons.person_pin_circle, color: Color(0xFF4C9AFF)),
                     ),
                   if (!headingToPickup && destination != null)
                     Marker(
                       point: destination,
                       width: 48,
                       height: 48,
-                      child: const _MapMarker(icon: Icons.flag, color: Color(0xFFE46A25)),
+                      child: const _MapMarker(icon: Icons.flag, color: Color(0xFFE5484D)),
                     ),
                 ],
               ),
@@ -1031,7 +1031,7 @@ class _CustomerFullScreenTrackingScreenState
                         ),
                         const SizedBox(width: 6),
                         if (eta != null)
-                          Text('≈ $eta min', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF087654))),
+                          Text('≈ $eta min', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0E4F4F))),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -1087,7 +1087,7 @@ class _CustomerFullScreenTrackingScreenState
                       Text(
                         t!.driverLocation!.stale ? 'Location is stale/offline' : 'Driver online',
                         style: TextStyle(
-                          color: t.driverLocation!.stale ? Colors.orange : const Color(0xFF087654),
+                          color: t.driverLocation!.stale ? Colors.orange : const Color(0xFF0E4F4F),
                           fontSize: 11,
                         ),
                       ),
@@ -1097,8 +1097,8 @@ class _CustomerFullScreenTrackingScreenState
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: const Color(0xFFEAF8F2), borderRadius: BorderRadius.circular(14)),
-                        child: const Row(children: [Icon(Icons.check_circle_rounded, color: Color(0xFF087654)), SizedBox(width: 8), Expanded(child: Text('Trip completed successfully', style: TextStyle(fontWeight: FontWeight.w900)))]),
+                        decoration: BoxDecoration(color: const Color(0xFFE4F2F0), borderRadius: BorderRadius.circular(14)),
+                        child: const Row(children: [Icon(Icons.check_circle_rounded, color: Color(0xFF0E4F4F)), SizedBox(width: 8), Expanded(child: Text('Trip completed successfully', style: TextStyle(fontWeight: FontWeight.w900)))]),
                       )
                     else if (!const {'TripStarted','Emergency','Cancelled'}.contains(t?.tripStatus ?? widget.trip.tripStatus))
                       SizedBox(

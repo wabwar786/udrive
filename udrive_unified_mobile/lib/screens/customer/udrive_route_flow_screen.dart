@@ -1454,7 +1454,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                             _StatusBadge(
                               label: vehicle.isOnline ? 'Online' : 'Offline',
                               color: vehicle.isOnline
-                                  ? const Color(0xFF8ED12B)
+                                  ? AppColors.secondary
                                   : const Color(0xFFF79009),
                             ),
                             if (vehicle.isDemo) ...[
