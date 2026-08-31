@@ -275,7 +275,11 @@ class VehicleOptionsRepository {
       description: 'Up to 12 passengers, luggage space',
       seats: 12,
       icon: Icons.airport_shuttle_rounded,
-      asset: 'assets/vehicles_photo/coaster_clean.png',
+      // Deliberately empty: there is no bundled Hiace photograph, and the
+      // coaster one would be a picture of the wrong vehicle on the largest
+      // element of the screen. The icon is honest; an admin upload against
+      // `vehicle.image.hiace` replaces it.
+      asset: '',
       fallbackPerKm: 110,
       minimumFare: 4500,
       service: HomeService.bus,

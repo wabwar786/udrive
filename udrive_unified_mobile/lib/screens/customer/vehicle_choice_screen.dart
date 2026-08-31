@@ -70,7 +70,29 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   bool _submitting = false;
   String? _error;
 
+  /// Drives the swipeable vehicle photographs.
+  ///
+  /// The photograph is the biggest thing on the screen, so it is also the most
+  /// obvious thing to swipe. Making that gesture change the vehicle means the
+  /// customer can compare four of them with their thumb where it already is,
+  /// instead of reaching up to the pill row for every change.
+  final PageController _pages = PageController();
+
+  /// One key per pill, so a pill selected by swiping can be scrolled into view.
+  ///
+  /// Swiping to the fourth vehicle used to leave its pill off the right edge of
+  /// the row, which made the row look like it had stopped responding.
+  final Map<String, GlobalKey> _pillKeys = <String, GlobalKey>{};
+
   bool get _perSeat => _bookingType == BookingType.perSeat;
+
+  int get _index {
+    final selected = _selected;
+    if (selected == null) return 0;
+    final index =
+        _options.indexWhere((option) => option.category == selected.category);
+    return index < 0 ? 0 : index;
+  }
 
   int get _step {
     if (_fare >= 10000) return 500;
@@ -92,6 +114,12 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -135,6 +163,17 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
             orElse: () => options.first,
           );
 
+    // Open the pager on the same vehicle, without an animation the customer
+    // never asked for.
+    if (preferred != null && options.isNotEmpty) {
+      final index = options.indexOf(preferred);
+      if (index > 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _pages.hasClients) _pages.jumpToPage(index);
+        });
+      }
+    }
+
     setState(() {
       _options = options;
       _selected = preferred;
@@ -157,7 +196,34 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     if (_seats > option.seats) _seats = option.seats;
   }
 
+  /// Chosen from the pill row.
+  ///
+  /// Animates the photograph across so the two controls never disagree about
+  /// which vehicle is showing.
   void _select(VehicleOption option) {
+    final target =
+        _options.indexWhere((item) => item.category == option.category);
+    _apply(option);
+    if (target >= 0 && _pages.hasClients) {
+      _pages.animateToPage(
+        target,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  /// Chosen by swiping the photograph.
+  ///
+  /// No animation call here — the page is already where the finger left it, and
+  /// animating towards it would fight the gesture.
+  void _onPageChanged(int index) {
+    if (index < 0 || index >= _options.length) return;
+    _apply(_options[index]);
+  }
+
+  void _apply(VehicleOption option) {
+    if (_selected?.category == option.category) return;
     setState(() {
       _selected = option;
       _clampBooking();
@@ -165,6 +231,19 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
       // price onto a bike would be nonsense.
       _fare = _recommended;
     });
+    _revealPill(option);
+  }
+
+  void _revealPill(VehicleOption option) {
+    final key = _pillKeys[option.category];
+    final target = key?.currentContext;
+    if (target == null) return;
+    Scrollable.ensureVisible(
+      target,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOut,
+      alignment: .5,
+    );
   }
 
   void _setBookingType(BookingType type) {
@@ -317,13 +396,20 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
 
   Widget _buildBody() {
     final selected = _selected;
+    if (selected == null) return const SizedBox.shrink();
+
+    // The photograph gets the largest single share of the screen. It is what
+    // the customer is choosing between, and a vehicle shown at thumbnail size
+    // is a label with a picture next to it rather than a picture.
+    final heroHeight =
+        (MediaQuery.sizeOf(context).height * .38).clamp(230.0, 400.0);
 
     return Column(
       children: [
         // Vehicle types as pills. They stay in place and in order whichever is
         // chosen — nothing is promoted out of the row.
         SizedBox(
-          height: 44,
+          height: 46,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -332,8 +418,9 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
             itemBuilder: (context, index) {
               final option = _options[index];
               return _VehiclePill(
+                key: _pillKeys.putIfAbsent(option.category, GlobalKey.new),
                 option: option,
-                selected: option.category == selected?.category,
+                selected: option.category == selected.category,
                 onTap: () => _select(option),
               );
             },
@@ -341,98 +428,124 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         ),
 
         Expanded(
-          child: selected == null
-              ? const SizedBox.shrink()
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  children: [
-                    _VehicleHero(
-                      option: selected,
-                      imageUrl: _images[
-                          VehicleImageRepository.settingKeyFor(
-                              selected.category) ??
-                          ''],
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(0, 14, 0, 10),
+            children: [
+              SizedBox(
+                height: heroHeight,
+                child: PageView.builder(
+                  controller: _pages,
+                  itemCount: _options.length,
+                  onPageChanged: _onPageChanged,
+                  itemBuilder: (context, index) {
+                    final option = _options[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _VehiclePhoto(
+                        option: option,
+                        imageUrl: _images[
+                            VehicleImageRepository.settingKeyFor(
+                                    option.category) ??
+                                ''],
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 14),
+              _PageDots(count: _options.length, index: _index),
+
+              const SizedBox(height: 14),
+              // Name small and under the photograph, not over it. The picture
+              // already says which vehicle this is; the words are there to
+              // confirm it, not to announce it.
+              Text(
+                selected.label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -.2,
+                  color: AppText.primary,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  '${selected.seats} · ${selected.description}',
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    height: 1.4,
+                    color: AppText.secondary,
+                  ),
+                ),
+              ),
+
+              // Only a vehicle with seats to spare can be sold by the seat. For
+              // everything else the row is absent rather than disabled: a
+              // control that cannot be used is worse than one that was never
+              // there.
+              if (selected.allowsPerSeat) ...[
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _BookingTypeToggle(
+                    value: _bookingType,
+                    onChanged: _setBookingType,
+                  ),
+                ),
+                if (_perSeat) ...[
+                  const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _SeatStepper(
+                      seats: _seats,
+                      maximum: selected.seats,
+                      perSeatFare: selected.perSeatFare,
+                      onChanged: _setSeats,
                     ),
-                    const SizedBox(height: 22),
+                  ),
+                ],
+              ],
 
-                    // Only a vehicle with seats to spare can be sold by the
-                    // seat. For everything else the row is absent rather than
-                    // disabled: a control that cannot be used is worse than one
-                    // that was never there.
-                    if (selected.allowsPerSeat) ...[
-                      _BookingTypeToggle(
-                        value: _bookingType,
-                        onChanged: _setBookingType,
-                      ),
-                      const SizedBox(height: 12),
-                      if (_perSeat) ...[
-                        _SeatStepper(
-                          seats: _seats,
-                          maximum: selected.seats,
-                          perSeatFare: selected.perSeatFare,
-                          onChanged: _setSeats,
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    ],
-
-                    if (_error != null) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: AppTint.warning,
-                          borderRadius: AppRadii.all(AppRadii.row),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error_outline_rounded,
-                                size: 16, color: AppTint.warningText),
-                            const SizedBox(width: 9),
-                            Expanded(
-                              child: Text(
-                                _error!,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  height: 1.4,
-                                  color: AppTint.warningText,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 13, vertical: 11),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceAlt,
-                        borderRadius: AppRadii.all(AppRadii.row),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.info_outline_rounded,
-                              size: 16, color: AppText.disabled),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Fare does not include tolls, parking or entry '
-                              'fees. Settle those with your driver.',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                height: 1.45,
-                                color: AppText.secondary,
-                              ),
+              if (_error != null) ...[
+                const SizedBox(height: 14),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppTint.warning,
+                      borderRadius: AppRadii.all(AppRadii.row),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline_rounded,
+                            size: 16, color: AppTint.warningText),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.4,
+                              color: AppTint.warningText,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
+              ],
+            ],
+          ),
         ),
 
         // The fare and the action never move. Whatever the customer changes
@@ -599,6 +712,7 @@ class _VehiclePill extends StatelessWidget {
     required this.option,
     required this.selected,
     required this.onTap,
+    super.key,
   });
 
   final VehicleOption option;
@@ -641,8 +755,13 @@ class _VehiclePill extends StatelessWidget {
 /// This is the only picture on the screen and there is room for it, so it gets
 /// real size — a small image floating in empty space reads as a placeholder
 /// nobody finished.
-class _VehicleHero extends StatelessWidget {
-  const _VehicleHero({required this.option, this.imageUrl});
+/// One vehicle photograph, filling its page.
+///
+/// The whole vehicle stays visible: `BoxFit.contain` inside a rounded frame,
+/// never cropped. A cropped bike with its front wheel cut off looks like a
+/// mistake, and this picture is the main thing the customer is judging.
+class _VehiclePhoto extends StatelessWidget {
+  const _VehiclePhoto({required this.option, this.imageUrl});
 
   final VehicleOption option;
 
@@ -654,81 +773,79 @@ class _VehicleHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = imageUrl?.trim() ?? '';
 
-    return Column(
-      children: [
-        SizedBox(
-          height: 132,
-          child: url.isEmpty
-              ? _bundled()
-              : Image.network(
-                  url,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => _bundled(),
-                  loadingBuilder: (context, child, progress) =>
-                      progress == null ? child : _bundled(),
-                ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          option.label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -.2,
-            color: AppText.primary,
-          ),
-        ),
-        const SizedBox(height: 7),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.person_rounded,
-                size: 18, color: AppText.secondary),
-            const SizedBox(width: 5),
-            Text(
-              '${option.seats}',
-              style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: AppText.secondary,
-              ),
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadii.all(AppRadii.largeCard),
+        border: Border.all(color: AppColors.border),
+      ),
+      padding: const EdgeInsets.all(10),
+      child: url.isEmpty
+          ? _bundled()
+          : Image.network(
+              url,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => _bundled(),
+              loadingBuilder: (context, child, progress) =>
+                  progress == null ? child : _bundled(),
             ),
-            const SizedBox(width: 10),
-            Text(
-              '·',
-              style: TextStyle(
-                fontSize: 16,
-                color: AppText.disabled.withValues(alpha: .8),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                option.description,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  color: AppText.secondary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 
-  Widget _bundled() => Image.asset(
-        option.asset,
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => Icon(
+  Widget _bundled() {
+    if (option.asset.isEmpty) return _placeholder();
+    return Image.asset(
+      option.asset,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => _placeholder(),
+    );
+  }
+
+  /// Shown when there is no photograph for this vehicle.
+  ///
+  /// An outline of the right vehicle rather than a photograph of the wrong one.
+  Widget _placeholder() => Center(
+        child: Icon(
           option.icon,
-          size: 88,
-          color: AppColors.secondary,
+          size: 104,
+          color: AppColors.secondary.withValues(alpha: .55),
         ),
       );
+}
+
+/// Which photograph of how many.
+///
+/// Swiping is not visible the way a button is, so the dots are there to say the
+/// gesture exists — and to show that there is more than one vehicle without
+/// making the customer count the pills.
+class _PageDots extends StatelessWidget {
+  const _PageDots({required this.count, required this.index});
+
+  final int count;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count < 2) return const SizedBox.shrink();
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < count; i++)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            width: i == index ? 18 : 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: i == index ? AppColors.secondary : AppColors.border,
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// Per seat or whole vehicle. Only shown for vehicles with seats to spare.
@@ -961,6 +1078,31 @@ class _FarePanel extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Directly above the amount, because it is a caveat about the
+            // amount. Sitting at the bottom of a scrolling list it was reached
+            // only by customers who happened to scroll — and never by the ones
+            // who went straight to the fare, who are exactly the ones it is
+            // for.
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.info_outline_rounded,
+                    size: 13, color: AppText.disabled),
+                SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Tolls, parking and entry fees are not included',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.35,
+                      color: AppText.disabled,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 _StepButton(

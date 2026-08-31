@@ -286,6 +286,60 @@ changing under the customer's thumb made it look like a different button each
 time. It is "Find Now" for every vehicle. Hotel and Tour keep their own words,
 because they lead somewhere genuinely different.
 
+## 7. The vehicle screen, rebuilt
+
+### The photograph takes the screen
+
+It was 132 px tall — a thumbnail with a label under it. It is now 38% of the
+screen height (clamped 230–400), inside a rounded frame with `BoxFit.contain`,
+so the whole vehicle is visible and never cropped. A bike with its front wheel
+cut off by a frame edge reads as a mistake, and this picture is the main thing
+the customer is judging.
+
+### Swipe the photograph to change vehicle
+
+The photograph is now a `PageView` over the four vehicles in order: Car, Bike,
+Coster, Hiace. Swiping right-to-left moves forward through them, left-to-right
+back — Car → Bike → Coster → Hiace and back again.
+
+It is the biggest thing on the screen and therefore the most obvious thing to
+swipe. Making that gesture do the work means four vehicles can be compared with
+the thumb where it already is, instead of reaching up to the pill row every
+time.
+
+The pill row and the pager stay in step both ways: tapping a pill animates the
+photograph across, swiping the photograph scrolls the matching pill into view.
+Swiping to the fourth vehicle used to leave its pill off the right edge, which
+made the row look like it had stopped responding.
+
+Dots under the photograph show which of how many. Swiping is not visible the way
+a button is, so something has to say the gesture exists.
+
+### Name small, under the picture
+
+Dropped from 22 px to 16, with seats and description on one line beneath. The
+picture already says which vehicle this is; the words confirm it rather than
+announce it.
+
+### The fees note moved to the fare
+
+`Tolls, parking and entry fees are not included` now sits directly above the
+amount, because it is a caveat about the amount. At the bottom of a scrolling
+list it was reached only by customers who happened to scroll — never by the ones
+who went straight to the fare, who are exactly the ones it is for. Shortened to
+one line to earn its place there.
+
+### Hiace has no photograph
+
+There is no bundled Hiace image. It was falling back to the coaster photo, which
+was survivable at thumbnail size and is not at half a screen — a picture of the
+wrong vehicle on the largest element of the screen. It now shows the Hiace icon
+instead.
+
+**Upload a real one** in the admin portal against `vehicle.image.hiace` and it
+replaces the placeholder immediately. The same applies to any category whose
+photo is unset.
+
 ---
 
 ## Not done
@@ -313,4 +367,4 @@ cd udrive_unified_mobile && python3 tool/audit_structure.py
 
 Clean as of this ZIP. Push, wait for the Actions run to go green, then deploy
 **both** `udrive-api` and `udrive Mobile`. Hard refresh afterwards and check the
-build label reads `rev 54`.
+build label reads `rev 55`.
