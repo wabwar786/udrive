@@ -605,6 +605,53 @@ Not built in. Doing it here would mean re-implementing lane guidance, rerouting
 and voice for roads Google already covers, and doing it worse — on mountain
 roads where being wrong costs a driver an hour.
 
+## 13. Why no vehicle has ever appeared on a customer's map
+
+`driver_profiles.is_online` was **never set true by anything**. The only write
+to that column in the entire codebase set it to `false`, in the admin suspension
+path. The nearby-vehicles query requires `dp.is_online = true`, so it filtered
+out every driver, always — no icon has ever been missing from the map, because
+no vehicle was ever returned to draw.
+
+Publishing a position now sets it. That is what going online means, and the
+Driver app posts presence every fifteen seconds while its switch is on. The
+ninety-second freshness window still hides a driver whose app has died.
+
+A `presence/offline` endpoint clears the flag for when the Driver app's online
+switch is wired to the server. Right now `_DriverCommandHeader` — which owns
+that switch — is defined but never rendered, so the flag is only ever raised by
+presence and lowered by suspension.
+
+## 14. "This offer is no longer available"
+
+An instant-ride offer expired **35 seconds** after the Driver sent it, plus a
+12-second grace on select.
+
+That was shorter than the round trip the offer has to survive: the Driver's own
+decision window, the poll that carries the offer to the Customer, the Customer
+reading it, and the tap. The offer could be dead before it ever reached the
+screen — so the Customer pressed Accept on something that had looked live a
+second earlier and was told it no longer existed.
+
+Now two minutes, still bounded by the request's own expiry so an offer can never
+outlive the request it answers.
+
+The client also caps its own decision window at the server's expiry for that
+offer. The local window starts when the Customer *sees* the offer, which is
+already later than when it was sent, so left alone it could keep the Accept
+button alive past the point the server would honour it. A button that fails when
+pressed is worse than one that has gone.
+
+## 15. The Accept button
+
+It was draining from full brand colour to 38% opacity as the window ran down,
+which left the main action on the screen washed out for most of its life — and a
+half-faded button reads as disabled, which is the opposite of what it is.
+
+Solid green now, full width. The countdown moved to a 3px bar along the bottom
+edge: still visible, no longer taking the colour out of the thing the Customer
+is meant to press.
+
 ---
 
 ## Not done

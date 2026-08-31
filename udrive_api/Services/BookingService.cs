@@ -495,11 +495,23 @@ public sealed class BookingService(
 
         var offerId = Guid.NewGuid();
         var instantLike = pickupAt <= DateTimeOffset.UtcNow.AddMinutes(1);
+
+        // Two minutes, not thirty-five seconds.
+        //
+        // Thirty-five was shorter than the round trip the offer actually has to
+        // survive: the Driver's own decision window, the poll that carries the
+        // offer to the Customer, the Customer reading it, and the tap. An offer
+        // could be dead before it ever appeared on screen, and the Customer
+        // pressing Accept was told "this offer is no longer available" for an
+        // offer that had looked live a second earlier.
+        //
+        // Still bounded by the request's own expiry, so this can lengthen an
+        // offer but never outlive the request it answers.
         var offerExpiresAt = instantLike
             ? new[]
             {
-                DateTimeOffset.UtcNow.AddSeconds(35),
-                requestExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(35)
+                DateTimeOffset.UtcNow.AddSeconds(120),
+                requestExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(120)
             }.Min()
             : new[]
             {

@@ -333,6 +333,29 @@ public sealed class MarketplacePricingService(string connectionString)
         return Math.Clamp(minutes, 1, 180);
     }
 
+    /// <summary>Marks a Driver offline when they turn the switch off.</summary>
+    /// <remarks>
+    /// Presence expiring after ninety seconds would eventually hide them
+    /// anyway, but a Driver who has just declared themselves unavailable should
+    /// not keep receiving requests for another minute and a half.
+    /// </remarks>
+    public async Task<bool> GoOfflineAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE udrive.driver_profiles
+            SET is_online = false, updated_at = now()
+            WHERE user_id = @user;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("user", userId);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     public async Task<bool> UpdatePresenceAsync(
         Guid userId,
         DriverPresenceUpdateRequest request,
@@ -365,8 +388,34 @@ public sealed class MarketplacePricingService(string connectionString)
                 updated_at = now();
             """;
 
+        // Publishing a position IS going online.
+        //
+        // `driver_profiles.is_online` was only ever written by the admin
+        // suspension path, which sets it false — nothing in the system ever set
+        // it true. The nearby-vehicles query requires it, so every driver was
+        // filtered out and no vehicle has ever appeared on a customer's map.
+        //
+        // The Driver app posts presence every fifteen seconds while the online
+        // switch is on and stops when it is off, so this is the honest signal.
+        // The ninety-second freshness window still hides a driver whose app has
+        // died without switching off.
+        const string onlineSql = """
+            UPDATE udrive.driver_profiles
+            SET is_online = true, updated_at = now()
+            WHERE user_id = @user
+              AND verification_status = 'Approved'
+              AND is_online = false;
+            """;
+
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
+
+        await using (var onlineCommand = new NpgsqlCommand(onlineSql, connection))
+        {
+            onlineCommand.Parameters.AddWithValue("user", userId);
+            await onlineCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("user", userId);
         command.Parameters.AddWithValue("lng", request.Longitude);

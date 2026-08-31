@@ -195,9 +195,20 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       // moment this device first receives the offer. Server-side validity has
       // an additional hidden network grace period so a visible offer cannot
       // expire while the Customer is pressing Approve.
+      // Never past the server's own expiry for this offer.
+      //
+      // The local window starts when the Customer first sees the offer, which
+      // is already later than when the Driver sent it. Left to itself it could
+      // keep the Accept button alive after the server had stopped honouring
+      // the offer — and a button that fails when pressed is worse than one
+      // that has gone.
+      final localDeadline = now.add(const Duration(seconds: _decisionSeconds));
+      final serverDeadline = offer.expiresAt.toLocal();
       _customerDecisionDeadline.putIfAbsent(
         offer.id,
-        () => now.add(const Duration(seconds: _decisionSeconds)),
+        () => serverDeadline.isBefore(localDeadline)
+            ? serverDeadline
+            : localDeadline,
       );
     }
   }
@@ -1012,23 +1023,34 @@ class _AcceptButton extends StatelessWidget {
       borderRadius: AppRadii.all(AppRadii.cta),
       child: Stack(
         children: [
-          // Two flexed halves rather than a fractionally-sized box: a Row of
-          // Expanded children fills the height under any constraints, where a
-          // FractionallySizedBox with no height factor can collapse to nothing
-          // inside a Stack.
-          Positioned.fill(
+          // The button is solid brand green, full width, always.
+          //
+          // It used to drain from full colour to 38% opacity as the window ran
+          // down, which meant the main action on the screen spent most of its
+          // life washed out — and a half-faded button reads as disabled, which
+          // is the opposite of what it is.
+          const Positioned.fill(
+            child: ColoredBox(color: AppColors.secondary),
+          ),
+
+          // The countdown is a thin bar along the bottom edge instead. It still
+          // shows the time draining without taking the colour out of the thing
+          // the customer is meant to press.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 3,
             child: Row(
               children: [
                 Expanded(
                   flex: (fraction * 1000).round().clamp(1, 1000),
-                  child: const ColoredBox(color: AppColors.secondary),
+                  child: const ColoredBox(color: AppText.onBrand),
                 ),
                 Expanded(
                   flex: ((1 - fraction) * 1000).round().clamp(1, 1000),
                   child: ColoredBox(
-                    // The spent part stays visible but dimmed, so the bar reads
-                    // as one control draining rather than two colours meeting.
-                    color: AppColors.secondary.withValues(alpha: .38),
+                    color: AppText.onBrand.withValues(alpha: .25),
                   ),
                 ),
               ],

@@ -16,6 +16,14 @@ public sealed class DriverMarketplaceController(
     MarketplacePricingService pricingService,
     TourRatesService tourRatesService) : ControllerBase
 {
+    /// <summary>Stops this Driver receiving requests.</summary>
+    [HttpPost("presence/offline")]
+    public async Task<IActionResult> GoOffline(CancellationToken ct)
+    {
+        await pricingService.GoOfflineAsync(User.GetRequiredUserId(), ct);
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
     /// <summary>The Driver's own tour prices, per vehicle.</summary>
     [HttpGet("tour-rates")]
     public async Task<IActionResult> TourRates(CancellationToken ct) =>

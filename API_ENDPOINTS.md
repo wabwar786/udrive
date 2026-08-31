@@ -83,3 +83,13 @@ Customer:
   app prices per kilometre as before. A route marked both-ways also matches
   travelled in reverse, and the labels come back the way the customer is
   actually travelling.
+
+## Driver presence — rev 62
+
+- `POST /api/v1/driver/marketplace/presence` now also sets
+  `driver_profiles.is_online = true`. Publishing a position is what going online
+  means; nothing in the system had ever set that column true, so the
+  nearby-vehicles query — which requires it — excluded every driver.
+- `POST /api/v1/driver/marketplace/presence/offline` clears it, for when the
+  Driver app gets an online switch wired to the server. The ninety-second
+  presence freshness window still hides a driver whose app has stopped.
