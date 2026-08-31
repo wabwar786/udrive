@@ -393,6 +393,55 @@ The customer app now sends the pickup with its rates request
 customer if the server knows where they are standing. Both parameters are
 optional, so an older app build keeps pricing as before.
 
+## 9. Rates per category, and tourism priced by the driver
+
+### Each vehicle already had its own rate — now it is one screen
+
+Pricing rules were always per category, so a bike could cost less per kilometre
+than a car and a Coster more than both. But reading the four figures meant
+opening four rules, which is a poor way to see a set of numbers whose whole
+point is how they compare.
+
+**Admin → Pricing** now opens on a four-row grid: Car, Bike, Coster, Hiace, each
+with its rate per kilometre and its minimum fare, editable in place and saved
+together. Only the rows actually changed are sent — rewriting all four would
+bump `updated_at` on rules nobody touched, and that timestamp breaks ties
+between equally specific rules.
+
+Anything more specific — a weekend rate, a rate for one town — still goes in the
+rules table below it.
+
+### Tourism is priced by the driver
+
+The admin's per-kilometre rules cover City and PrivateVehicle and stop there.
+
+A multi-day trip through the mountains is not a metered ride. The driver is away
+from home, feeding and housing themselves, on roads that punish a vehicle. What
+that is worth is a judgement only the person driving can make, and one central
+per-km figure cannot express it. So the platform does not try.
+
+**Driver app → Vehicles → "Set your tour rate"**: per day, a floor, an optional
+per-km figure for long transfers, a note on what the price includes, and a
+switch for whether the vehicle is offered for tours at all. Editable on a
+verified vehicle, unlike the rest of the vehicle record — verification approves
+what the vehicle *is*, and a driver should not need an admin before changing
+what they charge.
+
+**Customer side**, the tour panel now shows what drivers around them are
+actually asking, by category, as a range for the trip length they picked. Before
+this the fare field's only guidance was a placeholder, so the customer was
+typing a number into silence.
+
+It is deliberately a range and not an average. A single figure would read as an
+official rate and hide that a car and a Coster are different propositions. The
+middle figure is the median, so one operator asking 200,000 for a luxury coach
+does not drag it away from what most drivers charge.
+
+None of it is enforced. The customer still names their offer, the driver still
+answers with theirs. These numbers only mean both sides start from something
+real. The admin Pricing page says so in as many words, so nobody goes looking
+there for a tour rate.
+
 ---
 
 ## Not done
@@ -420,4 +469,4 @@ cd udrive_unified_mobile && python3 tool/audit_structure.py
 
 Clean as of this ZIP. Push, wait for the Actions run to go green, then deploy
 **both** `udrive-api` and `udrive Mobile`. Hard refresh afterwards and check the
-build label reads `rev 56`.
+build label reads `rev 57`.

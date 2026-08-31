@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../models/auth_models.dart';
 import 'onboarding/live_vehicle_registration_screen.dart';
+import 'tour_rate_screen.dart';
 
 class LiveVehicleListScreen extends StatefulWidget {
   const LiveVehicleListScreen({super.key});
@@ -32,6 +33,19 @@ class _LiveVehicleListScreenState extends State<LiveVehicleListScreen> {
             },
             icon: const Icon(Icons.add_rounded),
             label: Text(_t('Register vehicle', 'گاڑی رجسٹر کریں')),
+          ),
+          const SizedBox(height: 10),
+          // Tour pricing lives beside the vehicles rather than in settings,
+          // because it is a fact about a vehicle. It is also editable after
+          // verification, unlike the rest of the vehicle record — a price is
+          // commercial, not compliance.
+          OutlinedButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TourRateScreen()),
+            ),
+            icon: const Icon(Icons.sell_outlined),
+            label: Text(_t('Set your tour rate', 'اپنا ٹور کرایہ مقرر کریں')),
           ),
           const SizedBox(height: 16),
           if (vehicles.isEmpty)

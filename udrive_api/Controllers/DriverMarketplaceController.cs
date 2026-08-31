@@ -13,8 +13,30 @@ namespace UDrive.Api.Controllers;
 public sealed class DriverMarketplaceController(
     BookingService bookingService,
     PackageMarketplaceService packageService,
-    MarketplacePricingService pricingService) : ControllerBase
+    MarketplacePricingService pricingService,
+    TourRatesService tourRatesService) : ControllerBase
 {
+    /// <summary>The Driver's own tour prices, per vehicle.</summary>
+    [HttpGet("tour-rates")]
+    public async Task<IActionResult> TourRates(CancellationToken ct) =>
+        ToActionResult(await tourRatesService.ForDriverAsync(
+            User.GetRequiredUserId(), ct));
+
+    /// <summary>Sets what this vehicle asks for touring.</summary>
+    /// <remarks>
+    /// Editable on a verified vehicle, unlike the vehicle record itself.
+    /// Verification approves what the vehicle is; the price is not part of
+    /// that, and locking it would mean asking an Admin before changing what
+    /// you charge.
+    /// </remarks>
+    [HttpPut("tour-rates/{vehicleId:guid}")]
+    public async Task<IActionResult> UpdateTourRate(
+        Guid vehicleId,
+        UpsertTourRateRequest request,
+        CancellationToken ct) =>
+        ToActionResult(await tourRatesService.UpdateAsync(
+            User.GetRequiredUserId(), vehicleId, request, ct));
+
     [HttpPost("presence")]
     public async Task<IActionResult> UpdatePresence(
         DriverPresenceUpdateRequest request,

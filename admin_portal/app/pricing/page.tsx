@@ -225,11 +225,180 @@ export default function Page() {
     });
   }
 
+  /**
+   * The plain per-km rate for each vehicle, with no day or area attached.
+   *
+   * This is the thing most visits to this page are about — a bike costs less
+   * per kilometre than a car, a car less than a Hiace, a Hiace less than a
+   * Coster — and making that a four-row grid means it can be set and compared
+   * in one place instead of opening four rules to read four numbers.
+   */
+  const baseRules = useMemo(
+    () =>
+      rules
+        .filter(
+          (r) =>
+            r.serviceType === 'City' &&
+            r.areaRadiusKm == null &&
+            (r.daysOfWeek ?? []).length === 0,
+        )
+        .sort(
+          (a, b) =>
+            CATEGORIES.indexOf(a.vehicleCategory as (typeof CATEGORIES)[number]) -
+            CATEGORIES.indexOf(b.vehicleCategory as (typeof CATEGORIES)[number]),
+        ),
+    [rules],
+  );
+
+  const [baseDraft, setBaseDraft] = useState<Record<string, { perKmRate: number; minimumFare: number }>>({});
+  const [baseSaving, setBaseSaving] = useState(false);
+
+  useEffect(() => {
+    setBaseDraft(
+      Object.fromEntries(
+        baseRules.map((r) => [
+          r.id!,
+          { perKmRate: r.perKmRate, minimumFare: r.minimumFare },
+        ]),
+      ),
+    );
+  }, [baseRules]);
+
+  const baseDirty = baseRules.some((r) => {
+    const draft = baseDraft[r.id!];
+    return (
+      draft &&
+      (draft.perKmRate !== r.perKmRate || draft.minimumFare !== r.minimumFare)
+    );
+  });
+
+  async function saveBaseRates() {
+    setBaseSaving(true);
+    setError('');
+    try {
+      // Only the rows that actually changed. Rewriting all four would bump
+      // `updated_at` on rules nobody touched, and that timestamp is what breaks
+      // ties between equally specific rules.
+      for (const rule of baseRules) {
+        const draft = baseDraft[rule.id!];
+        if (!draft) continue;
+        if (
+          draft.perKmRate === rule.perKmRate &&
+          draft.minimumFare === rule.minimumFare
+        ) {
+          continue;
+        }
+        const { id, updatedAt: _updatedAt, ...rest } = rule;
+        await apiFetch(`${ENDPOINT}/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ ...rest, ...draft }),
+        });
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the rates.');
+    } finally {
+      setBaseSaving(false);
+    }
+  }
+
   return (
     <AdminFrame
       title="Pricing"
       subtitle="Set the per-kilometre rate, and narrow it to particular days or areas."
     >
+      <section className="panel">
+        <header className="panelHeader">
+          <div>
+            <h2>Standard rate per kilometre</h2>
+            <p>
+              The everyday City rate for each vehicle. Anything more specific — a
+              weekend rate, a rate for one town — goes in the rules below.
+            </p>
+          </div>
+          <div className="tableTools">
+            <button
+              className="primaryButton"
+              onClick={() => void saveBaseRates()}
+              disabled={!baseDirty || baseSaving}
+            >
+              {baseSaving ? 'Saving…' : 'Save rates'}
+            </button>
+          </div>
+        </header>
+
+        {busy ? (
+          <Loading />
+        ) : baseRules.length === 0 ? (
+          <Empty
+            title="No standard rates yet"
+            copy="Add a rule below with no days and no area to create one."
+          />
+        ) : (
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Vehicle</th>
+                  <th>Rate per km (PKR)</th>
+                  <th>Minimum fare (PKR)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {baseRules.map((rule) => (
+                  <tr key={rule.id}>
+                    <td>
+                      <strong>{rule.vehicleCategory}</strong>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min={1}
+                        value={baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate}
+                        onChange={(e) =>
+                          setBaseDraft({
+                            ...baseDraft,
+                            [rule.id!]: {
+                              perKmRate: Number(e.target.value),
+                              minimumFare:
+                                baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare,
+                            },
+                          })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min={0}
+                        value={baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare}
+                        onChange={(e) =>
+                          setBaseDraft({
+                            ...baseDraft,
+                            [rule.id!]: {
+                              perKmRate:
+                                baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate,
+                              minimumFare: Number(e.target.value),
+                            },
+                          })
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <p style={{ margin: '14px 4px 0', opacity: 0.72, fontSize: 13, lineHeight: 1.6 }}>
+          <strong>Tourism is not priced here.</strong> A multi-day trip is not a
+          metered ride, so each driver publishes their own asking price for their
+          own vehicle, in the Driver app under Tour rate. Nothing on this page
+          changes what a tour costs.
+        </p>
+      </section>
+
       <section className="panel">
         <header className="panelHeader">
           <div>

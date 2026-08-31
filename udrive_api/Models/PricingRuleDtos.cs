@@ -53,3 +53,43 @@ public sealed record PricingPreviewDto(
     decimal MinimumFare,
     decimal PerMinuteRate,
     decimal Fare);
+
+/// <summary>A driver's own asking price for touring, per vehicle.</summary>
+/// <remarks>
+/// Separate from <c>VehicleUpsertRequest</c> on purpose. That request is locked
+/// once a vehicle is verified, because changing a registration number or seat
+/// count after approval would invalidate the approval. A price is commercial,
+/// not compliance — a driver has to be able to change it on a Tuesday without
+/// asking anyone.
+/// </remarks>
+public sealed record TourRateDto(
+    Guid VehicleId,
+    string Category,
+    string Label,
+    bool AvailableForTour,
+    decimal? PerDayRate,
+    decimal? PerKmRate,
+    decimal? MinimumFare,
+    string? Notes);
+
+public sealed record UpsertTourRateRequest(
+    [Range(0, 1000000)] decimal? PerDayRate,
+    [Range(0, 100000)] decimal? PerKmRate,
+    [Range(0, 1000000)] decimal? MinimumFare,
+    [StringLength(400)] string? Notes,
+    bool AvailableForTour = true);
+
+/// <summary>
+/// What tour vehicles around a customer are asking, by category.
+/// </summary>
+/// <remarks>
+/// A range rather than one number, because there is no single right answer —
+/// each driver sets their own. It exists so a customer naming an offer has some
+/// idea what drivers actually charge, instead of guessing into silence.
+/// </remarks>
+public sealed record TourRateGuideDto(
+    string Category,
+    int VehicleCount,
+    decimal LowestPerDay,
+    decimal TypicalPerDay,
+    decimal HighestPerDay);

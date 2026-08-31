@@ -7,8 +7,34 @@ namespace UDrive.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/catalog")]
-public sealed class CatalogController(CatalogService catalogService, LocalFileStorageService fileStorage, MarketplacePricingService pricingService) : ControllerBase
+public sealed class CatalogController(CatalogService catalogService, LocalFileStorageService fileStorage, MarketplacePricingService pricingService, TourRatesService tourRatesService) : ControllerBase
 {
+    /// <summary>What tour vehicles nearby are asking per day, by category.</summary>
+    /// <remarks>
+    /// Tour is priced by the Driver, not by the admin's per-kilometre rules, so
+    /// there is no single figure to quote. This returns the range Drivers have
+    /// actually published, which is what a Customer needs before naming an
+    /// offer of their own.
+    /// </remarks>
+    [HttpGet("tour-rates")]
+    public async Task<IActionResult> TourRateGuide(
+        [FromQuery] double? lat = null,
+        [FromQuery] double? lng = null,
+        [FromQuery] double radiusKm = 150,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await tourRatesService.GuideAsync(
+            lat, lng, radiusKm, cancellationToken);
+        return result.Success
+            ? Ok(ApiResponse<IReadOnlyList<TourRateGuideDto>>.Ok(result.Data!))
+            : StatusCode(result.StatusCode, new
+            {
+                success = false,
+                error = result.ErrorCode,
+                message = result.Message,
+            });
+    }
+
     [HttpGet("destinations")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<DestinationDto>>>> GetDestinations(
         [FromQuery] string language = "en",

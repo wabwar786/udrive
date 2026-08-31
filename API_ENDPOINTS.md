@@ -48,3 +48,19 @@ Customer:
   rule covering that point today overrides the flat `service_vehicle_rates`
   figures. Without them the flat rates are returned unchanged, so an older app
   build prices exactly as it did before.
+
+## Tour rates — added in rev 57
+
+Driver (sets their own price; works on a verified vehicle, unlike the vehicle
+record itself, because a price is commercial rather than compliance):
+
+- `GET /api/v1/driver/marketplace/tour-rates`
+- `PUT /api/v1/driver/marketplace/tour-rates/{vehicleId}`
+
+Customer:
+
+- `GET /api/v1/catalog/tour-rates?lat=&lng=&radiusKm=150`
+
+  Per category: how many tour-ready vehicles have published a price, and the
+  lowest, median and highest per-day figure among them. A range, not a
+  recommendation — the admin's per-kilometre rules do not apply to Tour.

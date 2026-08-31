@@ -12,6 +12,7 @@ import '../../core/maps/ud_map.dart';
 import '../../core/routing/route_repository.dart';
 import '../../core/vehicles/nearby_repository.dart';
 import '../../core/vehicles/nearby_vehicle.dart';
+import '../../core/vehicles/tour_rates_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/booking/booking_options.dart';
 import '../../core/booking/vehicle_booking_mode.dart';
@@ -154,6 +155,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   // Tour options
   DateTime _tourDate = DateTime.now().add(const Duration(days: 1));
   int _tourPassengers = 2;
+
+  /// What tour drivers around here are asking per day.
+  ///
+  /// Tourism is priced by the driver, not by the admin's rules, so there is no
+  /// recommended fare to show. This is the next best thing and it is honest:
+  /// the prices drivers have actually published. Without it the customer was
+  /// typing a number into a field whose only guidance was a placeholder.
+  List<TourRateGuide> _tourGuide = const [];
 
   // Hotel options
   DateTime _checkIn = DateTime.now().add(const Duration(days: 1));
@@ -355,6 +364,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _nearbyLoading = false;
       _clampBookingType();
     });
+  }
+
+  /// Loads the published tour prices once, when Tour is first chosen.
+  ///
+  /// Not polled: a driver's asking price is not live data, and another timer on
+  /// a screen that already runs several would buy nothing.
+  Future<void> _loadTourGuide() async {
+    if (_tourGuide.isNotEmpty || !mounted) return;
+
+    final controller = AppControllerScope.of(context);
+    final guide = await TourRatesRepository(controller.apiClient).guide(
+      latitude: _pickupPoint.latitude,
+      longitude: _pickupPoint.longitude,
+    );
+
+    if (!mounted || guide.isEmpty) return;
+    setState(() => _tourGuide = guide);
   }
 
   List<NearbyVehicle> get _visibleVehicles {
@@ -1224,6 +1250,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     // Hotel opens its own panel straight away, so it needs the room now rather
     // than after a destination it never asks for.
     if (service == HomeService.hotel) _liftSheet();
+    // Tour is priced by drivers, so the customer needs to know what they ask
+    // before naming an offer.
+    if (service.isTour) unawaited(_loadTourGuide());
     setState(() {
       _service = service;
       if (service == HomeService.hotel) {
@@ -1496,6 +1525,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 9),
+          if (_tourGuide.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            _TourRateGuideCard(guide: _tourGuide, days: _tourDays),
+          ],
+          const SizedBox(height: 9),
           _AdvanceDisclosure(offer: _tourOffer.text),
         ],
       ),
@@ -1569,6 +1603,118 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 /// Grouping them this way is what makes the screen readable at a glance: one
 /// long column of controls all on the same surface gave the eye nowhere to
 /// stop.
+/// What tour drivers around here charge per day.
+///
+/// Shown instead of a recommended fare, because there is no recommendation to
+/// make: tourism is priced by each driver for their own vehicle, and the
+/// platform quoting a figure would be inventing a price nobody set.
+///
+/// The range is the honest shape of that. A single average would read as an
+/// official rate and hide that a Coster and a car are different propositions.
+class _TourRateGuideCard extends StatelessWidget {
+  const _TourRateGuideCard({required this.guide, required this.days});
+
+  final List<TourRateGuide> guide;
+  final int days;
+
+  static String _money(double value) {
+    final rounded = (value / 100).round() * 100;
+    final digits = rounded.toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(digits[i]);
+    }
+    return buffer.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(13, 11, 13, 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: AppRadii.all(AppRadii.row),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.sell_outlined, size: 15, color: AppText.disabled),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  days > 1
+                      ? 'What drivers ask · $days days'
+                      : 'What drivers ask · per day',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppText.secondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final entry in guide) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 62,
+                    child: Text(
+                      entry.category,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppText.primary,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'PKR ${_money(entry.lowestPerDay * days)}'
+                      ' – ${_money(entry.highestPerDay * days)}',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppText.primary,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${entry.vehicleCount}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppText.disabled,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          const Text(
+            'Each driver sets their own tour price. Offer what you think the '
+            'trip is worth — drivers reply with theirs.',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.4,
+              color: AppText.disabled,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SheetPanel extends StatelessWidget {
   const _SheetPanel({required this.child});
 

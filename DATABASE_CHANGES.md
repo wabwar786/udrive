@@ -53,3 +53,15 @@ A PostgreSQL trigger calls `udrive.ensure_driver_earning(booking_id)` when a boo
   several would make a fare impossible to trace back to anything typed.
 - The day is read as `EXTRACT(ISODOW FROM now() AT TIME ZONE 'Asia/Karachi')`
   inside the query, so the answer does not depend on the server's clock.
+
+## 036_vehicle_tour_rates (rev 57)
+
+- Adds `tour_per_day_rate`, `tour_per_km_rate`, `tour_minimum_fare` and
+  `tour_notes` to `udrive.vehicles`. Tourism is priced by the driver, not by the
+  admin's per-kilometre rules: a multi-day mountain trip is not a metered ride,
+  and what it is worth is a judgement only the person driving can make.
+- All nullable. Null means the driver has not published a price, which is not
+  the same as offering to tour for free — the service treats zero as unset for
+  the same reason.
+- Partial index on tour-ready vehicles that have actually named a price, since
+  that is the only set ever read.
