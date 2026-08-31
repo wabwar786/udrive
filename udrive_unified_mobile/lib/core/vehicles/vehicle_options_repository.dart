@@ -16,6 +16,7 @@ class VehicleOption {
     required this.perSeatFare,
     required this.wholeVehicleMinimum,
     required this.perSeatMinimum,
+    required this.perKmRate,
     required this.service,
     this.etaMinutes,
     this.availableCount = 0,
@@ -52,6 +53,14 @@ class VehicleOption {
 
   /// The same floor expressed per seat, from `perSeatRate`.
   final int perSeatMinimum;
+
+  /// The admin's rate per kilometre, exactly as set in the portal.
+  ///
+  /// Shown to the customer beside the fare. A price with no visible basis reads
+  /// as a number the app made up; the rate and the distance together let anyone
+  /// check the arithmetic themselves, which is also the fastest way to catch a
+  /// rate that has been entered wrong.
+  final double perKmRate;
 
   /// Whether this vehicle can be sold by the seat.
   ///
@@ -90,6 +99,7 @@ class VehicleOption {
         perSeatFare: perSeatFare,
         wholeVehicleMinimum: wholeVehicleMinimum,
         perSeatMinimum: perSeatMinimum,
+        perKmRate: perKmRate,
         service: service,
         etaMinutes: etaMinutes ?? this.etaMinutes,
         availableCount: availableCount ?? this.availableCount,
@@ -166,7 +176,13 @@ class VehicleOptionsRepository {
           // `wholeVehicleRate` and `perSeatRate` are flat floors, not rates,
           // and multiplying either by the distance produced fares in the tens
           // of thousands for an ordinary town trip.
-          final perKm = _toDouble(rate['perKmRate']) ?? entry.fallbackPerKm;
+          // Zero is treated as missing, not as free. An API that has not run
+          // the per-km migration returns 0 here, and taking that literally
+          // priced every trip at its bare minimum.
+          final apiPerKm = _toDouble(rate['perKmRate']);
+          final perKm = (apiPerKm != null && apiPerKm > 0)
+              ? apiPerKm
+              : entry.fallbackPerKm;
 
           // Floors. The admin's figure wins; the built-in one is only a
           // fallback for a database that has not been migrated.
@@ -201,6 +217,7 @@ class VehicleOptionsRepository {
             perSeatFare: _round(perSeatPrice),
             wholeVehicleMinimum: _round(wholeFloor),
             perSeatMinimum: _round(seatFloor),
+            perKmRate: perKm,
             service: entry.service,
           );
         })

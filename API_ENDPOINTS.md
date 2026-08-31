@@ -64,3 +64,22 @@ Customer:
   Per category: how many tour-ready vehicles have published a price, and the
   lowest, median and highest per-day figure among them. A range, not a
   recommendation — the admin's per-kilometre rules do not apply to Tour.
+
+## Fixed per-seat route fares — added in rev 58
+
+Admin:
+
+- `GET /api/v1/admin/seat-fares`
+- `POST /api/v1/admin/seat-fares`
+- `PUT /api/v1/admin/seat-fares/{id}`
+- `DELETE /api/v1/admin/seat-fares/{id}`
+
+Customer:
+
+- `GET /api/v1/catalog/seat-fare?category=Coster&fromLat=&fromLng=&toLat=&toLng=`
+
+  Returns the listed per-seat fare when both ends of the trip fall inside a
+  route's circles, or no data when the route is not listed — in which case the
+  app prices per kilometre as before. A route marked both-ways also matches
+  travelled in reverse, and the labels come back the way the customer is
+  actually travelling.

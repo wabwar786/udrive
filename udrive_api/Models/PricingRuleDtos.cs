@@ -93,3 +93,52 @@ public sealed record TourRateGuideDto(
     decimal LowestPerDay,
     decimal TypicalPerDay,
     decimal HighestPerDay);
+
+/// <summary>A fixed per-seat fare for one route.</summary>
+public sealed record SeatFareDto(
+    Guid Id,
+    string VehicleCategory,
+    string OriginLabel,
+    double OriginLatitude,
+    double OriginLongitude,
+    double OriginRadiusKm,
+    string DestinationLabel,
+    double DestinationLatitude,
+    double DestinationLongitude,
+    double DestinationRadiusKm,
+    decimal PerSeatFare,
+    bool AppliesBothWays,
+    string? Notes,
+    bool IsActive,
+    DateTimeOffset UpdatedAt);
+
+public sealed record UpsertSeatFareRequest(
+    [Required, StringLength(40)] string VehicleCategory,
+    [Required, StringLength(160)] string OriginLabel,
+    [Range(-90, 90)] double OriginLatitude,
+    [Range(-180, 180)] double OriginLongitude,
+    [Range(0.5, 200)] double OriginRadiusKm,
+    [Required, StringLength(160)] string DestinationLabel,
+    [Range(-90, 90)] double DestinationLatitude,
+    [Range(-180, 180)] double DestinationLongitude,
+    [Range(0.5, 200)] double DestinationRadiusKm,
+    [Range(1, 1000000)] decimal PerSeatFare,
+    bool AppliesBothWays = true,
+    [StringLength(400)] string? Notes = null,
+    bool IsActive = true);
+
+/// <summary>
+/// The fixed fare that applies to a trip, when one does.
+/// </summary>
+/// <param name="Reversed">
+/// True when the match was the return leg of a both-ways route. Shown to the
+/// customer so the named route reads the way they are actually travelling.
+/// </param>
+public sealed record SeatFareQuoteDto(
+    Guid Id,
+    string VehicleCategory,
+    string OriginLabel,
+    string DestinationLabel,
+    decimal PerSeatFare,
+    bool Reversed,
+    string? Notes);

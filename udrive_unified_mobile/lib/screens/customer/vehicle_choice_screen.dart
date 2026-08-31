@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
@@ -8,6 +10,10 @@ import '../../core/routing/route_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/maps/ud_map.dart';
+import '../../core/vehicles/nearby_repository.dart';
+import '../../core/vehicles/nearby_vehicle.dart';
+import '../../core/vehicles/seat_fares_repository.dart';
 import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/vehicles/vehicle_options_repository.dart';
 import '../../core/widgets/home_service.dart';
@@ -66,6 +72,36 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   /// Admin-supplied photographs, keyed by setting name.
   Map<String, String> _images = const {};
 
+  /// Fixed per-seat fares for this route, keyed by vehicle category.
+  ///
+  /// A Coster running per seat charges a known fare for a known route. Where
+  /// the admin has listed it, that fare is the fare — no distance arithmetic
+  /// and no bidding, because nobody haggles over a seat on a scheduled run.
+  final Map<String, SeatFareQuote> _seatFares = <String, SeatFareQuote>{};
+
+  /// Drivers within a short drive of the pickup.
+  ///
+  /// Shown because "how long until someone comes" is the question sitting
+  /// underneath the fare, and a photograph of a car cannot answer it. Seeing
+  /// four of them a street away is the difference between naming a low fare
+  /// confidently and not naming one at all.
+  List<NearbyVehicle> _nearby = const [];
+
+  /// True while the hero area is showing the map instead of the photograph.
+  bool _showMap = false;
+
+  final _mapController = UdMapController();
+
+  /// How far around the pickup counts as nearby, in kilometres.
+  static const double _nearbyRadiusKm = 3;
+
+  /// The fixed fare covering the vehicle currently shown, if there is one.
+  SeatFareQuote? get _fixedSeatFare {
+    final option = _selected;
+    if (option == null || !_perSeat) return null;
+    return _seatFares[option.category.toLowerCase()];
+  }
+
   bool _loading = true;
   bool _submitting = false;
   String? _error;
@@ -100,15 +136,23 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     return 50;
   }
 
-  int get _recommended =>
-      _selected?.fareFor(perSeat: _perSeat, seats: _seats) ?? 0;
+  int get _recommended {
+    final fixed = _fixedSeatFare;
+    if (fixed != null) return fixed.perSeatFare * _seats;
+    return _selected?.fareFor(perSeat: _perSeat, seats: _seats) ?? 0;
+  }
 
   /// The lowest offer this vehicle will take, from the admin's own rate table.
   ///
   /// This replaces the old floor of half the recommendation. Half was a guess;
   /// the admin has set an actual figure, and an offer below it is one no driver
   /// answers.
-  int get _minimum => _selected?.minimumFor(perSeat: _perSeat, seats: _seats) ?? 0;
+  int get _minimum {
+    // A fixed route fare is its own floor and its own ceiling.
+    final fixed = _fixedSeatFare;
+    if (fixed != null) return fixed.perSeatFare * _seats;
+    return _selected?.minimumFor(perSeat: _perSeat, seats: _seats) ?? 0;
+  }
 
   @override
   void initState() {
@@ -119,7 +163,23 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   @override
   void dispose() {
     _pages.dispose();
+    _mapController.dispose();
     super.dispose();
+  }
+
+  /// Reads the drivers around the pickup, once.
+  ///
+  /// Not polled. This screen is a decision about price, not a live tracker, and
+  /// vehicles sliding around under the customer while they set a fare would be
+  /// motion without information.
+  Future<void> _loadNearby(AppController controller) async {
+    final vehicles = await NearbyVehicleRepository(controller.apiClient).nearby(
+      latitude: widget.pickupPoint.latitude,
+      longitude: widget.pickupPoint.longitude,
+      radiusKm: _nearbyRadiusKm,
+    );
+    if (!mounted || vehicles.isEmpty) return;
+    setState(() => _nearby = vehicles);
   }
 
   Future<void> _load() async {
@@ -156,6 +216,15 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
       if (mounted && fresh.isNotEmpty) setState(() => _images = fresh);
     });
 
+    // Only the vehicles that can actually be sold by the seat are looked up.
+    // Asking for a bike's route fare would be a request that can only ever come
+    // back empty.
+    unawaited(_loadNearby(controller));
+    unawaited(_loadSeatFares(
+      controller,
+      options.where((option) => option.allowsPerSeat),
+    ));
+
     // Open on the vehicle matching the service chosen on Home, so this screen
     // continues that decision rather than restarting it.
     final preferred = options.isEmpty
@@ -188,6 +257,40 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         _fare = _recommended;
       }
     });
+  }
+
+  /// Reads the fixed route fares for the seat-sellable vehicles.
+  ///
+  /// Runs after the options are on screen rather than blocking them. A customer
+  /// should not wait on a lookup that usually comes back empty, and when it
+  /// does return a fare the panel simply updates.
+  Future<void> _loadSeatFares(
+    AppController controller,
+    Iterable<VehicleOption> options,
+  ) async {
+    final repository = SeatFaresRepository(controller.apiClient);
+
+    for (final option in options) {
+      final quote = await repository.quote(
+        category: option.category,
+        fromLatitude: widget.pickupPoint.latitude,
+        fromLongitude: widget.pickupPoint.longitude,
+        toLatitude: widget.destinationPoint.latitude,
+        toLongitude: widget.destinationPoint.longitude,
+      );
+      if (!mounted) return;
+      if (quote == null) continue;
+
+      setState(() {
+        _seatFares[option.category.toLowerCase()] = quote;
+        // If the customer is already looking at per seat on this vehicle, the
+        // price on screen is now wrong. Correct it rather than leaving a
+        // negotiable figure where a fixed one belongs.
+        if (_perSeat && _selected?.category == option.category) {
+          _fare = _recommended;
+        }
+      });
+    }
   }
 
   /// Keeps the booking type legal for the vehicle on screen.
@@ -260,12 +363,18 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     final option = _selected;
     setState(() {
       _seats = value.clamp(1, option?.seats ?? 12);
+      // Recomputed either way: on a fixed route this is the listed fare times
+      // the seats, and off one it is the recommendation for the new count.
       _fare = _recommended;
     });
   }
 
   void _nudge(int direction) {
     if (_selected == null) return;
+    // Belt and braces. The buttons are hidden on a fixed route, but the state
+    // is what actually protects the fare and the widget tree is not the place
+    // to enforce a pricing rule.
+    if (_fixedSeatFare != null) return;
     setState(() {
       // Never below the admin's minimum for this vehicle.
       final floor = _minimum;
@@ -335,6 +444,11 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   }
 
   Future<void> _editFare() async {
+    // Nothing to type on a fixed route. The tap is already disabled, but the
+    // state is what protects the fare — a widget tree is not the place to
+    // enforce a pricing rule.
+    if (_fixedSeatFare != null) return;
+
     final controller = TextEditingController(text: '$_fare');
     final value = await showDialog<int>(
       context: context,
@@ -433,30 +547,80 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(0, 14, 0, 10),
             children: [
+              // Photograph or map, in the same space. Two views rather than a
+              // map bolted underneath, so neither has to be squeezed and the
+              // swipe gesture on the photographs never fights a map pan.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _HeroToggle(
+                  showMap: _showMap,
+                  nearbyCount: _nearby.length,
+                  onChanged: (value) => setState(() => _showMap = value),
+                ),
+              ),
+              const SizedBox(height: 10),
+
               SizedBox(
                 height: heroHeight,
-                child: PageView.builder(
-                  controller: _pages,
-                  itemCount: _options.length,
-                  onPageChanged: _onPageChanged,
-                  itemBuilder: (context, index) {
-                    final option = _options[index];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _VehiclePhoto(
-                        option: option,
-                        imageUrl: _images[
-                            VehicleImageRepository.settingKeyFor(
-                                    option.category) ??
-                                ''],
+                child: _showMap
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: ClipRRect(
+                          borderRadius: AppRadii.all(AppRadii.largeCard),
+                          child: UdMap(
+                            controller: _mapController,
+                            initialCenter: widget.pickupPoint,
+                            zoom: 14.2,
+                            // Interactive here, unlike the offers screen: the
+                            // whole point is that the customer can zoom out to
+                            // see how far the nearest driver really is.
+                            showMyLocation: false,
+                            circles: [
+                              UdCircle(
+                                id: 'nearby-radius',
+                                centre: widget.pickupPoint,
+                                radiusMetres: _nearbyRadiusKm * 1000,
+                              ),
+                            ],
+                            markers: [
+                              UdMarker(
+                                id: 'pickup',
+                                position: widget.pickupPoint,
+                                label: widget.pickupLabel,
+                              ),
+                              for (final vehicle in _nearby)
+                                UdMarker(
+                                  id: 'nearby-${vehicle.id}',
+                                  position: vehicle.point,
+                                  sprite: vehicle.sprite,
+                                  headingDegrees: vehicle.headingDegrees,
+                                ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : PageView.builder(
+                        controller: _pages,
+                        itemCount: _options.length,
+                        onPageChanged: _onPageChanged,
+                        itemBuilder: (context, index) {
+                          final option = _options[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: _VehiclePhoto(
+                              option: option,
+                              imageUrl: _images[
+                                  VehicleImageRepository.settingKeyFor(
+                                          option.category) ??
+                                      ''],
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
 
               const SizedBox(height: 14),
-              _PageDots(count: _options.length, index: _index),
+              if (!_showMap) _PageDots(count: _options.length, index: _index),
 
               const SizedBox(height: 14),
               // Name small and under the photograph, not over it. The picture
@@ -473,6 +637,19 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                 ),
               ),
               const SizedBox(height: 5),
+              const SizedBox(height: 8),
+              // The admin's own figures, stated plainly.
+              //
+              // A price with no visible basis reads as a number the app made
+              // up. The rate and the distance together let the customer check
+              // the arithmetic — and let anyone spot a rate entered wrong
+              // without having to book a ride to find out.
+              _RateBasis(
+                option: selected,
+                distanceKm: widget.route?.distanceKm,
+                fixed: _fixedSeatFare != null,
+              ),
+              const SizedBox(height: 10),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Text(
@@ -556,6 +733,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
           fare: _fare,
           recommended: _recommended,
           minimum: _minimum,
+          fixedRoute: _fixedSeatFare,
           perSeat: _perSeat,
           seats: _seats,
           submitting: _submitting,
@@ -757,6 +935,155 @@ class _VehiclePill extends StatelessWidget {
 /// This is the only picture on the screen and there is room for it, so it gets
 /// real size — a small image floating in empty space reads as a placeholder
 /// nobody finished.
+/// Switches the hero between the vehicle photograph and the map.
+///
+/// Named rather than an icon pair, because "Drivers nearby" is a promise about
+/// what the customer will find there, and a map pin icon is not.
+class _HeroToggle extends StatelessWidget {
+  const _HeroToggle({
+    required this.showMap,
+    required this.nearbyCount,
+    required this.onChanged,
+  });
+
+  final bool showMap;
+  final int nearbyCount;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        children: [
+          _Half(
+            label: 'Vehicle',
+            selected: !showMap,
+            onTap: () => onChanged(false),
+          ),
+          _Half(
+            // The count is the reason to look, so it goes in the label. An
+            // empty map with no warning is a worse surprise than a zero.
+            label: nearbyCount > 0
+                ? 'Drivers nearby · $nearbyCount'
+                : 'Drivers nearby',
+            selected: showMap,
+            onTap: () => onChanged(true),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Half extends StatelessWidget {
+  const _Half({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 170),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.surface : Colors.transparent,
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: selected ? AppText.primary : AppText.secondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What the fare is built from, in the admin's own numbers.
+///
+/// Shown because a quoted price with nothing behind it is something a customer
+/// can only accept or reject, not check. With the rate and the distance in
+/// front of them they can do the multiplication themselves — and so can
+/// whoever set the rate, which is how a mistyped figure gets caught.
+class _RateBasis extends StatelessWidget {
+  const _RateBasis({
+    required this.option,
+    required this.distanceKm,
+    required this.fixed,
+  });
+
+  final VehicleOption option;
+  final double? distanceKm;
+
+  /// A listed route fare has no per-kilometre basis to show.
+  final bool fixed;
+
+  @override
+  Widget build(BuildContext context) {
+    if (fixed) return const SizedBox.shrink();
+
+    final parts = <String>[
+      'PKR ${option.perKmRate.round()} / km',
+      if (distanceKm != null && distanceKm! > 0)
+        '× ${distanceKm!.toStringAsFixed(distanceKm! < 10 ? 1 : 0)} km',
+      'min PKR ${option.wholeVehicleMinimum}',
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: AppRadii.all(AppRadii.row),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.receipt_long_outlined,
+                size: 14, color: AppText.disabled),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                parts.join('   ·   '),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppText.secondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// One vehicle photograph, filling its page.
 ///
 /// The whole vehicle stays visible: `BoxFit.contain` inside a rounded frame,
@@ -1021,6 +1348,7 @@ class _FarePanel extends StatelessWidget {
     required this.fare,
     required this.recommended,
     required this.minimum,
+    required this.fixedRoute,
     required this.perSeat,
     required this.seats,
     required this.submitting,
@@ -1033,6 +1361,11 @@ class _FarePanel extends StatelessWidget {
   final int fare;
   final int recommended;
   final int minimum;
+
+  /// Set when this route has a listed per-seat fare. The stepper and the keypad
+  /// are hidden while it is, because the fare is not the customer's to move.
+  final SeatFareQuote? fixedRoute;
+
   final bool perSeat;
   final int seats;
   final bool submitting;
@@ -1041,7 +1374,14 @@ class _FarePanel extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onSubmit;
 
+  bool get _isFixed => fixedRoute != null;
+
   String get _caption {
+    final route = fixedRoute;
+    if (route != null) {
+      return 'Fixed fare · ${route.routeLabel}'
+          '${seats > 1 ? '  ·  $seats seats' : ''}';
+    }
     if (recommended == 0) return '';
     // At the floor, say so plainly. "31% below" reads like there is further to
     // go; there is not, and the customer pressing minus again needs to know
@@ -1085,17 +1425,19 @@ class _FarePanel extends StatelessWidget {
             // only by customers who happened to scroll — and never by the ones
             // who went straight to the fare, who are exactly the ones it is
             // for.
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.info_outline_rounded,
+                const Icon(Icons.info_outline_rounded,
                     size: 13, color: AppText.disabled),
-                SizedBox(width: 6),
+                const SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    'Tolls, parking and entry fees are not included',
+                    _isFixed
+                        ? 'Set fare for this route · not negotiable'
+                        : 'Tolls, parking and entry fees are not included',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 11,
                       height: 1.35,
                       color: AppText.disabled,
@@ -1107,14 +1449,19 @@ class _FarePanel extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                _StepButton(
-                  icon: Icons.remove_rounded,
-                  enabled: minimum <= 0 || fare > minimum,
-                  onTap: onDecrease,
-                ),
+                // No stepper on a fixed route. Buttons that refuse to move are
+                // worse than buttons that are not there — the customer presses
+                // them, nothing happens, and they are left wondering whether
+                // the app is broken.
+                if (!_isFixed)
+                  _StepButton(
+                    icon: Icons.remove_rounded,
+                    enabled: minimum <= 0 || fare > minimum,
+                    onTap: onDecrease,
+                  ),
                 Expanded(
                   child: GestureDetector(
-                    onTap: onEdit,
+                    onTap: _isFixed ? null : onEdit,
                     behavior: HitTestBehavior.opaque,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -1141,7 +1488,8 @@ class _FarePanel extends StatelessWidget {
                     ),
                   ),
                 ),
-                _StepButton(icon: Icons.add_rounded, onTap: onIncrease),
+                if (!_isFixed)
+                  _StepButton(icon: Icons.add_rounded, onTap: onIncrease),
               ],
             ),
             const SizedBox(height: 12),

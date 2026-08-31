@@ -8,6 +8,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/booking/trip_operations_repository.dart';
+import '../../core/config/app_config.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -34,6 +35,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   bool _isOnline = true;
   final Map<String, _RecentFareSent> _recentFares = {};
 
+  /// Where this Driver was when presence last went out.
+  ///
+  /// Kept so a request card can say how far the pickup is from *here*. A
+  /// pickup label alone does not tell a Driver whether answering means a two
+  /// minute drive or a twenty minute one, which is most of the decision.
+  LatLng? _myLocation;
+
+  /// When each visible request stops being answerable.
+  ///
+  /// A Customer waiting on offers should not be shown one from a Driver who saw
+  /// the request four minutes ago and has since driven away. The window is
+  /// short and deliberate: it is the same one the Customer gets to answer an
+  /// offer, so neither side is left holding a decision the other has abandoned.
+  final Map<String, DateTime> _requestDeadline = <String, DateTime>{};
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -55,15 +71,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _presenceTimer = Timer.periodic(const Duration(seconds: 15), (_) => _publishPresence());
     _marketplaceRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) => _refreshNearbyRequests());
     _uiTickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || _recentFares.isEmpty) return;
+      if (!mounted) return;
       final now = DateTime.now();
-      final expired = _recentFares.entries.where((e) => !e.value.visibleUntil.isAfter(now)).map((e) => e.key).toList();
+
+      final expired = _recentFares.entries
+          .where((e) => !e.value.visibleUntil.isAfter(now))
+          .map((e) => e.key)
+          .toList();
       if (expired.isNotEmpty) {
-        setState(() { for (final id in expired) { _recentFares.remove(id); } });
+        setState(() {
+          for (final id in expired) {
+            _recentFares.remove(id);
+          }
+        });
         _refreshNearbyRequests();
-      } else {
-        setState(() {});
+        return;
       }
+
+      // The countdown on every visible card runs off this one tick, so they
+      // stay in step and there is not a timer per request.
+      setState(() {});
     });
   }
 
@@ -85,6 +112,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
       final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       if (!mounted) return;
+      setState(() =>
+          _myLocation = LatLng(position.latitude, position.longitude));
       await AppControllerScope.of(context).apiClient.postJson('/api/v1/driver/marketplace/presence', {
         'latitude': position.latitude,
         'longitude': position.longitude,
@@ -240,11 +269,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               onRefresh: _refreshNearbyRequests,
             )
           else
-            ...requests.map(
+            ..._liveRequests(requests).map(
               (request) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: 10),
                 child: _DashboardRequestCard(
                   request: request,
+                  secondsLeft: _secondsLeft(request),
+                  driverLocation: _myLocation,
                   enabled: verifiedVehicles.isNotEmpty && !controller.marketplaceBusy,
                   onAccept: () => _showOffer(request, verifiedVehicles),
                   onMap: () => _openRequestMap(request),
@@ -266,6 +297,38 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         ],
       ),
     );
+  }
+
+  /// Requests still inside their decision window.
+  ///
+  /// The deadline is set the first time a request is seen rather than from its
+  /// server timestamp, because what matters is how long *this* Driver has been
+  /// looking at it.
+  List<LiveRideRequest> _liveRequests(List<LiveRideRequest> requests) {
+    final now = DateTime.now();
+    final visible = <LiveRideRequest>[];
+
+    for (final request in requests) {
+      final deadline = _requestDeadline.putIfAbsent(
+        request.id,
+        () => now.add(const Duration(seconds: AppConfig.decisionSeconds)),
+      );
+      if (deadline.isAfter(now)) visible.add(request);
+    }
+
+    // Deadlines for requests the server has stopped sending would otherwise
+    // accumulate for as long as the app is open.
+    final ids = requests.map((request) => request.id).toSet();
+    _requestDeadline.removeWhere((id, _) => !ids.contains(id));
+
+    return visible;
+  }
+
+  int _secondsLeft(LiveRideRequest request) {
+    final deadline = _requestDeadline[request.id];
+    if (deadline == null) return AppConfig.decisionSeconds;
+    final seconds = deadline.difference(DateTime.now()).inSeconds + 1;
+    return seconds.clamp(0, AppConfig.decisionSeconds);
   }
 
   Future<void> _openRequestMap(LiveRideRequest request) async {
@@ -827,9 +890,18 @@ class _DriverRequestRouteMap extends StatelessWidget {
   }
 }
 
+/// One nearby request, as the Driver has to judge it.
+///
+/// The old card led with the Customer's name and initials, which is the one
+/// thing that does not affect the decision. What does affect it is the money,
+/// how far the pickup is from where the Driver is standing, how long the trip
+/// itself runs, and how much time is left to answer — so those are what this
+/// shows, in that order.
 class _DashboardRequestCard extends StatelessWidget {
   const _DashboardRequestCard({
     required this.request,
+    required this.secondsLeft,
+    required this.driverLocation,
     required this.enabled,
     required this.onAccept,
     required this.onMap,
@@ -837,115 +909,175 @@ class _DashboardRequestCard extends StatelessWidget {
   });
 
   final LiveRideRequest request;
+  final int secondsLeft;
+
+  /// Null until presence has reported once. The distance line is then omitted
+  /// rather than guessed — a wrong number here would send a Driver towards a
+  /// pickup they cannot reach in time.
+  final LatLng? driverLocation;
+
   final bool enabled;
   final VoidCallback onAccept;
   final VoidCallback onMap;
   final VoidCallback onReject;
 
+  /// Road distance is not known without a Directions call, and one per card per
+  /// refresh would be an expensive way to fill in a subtitle. Straight line
+  /// with a road factor is close enough to answer "is this near me or not",
+  /// which is the only question being asked of it.
+  static double _roadish(LatLng from, LatLng to) =>
+      const Distance().as(LengthUnit.Kilometer, from, to) * 1.25;
+
+  static String _km(double value) =>
+      value < 10 ? '${value.toStringAsFixed(1)} km' : '${value.round()} km';
+
   @override
   Widget build(BuildContext context) {
-    final initials = _initials(request.customerName);
+    final pickup = LatLng(request.pickupLatitude, request.pickupLongitude);
+    final destination =
+        LatLng(request.destinationLatitude, request.destinationLongitude);
+
+    final tripKm = _roadish(pickup, destination);
+    final toPickupKm =
+        driverLocation == null ? null : _roadish(driverLocation!, pickup);
+
+    final wholeVehicle = request.bookingType.toLowerCase().contains('whole');
+    final expiring = secondsLeft <= 5;
+
     return PremiumCard(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: AppTint.brand,
-            child: Text(
-              initials,
-              style: const TextStyle(
-                color: AppColors.primaryDark,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-              ),
+          // The time left, across the top. A Driver reading the card needs to
+          // know how much of it they can afford to read.
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            child: LinearProgressIndicator(
+              value: secondsLeft / AppConfig.decisionSeconds,
+              minHeight: 4,
+              backgroundColor: AppColors.surfaceAlt,
+              color: expiring ? AppColors.danger : AppColors.secondary,
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Money first. It is the number the Driver is deciding on.
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
                       child: Text(
-                        request.customerName,
+                        'PKR ${NumberFormat('#,###').format(request.customerOffer)}',
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+                        style: const TextStyle(
+                          fontSize: 26,
+                          height: 1.1,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -.8,
+                          color: AppColors.primaryDark,
+                        ),
                       ),
                     ),
-                    Text(
-                      DateFormat('dd MMM · h:mm a').format(request.pickupAt),
-                      style: const TextStyle(color: AppColors.muted, fontSize: 9.5),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                _RouteLine(icon: Icons.trip_origin_rounded, text: request.pickupLabel, color: AppColors.primary),
-                const SizedBox(height: 3),
-                _RouteLine(icon: Icons.location_on_rounded, text: request.destinationLabel, color: AppColors.danger),
-                const SizedBox(height: 7),
-                Row(
-                  children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 9, vertical: 5),
                       decoration: BoxDecoration(
-                        color: request.bookingType.toLowerCase().contains('whole')
-                            ? const Color(0xFFFFF3E8)
-                            : const Color(0xFFEAF4FF),
-                        borderRadius: BorderRadius.circular(999),
+                        color: expiring ? AppTint.danger : AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(99),
                       ),
                       child: Text(
-                        request.bookingType.toLowerCase().contains('whole')
-                            ? 'WHOLE VEHICLE'
-                            : '${request.seatsRequested} SEAT${request.seatsRequested == 1 ? '' : 'S'}',
-                        style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.navy),
+                        '${secondsLeft}s',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: expiring
+                              ? AppColors.danger
+                              : AppColors.muted,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 7),
-                    TextButton.icon(
-                      onPressed: onMap,
-                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), minimumSize: Size.zero),
-                      icon: const Icon(Icons.map_rounded, size: 15),
-                      label: const Text('Map', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 9),
-          SizedBox(
-            width: 96,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
+
+                const SizedBox(height: 3),
                 Text(
-                  'PKR ${NumberFormat('#,###').format(request.customerOffer)}',
-                  maxLines: 1,
+                  wholeVehicle
+                      ? 'Whole vehicle  ·  ${_km(tripKm)} trip'
+                      : '${request.seatsRequested} seat'
+                          '${request.seatsRequested == 1 ? '' : 's'}'
+                          '  ·  ${_km(tripKm)} trip',
                   style: const TextStyle(
-                    color: AppColors.primaryDark,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 13,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
                   ),
                 ),
-                const SizedBox(height: 9),
+
+                const SizedBox(height: 11),
+
+                // Pickup, with how far it is from here. A label alone does not
+                // tell a Driver whether answering means a two minute drive or
+                // a twenty minute one, and that is most of the decision.
+                _RequestLeg(
+                  icon: Icons.trip_origin_rounded,
+                  colour: AppColors.primary,
+                  label: request.pickupLabel,
+                  detail: toPickupKm == null
+                      ? null
+                      : '${_km(toPickupKm)} from you',
+                ),
+                const SizedBox(height: 7),
+                _RequestLeg(
+                  icon: Icons.location_on_rounded,
+                  colour: AppColors.danger,
+                  label: request.destinationLabel,
+                  detail: DateFormat('d MMM · h:mm a').format(request.pickupAt),
+                ),
+
+                const SizedBox(height: 12),
+
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: onMap,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                        ),
+                        icon: const Icon(Icons.route_rounded, size: 17),
+                        label: const Text(
+                          'Route',
+                          style: TextStyle(
+                              fontSize: 12.5, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     _SmallAction(
                       icon: Icons.close_rounded,
                       color: AppColors.danger,
-                      onTap: enabled ? onReject : null,
+                      onTap: enabled && secondsLeft > 0 ? onReject : null,
                     ),
-                    const SizedBox(width: 6),
-                    _SmallAction(
-                      icon: Icons.check_rounded,
-                      color: AppColors.success,
-                      onTap: enabled ? onAccept : null,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton(
+                        onPressed:
+                            enabled && secondsLeft > 0 ? onAccept : null,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: const Text(
+                          'Send fare',
+                          style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w900),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -956,11 +1088,62 @@ class _DashboardRequestCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  static String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).take(2);
-    final value = parts.map((part) => part[0].toUpperCase()).join();
-    return value.isEmpty ? 'CU' : value;
+/// One end of the trip: a dot, a place, and the fact that matters about it.
+class _RequestLeg extends StatelessWidget {
+  const _RequestLeg({
+    required this.icon,
+    required this.colour,
+    required this.label,
+    required this.detail,
+  });
+
+  final IconData icon;
+  final Color colour;
+  final String label;
+  final String? detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 15, color: colour),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.3,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (detail != null) ...[
+                const SizedBox(height: 1),
+                Text(
+                  detail!,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 

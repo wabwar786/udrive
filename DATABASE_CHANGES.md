@@ -65,3 +65,13 @@ A PostgreSQL trigger calls `udrive.ensure_driver_earning(booking_id)` when a boo
   the same reason.
 - Partial index on tour-ready vehicles that have actually named a price, since
   that is the only set ever read.
+
+## 037_seat_fares (rev 58)
+
+- New table `udrive.seat_fares`: a fixed fare per passenger for a named route,
+  with both ends stored as a labelled circle (centre plus radius) because
+  passengers board somewhere in a town rather than at one coordinate.
+- `applies_both_ways` defaults true, so an admin enters Muzaffarabad →
+  Rawalakot once instead of twice and the two halves cannot drift apart.
+- Only affects per-seat trips. Hiring a whole Coster is still priced per
+  kilometre and still negotiable.

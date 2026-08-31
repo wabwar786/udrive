@@ -8,6 +8,10 @@ import { Badge, Empty, ErrorBox, Field, Loading, Modal } from '../components/ui'
 import { apiFetch } from '../lib/admin-api';
 
 const ENDPOINT = '/api/v1/admin/pricing-rules';
+const SEAT_ENDPOINT = '/api/v1/admin/seat-fares';
+
+/** Vehicles that can be sold by the seat. A bike has no seats to share. */
+const SEAT_CATEGORIES = ['Coster', 'Hiace'] as const;
 
 const SERVICE_TYPES = ['City', 'PrivateVehicle'] as const;
 const CATEGORIES = ['Car', 'Bike', 'Coster', 'Hiace'] as const;
@@ -56,6 +60,40 @@ type Rule = {
   priority: number;
   isActive: boolean;
   updatedAt?: string;
+};
+
+type SeatFare = {
+  id?: string;
+  vehicleCategory: string;
+  originLabel: string;
+  originLatitude: number;
+  originLongitude: number;
+  originRadiusKm: number;
+  destinationLabel: string;
+  destinationLatitude: number;
+  destinationLongitude: number;
+  destinationRadiusKm: number;
+  perSeatFare: number;
+  appliesBothWays: boolean;
+  notes: string | null;
+  isActive: boolean;
+  updatedAt?: string;
+};
+
+const BLANK_SEAT_FARE: SeatFare = {
+  vehicleCategory: 'Coster',
+  originLabel: '',
+  originLatitude: 0,
+  originLongitude: 0,
+  originRadiusKm: 10,
+  destinationLabel: '',
+  destinationLatitude: 0,
+  destinationLongitude: 0,
+  destinationRadiusKm: 10,
+  perSeatFare: 0,
+  appliesBothWays: true,
+  notes: null,
+  isActive: true,
 };
 
 type Preview = {
@@ -112,17 +150,84 @@ export default function Page() {
   const [preview, setPreview] = useState<Preview[] | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
 
+  const [seatFares, setSeatFares] = useState<SeatFare[]>([]);
+  const [seatForm, setSeatForm] = useState<SeatFare | null>(null);
+  const [seatSaving, setSeatSaving] = useState(false);
+
   const load = useCallback(async () => {
     setBusy(true);
     setError('');
     try {
-      setRules(await apiFetch<Rule[]>(ENDPOINT));
+      const [loadedRules, loadedSeatFares] = await Promise.all([
+        apiFetch<Rule[]>(ENDPOINT),
+        apiFetch<SeatFare[]>(SEAT_ENDPOINT),
+      ]);
+      setRules(loadedRules);
+      setSeatFares(loadedSeatFares);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load pricing rules.');
+      setError(e instanceof Error ? e.message : 'Failed to load pricing.');
     } finally {
       setBusy(false);
     }
   }, []);
+
+  async function saveSeatFare() {
+    if (!seatForm) return;
+    setSeatSaving(true);
+    setError('');
+    try {
+      const { id, updatedAt: _updatedAt, ...payload } = seatForm;
+      await apiFetch(`${SEAT_ENDPOINT}${id ? `/${id}` : ''}`, {
+        method: id ? 'PUT' : 'POST',
+        body: JSON.stringify(payload),
+      });
+      setSeatForm(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save this route.');
+    } finally {
+      setSeatSaving(false);
+    }
+  }
+
+  async function removeSeatFare(fare: SeatFare) {
+    if (!fare.id) return;
+    if (
+      !window.confirm(
+        `Delete "${fare.originLabel} → ${fare.destinationLabel}"? Per-seat trips on this route go back to per-kilometre pricing.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await apiFetch(`${SEAT_ENDPOINT}/${fare.id}`, { method: 'DELETE' });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not delete this route.');
+    }
+  }
+
+  /** Fills both ends of a route from the shortcut list. */
+  function applyEndpoint(which: 'origin' | 'destination', label: string) {
+    if (!seatForm) return;
+    const preset = PRESET_AREAS.find((a) => a.label === label);
+    if (!preset) return;
+    setSeatForm(
+      which === 'origin'
+        ? {
+            ...seatForm,
+            originLabel: preset.label,
+            originLatitude: preset.lat,
+            originLongitude: preset.lng,
+          }
+        : {
+            ...seatForm,
+            destinationLabel: preset.label,
+            destinationLatitude: preset.lat,
+            destinationLongitude: preset.lng,
+          },
+    );
+  }
 
   useEffect(() => {
     void load();
@@ -397,6 +502,92 @@ export default function Page() {
           own vehicle, in the Driver app under Tour rate. Nothing on this page
           changes what a tour costs.
         </p>
+      </section>
+
+      <section className="panel">
+        <header className="panelHeader">
+          <div>
+            <h2>Fixed per-seat routes</h2>
+            <p>
+              A Coster running per seat charges a set fare for a known route, not
+              a figure worked out from the distance. List the route here and
+              per-seat trips on it are quoted that fare, with no bidding. Hiring
+              the whole vehicle is unaffected.
+            </p>
+          </div>
+          <div className="tableTools">
+            <button
+              className="primaryButton"
+              onClick={() => setSeatForm({ ...BLANK_SEAT_FARE })}
+            >
+              <Plus />
+              Add route
+            </button>
+          </div>
+        </header>
+
+        {busy ? (
+          <Loading />
+        ) : seatFares.length === 0 ? (
+          <Empty
+            title="No fixed routes yet"
+            copy="Until a route is listed, per-seat trips are priced per kilometre like any other."
+          />
+        ) : (
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Route</th>
+                  <th>Vehicle</th>
+                  <th>Per seat</th>
+                  <th>Both ways</th>
+                  <th>Catchment</th>
+                  <th>Active</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {seatFares.map((fare) => (
+                  <tr
+                    key={fare.id}
+                    className="clickable"
+                    onClick={() => setSeatForm({ ...fare })}
+                  >
+                    <td>
+                      <strong>
+                        {fare.originLabel} → {fare.destinationLabel}
+                      </strong>
+                    </td>
+                    <td>{fare.vehicleCategory}</td>
+                    <td>
+                      <strong>PKR {fare.perSeatFare.toLocaleString()}</strong>
+                    </td>
+                    <td>{fare.appliesBothWays ? 'Yes' : 'One way'}</td>
+                    <td>
+                      {fare.originRadiusKm} km / {fare.destinationRadiusKm} km
+                    </td>
+                    <td>
+                      <Badge value={fare.isActive ? 'Active' : 'Off'} />
+                    </td>
+                    <td>
+                      <button
+                        className="iconButton"
+                        title="Delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void removeSeatFare(fare);
+                        }}
+                      >
+                        <Trash2 />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="panel">
@@ -701,6 +892,146 @@ export default function Page() {
 
           <button className="primaryButton" onClick={() => void save()} disabled={saving}>
             {saving ? 'Saving…' : 'Save rule'}
+          </button>
+        </Modal>
+      )}
+
+      {seatForm && (
+        <Modal
+          title={seatForm.id ? 'Edit route fare' : 'Add route fare'}
+          onClose={() => setSeatForm(null)}
+        >
+          <div className="formGrid">
+            <Field label="Vehicle">
+              <select
+                value={seatForm.vehicleCategory}
+                onChange={(e) =>
+                  setSeatForm({ ...seatForm, vehicleCategory: e.target.value })
+                }
+              >
+                {SEAT_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Fare per seat (PKR)">
+              <input
+                type="number"
+                min={1}
+                value={seatForm.perSeatFare}
+                onChange={(e) =>
+                  setSeatForm({ ...seatForm, perSeatFare: Number(e.target.value) })
+                }
+              />
+            </Field>
+            <Field label="Also applies in reverse">
+              <input
+                type="checkbox"
+                checked={seatForm.appliesBothWays}
+                onChange={(e) =>
+                  setSeatForm({ ...seatForm, appliesBothWays: e.target.checked })
+                }
+              />
+            </Field>
+
+            <Field label="From — pick a town">
+              <select value="" onChange={(e) => applyEndpoint('origin', e.target.value)}>
+                <option value="">Choose…</option>
+                {PRESET_AREAS.map((a) => (
+                  <option key={a.label} value={a.label}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="From — name shown to customers">
+              <input
+                value={seatForm.originLabel}
+                onChange={(e) =>
+                  setSeatForm({ ...seatForm, originLabel: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="From — how far out counts (km)">
+              <input
+                type="number"
+                min={1}
+                value={seatForm.originRadiusKm}
+                onChange={(e) =>
+                  setSeatForm({ ...seatForm, originRadiusKm: Number(e.target.value) })
+                }
+              />
+            </Field>
+
+            <Field label="To — pick a town">
+              <select
+                value=""
+                onChange={(e) => applyEndpoint('destination', e.target.value)}
+              >
+                <option value="">Choose…</option>
+                {PRESET_AREAS.map((a) => (
+                  <option key={a.label} value={a.label}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="To — name shown to customers">
+              <input
+                value={seatForm.destinationLabel}
+                onChange={(e) =>
+                  setSeatForm({ ...seatForm, destinationLabel: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="To — how far out counts (km)">
+              <input
+                type="number"
+                min={1}
+                value={seatForm.destinationRadiusKm}
+                onChange={(e) =>
+                  setSeatForm({
+                    ...seatForm,
+                    destinationRadiusKm: Number(e.target.value),
+                  })
+                }
+              />
+            </Field>
+
+            <Field label="Active">
+              <input
+                type="checkbox"
+                checked={seatForm.isActive}
+                onChange={(e) => setSeatForm({ ...seatForm, isActive: e.target.checked })}
+              />
+            </Field>
+          </div>
+
+          <Field label="Note (optional)">
+            <textarea
+              rows={2}
+              value={seatForm.notes ?? ''}
+              placeholder="e.g. luggage above 20 kg charged separately"
+              onChange={(e) =>
+                setSeatForm({ ...seatForm, notes: e.target.value || null })
+              }
+            />
+          </Field>
+
+          <p style={{ margin: '4px 4px 12px', opacity: 0.7, fontSize: 12.5, lineHeight: 1.6 }}>
+            The radius is what makes a town name mean the whole town. Passengers
+            board somewhere in Muzaffarabad, not at one coordinate, so a pickup
+            anywhere inside the circle counts as this route.
+          </p>
+
+          <button
+            className="primaryButton"
+            onClick={() => void saveSeatFare()}
+            disabled={seatSaving}
+          >
+            {seatSaving ? 'Saving…' : 'Save route'}
           </button>
         </Modal>
       )}

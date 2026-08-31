@@ -14,7 +14,19 @@ class AppConfig {
   /// Exists so "is this build actually deployed?" is a question with an answer.
   /// Several hours were lost to fixes that looked ineffective because the build
   /// carrying them had not reached the server. Visible under Notifications.
-  static const String buildLabel = 'rev 57 · 2026-08-31';
+  static const String buildLabel = 'rev 59 · 2026-08-31';
+
+  /// How long each side has to answer the other.
+  ///
+  /// One constant for both. A Driver seeing a request and a Customer seeing
+  /// that Driver's offer are two halves of the same decision, and giving them
+  /// different windows means one is always waiting on someone who has already
+  /// been timed out.
+  ///
+  /// Kept short on purpose: a stale request answered four minutes late reaches
+  /// a Customer who has already booked, and a Driver who has already driven
+  /// away.
+  static const int decisionSeconds = 15;
   static const String referralShareUrl = 'https://udrive.pk/app';
 
   // ------------------------------------------------------------- tour policy

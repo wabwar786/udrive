@@ -18,8 +18,36 @@ namespace UDrive.Api.Controllers;
 [ApiController]
 [Authorize(Roles = "SuperAdmin,Admin,Manager,Operations,FinanceOfficer")]
 [Route("api/v1/admin/pricing-rules")]
-public sealed class AdminPricingController(PricingRulesService service) : ControllerBase
+public sealed class AdminPricingController(
+    PricingRulesService service,
+    SeatFaresService seatFares) : ControllerBase
 {
+    // ------------------------------------------------- fixed per-seat routes
+
+    [HttpGet("/api/v1/admin/seat-fares")]
+    public async Task<IActionResult> ListSeatFares(CancellationToken ct) =>
+        Result(await seatFares.ListAsync(ct));
+
+    [Authorize(Roles = "SuperAdmin,Admin,FinanceOfficer")]
+    [HttpPost("/api/v1/admin/seat-fares")]
+    public async Task<IActionResult> CreateSeatFare(
+        UpsertSeatFareRequest request,
+        CancellationToken ct) =>
+        Result(await seatFares.CreateAsync(request, ct));
+
+    [Authorize(Roles = "SuperAdmin,Admin,FinanceOfficer")]
+    [HttpPut("/api/v1/admin/seat-fares/{id:guid}")]
+    public async Task<IActionResult> UpdateSeatFare(
+        Guid id,
+        UpsertSeatFareRequest request,
+        CancellationToken ct) =>
+        Result(await seatFares.UpdateAsync(id, request, ct));
+
+    [Authorize(Roles = "SuperAdmin,Admin")]
+    [HttpDelete("/api/v1/admin/seat-fares/{id:guid}")]
+    public async Task<IActionResult> DeleteSeatFare(Guid id, CancellationToken ct) =>
+        Result(await seatFares.DeleteAsync(id, ct));
+
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct) =>
         Result(await service.ListAsync(ct));

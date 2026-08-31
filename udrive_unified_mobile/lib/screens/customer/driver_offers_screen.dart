@@ -81,9 +81,10 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
 
   /// Length of the Customer's decision window, in seconds.
   ///
-  /// Named because the countdown pill, the Accept fill and the expiry sweep all
-  /// have to agree — three separate literals drifted apart once already.
-  static const int _decisionSeconds = 10;
+  /// Read from [AppConfig] so it matches the window the Driver got to send the
+  /// offer in the first place. Two different numbers meant one side was always
+  /// waiting on someone the other side had already timed out.
+  static const int _decisionSeconds = AppConfig.decisionSeconds;
 
   @override
   void initState() {

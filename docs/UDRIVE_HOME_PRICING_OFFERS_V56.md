@@ -442,6 +442,117 @@ answers with theirs. These numbers only mean both sides start from something
 real. The admin Pricing page says so in as many words, so nobody goes looking
 there for a tour rate.
 
+## 10. Coster per seat is a fixed route fare
+
+A Coster running per seat in Kashmir is not a metered vehicle. It runs a known
+route and every passenger pays the same known fare — Muzaffarabad to Rawalakot
+is a price people already carry in their heads, not a number multiplied out of a
+distance.
+
+Pricing it per kilometre produced a different figure for every pickup pin, which
+is neither how the route works nor what anyone expects to pay.
+
+### Admin → Pricing → Fixed per-seat routes
+
+Each route is: a vehicle, two ends, and one fare per passenger.
+
+Both ends are a **labelled circle** — a town name, a centre and a radius —
+because passengers board somewhere in Muzaffarabad, not at one coordinate. The
+radius is what makes the name mean the whole town. Towns can be picked from a
+list to fill the coordinates, and the label shown to customers stays editable.
+
+**Applies in reverse** defaults on. Making an admin enter every route twice
+would guarantee the two halves drift apart, and the return leg is quoted with
+the labels the right way round for the direction actually travelled.
+
+Where two routes both match, the tighter pair of circles wins: a fare written
+for one town should beat one written for a whole valley that happens to contain
+it.
+
+### What the customer sees
+
+On a listed route the fare panel shows the listed fare, captioned with the route
+name, and the plus and minus buttons are **gone**. Buttons that refuse to move
+are worse than buttons that are not there — the customer presses them, nothing
+happens, and they are left wondering whether the app is broken. Typing a figure
+is blocked in the state as well, not only in the widget tree, because a pricing
+rule should not depend on which control happens to be rendered.
+
+Changing the seat count still recalculates: the listed fare times the number of
+seats.
+
+### What is unaffected
+
+**Hiring the whole vehicle.** A Coster booked outright is still priced per
+kilometre and still negotiable, because that genuinely is a negotiation.
+
+**Any route not listed.** Per-seat trips fall back to per-kilometre pricing
+exactly as before, so nothing changed until the first route was entered. The
+lookup runs after the vehicle options are already on screen and returns null on
+failure — a customer should not wait on a request that usually comes back empty,
+and a lookup that fails must never block a booking.
+
+## 11. Rate shown, drivers on a map, driver card rebuilt
+
+### The customer can see the admin's rate
+
+Under the vehicle, in the admin's own numbers: `PKR 65 / km · × 28 km · min PKR
+1,600`. A price with nothing behind it is something a customer can only accept
+or reject, never check. With the rate and the distance in front of them they can
+do the multiplication themselves — and so can whoever set the rate, which is how
+a mistyped figure gets caught before it reaches anyone else. Hidden on a fixed
+route fare, which has no per-kilometre basis to show.
+
+While adding it I found a related fault: `perKmRate` of **zero** was being taken
+literally. An API that has not run the per-km migration returns 0 for that
+column, and the app was pricing every trip at its bare minimum rather than
+falling back to the built-in rate. Zero now means missing.
+
+### Drivers within 3 km, on a map you can move
+
+The vehicle screen has a two-way switch above the photograph: **Vehicle** or
+**Drivers nearby · N**. The map takes the same space rather than being bolted
+underneath, so neither view is squeezed and the swipe gesture on the photographs
+never fights a map pan.
+
+The map is interactive — zoom and pan — because the entire point is that the
+customer can zoom out and see how far the nearest driver actually is. The 3 km
+circle is drawn, and drivers appear as the same top-down cars Home uses. Read
+once, not polled: this screen is a decision about price, and vehicles sliding
+around underneath while someone sets a fare is motion without information.
+
+### The driver's request card
+
+The old card led with the customer's name and initials — the one thing that does
+not affect the decision. It is now, in order:
+
+- **the money**, at 26pt, because that is what is being decided
+- whole vehicle or seats, and **how long the trip runs**
+- **pickup, and how far it is from where the driver is standing** — a label
+  alone does not say whether answering means a two minute drive or twenty, and
+  that is most of the judgement
+- destination and the pickup time
+- **Route**, opening the existing map
+
+Trip and pickup distances are straight-line with a road factor rather than a
+Directions call. One call per card per five-second refresh would be an expensive
+way to fill in a subtitle, and the number only has to answer "near me or not".
+The distance from the driver is omitted entirely until presence has reported —
+a guessed figure would send someone towards a pickup they cannot reach.
+
+### One decision window, both sides
+
+`AppConfig.decisionSeconds` is 15 and both sides read it. A driver seeing a
+request and a customer seeing that driver's offer are two halves of the same
+decision; separate windows meant one side was always waiting on someone the
+other had already timed out.
+
+The driver's card shows the time draining across its top edge and turns red
+under five seconds. A request past its window disappears from the list — a
+customer should not receive an offer from a driver who saw the request four
+minutes ago and has since driven away. The deadline starts when *this* driver
+first sees the request, not from a server timestamp.
+
 ---
 
 ## Not done
@@ -469,4 +580,4 @@ cd udrive_unified_mobile && python3 tool/audit_structure.py
 
 Clean as of this ZIP. Push, wait for the Actions run to go green, then deploy
 **both** `udrive-api` and `udrive Mobile`. Hard refresh afterwards and check the
-build label reads `rev 57`.
+build label reads `rev 59`.

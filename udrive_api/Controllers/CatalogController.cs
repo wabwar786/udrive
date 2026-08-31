@@ -7,8 +7,38 @@ namespace UDrive.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/catalog")]
-public sealed class CatalogController(CatalogService catalogService, LocalFileStorageService fileStorage, MarketplacePricingService pricingService, TourRatesService tourRatesService) : ControllerBase
+public sealed class CatalogController(CatalogService catalogService, LocalFileStorageService fileStorage, MarketplacePricingService pricingService, TourRatesService tourRatesService, SeatFaresService seatFaresService) : ControllerBase
 {
+    /// <summary>The fixed per-seat fare for a route, if it has one.</summary>
+    /// <remarks>
+    /// A Coster running per seat charges a known fare for a known route, not a
+    /// figure worked out from the pickup pin. When this returns a fare it is
+    /// the fare: the app shows it fixed and the customer does not bid.
+    ///
+    /// Returns no data when the route is not listed, which is the normal case
+    /// and means the app falls back to per-kilometre pricing.
+    /// </remarks>
+    [HttpGet("seat-fare")]
+    public async Task<IActionResult> SeatFare(
+        [FromQuery] double fromLat,
+        [FromQuery] double fromLng,
+        [FromQuery] double toLat,
+        [FromQuery] double toLng,
+        [FromQuery] string category = "Coster",
+        CancellationToken cancellationToken = default)
+    {
+        var result = await seatFaresService.ResolveAsync(
+            category, fromLat, fromLng, toLat, toLng, cancellationToken);
+        return result.Success
+            ? Ok(ApiResponse<SeatFareQuoteDto?>.Ok(result.Data))
+            : StatusCode(result.StatusCode, new
+            {
+                success = false,
+                error = result.ErrorCode,
+                message = result.Message,
+            });
+    }
+
     /// <summary>What tour vehicles nearby are asking per day, by category.</summary>
     /// <remarks>
     /// Tour is priced by the Driver, not by the admin's per-kilometre rules, so
