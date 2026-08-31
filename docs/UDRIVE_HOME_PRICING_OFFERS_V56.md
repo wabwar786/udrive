@@ -340,6 +340,59 @@ instead.
 replaces the placeholder immediately. The same applies to any category whose
 photo is unset.
 
+## 8. Pricing you can set from the admin portal
+
+Rates were only changeable by writing SQL against `service_vehicle_rates`, which
+holds one flat figure per vehicle and nothing else. Charging more on a Sunday,
+or more in Muzaffarabad than in Rawalakot, meant editing that single row each
+time and losing whatever it said before.
+
+### Admin → Pricing & fares
+
+A new section in the portal. Each rule is:
+
+- a **rate per kilometre**, a **minimum fare** and a **per-minute** figure
+- optionally narrowed to **particular days** — seven toggles, none selected
+  means every day
+- optionally narrowed to an **area** — pick a town from the list or type a
+  centre and radius
+
+Above the table is a **fare preview**: enter a distance, a time and an area and
+it shows what each vehicle would be quoted right now, with the rule that
+produced it named. Without this the only way to test a rate change was to book a
+ride, so a mistyped per-km figure reached customers before it reached anyone who
+could see it was wrong. The preview rounds the same way the app does, so the two
+agree to the rupee.
+
+### How a rule is chosen
+
+Exactly one rule applies to any trip. Most specific wins: highest `priority`
+first, then an area rule over a global one, then a smaller area over a larger
+one, then named days over every day. Blending several would make the resulting
+fare impossible to trace back to anything the admin typed.
+
+The day is read in Pakistan time inside the query, so it does not depend on the
+server's clock settings.
+
+### The area is a circle
+
+A centre and a radius, not a polygon. Drawing and editing polygons is a mapping
+tool in its own right; a circle is something an admin can set from a place name
+in a few seconds, and it is easily accurate enough to tell one town from
+another. The portal lists the obvious centres as a shortcut, and the
+coordinates stay editable for anywhere not on that list.
+
+### Nothing changed on the day it shipped
+
+The migration seeds one global rule per existing rate row, so the portal opens
+to a filled table and every fare stays exactly where it was until someone
+narrows a rule.
+
+The customer app now sends the pickup with its rates request
+(`?lat=&lng=`). A rate set for one town on particular days only reaches the
+customer if the server knows where they are standing. Both parameters are
+optional, so an older app build keeps pricing as before.
+
 ---
 
 ## Not done
@@ -367,4 +420,4 @@ cd udrive_unified_mobile && python3 tool/audit_structure.py
 
 Clean as of this ZIP. Push, wait for the Actions run to go green, then deploy
 **both** `udrive-api` and `udrive Mobile`. Hard refresh afterwards and check the
-build label reads `rev 55`.
+build label reads `rev 56`.

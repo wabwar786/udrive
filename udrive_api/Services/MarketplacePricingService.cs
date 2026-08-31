@@ -5,9 +5,22 @@ namespace UDrive.Api.Services;
 
 public sealed class MarketplacePricingService(string connectionString)
 {
+    /// <summary>
+    /// The rates the customer app prices a trip from.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="latitude"/> and <paramref name="longitude"/> are the
+    /// pickup. When supplied, any admin pricing rule covering that spot today
+    /// overrides the flat table.
+    ///
+    /// Both null still works and simply returns the flat rates, so an older app
+    /// build keeps pricing exactly as it did.
+    /// </remarks>
     public async Task<IReadOnlyList<ServiceVehicleRateDto>> GetRatesAsync(
         string serviceType,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        double? latitude = null,
+        double? longitude = null)
     {
         const string sql = """
             SELECT service_type, vehicle_category, per_seat_rate,
@@ -33,6 +46,35 @@ public sealed class MarketplacePricingService(string connectionString)
                 reader.GetDecimal(3),
                 reader.GetDecimal(4),
                 reader.GetString(5)));
+        }
+
+        // The reader has to close before the connection can be used again for
+        // the rule lookups below.
+        await reader.CloseAsync();
+
+        // Overlay the admin's rules. Each is looked up per category against the
+        // pickup and today's date; where one matches, its figures replace the
+        // flat ones. This is how "PKR 80/km in Muzaffarabad on Sundays" reaches
+        // the customer without a deploy.
+        for (var i = 0; i < list.Count; i++)
+        {
+            var rate = list[i];
+            var rule = await PricingRulesService.ResolveAsync(
+                connection,
+                rate.ServiceType,
+                rate.VehicleCategory,
+                latitude,
+                longitude,
+                cancellationToken);
+            if (rule is null) continue;
+
+            list[i] = rate with
+            {
+                PerKmRate = rule.PerKmRate,
+                WholeVehicleRate = rule.MinimumFare > 0
+                    ? rule.MinimumFare
+                    : rate.WholeVehicleRate,
+            };
         }
 
         return list;

@@ -147,6 +147,8 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     final options = await repository.optionsFor(
       distanceKm: distanceKm,
       durationMinutes: minutes,
+      pickupLatitude: widget.pickupPoint.latitude,
+      pickupLongitude: widget.pickupPoint.longitude,
     );
     if (!mounted) return;
 

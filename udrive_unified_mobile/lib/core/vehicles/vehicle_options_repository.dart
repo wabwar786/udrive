@@ -118,14 +118,23 @@ class VehicleOptionsRepository {
   /// Both figures are computed up front so switching between per seat and whole
   /// vehicle is instant and costs no request — the customer is comparing, and
   /// a spinner between the two would make comparison feel expensive.
+  /// [pickupLatitude] and [pickupLongitude] decide which of the admin's pricing
+  /// rules applies. A rate set for one town on particular days only reaches the
+  /// customer if the server knows where they are standing, so the pickup is
+  /// sent with the request. Both null still returns the flat rates.
   Future<List<VehicleOption>> optionsFor({
     required double distanceKm,
     required int durationMinutes,
+    double? pickupLatitude,
+    double? pickupLongitude,
   }) async {
     List<Map<String, dynamic>> rates = const [];
     try {
+      final location = pickupLatitude != null && pickupLongitude != null
+          ? '&lat=$pickupLatitude&lng=$pickupLongitude'
+          : '';
       final response = await api.getJson(
-        '/api/v1/catalog/service-rates?serviceType=City',
+        '/api/v1/catalog/service-rates?serviceType=City$location',
         authenticated: false,
       );
       final data = response['data'];

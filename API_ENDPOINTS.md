@@ -28,3 +28,23 @@
   `SearchingDrivers` or `ReceivingOffers`; once an offer has been selected
   there is a booking, and `POST /api/v1/bookings/{bookingId}/cancel` applies
   instead. Returns `404 ride_request_not_cancellable` otherwise.
+
+## Pricing rules — added in rev 56
+
+Admin (`SuperAdmin,Admin,Manager,Operations,FinanceOfficer` read;
+`SuperAdmin,Admin,FinanceOfficer` write; `SuperAdmin,Admin` delete):
+
+- `GET /api/v1/admin/pricing-rules`
+- `GET /api/v1/admin/pricing-rules/preview?serviceType=&distanceKm=&minutes=&lat=&lng=`
+- `POST /api/v1/admin/pricing-rules`
+- `PUT /api/v1/admin/pricing-rules/{id}`
+- `DELETE /api/v1/admin/pricing-rules/{id}`
+
+Customer:
+
+- `GET /api/v1/catalog/service-rates?serviceType=City&lat=&lng=`
+
+  `lat`/`lng` are the pickup and are optional. With them, any active pricing
+  rule covering that point today overrides the flat `service_vehicle_rates`
+  figures. Without them the flat rates are returned unchanged, so an older app
+  build prices exactly as it did before.

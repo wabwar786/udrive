@@ -36,3 +36,20 @@ A PostgreSQL trigger calls `udrive.ensure_driver_earning(booking_id)` when a boo
   build sends none. Those vehicles are drawn unrotated rather than pointed
   somewhere invented. The upsert keeps the last known heading when a new reading
   has none.
+
+## 035_pricing_rules (rev 56)
+
+- New table `udrive.pricing_rules`: a per-km rate, a minimum fare and a
+  per-minute rate, optionally narrowed to particular ISO days (`days_of_week`,
+  1 = Monday) and to a circular area (`area_latitude`, `area_longitude`,
+  `area_radius_km`). Empty scopes mean everywhere and every day.
+- A `CHECK` requires an area to have all three parts or none. A half-set circle
+  would match nothing and look like a rule that simply does not work.
+- Seeds one global rule per active row in `service_vehicle_rates`, so the day
+  this ships nothing changes and the admin opens a filled table rather than an
+  empty one.
+- Resolution picks exactly one rule — highest `priority`, then area over
+  everywhere, then smaller area, then named days over every day. Blending
+  several would make a fare impossible to trace back to anything typed.
+- The day is read as `EXTRACT(ISODOW FROM now() AT TIME ZONE 'Asia/Karachi')`
+  inside the query, so the answer does not depend on the server's clock.

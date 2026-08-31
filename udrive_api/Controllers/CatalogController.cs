@@ -18,12 +18,21 @@ public sealed class CatalogController(CatalogService catalogService, LocalFileSt
         return Ok(ApiResponse<IReadOnlyList<DestinationDto>>.Ok(data));
     }
 
+    /// <summary>Rates for pricing a trip.</summary>
+    /// <remarks>
+    /// <paramref name="lat"/> and <paramref name="lng"/> are the pickup. They
+    /// are optional so an older app build still gets the flat rates, but with
+    /// them the admin's area and day rules apply.
+    /// </remarks>
     [HttpGet("service-rates")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<ServiceVehicleRateDto>>>> GetServiceRates(
         [FromQuery] string serviceType = "City",
+        [FromQuery] double? lat = null,
+        [FromQuery] double? lng = null,
         CancellationToken cancellationToken = default)
     {
-        var data = await pricingService.GetRatesAsync(serviceType, cancellationToken);
+        var data = await pricingService.GetRatesAsync(
+            serviceType, cancellationToken, lat, lng);
         return Ok(ApiResponse<IReadOnlyList<ServiceVehicleRateDto>>.Ok(data));
     }
 
