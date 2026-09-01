@@ -94,6 +94,17 @@ class BookingRepository {
     return _list(response, LiveBooking.fromJson);
   }
 
+  /// Raises the fare on a request that is still searching.
+  ///
+  /// Upwards only, enforced by the server. Throws with the server's own message
+  /// so the caller can show why rather than a generic failure.
+  Future<void> raiseRideRequestFare(String rideRequestId, int offer) async {
+    await client.postJson(
+      '/api/v1/bookings/ride-requests/$rideRequestId/raise-fare',
+      {'customerOffer': offer},
+    );
+  }
+
   /// Stops an open search so no further Driver offers arrive.
   ///
   /// Tolerant by design: an older API has no such route, and the customer

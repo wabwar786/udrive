@@ -700,6 +700,55 @@ public sealed class BookingService(
     }
 
     /// <summary>
+    /// Raises the fare on a request that is still looking for a Driver.
+    /// </summary>
+    /// <remarks>
+    /// Only upwards. A Customer who has waited without an answer is telling the
+    /// market their first figure was too low, and that is a fair thing to
+    /// correct. Lowering it after Drivers have already seen and passed on the
+    /// higher number would be asking them to re-read a request that just got
+    /// worse.
+    ///
+    /// Existing offers are left alone. A Driver's quote was a response to the
+    /// old figure, and silently repricing it would put words in their mouth.
+    /// </remarks>
+    public async Task<ServiceResult<bool>> RaiseRideRequestFareAsync(
+        Guid customerUserId,
+        Guid rideRequestId,
+        decimal newOffer,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE udrive.ride_requests
+            SET customer_offer = @offer, version = version + 1, updated_at = now()
+            WHERE id = @rideRequestId
+              AND customer_user_id = @customerUserId
+              AND status IN ('Open','SearchingDrivers','ReceivingOffers')
+              AND @offer > customer_offer
+            RETURNING id;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("rideRequestId", rideRequestId);
+        command.Parameters.AddWithValue("customerUserId", customerUserId);
+        command.Parameters.AddWithValue("offer", newOffer);
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        if (value is null or DBNull)
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status409Conflict,
+                "fare_not_raised",
+                "This request is closed, or the new fare is not higher than the "
+                + "current one.");
+        }
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    /// <summary>
     /// Stops an open search at the Customer's request.
     /// </summary>
     /// <remarks>
@@ -1866,10 +1915,25 @@ public sealed class BookingService(
     private static string GenerateOtp() =>
         RandomNumberGenerator.GetInt32(1000, 10000).ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// Whether to fabricate a Driver offer the moment a request is created.
+    /// </summary>
+    /// <remarks>
+    /// Off unless <c>ENABLE_DEMO_MARKETPLACE</c> is explicitly "true".
+    ///
+    /// It used to be the other way round — on unless the variable said "false" —
+    /// so a deployment that had never heard of the flag produced a fake counter
+    /// offer from a seeded demo driver on every single ride request. A Customer
+    /// pressing "Find offers" was answered instantly by someone who does not
+    /// exist, at 5% above their own fare.
+    ///
+    /// A demo aid has to be opted into. Defaulting a thing that invents offers
+    /// to ON means every real deployment ships with it running.
+    /// </remarks>
     private static bool DemoMarketplaceEnabled() =>
-        !string.Equals(
+        string.Equals(
             Environment.GetEnvironmentVariable("ENABLE_DEMO_MARKETPLACE"),
-            "false",
+            "true",
             StringComparison.OrdinalIgnoreCase);
 
     private sealed record ApprovedDriverContext(

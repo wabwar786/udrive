@@ -111,3 +111,19 @@ currently travelling with — a Driver must not be able to keep contacting a
 Customer after the ride. Reading the thread is what marks the other side's
 messages read; a separate call could fail on its own and leave a badge that
 never clears.
+
+## Raise fare — rev 67
+
+- `POST /api/v1/bookings/ride-requests/{rideRequestId}/raise-fare`
+  `{ "customerOffer": 1800 }`
+
+  Upwards only, and only while the request is still open. Existing Driver offers
+  are left untouched: a quote was a response to the old figure, and repricing it
+  would put words in the Driver's mouth.
+
+## Demo marketplace — rev 67
+
+`ENABLE_DEMO_MARKETPLACE` now defaults to **off**. It previously ran unless the
+variable was explicitly `"false"`, so any deployment that had never heard of the
+flag fabricated a counter offer from a seeded demo driver on every ride request.
+Set it to `"true"` only for demos.

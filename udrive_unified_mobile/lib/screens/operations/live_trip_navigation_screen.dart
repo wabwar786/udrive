@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/booking/trip_chat_repository.dart';
+import '../../core/maps/ud_vehicle_sprites.dart';
 import '../../core/routing/live_leg.dart';
 import '../../core/services/trip_location_service.dart';
 import '../../core/state/app_controller.dart';
@@ -243,6 +244,124 @@ class _DriverLiveNavigationScreenState
       }
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  /// Reasons a Driver might have to drop a ride they accepted.
+  ///
+  /// A fixed list rather than a free text box. A reason nobody can count is a
+  /// reason nobody acts on, and these are the ones that should show up in
+  /// operations reporting when one driver keeps producing them.
+  static const _cancelReasons = <String>[
+    'Vehicle problem',
+    'Customer is not at the pickup point',
+    'Customer asked me to cancel',
+    'Pickup point is not reachable',
+    'Road closed or blocked',
+    'Personal emergency',
+  ];
+
+  /// Cancels an accepted ride, with a reason recorded against it.
+  ///
+  /// The reason is required. A cancellation with no cause attached tells
+  /// operations nothing, and it is the Customer who is left standing there.
+  Future<void> _cancelWithReason() async {
+    if (_actionBusy) return;
+
+    String? chosen;
+    final note = TextEditingController();
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            18,
+            18,
+            18,
+            MediaQuery.viewInsetsOf(context).bottom + 18,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Cancel this ride?',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'The customer is told immediately and the request goes back '
+                  'to other drivers.',
+                  style: TextStyle(fontSize: 12, height: 1.45),
+                ),
+                const SizedBox(height: 14),
+                for (final reason in _cancelReasons)
+                  RadioListTile<String>(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    value: reason,
+                    groupValue: chosen,
+                    onChanged: (value) => setSheet(() => chosen = value),
+                    title: Text(
+                      reason,
+                      style: const TextStyle(fontSize: 13.5),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: note,
+                  maxLength: 200,
+                  decoration: const InputDecoration(
+                    labelText: 'Anything else (optional)',
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.danger,
+                  ),
+                  onPressed: chosen == null
+                      ? null
+                      : () => Navigator.pop(sheetContext, true),
+                  child: const Text('Cancel ride'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(sheetContext, false),
+                  child: const Text('Keep this ride'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final reason = chosen;
+    final extra = note.text.trim();
+    note.dispose();
+
+    if (confirmed != true || reason == null || !mounted) return;
+
+    setState(() => _actionBusy = true);
+    try {
+      await widget.repository.driverStatus(
+        widget.trip.bookingId,
+        'Cancelled',
+        reason: extra.isEmpty ? reason : '$reason — $extra',
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
     } finally {
       if (mounted) setState(() => _actionBusy = false);
     }
@@ -648,6 +767,31 @@ class _DriverLiveNavigationScreenState
                       Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 11)),
                     ],
                     const SizedBox(height: 13),
+                    // Cancelling before the trip starts. Once the Customer is
+                    // aboard this disappears — abandoning someone mid-journey
+                    // on a mountain road is not a button, it is an emergency,
+                    // and that control is right beside it.
+                    if (_currentStatus != 'TripStarted' &&
+                        _currentStatus != 'TripCompleted' &&
+                        _currentStatus != 'Cancelled') ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _actionBusy ? null : _cancelWithReason,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.danger,
+                            side: const BorderSide(color: Color(0x33E5484D)),
+                          ),
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          label: const Text(
+                            'Cancel this ride',
+                            style: TextStyle(
+                                fontSize: 12.5, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     Row(
                       children: [
                         Expanded(
@@ -941,9 +1085,22 @@ class _CustomerFullScreenTrackingScreenState
                   if (driver != null)
                     Marker(
                       point: driver,
-                      width: 56,
-                      height: 56,
-                      child: const _MapMarker(icon: Icons.directions_car, color: Color(0xFF06201F)),
+                      width: UdVehicleSprites.size.width,
+                      height: UdVehicleSprites.size.height,
+                      // The same top-down car Home draws, turned to the way the
+                      // driver is actually facing. A circular icon carries no
+                      // direction, so a car approaching and a car driving away
+                      // looked identical — which is most of what a waiting
+                      // customer wants to know.
+                      child: Transform.rotate(
+                        angle: (t?.driverLocation?.heading ?? 0) * math.pi / 180,
+                        child: CustomPaint(
+                          painter: const UdVehicleSpritePainter(
+                            UdVehicleSprite.car,
+                          ),
+                          size: UdVehicleSprites.size,
+                        ),
+                      ),
                     ),
                   if (headingToPickup && pickup != null)
                     Marker(

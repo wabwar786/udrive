@@ -172,3 +172,6 @@ public sealed record PassengerStandingDto(
     decimal? Rating,
     int RatingCount,
     string Standing);
+
+/// <summary>A raised fare for a request that is still searching.</summary>
+public sealed record RaiseFareRequest([Range(1, 1000000)] decimal CustomerOffer);

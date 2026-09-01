@@ -71,6 +71,27 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   /// When the search began, for the elapsed clock in the waiting card.
   final DateTime _searchStartedAt = DateTime.now();
 
+  /// The fare the customer is currently offering.
+  ///
+  /// Starts at what they sent and moves only when they raise it, so the waiting
+  /// card and the raise sheet never disagree about the number in play.
+  late int _offer = widget.customerOffer;
+
+  /// When the raise prompt was last shown or dismissed.
+  ///
+  /// Used to space the prompt out. Reappearing the moment it is closed would
+  /// make it an obstacle rather than an offer of help.
+  DateTime? _lastRaisePrompt;
+
+  bool _raising = false;
+
+  /// How long to wait before suggesting a higher fare.
+  ///
+  /// A minute of silence usually means the fare is below what drivers nearby
+  /// will take. Prompting earlier trains the customer to overpay; leaving them
+  /// waiting with no way to act is worse.
+  static const Duration _raiseAfter = Duration(minutes: 1);
+
   /// Vehicles online around the pickup.
   ///
   /// Shown both as a count ("14 drivers nearby") and as cars on the map behind
@@ -140,6 +161,158 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
 
     if (!mounted) return;
     setState(() => _nearby = vehicles);
+  }
+
+  /// Offers the customer a higher fare after a minute of silence.
+  ///
+  /// A sheet rather than a snackbar: it needs a stepper and a button, and it
+  /// should not disappear on its own while someone is deciding what their trip
+  /// is worth.
+  Future<void> _promptRaiseFare() async {
+    if (_raising || !mounted) return;
+    _raising = true;
+    _lastRaisePrompt = DateTime.now();
+
+    // Steps that match the fare's size. Fifty rupees on a nine thousand rupee
+    // Coster run is not a raise anybody notices.
+    final step = _offer >= 10000
+        ? 500
+        : _offer >= 3000
+            ? 100
+            : 50;
+    var proposed = _offer + step;
+
+    final confirmed = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheet) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _t('No offers yet', 'ابھی کوئی آفر نہیں'),
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                  color: AppText.primary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _t(
+                  'Drivers nearby have not taken this fare. Raising it usually '
+                  'gets an answer.',
+                  'قریبی ڈرائیورز نے یہ کرایہ قبول نہیں کیا۔ اسے بڑھانے پر عموماً '
+                  'جواب آ جاتا ہے۔',
+                ),
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  height: 1.5,
+                  color: AppText.secondary,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  _StepCircle(
+                    icon: Icons.remove_rounded,
+                    // Never back below what is already on the table. The server
+                    // refuses it, and a button that fails is worse than one
+                    // that is plainly unavailable.
+                    enabled: proposed - step > _offer,
+                    onTap: () => setSheet(() => proposed -= step),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'PKR ${NumberFormat('#,###').format(proposed)}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1,
+                        color: AppText.primary,
+                      ),
+                    ),
+                  ),
+                  _StepCircle(
+                    icon: Icons.add_rounded,
+                    enabled: true,
+                    onTap: () => setSheet(() => proposed += step),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _t(
+                  'Currently offering PKR ${NumberFormat('#,###').format(_offer)}',
+                  'موجودہ پیشکش PKR ${NumberFormat('#,###').format(_offer)}',
+                ),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11.5, color: AppText.disabled),
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: () => Navigator.pop(sheetContext, proposed),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                ),
+                child: Text(
+                  _t('Find offers again', 'دوبارہ آفرز تلاش کریں'),
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w900),
+                ),
+              ),
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: () => Navigator.pop(sheetContext),
+                child: Text(
+                  _t('Keep waiting at this fare', 'اسی کرایے پر انتظار کریں'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    _raising = false;
+    _lastRaisePrompt = DateTime.now();
+    if (confirmed == null || !mounted) return;
+
+    try {
+      final controller = AppControllerScope.of(context);
+      await BookingRepository(controller.apiClient)
+          .raiseRideRequestFare(widget.rideRequestId, confirmed);
+      if (!mounted) return;
+      // The clock restarts: this is a fresh search at a new price, and showing
+      // the old elapsed time would suggest nothing had changed.
+      setState(() => _offer = confirmed);
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  /// Whether it is time to suggest raising the fare.
+  ///
+  /// Only while nothing has been offered. An unanswered request is a price
+  /// problem; a request with offers on screen is a choice the customer is still
+  /// making, and interrupting that would be pushing them to pay more than they
+  /// need to.
+  bool _shouldPromptRaise(int offerCount) {
+    if (_resolved || _raising || offerCount > 0) return false;
+    final since = _lastRaisePrompt ?? _searchStartedAt;
+    return DateTime.now().difference(since) >= _raiseAfter;
   }
 
   /// How long the customer has been waiting, as m:ss.
@@ -450,6 +623,12 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     _registerDecisionWindows(controller.liveDriverOffers);
     final offers = _visibleOffers(controller);
 
+    // Checked during build rather than on a timer, because the decision depends
+    // on how many offers are on screen — which is a build-time fact.
+    if (_shouldPromptRaise(offers.length)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _promptRaiseFare());
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
@@ -652,7 +831,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
           const SizedBox(height: 14),
           Text(
             _t(
-              'Your fare has gone out to the drivers around you. Offers appear here as they answer.',
+              'Offering PKR ${NumberFormat('#,###').format(_offer)} · sent to the drivers around you. Offers appear here as they answer.',
               'آپ کا کرایہ قریبی ڈرائیورز کو بھیج دیا گیا ہے۔ جواب آتے ہی آفرز یہاں ظاہر ہوں گی۔',
             ),
             style: const TextStyle(
@@ -904,6 +1083,40 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
 }
 
 /// The red "Cancel request" pill above the heading.
+/// A round stepper button for the raise-fare sheet.
+class _StepCircle extends StatelessWidget {
+  const _StepCircle({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surfaceAlt,
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 52,
+          height: 52,
+          child: Icon(
+            icon,
+            size: 24,
+            color: enabled ? AppText.primary : AppText.disabled,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CancelPill extends StatelessWidget {
   const _CancelPill({
     required this.label,

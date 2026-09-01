@@ -63,6 +63,18 @@ public sealed class BookingsController(BookingService bookingService) : Controll
             request,
             cancellationToken));
 
+    /// <summary>Raises the fare on a request still waiting for offers.</summary>
+    [HttpPost("ride-requests/{rideRequestId:guid}/raise-fare")]
+    public async Task<IActionResult> RaiseFare(
+        Guid rideRequestId,
+        RaiseFareRequest request,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await bookingService.RaiseRideRequestFareAsync(
+            User.GetRequiredUserId(),
+            rideRequestId,
+            request.CustomerOffer,
+            cancellationToken));
+
     [HttpPost("ride-requests/{rideRequestId:guid}/cancel")]
     public async Task<IActionResult> CancelRideRequest(
         Guid rideRequestId,
