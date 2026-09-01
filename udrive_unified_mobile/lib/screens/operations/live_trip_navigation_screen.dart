@@ -8,16 +8,19 @@ import 'package:flutter_map/flutter_map.dart';
 import '../../core/offline_maps/offline_aware_tile_layer.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/booking/trip_chat_repository.dart';
 import '../../core/maps/ud_vehicle_sprites.dart';
+import '../../core/network/api_config.dart';
 import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/routing/live_leg.dart';
 import '../../core/services/trip_location_service.dart';
 import '../../core/state/app_controller.dart';
 import 'trip_chat_screen.dart';
+import 'trip_rating_screen.dart';
 import '../../models/trip_operations_models.dart';
 
 class DriverLiveNavigationScreen extends StatefulWidget {
@@ -899,6 +902,12 @@ class _CustomerFullScreenTrackingScreenState
 
   Timer? _messagePoll;
 
+  /// True once the rating screen has been opened for this trip.
+  ///
+  /// The status poll keeps returning TripCompleted, so without this the rating
+  /// screen would be pushed again every five seconds.
+  bool _ratingShown = false;
+
   /// True once the Customer has moved the map themselves.
   ///
   /// The camera used to recentre on the Driver every five seconds, which meant
@@ -928,6 +937,28 @@ class _CustomerFullScreenTrackingScreenState
         _tracking = tracking;
         _error = null;
       });
+
+      // The trip is over: the map has nothing left to say, so hand the screen
+      // to the rating. Leaving the map up makes rating look optional, which is
+      // how a platform ends up with no ratings at all.
+      if (tracking.tripStatus == 'TripCompleted' && !_ratingShown) {
+        _ratingShown = true;
+        _timer?.cancel();
+        _messagePoll?.cancel();
+        await Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => TripRatingScreen(
+              bookingId: widget.trip.bookingId,
+              driverName: tracking.driverName ??
+                  widget.trip.driverName ??
+                  'your driver',
+              vehicle: tracking.vehicle ?? widget.trip.vehicle ?? '',
+              fare: widget.trip.fare,
+            ),
+          ),
+        );
+        return;
+      }
 
       final location = tracking.driverLocation;
       if (location == null) return;
@@ -1043,6 +1074,41 @@ class _CustomerFullScreenTrackingScreenState
       // A failed poll leaves whatever was already on screen. Blanking the
       // driver's last message over one bad request would be worse than showing
       // it a few seconds stale.
+    }
+  }
+
+  bool _sharing = false;
+
+  /// Sends a link that lets someone follow this ride without an account.
+  ///
+  /// The link dies when the trip ends, so it can go in a family group without
+  /// leaving a permanent window into where someone is.
+  Future<void> _shareTrip() async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+
+    try {
+      final token = await widget.repository
+          .createTrackingLink(widget.trip.bookingId);
+      if (!mounted || token.isEmpty) return;
+
+      final url = '${ApiConfig.baseUrl}/track/$token';
+      final driver = _tracking?.driverName ?? widget.trip.driverName ?? 'my driver';
+
+      await SharePlus.instance.share(
+        ShareParams(
+          text: 'Follow my UDrive ride with $driver: $url\n'
+              'The link stops working when the trip ends.',
+          subject: 'Follow my ride',
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _sharing = false);
     }
   }
 
@@ -1398,6 +1464,14 @@ class _CustomerFullScreenTrackingScreenState
                         ),
                         // Small round call and message, top right, where the
                         // eye lands after reading the name.
+                        // Sharing sits with call and message because it is the
+                        // third thing a waiting customer does, and it belongs
+                        // where the eye already is.
+                        _RoundAction(
+                          icon: Icons.ios_share_rounded,
+                          onTap: _sharing ? () {} : _shareTrip,
+                        ),
+                        const SizedBox(width: 7),
                         _RoundAction(
                           icon: Icons.chat_bubble_outline_rounded,
                           onTap: _openChat,

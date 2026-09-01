@@ -137,3 +137,18 @@ Set it to `"true"` only for demos.
   Reviewers appear by first name only — a review is about the Driver, and the
   reviewer did not agree to be identified to strangers. Driver-written reviews
   of Customers are excluded; that is a different conversation.
+
+## Share a live trip — rev 72
+
+- `POST /api/v1/tracking/{bookingId}/link` `{ "expiresInMinutes": 180 }`
+- `DELETE /api/v1/tracking/{bookingId}/link`
+
+`CreateLinkAsync` and `RevokeLinksAsync` have existed in `TrackingService` since
+phase 12 and **no route ever called them**, so the feature was written and then
+unreachable. The public viewer at `GET /api/v1/public/tracking/{token}` was
+already live and had nothing to view.
+
+The token is returned once; only its hash is stored, so a link cannot be
+recovered from the database later. The public view stops working the moment the
+trip reaches TripCompleted or Cancelled — which is what makes it safe to put in
+a family group chat.

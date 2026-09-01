@@ -979,6 +979,42 @@ It states the unflattering parts plainly:
 
 A guide that only lists happy paths teaches people to be surprised.
 
+## 27. Rating when the trip ends
+
+The moment tracking reports `TripCompleted`, the map is replaced by the rating
+screen. Not covered — replaced. A finished trip's map has nothing left to say,
+and leaving it up makes rating look optional, which is how a platform ends up
+with no ratings at all.
+
+Stars, then quick reasons, then an optional sentence. The reason chips differ by
+score: "clean vehicle" is not a useful prompt for someone who just gave two
+stars, and asking a happy customer what went wrong invites a complaint that was
+not there.
+
+The screen says where the rating goes — onto the driver's profile, where the
+next customer sees it before they get in. A review that visibly goes somewhere
+gets written more often than one that disappears into a form. This closes the
+loop with §25: the stars collected here are the stars shown there.
+
+**Skipping is allowed and says so.** A rating screen with no way out is one
+people learn to close by killing the app.
+
+The chips are folded into the review text rather than stored separately. The
+ratings table has no tag column, and a migration for five fixed phrases would be
+adding schema for something a sentence already carries.
+
+## 28. Sharing a live ride
+
+`CreateLinkAsync` and `RevokeLinksAsync` have been in `TrackingService` since
+phase 12 with **no route calling them**. The public viewer was live and had
+nothing to view. Two routes now expose them, and the tracking panel has a share
+button beside call and message.
+
+The token is returned once and only its hash is stored, so nobody reading the
+database later can recover a link and re-send it. The public view stops the
+moment the trip completes or cancels — which is what makes it safe to put in a
+family group rather than a permanent window into where someone is.
+
 ---
 
 ## Not done

@@ -12,4 +12,19 @@ class TripOperationsRepository {
   Future<void> customerStatus(String bookingId,String status,{String? reason})=>client.putJson('/api/v1/trips/$bookingId/customer-status',{'status':status,'reason':reason});
   Future<TripTracking> tracking(String bookingId) async {final r=await client.getJson('/api/v1/trips/$bookingId/tracking');return TripTracking.fromJson(Map<String,dynamic>.from(r['data'] as Map));}
   Future<Map<String,dynamic>> sendLocation(Map<String,dynamic> point)=>client.postJson('/api/v1/tracking/driver/location',point);
+
+  /// Creates a link that lets someone follow this trip without an account.
+  ///
+  /// Returns the token only. The server keeps a hash, so a link cannot be
+  /// recovered later and re-sent by anyone who reads the database — and it
+  /// stops working the moment the trip ends, which is what makes it safe to
+  /// put in a family group chat.
+  Future<String> createTrackingLink(String bookingId,{int expiresInMinutes=180}) async {
+    final r = await client.postJson(
+      '/api/v1/tracking/$bookingId/link',
+      {'expiresInMinutes': expiresInMinutes},
+    );
+    final data = r['data'];
+    return data is Map ? '${data['token'] ?? ''}' : '';
+  }
 }
