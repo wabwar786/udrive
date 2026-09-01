@@ -886,6 +886,9 @@ class _CustomerFullScreenTrackingScreenState
   /// Admin-uploaded vehicle photographs, keyed by setting name.
   Map<String, String> _vehicleImages = const {};
 
+  /// The driver's rating and what recent passengers said about them.
+  DriverReputation? _reputation;
+
   /// Messages from the Driver, newest last.
   ///
   /// Shown floating over the map rather than only behind the chat button. A
@@ -911,6 +914,7 @@ class _CustomerFullScreenTrackingScreenState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _pollMessages();
       _loadVehicleImages();
+      _loadReputation();
     });
     _messagePoll =
         Timer.periodic(const Duration(seconds: 10), (_) => _pollMessages());
@@ -989,7 +993,7 @@ class _CustomerFullScreenTrackingScreenState
     final controller = AppControllerScope.of(context);
     final repository = VehicleImageRepository(controller.apiClient);
 
-    final cached = repository.cached();
+    final cached = await repository.cached();
     if (cached.isNotEmpty && mounted) {
       setState(() => _vehicleImages = cached);
     }
@@ -1008,6 +1012,18 @@ class _CustomerFullScreenTrackingScreenState
     if (key == null) return null;
     final url = _vehicleImages[key];
     return (url == null || url.isEmpty) ? null : url;
+  }
+
+  /// Reads the driver's rating and recent reviews, once.
+  ///
+  /// Their history does not change during a trip, so polling it would be noise
+  /// on a screen already running two timers.
+  Future<void> _loadReputation() async {
+    final controller = AppControllerScope.of(context);
+    final reputation = await TripChatRepository(controller.apiClient)
+        .driver(widget.trip.bookingId);
+    if (!mounted || reputation == null) return;
+    setState(() => _reputation = reputation);
   }
 
   /// Reads the Driver's messages so the newest can float over the map.
@@ -1321,8 +1337,8 @@ class _CustomerFullScreenTrackingScreenState
                         // for every driver would tell the customer less than a
                         // letter does.
                         Container(
-                          width: 54,
-                          height: 54,
+                          width: 62,
+                          height: 62,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: AppTint.brand,
@@ -1337,7 +1353,7 @@ class _CustomerFullScreenTrackingScreenState
                                 .first
                                 .toUpperCase(),
                             style: const TextStyle(
-                              fontSize: 22,
+                              fontSize: 26,
                               fontWeight: FontWeight.w900,
                               color: AppColors.secondary,
                             ),
@@ -1358,7 +1374,10 @@ class _CustomerFullScreenTrackingScreenState
                                   color: AppText.primary,
                                 ),
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 3),
+                              if (_reputation != null)
+                                _DriverStars(reputation: _reputation!),
+                              const SizedBox(height: 3),
                               Text(
                                 [
                                   t?.vehicle ?? widget.trip.vehicle ?? '',
@@ -1400,7 +1419,7 @@ class _CustomerFullScreenTrackingScreenState
                     // them against what the app says is coming, and a
                     // registration plate in 12pt type is a poor way to do that.
                     Container(
-                      height: 96,
+                      height: 132,
                       clipBehavior: Clip.antiAlias,
                       decoration: BoxDecoration(
                         color: AppColors.surfaceAlt,
@@ -1512,6 +1531,27 @@ class _CustomerFullScreenTrackingScreenState
                         ],
                       ),
                     ),
+
+                    if ((_reputation?.recentReviews ?? const []).isNotEmpty) ...[
+                      const SizedBox(height: 11),
+                      // What the last few passengers actually said.
+                      //
+                      // A star average alone is a number; a sentence from
+                      // someone who rode with this driver last week is the
+                      // thing that tells a customer whether to get in.
+                      SizedBox(
+                        height: 78,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: EdgeInsets.zero,
+                          itemCount: _reputation!.recentReviews.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) => _ReviewCard(
+                            review: _reputation!.recentReviews[index],
+                          ),
+                        ),
+                      ),
+                    ],
 
                     if ((widget.tripOtp ?? '').isNotEmpty &&
                         (t?.tripStatus ?? widget.trip.tripStatus) != 'TripStarted' &&
@@ -1674,6 +1714,127 @@ class _PassengerChip extends StatelessWidget {
 /// Full-width halves rather than small circular icon buttons: on a phone held
 /// one-handed at a roadside, "message the driver" should not be a target the
 /// size of a fingernail.
+/// The driver's star rating, beside their name.
+///
+/// The count is always shown. An average over three ratings and one over three
+/// hundred are different claims, and printing both as "4.7" would flatten that.
+class _DriverStars extends StatelessWidget {
+  const _DriverStars({required this.reputation});
+
+  final DriverReputation reputation;
+
+  @override
+  Widget build(BuildContext context) {
+    final rating = reputation.rating;
+
+    if (rating == null) {
+      // Not "5.0". A score nobody gave is worse than an honest blank, and a
+      // new driver is not a bad one.
+      return Text(
+        reputation.completedTrips > 0
+            ? 'New to ratings · ${reputation.completedTrips} trips'
+            : 'New driver',
+        style: const TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          color: AppText.disabled,
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 1; i <= 5; i++)
+          Icon(
+            rating >= i
+                ? Icons.star_rounded
+                : rating >= i - .5
+                    ? Icons.star_half_rounded
+                    : Icons.star_outline_rounded,
+            size: 14,
+            color: AppColors.secondary,
+          ),
+        const SizedBox(width: 6),
+        Text(
+          '${rating.toStringAsFixed(1)}  ·  ${reputation.ratingCount} reviews',
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: AppText.secondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One passenger's review, in a card the customer can scroll through.
+class _ReviewCard extends StatelessWidget {
+  const _ReviewCard({required this.review});
+
+  final DriverReview review;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 210,
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              for (var i = 1; i <= 5; i++)
+                Icon(
+                  i <= review.rating
+                      ? Icons.star_rounded
+                      : Icons.star_outline_rounded,
+                  size: 12,
+                  color: AppColors.secondary,
+                ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  review.reviewerFirstName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppText.secondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Expanded(
+            child: Text(
+              review.text ?? 'Rated without a comment.',
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.35,
+                fontStyle:
+                    review.text == null ? FontStyle.italic : FontStyle.normal,
+                color: review.text == null
+                    ? AppText.disabled
+                    : AppText.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A small round call or message button.
 class _RoundAction extends StatelessWidget {
   const _RoundAction({required this.icon, required this.onTap});

@@ -883,6 +883,57 @@ banner changes its height a lot.
 **"0.0 km by road" is gone.** Under a hundred metres it now says *Arriving now*.
 Zero kilometres is a number pretending to be information.
 
+## 24. A second build break, and a second check
+
+`rev 69` did not compile: `repository.cached()` returns a `Future`, and it was
+used without `await`. dart2js said so after twenty seconds in CI; nothing local
+had.
+
+`tool/check_imports.py` now also flags project `Future`-returning methods whose
+result is consumed as a value without `await` — either `x.foo().bar` or the
+shape that actually broke this build, `final y = x.foo();`.
+
+Writing it exposed a second bug in the check itself: the first version matched
+`Future<[^>]*>`, which cannot match `Future<Map<String, String>>` because of the
+nested angle brackets. It passed silently over the very call it was written for.
+Fixed to allow one level of nesting, and verified by reintroducing the bug and
+confirming the check fails.
+
+Both checks now run before every ZIP:
+
+```bash
+python3 tool/audit_structure.py
+python3 tool/check_imports.py
+```
+
+Still not a typechecker. Two classes of mistake, caught in a second instead of
+twenty.
+
+## 25. Driver reputation on the tracking screen
+
+`GET /api/v1/trips/{bookingId}/driver` returns the Driver's rating, the number
+of ratings behind it, completed trips, and their **five most recent Customer
+reviews**. All of it from `trip_ratings`, which has held this data since phase
+14 with nothing reading it.
+
+On the panel: **stars beside the name** with the rating and the review count —
+an average over three ratings and one over three hundred are different claims,
+and printing both as "4.7" would flatten that. Below the vehicle, a horizontal
+row of **review cards**: stars, reviewer's first name, and what they wrote. A
+star average is a number; a sentence from someone who rode with this driver last
+week is what tells a customer whether to get in.
+
+Reviewers appear by first name only. A review is about the Driver, and the
+reviewer never agreed to be identified to strangers. Driver-written reviews of
+Customers are excluded — that is a different conversation and does not belong in
+front of the person waiting at the kerb.
+
+A Driver nobody has rated shows "New driver" or "New to ratings · N trips",
+never "5.0". A score nobody gave is worse than an honest blank, and a new driver
+is not a bad one.
+
+**The artwork is larger**: 62px driver avatar, 132px vehicle strip.
+
 ---
 
 ## Not done

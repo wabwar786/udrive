@@ -95,3 +95,53 @@ for p,src in sorted(files.items()):
         print(f"{p}: uses '{name}' (declared in {sorted(owner[name])[0]}) but does not import it")
         bad+=1
 print('MISSING IMPORTS:', bad)
+
+
+# ---------------------------------------------------------------- awaits
+#
+# A second, narrower check, added after a build broke on `repository.cached()`
+# used without `await` — the value was a Future, `.isNotEmpty` does not exist on
+# one, and dart2js only said so after twenty seconds in CI.
+#
+# Only project methods are considered, and only call sites that immediately
+# consume the result (`x.foo().bar`, `= x.foo()`, `if (x.foo())`). Anything
+# preceded by `await`, `unawaited`, `return`, or followed by `.then` is fine, as
+# is a bare statement call. That keeps the noise near zero at the cost of
+# missing cases a real analyzer would catch.
+
+# The type argument can itself be generic — `Future<Map<String, String>>` —
+# so one level of nesting has to be allowed. Missing that was why this check
+# passed over the very call it was written for.
+ASYNC_DECL = re.compile(
+    r'\bFuture<(?:[^<>]|<[^<>]*>)*>\s+([a-z_]\w*)\s*\(', re.M)
+async_names = set()
+for _src in files.values():
+    async_names |= set(ASYNC_DECL.findall(strip(_src)))
+
+# Names that are also common sync methods elsewhere would produce false hits.
+async_names -= {'build', 'toString', 'call'}
+
+missing_await = 0
+for path, source in sorted(files.items()):
+    body = strip(source)
+    for name in async_names:
+        patterns = [
+            # `x.foo().bar` — the result is used as a value immediately.
+            r'\w+\.' + re.escape(name) + r'\(\)\s*\.',
+            # `final y = x.foo();` — bound to a local that is then used as if
+            # it were the resolved value. This is the shape that broke the
+            # build: `final cached = repository.cached();`
+            r'(?:final|var)\s+\w+\s*=\s*\w+\.' + re.escape(name) + r'\(',
+        ]
+        for pattern in patterns:
+            for match in re.finditer(pattern, body):
+                window = body[max(0, match.start() - 12):match.end()]
+                if 'await' in window or 'unawaited' in window:
+                    continue
+                if body[match.end():match.end() + 5].lstrip().startswith('then'):
+                    continue
+                line = body[:match.start()].count('\n') + 1
+                print(f"{path}:{line}: '{match.group(0).strip()}' "
+                      'used without await')
+                missing_await += 1
+print('MISSING AWAITS:', missing_await)

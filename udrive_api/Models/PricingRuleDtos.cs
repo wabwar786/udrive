@@ -175,3 +175,24 @@ public sealed record PassengerStandingDto(
 
 /// <summary>A raised fare for a request that is still searching.</summary>
 public sealed record RaiseFareRequest([Range(1, 1000000)] decimal CustomerOffer);
+
+/// <summary>One published review of a Driver, written by a Customer.</summary>
+public sealed record DriverReviewDto(
+    int Rating,
+    string? Text,
+    string ReviewerFirstName,
+    DateTimeOffset CreatedAt);
+
+/// <summary>
+/// What the Customer waiting for this Driver can see about them.
+/// </summary>
+/// <param name="Rating">
+/// Null when no Customer has rated this Driver. Not defaulted to five: a score
+/// nobody gave is worse than an honest blank.
+/// </param>
+public sealed record DriverReputationDto(
+    string DriverName,
+    decimal? Rating,
+    int RatingCount,
+    int CompletedTrips,
+    IReadOnlyList<DriverReviewDto> RecentReviews);

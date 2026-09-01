@@ -43,6 +43,12 @@ public sealed class TripChatController(TripChatService service) : ControllerBase
         Result(await service.PassengerStandingAsync(
             User.GetRequiredUserId(), bookingId, ct));
 
+    /// <summary>Customer only: the Driver's rating and recent reviews.</summary>
+    [HttpGet("driver")]
+    public async Task<IActionResult> Driver(Guid bookingId, CancellationToken ct) =>
+        Result(await service.DriverReputationAsync(
+            User.GetRequiredUserId(), bookingId, ct));
+
     private IActionResult Result<T>(ServiceResult<T> result)
     {
         if (!result.Success)

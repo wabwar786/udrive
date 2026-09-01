@@ -251,6 +251,117 @@ public sealed class TripChatService(string connectionString)
     }
 
     /// <summary>
+    /// What past Customers have said about the Driver on this booking.
+    /// </summary>
+    /// <remarks>
+    /// Only Customer-written reviews, and only published ones — a Driver rating
+    /// a Customer is a different conversation and does not belong in front of
+    /// the person waiting at the kerb.
+    ///
+    /// Five most recent. A waiting Customer wants to know what this driver is
+    /// like right now, and a five-star review from two years ago says less than
+    /// a three-star one from last week. An average over a handful of ratings is
+    /// noise dressed as a score, so the count is always shown beside it.
+    /// </remarks>
+    public async Task<ServiceResult<DriverReputationDto>> DriverReputationAsync(
+        Guid userId,
+        Guid bookingId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        var role = await RoleOnBookingAsync(connection, bookingId, userId, cancellationToken);
+        if (role != "Customer") return Forbidden<DriverReputationDto>();
+
+        const string summarySql = """
+            SELECT du.id,
+                   du.full_name,
+                   (SELECT round(avg(r.overall_rating)::numeric, 2)
+                      FROM udrive.trip_ratings r
+                     WHERE r.reviewee_user_id = du.id
+                       AND r.reviewer_role = 'Customer'
+                       AND r.is_visible),
+                   (SELECT count(*)::int
+                      FROM udrive.trip_ratings r2
+                     WHERE r2.reviewee_user_id = du.id
+                       AND r2.reviewer_role = 'Customer'
+                       AND r2.is_visible),
+                   (SELECT count(*)::int
+                      FROM udrive.bookings b2
+                     WHERE b2.driver_profile_id = b.driver_profile_id
+                       AND b2.status = 'Completed')
+            FROM udrive.bookings b
+            JOIN udrive.driver_profiles dp ON dp.id = b.driver_profile_id
+            JOIN udrive.users du ON du.id = dp.user_id
+            WHERE b.id = @booking;
+            """;
+
+        Guid driverUserId;
+        string driverName;
+        decimal? rating;
+        int ratingCount;
+        int completedTrips;
+
+        await using (var command = new NpgsqlCommand(summarySql, connection))
+        {
+            command.Parameters.AddWithValue("booking", bookingId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return ServiceResult<DriverReputationDto>.Fail(
+                    StatusCodes.Status404NotFound,
+                    "driver_not_found",
+                    "No driver is assigned to this booking yet.");
+            }
+
+            driverUserId = reader.GetGuid(0);
+            driverName = reader.GetString(1);
+            rating = reader.IsDBNull(2) ? null : reader.GetDecimal(2);
+            ratingCount = reader.GetInt32(3);
+            completedTrips = reader.GetInt32(4);
+        }
+
+        const string reviewsSql = """
+            SELECT r.overall_rating, r.review_text, r.created_at,
+                   split_part(btrim(ru.full_name), ' ', 1)
+            FROM udrive.trip_ratings r
+            JOIN udrive.users ru ON ru.id = r.reviewer_user_id
+            WHERE r.reviewee_user_id = @driver
+              AND r.reviewer_role = 'Customer'
+              AND r.is_visible
+            ORDER BY r.created_at DESC
+            LIMIT 5;
+            """;
+
+        var reviews = new List<DriverReviewDto>();
+        await using (var command = new NpgsqlCommand(reviewsSql, connection))
+        {
+            command.Parameters.AddWithValue("driver", driverUserId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                reviews.Add(new DriverReviewDto(
+                    reader.GetInt16(0),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    // First name only. A review is about the driver, and the
+                    // reviewer did not agree to be identified to strangers.
+                    reader.IsDBNull(3) || reader.GetString(3).Length == 0
+                        ? "Customer"
+                        : reader.GetString(3),
+                    reader.GetFieldValue<DateTimeOffset>(2)));
+            }
+        }
+
+        return ServiceResult<DriverReputationDto>.Ok(new DriverReputationDto(
+            driverName,
+            rating,
+            ratingCount,
+            completedTrips,
+            reviews));
+    }
+
+    /// <summary>
     /// A one-word summary of the passenger's history.
     /// </summary>
     /// <remarks>

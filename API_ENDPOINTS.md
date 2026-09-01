@@ -127,3 +127,13 @@ never clears.
 variable was explicitly `"false"`, so any deployment that had never heard of the
 flag fabricated a counter offer from a seeded demo driver on every ride request.
 Set it to `"true"` only for demos.
+
+## Driver reputation — rev 70
+
+- `GET /api/v1/trips/{bookingId}/driver`
+
+  Customer only. The Driver's average rating, how many ratings it is built from,
+  completed trips, and their five most recent published Customer reviews.
+  Reviewers appear by first name only — a review is about the Driver, and the
+  reviewer did not agree to be identified to strangers. Driver-written reviews
+  of Customers are excluded; that is a different conversation.
