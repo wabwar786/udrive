@@ -934,6 +934,51 @@ is not a bad one.
 
 **The artwork is larger**: 62px driver avatar, 132px vehicle strip.
 
+## 26. The admin guide
+
+**A Guide button in the top right of every admin screen.** It opens a
+slide-over, not another page — the guide is read *while* doing the thing it
+describes, and navigating away loses the half-filled form someone was stuck on,
+which is exactly when they went looking for help. Escape closes it.
+
+It is searchable, and the search covers the steps and cautions, not only the
+headings. Someone looking for help types the problem — "refund", "per km" — not
+the heading it happens to sit under. Results open expanded, because a list of
+collapsed headings is a poor answer to a search when the matched words are
+inside them.
+
+**28 sections across 7 groups**, one per screen, each with what the screen is
+for, the steps in order, what is easy to get wrong, and which roles may act.
+
+The content lives in `admin_portal/app/lib/guide-content.ts` and is read by
+three things: the Guide panel, the `/help` page, and `docs/ADMIN_GUIDE.md`. One
+source. Two copies of a guide disagree within a month, and the one someone
+happens to open is then the wrong one.
+
+`/help` shows everything expanded — it is for learning the portal or checking a
+procedure, and making someone click twenty times to read a manual is the
+opposite of what a manual is for.
+
+### What the guide actually says
+
+It opens with **how a ride flows end to end**, because most confusion in this
+portal is not knowing which screen owns which stage — a ride request is not a
+booking, and cancelling them costs very different things.
+
+It states the unflattering parts plainly:
+
+- Verification "puts a stranger in a car with a Customer". Rejecting a good
+  application costs a Driver a day; approving a bad one costs someone more.
+- Rate per km and minimum fare are different numbers, and putting 1,600 into the
+  per-km field prices a 12 km trip at nineteen thousand rupees — the exact bug
+  that shipped once already.
+- Suspension "is not a warning, it removes someone's income that day".
+- A notification cannot be recalled.
+- A button that does nothing usually means your role cannot do it, not that the
+  portal is broken.
+
+A guide that only lists happy paths teaches people to be surprised.
+
 ---
 
 ## Not done

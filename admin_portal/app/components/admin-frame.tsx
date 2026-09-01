@@ -40,6 +40,7 @@ import {
   type AdminSession,
 } from '../lib/admin-api';
 import { BrandMark, BrandWordmark } from './brand';
+import { GuideButton } from './guide-button';
 
 const groups = [
   {
@@ -198,6 +199,12 @@ export function AdminFrame({
           </div>
           <div className="topActions">
             {actions}
+            {/*
+              Sits on every screen, top right, before the identity block.
+              Help that lives only on its own page is help nobody reads at the
+              moment they are stuck.
+            */}
+            <GuideButton />
             <div className="adminIdentity">
               <span>{initials}</span>
               <div>
