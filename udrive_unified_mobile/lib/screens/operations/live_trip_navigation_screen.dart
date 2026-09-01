@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/booking/trip_chat_repository.dart';
 import '../../core/maps/ud_vehicle_sprites.dart';
+import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/routing/live_leg.dart';
 import '../../core/services/trip_location_service.dart';
 import '../../core/state/app_controller.dart';
@@ -882,6 +883,19 @@ class _CustomerFullScreenTrackingScreenState
   /// The road the Driver is actually taking to reach the Customer.
   final _leg = LiveLeg();
 
+  /// Admin-uploaded vehicle photographs, keyed by setting name.
+  Map<String, String> _vehicleImages = const {};
+
+  /// Messages from the Driver, newest last.
+  ///
+  /// Shown floating over the map rather than only behind the chat button. A
+  /// Driver who writes "I am at the blue gate" needs that read now, not after
+  /// the Customer thinks to open a screen — and the Customer standing on a
+  /// roadside is looking at the map, not at an icon.
+  List<TripMessage> _driverMessages = const [];
+
+  Timer? _messagePoll;
+
   /// True once the Customer has moved the map themselves.
   ///
   /// The camera used to recentre on the Driver every five seconds, which meant
@@ -894,6 +908,12 @@ class _CustomerFullScreenTrackingScreenState
     super.initState();
     _load();
     _timer = Timer.periodic(const Duration(seconds: 5), (_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pollMessages();
+      _loadVehicleImages();
+    });
+    _messagePoll =
+        Timer.periodic(const Duration(seconds: 10), (_) => _pollMessages());
   }
 
   Future<void> _load() async {
@@ -956,8 +976,58 @@ class _CustomerFullScreenTrackingScreenState
 
   @override
   void dispose() {
+    _messagePoll?.cancel();
     _timer?.cancel();
     super.dispose();
+  }
+
+  /// Loads the admin's vehicle photographs, once.
+  ///
+  /// Cached copy first so the picture is there on the first frame; the refresh
+  /// only replaces it if the admin has changed something.
+  Future<void> _loadVehicleImages() async {
+    final controller = AppControllerScope.of(context);
+    final repository = VehicleImageRepository(controller.apiClient);
+
+    final cached = repository.cached();
+    if (cached.isNotEmpty && mounted) {
+      setState(() => _vehicleImages = cached);
+    }
+
+    final fresh = await repository.refresh();
+    if (mounted && fresh.isNotEmpty) {
+      setState(() => _vehicleImages = fresh);
+    }
+  }
+
+  /// The photograph for the vehicle on its way, if the admin has set one.
+  String? get _vehicleImageUrl {
+    final category = _tracking?.vehicleCategory;
+    if (category == null || category.trim().isEmpty) return null;
+    final key = VehicleImageRepository.settingKeyFor(category);
+    if (key == null) return null;
+    final url = _vehicleImages[key];
+    return (url == null || url.isEmpty) ? null : url;
+  }
+
+  /// Reads the Driver's messages so the newest can float over the map.
+  ///
+  /// Every ten seconds, not every three: this is a glance-at-the-map preview,
+  /// and the real thread polls faster once it is open.
+  Future<void> _pollMessages() async {
+    try {
+      final controller = AppControllerScope.of(context);
+      final messages = await TripChatRepository(controller.apiClient)
+          .messages(widget.trip.bookingId);
+      if (!mounted) return;
+      setState(() => _driverMessages = messages
+          .where((message) => message.senderRole == 'Driver')
+          .toList(growable: false));
+    } catch (_) {
+      // A failed poll leaves whatever was already on screen. Blanking the
+      // driver's last message over one bad request would be worse than showing
+      // it a few seconds stale.
+    }
   }
 
   void _openChat() {
@@ -1192,7 +1262,37 @@ class _CustomerFullScreenTrackingScreenState
             alignment: Alignment.bottomCenter,
             child: SafeArea(
               minimum: const EdgeInsets.all(12),
-              child: Container(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // The driver's last words, floating over the map just above
+                  // the panel.
+                  //
+                  // Translucent rather than a solid card: it sits on top of the
+                  // route, and covering the thing the customer is watching in
+                  // order to tell them about it would be a poor trade.
+                  //
+                  // Stacked in the same column as the panel rather than
+                  // positioned over it, so they cannot end up behind it when
+                  // the panel grows — an OTP box or a completion banner changes
+                  // its height by a lot.
+                  //
+                  // Only the last two. A pile of old messages over a map stops
+                  // being a notice and becomes a wall.
+                  for (final message in _driverMessages
+                      .skip(math.max(0, _driverMessages.length - 2)))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 7),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: _FloatingMessage(
+                          message: message,
+                          onTap: _openChat,
+                        ),
+                      ),
+                    ),
+              Container(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
                 decoration: BoxDecoration(
                   // The app's own surface, not white. A white sheet on a dark
@@ -1210,18 +1310,25 @@ class _CustomerFullScreenTrackingScreenState
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Arrival first and large. It is the one thing a waiting
-                    // customer is actually looking at the screen for.
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        // The driver, at a size you can actually recognise
+                        // someone by.
+                        //
+                        // Initials, not a photograph: the schema has no
+                        // driver photo column, and inventing a stock silhouette
+                        // for every driver would tell the customer less than a
+                        // letter does.
                         Container(
-                          width: 44,
-                          height: 44,
+                          width: 54,
+                          height: 54,
                           alignment: Alignment.center,
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             color: AppTint.brand,
                             shape: BoxShape.circle,
+                            border: Border.all(
+                                color: AppColors.secondary, width: 2),
                           ),
                           child: Text(
                             (t?.driverName ?? widget.trip.driverName ?? 'D')
@@ -1230,13 +1337,13 @@ class _CustomerFullScreenTrackingScreenState
                                 .first
                                 .toUpperCase(),
                             style: const TextStyle(
-                              fontSize: 18,
+                              fontSize: 22,
                               fontWeight: FontWeight.w900,
                               color: AppColors.secondary,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 11),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1246,7 +1353,7 @@ class _CustomerFullScreenTrackingScreenState
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontSize: 15.5,
+                                  fontSize: 17,
                                   fontWeight: FontWeight.w900,
                                   color: AppText.primary,
                                 ),
@@ -1270,60 +1377,93 @@ class _CustomerFullScreenTrackingScreenState
                             ],
                           ),
                         ),
-                        if (eta != null) ...[
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '$eta',
-                                style: const TextStyle(
-                                  fontSize: 26,
-                                  height: 1,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors.secondary,
-                                ),
-                              ),
-                              const Text(
-                                'min away',
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppText.secondary,
-                                ),
-                              ),
-                            ],
+                        // Small round call and message, top right, where the
+                        // eye lands after reading the name.
+                        _RoundAction(
+                          icon: Icons.chat_bubble_outline_rounded,
+                          onTap: _openChat,
+                        ),
+                        if ((widget.trip.driverPhone ?? '').trim().isNotEmpty) ...[
+                          const SizedBox(width: 7),
+                          _RoundAction(
+                            icon: Icons.call_rounded,
+                            onTap: _callDriver,
                           ),
                         ],
                       ],
                     ),
 
-                    const SizedBox(height: 13),
+                    const SizedBox(height: 12),
 
-                    // Message and call as equal, obvious actions rather than
-                    // two small circles competing with the fare chip.
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _PanelAction(
-                            icon: Icons.chat_bubble_outline_rounded,
-                            label: 'Message',
-                            onTap: _openChat,
-                          ),
-                        ),
-                        if ((widget.trip.driverPhone ?? '').trim().isNotEmpty) ...[
-                          const SizedBox(width: 9),
+                    // The vehicle itself, wide and unmistakable. A customer
+                    // waiting on a roadside is matching what is in front of
+                    // them against what the app says is coming, and a
+                    // registration plate in 12pt type is a poor way to do that.
+                    Container(
+                      height: 96,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
                           Expanded(
-                            child: _PanelAction(
-                              icon: Icons.call_rounded,
-                              label: 'Call',
-                              onTap: _callDriver,
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: _vehicleImageUrl != null
+                                  ? Image.network(
+                                      _vehicleImageUrl!,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) =>
+                                          const _VehicleFallback(),
+                                      loadingBuilder: (context, child, progress) =>
+                                          progress == null
+                                              ? child
+                                              : const _VehicleFallback(),
+                                    )
+                                  : const _VehicleFallback(),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (eta != null) ...[
+                                  Text(
+                                    '$eta',
+                                    style: const TextStyle(
+                                      fontSize: 34,
+                                      height: 1,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.secondary,
+                                    ),
+                                  ),
+                                  const Text(
+                                    'min away',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppText.secondary,
+                                    ),
+                                  ),
+                                ] else
+                                  const Text(
+                                    'On the way',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppText.secondary,
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ],
-                      ],
+                      ),
                     ),
-
                     const SizedBox(height: 11),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -1353,9 +1493,14 @@ class _CustomerFullScreenTrackingScreenState
                                 ? 'Locating driver…'
                                 : (t?.driverLocation?.stale ?? false)
                                     ? 'Signal lost'
-                                    : roadKm != null
-                                        ? '${roadKm.toStringAsFixed(1)} km by road'
-                                        : 'Finding the road…',
+                                    : roadKm == null
+                                        ? 'Finding the road…'
+                                        // Under a hundred metres, "0.0 km" is
+                                        // a number pretending to be
+                                        // information. The car is here.
+                                        : roadKm < 0.1
+                                            ? 'Arriving now'
+                                            : '${roadKm.toStringAsFixed(1)} km by road',
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
@@ -1463,6 +1608,8 @@ class _CustomerFullScreenTrackingScreenState
                   ],
                 ),
               ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1527,46 +1674,120 @@ class _PassengerChip extends StatelessWidget {
 /// Full-width halves rather than small circular icon buttons: on a phone held
 /// one-handed at a roadside, "message the driver" should not be a target the
 /// size of a fingernail.
-class _PanelAction extends StatelessWidget {
-  const _PanelAction({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+/// A small round call or message button.
+class _RoundAction extends StatelessWidget {
+  const _RoundAction({required this.icon, required this.onTap});
 
   final IconData icon;
-  final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.surfaceAlt,
-      borderRadius: BorderRadius.circular(13),
+      shape: const CircleBorder(),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(13),
+        customBorder: const CircleBorder(),
         child: SizedBox(
-          height: 44,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 17, color: AppColors.secondary),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: AppText.primary,
+          width: 40,
+          height: 40,
+          child: Icon(icon, size: 18, color: AppColors.secondary),
+        ),
+      ),
+    );
+  }
+}
+
+/// A driver's message, shown over the map.
+///
+/// Translucent so the route stays readable through it, and tappable so a
+/// customer who wants to answer does not have to hunt for the chat button —
+/// the message they are reading *is* the way in.
+class _FloatingMessage extends StatelessWidget {
+  const _FloatingMessage({required this.message, required this.onTap});
+
+  final TripMessage message;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * .8,
+      ),
+      child: Material(
+        color: AppColors.surface.withValues(alpha: .82),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+          bottomRight: Radius.circular(16),
+          bottomLeft: Radius.circular(5),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(13, 9, 13, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.chat_bubble_rounded,
+                        size: 11, color: AppColors.secondary),
+                    const SizedBox(width: 6),
+                    Text(
+                      message.senderName.trim().isEmpty
+                          ? 'Driver'
+                          : message.senderName,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.secondary,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  message.body,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    height: 1.35,
+                    color: AppText.primary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  'Tap to reply',
+                  style: TextStyle(fontSize: 10, color: AppText.disabled),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Shown when there is no photograph for the vehicle on its way.
+class _VehicleFallback extends StatelessWidget {
+  const _VehicleFallback();
+
+  @override
+  Widget build(BuildContext context) => const Center(
+        child: Icon(
+          Icons.directions_car_rounded,
+          size: 44,
+          color: AppText.disabled,
+        ),
+      );
 }
 
 class _MapMarker extends StatelessWidget {

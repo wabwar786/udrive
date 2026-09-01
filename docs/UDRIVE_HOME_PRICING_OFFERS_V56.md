@@ -850,6 +850,39 @@ competing with the fare chip. On a phone held one-handed at a roadside,
 a car approaching and a car driving away looked identical. It is now the same
 top-down sprite Home draws, rotated to the driver's reported heading.
 
+## 23. The tracking panel, again
+
+**The driver and the vehicle, at a size you can recognise them by.** A 54px
+avatar and a 96px-tall vehicle photograph. A customer on a roadside is matching
+what is in front of them against what the app says is coming, and a registration
+plate in 12pt type is a poor way to do that.
+
+The photograph is the admin's own upload for that vehicle category, which meant
+`TripTrackingDto` had to start carrying `VehicleCategory` — the tracking query
+joined the vehicle already and simply was not selecting it.
+
+**The avatar is initials, not a photograph.** There is no driver photo column
+anywhere in the schema. A stock silhouette on every driver would tell the
+customer less than a letter does. Adding real photos means a document upload,
+storage, and a moderation question about what gets published to strangers — a
+feature, not a styling change.
+
+**Call and message are small round buttons at the top right**, beside the name,
+rather than two full-width bars in the middle of the card.
+
+**The driver's messages float over the map.** Translucent, just above the panel,
+last two only. A driver who writes "I am at the blue gate" needs that read now,
+not after the customer thinks to open a screen — and a customer standing on a
+roadside is looking at the map, not at an icon. Tapping any of them opens the
+thread: the message being read *is* the way in.
+
+They sit in the same column as the panel rather than positioned over it, so they
+cannot end up hidden behind it when the panel grows — an OTP box or a completion
+banner changes its height a lot.
+
+**"0.0 km by road" is gone.** Under a hundred metres it now says *Arriving now*.
+Zero kilometres is a number pretending to be information.
+
 ---
 
 ## Not done
