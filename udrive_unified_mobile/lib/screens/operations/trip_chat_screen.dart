@@ -137,6 +137,10 @@ class _TripChatScreenState extends State<TripChatScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -214,46 +218,93 @@ class _TripChatScreenState extends State<TripChatScreen> {
       );
 
   Widget _composer() {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _input,
-                minLines: 1,
-                maxLines: 4,
-                maxLength: 1000,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _send(),
-                decoration: const InputDecoration(
-                  hintText: 'Write a message',
-                  counterText: '',
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _input,
+                  minLines: 1,
+                  maxLines: 4,
+                  maxLength: 1000,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _send(),
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    color: AppText.primary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Write a message',
+                    hintStyle: const TextStyle(color: AppText.disabled),
+                    counterText: '',
+                    filled: true,
+                    fillColor: AppColors.surfaceAlt,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide:
+                          const BorderSide(color: AppColors.secondary, width: 1.5),
+                    ),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: FilledButton(
-                onPressed: _sending ? null : _send,
-                style: FilledButton.styleFrom(
-                  shape: const CircleBorder(),
-                  padding: const EdgeInsets.all(14),
+              const SizedBox(width: 9),
+              // A plain sized box with an InkWell, not a FilledButton.
+              //
+              // The app's FilledButton theme sets `minimumSize:
+              // Size.fromHeight(54)`, which is `Size(infinity, 54)`. In a Row
+              // that button demands infinite width, so the Expanded field
+              // beside it collapsed to a few pixels and the button itself was
+              // pushed off the right edge — which is why this composer looked
+              // like an empty strip with a stray line in the corner.
+              Material(
+                color: AppColors.secondary,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: _sending ? null : _send,
+                  customBorder: const CircleBorder(),
+                  child: SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: Center(
+                      child: _sending
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppText.onBrand,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.send_rounded,
+                              size: 20,
+                              color: AppText.onBrand,
+                            ),
+                    ),
+                  ),
                 ),
-                child: _sending
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.send_rounded, size: 20),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

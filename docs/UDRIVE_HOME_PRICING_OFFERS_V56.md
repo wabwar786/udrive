@@ -807,6 +807,49 @@ nested string in an interpolation that the crude stripper does not fully clear.
 It is not a typechecker and not a substitute for `flutter analyze`. It catches
 one common, expensive mistake early.
 
+## 21. The chat composer was never rendering
+
+The message screen showed the empty state and, at the bottom, a bare strip with
+a stray line in the corner. No field, no send button.
+
+The app's `filledButtonTheme` sets `minimumSize: const Size.fromHeight(54)`,
+which is `Size(double.infinity, 54)`. Inside a `Row`, that button demands
+infinite width — so the `Expanded` text field beside it collapsed to a few
+pixels, and the button itself was pushed off the right edge of the screen. The
+line visible in the corner was the collapsed field.
+
+The composer now uses a plain `Material` + `InkWell` circle with a fixed 46×46
+box, and styles its own field rather than inheriting. Anywhere else a
+`FilledButton` sits in a `Row` it is already wrapped in `Expanded`, which clamps
+the infinite minimum — this was the one place it was not.
+
+## 22. The tracking panel
+
+**White card on a dark teal map.** It read as a different application pasted
+over this one, and its greys were mixed for a light background, so the driver's
+name was barely legible against it. Now the app's own surface, with the palette's
+inks.
+
+**The status pill was white text on a white pill** — the words were there and
+invisible. It also announced "LIVE · Online Map", which is not the customer's
+problem. It is now a dark pill with the trip status and a single dot: green when
+the driver's position is live, amber when the signal has gone.
+
+**"0.0 km by road to pickup" while the driver's location was unknown.** Zero
+kilometres reads as "outside your door". The panel now says *Locating driver…*,
+*Signal lost*, or the real road distance — never a number it does not have.
+
+**Arrival moved to the top right** at 26pt: it is the one thing a waiting
+customer is looking at the screen for.
+
+**Message and Call are full-width halves** instead of two small circles
+competing with the fare chip. On a phone held one-handed at a roadside,
+"message the driver" should not be a fingernail-sized target.
+
+**The car has a heading.** It was a circular icon, which carries no direction, so
+a car approaching and a car driving away looked identical. It is now the same
+top-down sprite Home draws, rotated to the driver's reported heading.
+
 ---
 
 ## Not done

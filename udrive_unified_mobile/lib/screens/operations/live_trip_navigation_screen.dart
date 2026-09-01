@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
 import 'package:flutter_map/flutter_map.dart';
 import '../../core/offline_maps/offline_aware_tile_layer.dart';
 import 'package:geolocator/geolocator.dart';
@@ -1129,24 +1130,57 @@ class _CustomerFullScreenTrackingScreenState
               child: Row(
                 children: [
                   Material(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(14),
                     elevation: 3,
                     child: IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.arrow_back_rounded),
+                      icon: const Icon(Icons.arrow_back_rounded,
+                          color: AppText.primary),
                     ),
                   ),
+                  const SizedBox(width: 10),
                   const Spacer(),
-                  Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    elevation: 3,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Text(
-                        '${_customerStatusLabel(t?.tripStatus ?? widget.trip.tripStatus)} · LIVE · ${_mapSource == 'OFFLINE_MAP' ? 'Offline Map' : 'Online Map'}',
-                        style: const TextStyle(fontWeight: FontWeight.w900),
+                  // Dark pill, light text. It was white on white — the words
+                  // were there and invisible — and it also carried "Online Map"
+                  // and "LIVE", neither of which is the customer's problem.
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(99),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: (t?.driverLocation?.stale ?? true)
+                                  ? AppColors.warning
+                                  : AppColors.success,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              _customerStatusLabel(
+                                  t?.tripStatus ?? widget.trip.tripStatus),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12.5,
+                                color: AppText.primary,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1159,110 +1193,273 @@ class _CustomerFullScreenTrackingScreenState
             child: SafeArea(
               minimum: const EdgeInsets.all(12),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  // The app's own surface, not white. A white sheet on a dark
+                  // teal map read as a different application pasted over this
+                  // one, and the muted greys inside it were mixed for a light
+                  // background so the driver's name was barely legible.
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(24),
-                  boxShadow: const [BoxShadow(color: Color(0x24000000), blurRadius: 24)],
+                  border: Border.all(color: AppColors.border),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x66000000), blurRadius: 28),
+                  ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Arrival first and large. It is the one thing a waiting
+                    // customer is actually looking at the screen for.
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const CircleAvatar(child: Icon(Icons.person_rounded)),
-                        const SizedBox(width: 10),
+                        Container(
+                          width: 44,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            color: AppTint.brand,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            (t?.driverName ?? widget.trip.driverName ?? 'D')
+                                .trim()
+                                .characters
+                                .first
+                                .toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.secondary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 11),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(t?.driverName ?? widget.trip.driverName ?? 'Driver', style: const TextStyle(fontWeight: FontWeight.w900)),
-                              Text('${t?.vehicle ?? widget.trip.vehicle ?? ''} · ${t?.registrationNumber ?? widget.trip.registrationNumber ?? ''}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                              Text(
+                                t?.driverName ?? widget.trip.driverName ?? 'Driver',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppText.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                [
+                                  t?.vehicle ?? widget.trip.vehicle ?? '',
+                                  t?.registrationNumber ??
+                                      widget.trip.registrationNumber ??
+                                      '',
+                                ].where((part) => part.trim().isNotEmpty).join('  ·  '),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppText.secondary,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                        IconButton.filledTonal(
-                          onPressed: _openChat,
-                          icon: const Icon(Icons.chat_bubble_outline_rounded),
-                          tooltip: 'Message Driver',
-                        ),
-                        const SizedBox(width: 6),
-                        if (eta != null)
-                          Text('≈ $eta min', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0E4F4F))),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                            decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(12)),
-                            child: Text(
-                              'PKR ${widget.trip.fare.toStringAsFixed(0)} · ${widget.trip.bookingType}',
-                              style: const TextStyle(fontWeight: FontWeight.w900),
-                            ),
-                          ),
-                        ),
-                        if ((widget.trip.driverPhone ?? '').trim().isNotEmpty) ...[
+                        if (eta != null) ...[
                           const SizedBox(width: 8),
-                          IconButton.filledTonal(onPressed: _callDriver, icon: const Icon(Icons.call_rounded), tooltip: 'Call Driver'),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '$eta',
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  height: 1,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.secondary,
+                                ),
+                              ),
+                              const Text(
+                                'min away',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppText.secondary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ],
                     ),
-                    if ((widget.tripOtp ?? '').isNotEmpty && (t?.tripStatus ?? widget.trip.tripStatus) != 'TripStarted' && (t?.tripStatus ?? widget.trip.tripStatus) != 'TripCompleted') ...[
-                      const SizedBox(height: 9),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(color: const Color(0xFFFFF7E6), borderRadius: BorderRadius.circular(13), border: Border.all(color: const Color(0xFFFFD98A))),
-                        child: Row(children: [
-                          const Icon(Icons.password_rounded, size: 20, color: Color(0xFF9A6700)),
+
+                    const SizedBox(height: 13),
+
+                    // Message and call as equal, obvious actions rather than
+                    // two small circles competing with the fare chip.
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _PanelAction(
+                            icon: Icons.chat_bubble_outline_rounded,
+                            label: 'Message',
+                            onTap: _openChat,
+                          ),
+                        ),
+                        if ((widget.trip.driverPhone ?? '').trim().isNotEmpty) ...[
                           const SizedBox(width: 9),
-                          const Expanded(child: Text('Trip OTP · Give this code only when you are inside the vehicle', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
-                          Text(widget.tripOtp!, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 4)),
-                        ]),
-                      ),
-                    ],
-                    const SizedBox(height: 10),
-                    Text(
-                      driver == null
-                          ? 'Waiting for the Driver’s next GPS update.'
-                          // Road distance once it is known. The straight-line
-                          // figure is labelled as such rather than passed off
-                          // as a road number it is nowhere near.
-                          : roadKm != null
-                              ? '${roadKm.toStringAsFixed(1)} km by road to '
-                                  '${headingToPickup ? 'pickup' : 'destination'}'
-                                  ' · updated every 5 seconds'
-                              : '${distanceKm?.toStringAsFixed(1)} km direct to '
-                                  '${headingToPickup ? 'pickup' : 'destination'}'
-                                  ' · finding the road…',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                          Expanded(
+                            child: _PanelAction(
+                              icon: Icons.call_rounded,
+                              label: 'Call',
+                              onTap: _callDriver,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    if (t?.driverLocation != null)
-                      Text(
-                        t!.driverLocation!.stale ? 'Location is stale/offline' : 'Driver online',
-                        style: TextStyle(
-                          color: t.driverLocation!.stale ? Colors.orange : const Color(0xFF0E4F4F),
-                          fontSize: 11,
+
+                    const SizedBox(height: 11),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 13, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'PKR ${widget.trip.fare.toStringAsFixed(0)}'
+                              '  ·  ${widget.trip.bookingType}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                                color: AppText.primary,
+                              ),
+                            ),
+                          ),
+                          // Where the car is, in one honest phrase. "0.0 km"
+                          // was being shown when the driver's position was not
+                          // known at all, which reads as "outside your door".
+                          Text(
+                            driver == null
+                                ? 'Locating driver…'
+                                : (t?.driverLocation?.stale ?? false)
+                                    ? 'Signal lost'
+                                    : roadKm != null
+                                        ? '${roadKm.toStringAsFixed(1)} km by road'
+                                        : 'Finding the road…',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: (t?.driverLocation?.stale ?? false)
+                                  ? AppColors.warning
+                                  : AppText.secondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    if ((widget.tripOtp ?? '').isNotEmpty &&
+                        (t?.tripStatus ?? widget.trip.tripStatus) != 'TripStarted' &&
+                        (t?.tripStatus ?? widget.trip.tripStatus) != 'TripCompleted') ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 11),
+                        decoration: BoxDecoration(
+                          color: AppTint.warning,
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Trip OTP · give this only once you are inside '
+                                'the vehicle',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  height: 1.35,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTint.warningText,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              widget.tripOtp!,
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 4,
+                                color: AppText.primary,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 11)),
-                    const SizedBox(height: 10),
-                    if ((t?.tripStatus ?? widget.trip.tripStatus) == 'TripCompleted')
+                    ],
+
+                    if (_error != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _error!,
+                        style: const TextStyle(
+                            color: AppColors.danger, fontSize: 11),
+                      ),
+                    ],
+
+                    if ((t?.tripStatus ?? widget.trip.tripStatus) ==
+                        'TripCompleted') ...[
+                      const SizedBox(height: 11),
                       Container(
-                        width: double.infinity,
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: const Color(0xFFE4F2F0), borderRadius: BorderRadius.circular(14)),
-                        child: const Row(children: [Icon(Icons.check_circle_rounded, color: Color(0xFF0E4F4F)), SizedBox(width: 8), Expanded(child: Text('Trip completed successfully', style: TextStyle(fontWeight: FontWeight.w900)))]),
-                      )
-                    else if (!const {'TripStarted','Emergency','Cancelled'}.contains(t?.tripStatus ?? widget.trip.tripStatus))
+                        decoration: BoxDecoration(
+                          color: AppTint.success,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.check_circle_rounded,
+                                color: AppTint.successText),
+                            SizedBox(width: 9),
+                            Expanded(
+                              child: Text(
+                                'Trip completed',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  color: AppTint.successText,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else if (!const {'TripStarted', 'Emergency', 'Cancelled'}
+                        .contains(t?.tripStatus ?? widget.trip.tripStatus)) ...[
+                      const SizedBox(height: 11),
                       SizedBox(
                         width: double.infinity,
-                        child: OutlinedButton.icon(onPressed: _cancelRide, icon: const Icon(Icons.close_rounded), label: const Text('Cancel Ride')),
+                        child: OutlinedButton.icon(
+                          onPressed: _cancelRide,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.danger,
+                            side: const BorderSide(color: Color(0x33E5484D)),
+                            minimumSize: const Size.fromHeight(46),
+                          ),
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          label: const Text('Cancel ride'),
+                        ),
                       ),
+                    ],
                   ],
                 ),
               ),
@@ -1319,6 +1516,53 @@ class _PassengerChip extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w800,
           color: ink,
+        ),
+      ),
+    );
+  }
+}
+
+/// One of the two actions on the tracking panel.
+///
+/// Full-width halves rather than small circular icon buttons: on a phone held
+/// one-handed at a roadside, "message the driver" should not be a target the
+/// size of a fingernail.
+class _PanelAction extends StatelessWidget {
+  const _PanelAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surfaceAlt,
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(13),
+        child: SizedBox(
+          height: 44,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 17, color: AppColors.secondary),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AppText.primary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
