@@ -1527,6 +1527,39 @@ cd admin_portal && npx tsc --noEmit && npx next build
 The admin portal is the only one of the three that is genuinely compiled here,
 and it has not broken a deploy once.
 
+## 51. "Load failed" on upload
+
+Every server-side error on the web app was arriving at the browser as a network
+failure rather than as the error it actually was.
+
+`UseExceptionHandler` sits outside `UseCors` in the pipeline and **clears the
+response** before writing an error, which strips the
+`Access-Control-Allow-Origin` header the CORS middleware had already set. The
+browser then refuses to read the response at all. Safari's wording for that is
+`Load failed` — which is what reached the driver, on an endpoint whose real
+answer might have been "that file is 14 MB" or "storage is not writable".
+
+The handler now puts the origin header back before writing. Fixed there rather
+than by reordering middleware, because the handler is the thing that clears them
+and the only place that knows they need restoring.
+
+Three supporting changes:
+
+- **The client names the failure.** `ClientException` and `TimeoutException` are
+  caught separately and turned into sentences a driver can act on, instead of
+  passing Safari's wording straight through.
+- **The upload timeout went from 40 to 90 seconds.** Forty is short for a
+  photograph on a mobile connection in the mountains, and a timeout there looked
+  identical to a server fault.
+- **The size error states the actual size.** "Must be under 10 MB" leaves
+  someone guessing whether their file is 11 MB or 40, and therefore whether
+  cropping will help. It now says which.
+
+I cannot confirm from here which of these was the specific failure — that
+needs the API's own logs. But the missing CORS header made *every* error on this
+endpoint indistinguishable from a dead connection, so whatever the underlying
+cause, this is why nothing useful reached the screen.
+
 ---
 
 ## Not done

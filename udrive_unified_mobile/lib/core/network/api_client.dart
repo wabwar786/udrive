@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -90,17 +91,38 @@ class ApiClient {
     var request = buildRequest(token);
     await addFile(request);
 
-    var response = await http.Response.fromStream(
-      await request.send().timeout(const Duration(seconds: 40)),
-    );
+    /// Sends the request and turns transport failures into something readable.
+    ///
+    /// On the web, a request the browser refuses — a blocked origin, a
+    /// response it cannot read, a connection cut mid-upload — arrives here as
+    /// `ClientException: Load failed`, which is Safari's wording and tells the
+    /// person nothing. An upload is also the one request most likely to hit a
+    /// slow connection, so the timeout is worth naming separately.
+    Future<http.Response> send(http.MultipartRequest built) async {
+      try {
+        return await http.Response.fromStream(
+          await built.send().timeout(const Duration(seconds: 90)),
+        );
+      } on TimeoutException {
+        throw const ApiException(
+          'The upload timed out. Check your connection and try again — a '
+          'smaller photograph will send faster.',
+        );
+      } on http.ClientException catch (error) {
+        throw ApiException(
+          'The upload could not reach the server (${error.message}). '
+          'Check your connection, then try again.',
+        );
+      }
+    }
+
+    var response = await send(request);
 
     if (response.statusCode == 401 && await _tryRefresh()) {
       final freshToken = await sessionStore.readAccessToken();
       request = buildRequest(freshToken);
       await addFile(request);
-      response = await http.Response.fromStream(
-        await request.send().timeout(const Duration(seconds: 40)),
-      );
+      response = await send(request);
     }
 
     return _decode(response);

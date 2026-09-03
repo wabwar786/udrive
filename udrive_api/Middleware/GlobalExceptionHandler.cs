@@ -59,6 +59,27 @@ public sealed class GlobalExceptionHandler(
             logger.LogWarning(exception, "Rejected API request. TraceId: {TraceId}", httpContext.TraceIdentifier);
         }
 
+        // Put the CORS headers back before writing the error.
+        //
+        // `UseExceptionHandler` sits outside `UseCors` in the pipeline and
+        // clears the response before an error is written, which strips the
+        // `Access-Control-Allow-Origin` header the CORS middleware had already
+        // set. The browser then refuses to read the response at all and reports
+        // a generic network failure — Safari says only "Load failed" — so every
+        // server-side error on the web app looked like the API was unreachable
+        // rather than like the specific problem it was.
+        //
+        // Re-added here rather than by moving middleware, because the handler is
+        // the thing that clears them and is the only place that knows they need
+        // restoring.
+        var origin = httpContext.Request.Headers.Origin.ToString();
+        if (!string.IsNullOrWhiteSpace(origin)
+            && !httpContext.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
+        {
+            httpContext.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            httpContext.Response.Headers["Vary"] = "Origin";
+        }
+
         httpContext.Response.StatusCode = status;
         return await problemDetailsService.TryWriteAsync(new ProblemDetailsContext
         {

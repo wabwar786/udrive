@@ -57,9 +57,20 @@ public sealed class LocalFileStorageService
         Guid ownerId,
         CancellationToken cancellationToken)
     {
-        if (file.Length is <= 0 or > 10 * 1024 * 1024)
+        if (file.Length <= 0)
         {
-            throw new InvalidDataException("The file must be between 1 byte and 10 MB.");
+            throw new InvalidDataException(
+                "That file is empty. Try taking the photograph again.");
+        }
+
+        if (file.Length > 10 * 1024 * 1024)
+        {
+            // Says the actual size, not just the limit. "Must be under 10 MB"
+            // leaves someone guessing whether their file is 11 MB or 40, and
+            // therefore whether cropping it will help.
+            throw new InvalidDataException(
+                $"That file is {file.Length / (1024.0 * 1024.0):0.#} MB. "
+                + "The limit is 10 MB — please send a smaller photograph.");
         }
 
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
