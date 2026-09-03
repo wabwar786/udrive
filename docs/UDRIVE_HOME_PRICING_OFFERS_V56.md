@@ -1468,6 +1468,65 @@ the database service does not help.
 only, like the endpoint behind it, and its absence is not treated as an error
 for anyone else.
 
+## 49. "Session has expired" with nothing to click
+
+A 401 on the verification page showed *"The session has expired. Sign in
+again."* and then did nothing. The portal still believed it was signed in, so
+there was no sign-in screen to reach and no button to press. A dead end.
+
+The retry only ran when a refresh token happened to be present:
+
+```ts
+if (isApiRequest && response.status === 401 && session?.refreshToken) { … }
+```
+
+A session saved without one, or one whose refresh had itself expired, fell
+through to the friendly message and stopped there.
+
+A 401 is always an authentication problem, so it now always ends in one of two
+places: a refreshed token, or the sign-in page. Failure to refresh clears the
+session and redirects, carrying `?next=` so the person returns to the screen
+they were on rather than being dropped at the dashboard — being bounced to the
+top of the portal after every token expiry is its own small punishment.
+
+Access tokens last fifteen minutes, so this path runs several times a day.
+
+## 50. The C# is now actually compiled
+
+The repeated build failures were the fair complaint behind this round, so I went
+looking for a real compiler rather than another regex.
+
+The .NET SDK installs from the Ubuntu archive, which is reachable here. A full
+`dotnet build` still is not possible — NuGet is blocked by the network policy,
+so Npgsql, JwtBearer and Swashbuckle cannot be restored, and the project targets
+.NET 10 while only the 8 SDK is available.
+
+What *is* possible is running Roslyn with no references at all and keeping the
+errors that survive. Anything about a missing type is an artefact of having no
+references; a missing brace, a stray semicolon or a malformed expression is real
+and would fail the deploy.
+
+`udrive_api/tool/check_syntax.sh` does that. Verified by appending
+`public class Broken { void X( }` and confirming it reports CS1026 and CS1002,
+then removing it.
+
+This is the first check here that uses the actual language grammar rather than
+guessing at it. It is still not `dotnet build` — it cannot see a wrong argument
+type or a missing member, which is what broke three of the six deploys. Those
+need `flutter analyze` on the mobile side and a real `dotnet build` on the API
+side, both of which exist in CI.
+
+### Everything that now runs before a ZIP
+
+```bash
+cd udrive_unified_mobile && python3 tool/audit_structure.py && python3 tool/check_imports.py
+cd udrive_api && python3 tool/check_on_conflict.py && bash tool/check_syntax.sh
+cd admin_portal && npx tsc --noEmit && npx next build
+```
+
+The admin portal is the only one of the three that is genuinely compiled here,
+and it has not broken a deploy once.
+
 ---
 
 ## Not done

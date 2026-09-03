@@ -144,16 +144,44 @@ async function runAuthorized(
 
   let response = await run(session?.accessToken);
 
-  if (
-    isApiRequest &&
-    response.status === 401 &&
-    session?.refreshToken
-  ) {
-    session = await refresh(session);
-    response = await run(session.accessToken);
+  if (isApiRequest && response.status === 401) {
+    // A 401 is always an authentication problem, so it always ends in one of
+    // two places: a refreshed token, or the sign-in page.
+    //
+    // It used to end in neither. The retry only ran when a refresh token
+    // happened to be present, and a session saved without one — or one whose
+    // refresh had itself expired — left every screen showing "The session has
+    // expired. Sign in again." with no way to act on it. The person is already
+    // signed in as far as the portal is concerned, so there is nothing to
+    // click.
+    if (session?.refreshToken) {
+      try {
+        session = await refresh(session);
+        response = await run(session.accessToken);
+      } catch {
+        signOutAndReturn();
+      }
+    } else {
+      signOutAndReturn();
+    }
   }
 
   return response;
+}
+
+/**
+ * Clears the dead session and sends the person to sign in again.
+ *
+ * The current path is remembered so they come back to the screen they were on
+ * rather than the dashboard.
+ */
+function signOutAndReturn() {
+  if (typeof window === 'undefined') return;
+  saveSession(null);
+  const here = window.location.pathname + window.location.search;
+  if (window.location.pathname !== '/login') {
+    window.location.replace(`/login?next=${encodeURIComponent(here)}`);
+  }
 }
 
 export async function apiFetch<T>(
