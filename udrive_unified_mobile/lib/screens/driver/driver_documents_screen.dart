@@ -48,25 +48,32 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
   /// Every extra document is a Driver who gives up halfway. These four are what
   /// actually establishes that a person may drive and that the vehicle is
   /// theirs; anything else can be asked for later, by an Admin who has a reason.
+  /// The exact strings the API accepts.
+  ///
+  /// Not a naming choice. `DriverVerificationService` normalises the type by
+  /// uppercasing and replacing non-alphanumerics, then checks it against
+  /// `CNIC_FRONT, CNIC_BACK, DRIVING_LICENCE, SELFIE`. "CnicFront" normalises
+  /// to "CNICFRONT" — no separator to convert — so it did not match, every
+  /// upload was rejected with a 400, and nothing ever reached the reviewers.
   static const _required = <_Required>[
     _Required(
-      type: 'CnicFront',
+      type: 'CNIC_FRONT',
       label: 'CNIC — front',
       why: 'Confirms who you are.',
     ),
     _Required(
-      type: 'CnicBack',
+      type: 'CNIC_BACK',
       label: 'CNIC — back',
       why: 'The address side.',
     ),
     _Required(
-      type: 'DrivingLicence',
+      type: 'DRIVING_LICENCE',
       label: 'Driving licence',
       why: 'Confirms you may drive.',
       expires: true,
     ),
     _Required(
-      type: 'ProfilePhoto',
+      type: 'SELFIE',
       label: 'Your photograph',
       why: 'Customers see this before they get in.',
     ),
@@ -236,6 +243,7 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
                     _DocumentRow(
                       item: item,
                       document: _documentFor(item.type),
+                      token: _token,
                       busy: _busyType == item.type,
                       onUpload: () => _upload(item),
                       onPreview: () {
@@ -383,6 +391,7 @@ class _DocumentRow extends StatelessWidget {
   const _DocumentRow({
     required this.item,
     required this.document,
+    required this.token,
     required this.busy,
     required this.onUpload,
     required this.onPreview,
@@ -390,6 +399,9 @@ class _DocumentRow extends StatelessWidget {
 
   final _Required item;
   final Map<String, dynamic>? document;
+
+  /// For the thumbnail request. Null before the session has been read.
+  final String? token;
   final bool busy;
   final VoidCallback onUpload;
   final VoidCallback onPreview;
@@ -419,25 +431,61 @@ class _DocumentRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                approved
-                    ? Icons.check_circle_rounded
-                    : rejected
-                        ? Icons.cancel_rounded
-                        : uploaded
-                            ? Icons.schedule_rounded
-                            : Icons.add_photo_alternate_outlined,
-                size: 20,
-                color: approved
-                    ? AppColors.success
-                    : rejected
-                        ? AppColors.danger
-                        : uploaded
-                            ? AppColors.warning
-                            : AppText.disabled,
+              // The picture itself, not an icon standing in for it.
+              //
+              // A Driver checking their paperwork wants to see what they sent.
+              // A green tick beside "CNIC — front" says a file exists; it does
+              // not say whether it is the right one, or readable.
+              GestureDetector(
+                onTap: uploaded ? onPreview : onUpload,
+                child: Container(
+                  width: 62,
+                  height: 62,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: approved
+                          ? AppColors.success
+                          : rejected
+                              ? AppColors.danger
+                              : AppColors.border,
+                    ),
+                  ),
+                  child: uploaded
+                      ? Image.network(
+                          '${ApiConfig.baseUrl}/api/v1/driver/documents/'
+                          '${document!['id']}/file',
+                          fit: BoxFit.cover,
+                          headers: token == null
+                              ? null
+                              : {'Authorization': 'Bearer $token'},
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.description_rounded,
+                            color: AppText.disabled,
+                          ),
+                          loadingBuilder: (context, child, progress) =>
+                              progress == null
+                                  ? child
+                                  : const Center(
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      ),
+                                    ),
+                        )
+                      : const Icon(
+                          Icons.add_photo_alternate_outlined,
+                          color: AppText.disabled,
+                        ),
+                ),
               ),
-              const SizedBox(width: 11),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

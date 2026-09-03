@@ -641,19 +641,24 @@ class _PremiumDrawer extends StatelessWidget {
   List<(String, IconData, String)> _driverEntries(BuildContext context) => [
         if (!AppControllerScope.of(context).driverApproved)
           ('driverVerification', Icons.verified_user_rounded, 'Driver verification'),
+        // Eight, down from thirteen.
+        //
+        // Removed because they duplicated something already on screen: Ride
+        // requests and Active trip are both on the dashboard, and Reviews moved
+        // into Earnings. Create route folded into My routes & tours, and Help
+        // into Support — a driver with a problem opens one of them, not both,
+        // and having to choose is itself a small obstacle.
+        //
+        // A menu is a list of places you cannot already see. Everything else on
+        // it is noise a driver has to read past.
         ('dashboard', Icons.dashboard_outlined, 'Dashboard'),
-        ('requests', Icons.notifications_active_outlined, 'Ride requests'),
-        ('activeTrip', Icons.navigation_outlined, 'Active trip'),
-        ('driverPackages', Icons.luggage_outlined, 'My routes & tours'),
-        ('createPackage', Icons.add_box_outlined, 'Create route or tour'),
-        ('driverWallet', Icons.account_balance_wallet_rounded, 'Wallet & commission'),
-        ('earnings', Icons.payments_outlined, 'Earnings'),
+        ('driverWallet', Icons.account_balance_wallet_rounded, 'Wallet'),
+        ('earnings', Icons.payments_outlined, 'Earnings & reviews'),
         ('vehicles', Icons.directions_car_outlined, 'Vehicles'),
         ('driverDocuments', Icons.badge_outlined, 'My documents'),
-        ('reviews', Icons.star_border_rounded, 'Reviews'),
+        ('driverPackages', Icons.luggage_outlined, 'My routes & tours'),
         ('settings', Icons.settings_outlined, 'Settings'),
-        ('help', Icons.info_outline_rounded, 'Help'),
-        ('support', Icons.chat_bubble_outline_rounded, 'Support'),
+        ('support', Icons.chat_bubble_outline_rounded, 'Help & support'),
       ];
 }
 

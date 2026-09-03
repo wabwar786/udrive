@@ -1191,6 +1191,46 @@ room on a phone and truncated to "Good evening, Was…" — a greeting that has
 stopped greeting anybody. It is now just the first name at ordinary weight. The
 time of day was not information.
 
+## 36. Documents never reached the reviewers
+
+Every driver document upload was being rejected with a 400, and nothing ever
+arrived in the admin queue.
+
+`DriverVerificationService.NormalizeDocumentType` uppercases the type and
+replaces non-alphanumerics with underscores, then checks the result against
+`CNIC_FRONT, CNIC_BACK, DRIVING_LICENCE, SELFIE`. The screen was sending
+`CnicFront`, which normalises to `CNICFRONT` — there is no separator to convert —
+so it matched nothing. `ProfilePhoto` had the same problem against `SELFIE`.
+
+The screen now sends the exact strings the server accepts.
+
+## 37. The documents screen shows the documents
+
+It listed four rows with a status icon each. A green tick beside "CNIC — front"
+says a file exists; it does not say whether it is the right one or readable,
+which is the only thing a driver checking their paperwork wants to know.
+
+Each row now leads with a **62px thumbnail of the file itself**, tappable for a
+full-screen zoomable view. The bearer token is read once and shared, rather than
+fetched per row.
+
+Still no delete. Once sent, a document is view-only to the driver — replaceable
+only when a reviewer has rejected it. Deletion stays with admins, where the
+portal already has it (SuperAdmin).
+
+## 38. Driver menu: thirteen to eight
+
+**Dashboard · Wallet · Earnings & reviews · Vehicles · My documents · My routes
+& tours · Settings · Help & support**
+
+Removed: Ride requests and Active trip, both already on the dashboard. Reviews,
+now inside Earnings. Create route folded into My routes & tours, and Help into
+Support — a driver with a problem opens one of those, not both, and having to
+choose between them is itself a small obstacle.
+
+A menu is a list of places you cannot already see. Everything else on it is
+noise to read past.
+
 ---
 
 ## Not done
