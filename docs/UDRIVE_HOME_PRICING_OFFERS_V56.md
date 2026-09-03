@@ -1116,6 +1116,45 @@ but not change it while it is being reviewed."*
 **My documents** is now in the driver's left menu, so it is reachable without
 going through Vehicles.
 
+## 33. Duplicate class names, and a third check
+
+`rev 76` did not compile. `driver_pages.dart` already contained mock
+`DriverWalletScreen` and `DriverDocumentsScreen` classes — hard-coded payout
+history, a "Dummy document selected for upload" snackbar — and the moment
+`main_shell.dart` imported both those and the real screens, every reference
+became an ambiguous import.
+
+The mocks are deleted, with a note in their place saying why.
+
+`tool/check_imports.py` now also reports **ambiguous names**: a name declared in
+more than one file under `lib/`, where some file's imports reach more than one
+declaration. Getting it usable took three corrections, each worth recording:
+
+- **Eighteen names are duplicated across the project** and nearly all are
+  harmless, because no single file sees both. Listing all eighteen every run
+  would train everyone to ignore the output, so only genuine clashes are
+  reported.
+- **`hide` clauses count.** `main_shell.dart` already resolves one legacy clash
+  with `import 'driver_pages.dart' hide DriverEarningsScreen;`. Ignoring that
+  would have flagged it forever.
+- **Imports are not transitive in Dart.** The reachability walk was following
+  imports through imports, which is not how the language works — a file
+  importing B does not inherit what B imports. Only `export` propagates. Fixing
+  this removed two phantom clashes and made the missing-import check honest.
+
+It also now separates **orphaned files** — seventeen of them, which nothing
+imports and which are therefore never compiled. A missing import inside dead
+code says nothing about the build, and mixing the two produced permanent noise.
+
+Three checks now run clean apart from two known items: `'S'` in
+`driver_home_screen.dart` (a letter inside a nested string the crude stripper
+does not clear) and `UserMode` in `mode_switch_card.dart`, which is real but
+only reachable from orphaned files.
+
+**This is still not a substitute for `flutter analyze`**, which is already the
+first job in `.github/workflows/build-android-apk.yml` and would have caught
+this in about a minute.
+
 ---
 
 ## Not done

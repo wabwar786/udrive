@@ -62,6 +62,18 @@ for p,src in files.items():
         declared[p].add(m.group(1)); owner[m.group(1)].add(p)
 
 IMPORT=re.compile(r"(?:import|export)\s+'([^']+)'")
+# `import 'x.dart' hide Foo;` removes Foo from that file's view, which is how
+# this codebase already resolves several legacy name clashes. Ignoring `hide`
+# would report those as ambiguous forever, and a check that cries wolf gets
+# switched off.
+HIDDEN = re.compile(r"(?:import|export)\s+'([^']+)'[^;]*?\bhide\s+([\w\s,]+)")
+
+def hidden_names(path, source):
+    names = set()
+    for match in HIDDEN.finditer(source):
+        names |= {n.strip() for n in match.group(2).split(',') if n.strip()}
+    return names
+
 def resolve(p, spec):
     if spec.startswith('package:udrive_mobile/'):
         return os.path.join('lib', spec.split('/',1)[1])
@@ -69,20 +81,58 @@ def resolve(p, spec):
         return None
     return os.path.normpath(os.path.join(os.path.dirname(p), spec))
 
-def reachable(p, seen=None):
-    if seen is None: seen=set()
-    if p in seen: return seen
-    seen.add(p)
-    src=files.get(p)
-    if src is None: return seen
+EXPORT=re.compile(r"export\s+'([^']+)'")
+
+def reachable(root):
+    """Every file whose declarations `root` can see.
+
+    Its own imports and exports, then — from each of those — only their
+    *exports*. An import is not transitive in Dart: a file importing B does not
+    inherit what B imports. Following imports transitively made this check
+    report clashes that the language never sees, which is how a check earns
+    being ignored.
+    """
+    src = files.get(root)
+    if src is None: return {root}
+
+    seen = {root}
+    frontier = []
     for m in IMPORT.finditer(src):
-        t=resolve(p, m.group(1))
-        if t and t in files: reachable(t, seen)
+        t = resolve(root, m.group(1))
+        if t and t in files: frontier.append(t)
+
+    while frontier:
+        current = frontier.pop()
+        if current in seen: continue
+        seen.add(current)
+        body = files.get(current)
+        if body is None: continue
+        for m in EXPORT.finditer(body):
+            t = resolve(current, m.group(1))
+            if t and t in files: frontier.append(t)
     return seen
 
 USE=re.compile(r'\b([A-Z][A-Za-z0-9_]*)\b')
+# Files nothing imports are never compiled, so a hit inside one says nothing
+# about the build. Reported separately as dead code rather than mixed in with
+# real missing imports — `profile_screen.dart` and `driver_profile_screen.dart`
+# are both orphaned today and would otherwise produce permanent noise.
+imported = set()
+for _src in files.values():
+    for _m in IMPORT.finditer(_src):
+        pass
+for _path, _src in files.items():
+    for _m in IMPORT.finditer(_src):
+        _t = resolve(_path, _m.group(1))
+        if _t and _t in files:
+            imported.add(_t)
+orphans = sorted(
+    path for path in files
+    if path not in imported and not path.endswith('lib/main.dart'))
+
 bad=0
 for p,src in sorted(files.items()):
+    if p in orphans: continue
     s=strip(src)
     body=re.sub(r"^(?:import|export)\s+'[^']+'.*$", '', s, flags=re.M)
     vis=set()
@@ -95,6 +145,9 @@ for p,src in sorted(files.items()):
         print(f"{p}: uses '{name}' (declared in {sorted(owner[name])[0]}) but does not import it")
         bad+=1
 print('MISSING IMPORTS:', bad)
+for path in orphans:
+    print(f'{path}: nothing imports this file — it is never compiled')
+print('ORPHANED FILES:', len(orphans))
 
 
 # ---------------------------------------------------------------- awaits
@@ -145,3 +198,38 @@ for path, source in sorted(files.items()):
                       'used without await')
                 missing_await += 1
 print('MISSING AWAITS:', missing_await)
+
+
+# ------------------------------------------------------- duplicate top levels
+#
+# A third check, added after a build broke on `DriverDocumentsScreen` being
+# declared in both `driver_pages.dart` (a mock) and `driver_documents_screen.dart`
+# (the real one). Two public classes with the same name in one package is an
+# ambiguous import the moment a file imports both, and dart2js says so only
+# after twenty seconds.
+#
+# Private names (leading underscore) are excluded: they are file-local by
+# definition, and this codebase reuses `_Row`, `_Tag` and similar freely.
+
+# Only reported where it actually bites. This codebase has eighteen names
+# declared in two files each, and they are harmless as long as no single file
+# can see both — a legacy mock model and its replacement living in separate
+# corners breaks nothing. Listing all eighteen every run would train everyone
+# to ignore the output, so a duplicate is flagged only when some file's imports
+# reach more than one declaration of it.
+duplicates = 0
+for path, source in sorted(files.items()):
+    visible_from = reachable(path)
+    body = re.sub(r"^(?:import|export)\s+'[^']+'.*$", '', strip(source), flags=re.M)
+    for name in sorted(set(USE.findall(body))):
+        if name.startswith('_') or name not in owner:
+            continue
+        if name in hidden_names(path, source):
+            continue
+        clash = sorted(p2 for p2 in owner[name] if p2 in visible_from)
+        if len(clash) < 2:
+            continue
+        print(f"{path}: '{name}' is ambiguous — declared in "
+              f"{', '.join(clash)}")
+        duplicates += 1
+print('AMBIGUOUS NAMES:', duplicates)
