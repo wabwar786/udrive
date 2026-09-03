@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/booking/trip_chat_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/config/app_config.dart';
 import '../../core/localization/app_strings.dart';
@@ -42,6 +43,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   /// pickup label alone does not tell a Driver whether answering means a two
   /// minute drive or a twenty minute one, which is most of the decision.
   LatLng? _myLocation;
+
+  /// The Driver's own figures: earnings, rating, trips.
+  DriverDashboard? _dashboard;
 
   /// When each visible request stops being answerable.
   ///
@@ -139,6 +143,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     await controller.loadDriverMarketplace();
   }
 
+  /// Reads the Driver's own figures.
+  ///
+  /// Once per refresh, not on a timer. Earnings move when a trip completes, and
+  /// a number that ticks on its own invites watching it instead of driving.
+  Future<void> _loadDashboard() async {
+    final controller = AppControllerScope.of(context);
+    final dashboard =
+        await TripChatRepository(controller.apiClient).driverDashboard();
+    if (!mounted || dashboard == null) return;
+    setState(() => _dashboard = dashboard);
+  }
+
   Future<void> _refresh() async {
     final controller = AppControllerScope.of(context);
     await controller.refreshAccount();
@@ -148,6 +164,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       await Future.wait([
         controller.loadDriverMarketplace(),
         _loadAcceptedTrips(silent: true),
+        _loadDashboard(),
       ]);
     }
   }
@@ -215,6 +232,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             hasActiveTrip: activeTrip != null,
           ),
           const SizedBox(height: 10),
+          // What the Driver has earned and what they are worth to customers.
+          //
+          // This is the first screen a Driver opens each morning and it used to
+          // say nothing about them at all — no earnings, no rating, no trip
+          // count. A dashboard that only lists other people's requests is a
+          // queue, not a dashboard.
+          if (_dashboard != null) ...[
+            _DriverStatsCard(dashboard: _dashboard!),
+            const SizedBox(height: 10),
+          ],
           if (activeTrip != null) ...[
             _LiveRideHeroCard(
               trip: activeTrip,
@@ -777,6 +804,195 @@ class _WaitingForNearbyRide extends StatelessWidget {
       );
 }
 
+/// The Driver's own numbers, at the top of their own screen.
+///
+/// Earnings first and largest, because that is what a Driver opens the app to
+/// see. Rating and trip count beneath, because they are what a Driver is judged
+/// on and had no home anywhere in the app.
+class _DriverStatsCard extends StatelessWidget {
+  const _DriverStatsCard({required this.dashboard});
+
+  final DriverDashboard dashboard;
+
+  static String _money(double value) =>
+      NumberFormat('#,###').format(value.round());
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Earned today',
+                      style: TextStyle(fontSize: 11, color: AppColors.muted),
+                    ),
+                    const SizedBox(height: 3),
+                    // The one bold number on the card. Everything else is
+                    // ordinary weight — a screen where every figure shouts is
+                    // one where nothing is read first.
+                    Text(
+                      'PKR ${_money(dashboard.earnedToday)}',
+                      style: const TextStyle(
+                        fontSize: 30,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1,
+                        color: Color(0xFF148A5A),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${dashboard.tripsToday} '
+                      'trip${dashboard.tripsToday == 1 ? '' : 's'} today',
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.muted),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    'This month',
+                    style: TextStyle(fontSize: 11, color: AppColors.muted),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'PKR ${_money(dashboard.earnedThisMonth)}',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      color: AppColors.navy,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 13),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 11),
+
+          Row(
+            children: [
+              // A driver with no ratings is shown "No ratings yet", never a
+              // default score. A number nobody gave is worse than a blank.
+              if (dashboard.rating != null) ...[
+                const Icon(Icons.star_rounded,
+                    size: 17, color: Color(0xFFF5A524)),
+                const SizedBox(width: 4),
+                Text(
+                  dashboard.rating!.toStringAsFixed(1),
+                  style: const TextStyle(fontSize: 14, color: AppColors.navy),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '(${dashboard.ratingCount})',
+                  style:
+                      const TextStyle(fontSize: 12, color: AppColors.muted),
+                ),
+              ] else
+                const Text(
+                  'No ratings yet',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                ),
+              const Spacer(),
+              Text(
+                '${dashboard.completedTrips} rides completed',
+                style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+              ),
+            ],
+          ),
+
+          if (dashboard.recentReviews.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 66,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: EdgeInsets.zero,
+                itemCount: dashboard.recentReviews.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final review = dashboard.recentReviews[index];
+                  return Container(
+                    width: 190,
+                    padding: const EdgeInsets.fromLTRB(11, 8, 11, 9),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7F9FB),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            for (var i = 1; i <= 5; i++)
+                              Icon(
+                                i <= review.rating
+                                    ? Icons.star_rounded
+                                    : Icons.star_outline_rounded,
+                                size: 11,
+                                color: const Color(0xFFF5A524),
+                              ),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                review.reviewerFirstName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 10, color: AppColors.muted),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Expanded(
+                          child: Text(
+                            review.text ?? 'Rated without a comment.',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              height: 1.3,
+                              color: review.text == null
+                                  ? AppColors.muted
+                                  : AppColors.navy,
+                              fontStyle: review.text == null
+                                  ? FontStyle.italic
+                                  : FontStyle.normal,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _DriverHomeInfoCard extends StatelessWidget {
   const _DriverHomeInfoCard({required this.icon, required this.title, required this.message, this.actionLabel, this.onAction});
   final IconData icon;
@@ -1015,7 +1231,8 @@ class _DashboardRequestCard extends StatelessWidget {
                         '${secondsLeft}s',
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w900,
+                          fontWeight:
+                              expiring ? FontWeight.w800 : FontWeight.w600,
                           color: expiring
                               ? AppColors.danger
                               : AppColors.muted,
@@ -1032,9 +1249,10 @@ class _DashboardRequestCard extends StatelessWidget {
                       : '${request.seatsRequested} seat'
                           '${request.seatsRequested == 1 ? '' : 's'}'
                           '  ·  ${_km(tripKm)} trip',
+                  // Ordinary weight. The fare above is the only bold thing on
+                  // the card; when everything is bold, nothing is read first.
                   style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
                     color: AppColors.muted,
                   ),
                 ),
@@ -1073,8 +1291,7 @@ class _DashboardRequestCard extends StatelessWidget {
                         icon: const Icon(Icons.route_rounded, size: 17),
                         label: const Text(
                           'Route',
-                          style: TextStyle(
-                              fontSize: 12.5, fontWeight: FontWeight.w800),
+                          style: TextStyle(fontSize: 12.5),
                         ),
                       ),
                     ),
@@ -1096,7 +1313,7 @@ class _DashboardRequestCard extends StatelessWidget {
                         child: const Text(
                           'Send fare',
                           style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w900),
+                              fontSize: 13.5, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
@@ -1144,18 +1361,17 @@ class _RequestLeg extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 13,
-                  height: 1.3,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5,
+                  height: 1.35,
+                  color: AppColors.navy,
                 ),
               ),
               if (detail != null) ...[
-                const SizedBox(height: 1),
+                const SizedBox(height: 2),
                 Text(
                   detail!,
                   style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 11.5,
                     color: AppColors.muted,
                   ),
                 ),

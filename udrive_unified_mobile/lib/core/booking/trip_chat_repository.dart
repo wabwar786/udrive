@@ -130,6 +130,53 @@ class DriverReputation {
       );
 }
 
+/// The driver's own headline figures, for their dashboard.
+class DriverDashboard {
+  const DriverDashboard({
+    required this.fullName,
+    required this.verificationStatus,
+    required this.ratingCount,
+    required this.completedTrips,
+    required this.earnedToday,
+    required this.earnedThisMonth,
+    required this.tripsToday,
+    required this.recentReviews,
+    this.rating,
+  });
+
+  final String fullName;
+  final String verificationStatus;
+
+  /// Null until a customer has rated this driver.
+  final double? rating;
+
+  final int ratingCount;
+  final int completedTrips;
+
+  /// Counted in Pakistan time. A driver finishing at 2am wants that fare in
+  /// today, and a UTC boundary would move it five hours early.
+  final double earnedToday;
+  final double earnedThisMonth;
+  final int tripsToday;
+
+  final List<DriverReview> recentReviews;
+
+  factory DriverDashboard.fromJson(Map<String, dynamic> json) => DriverDashboard(
+        fullName: '${json['fullName'] ?? ''}',
+        verificationStatus: '${json['verificationStatus'] ?? 'Draft'}',
+        rating: (json['rating'] as num?)?.toDouble(),
+        ratingCount: (json['ratingCount'] as num?)?.toInt() ?? 0,
+        completedTrips: (json['completedTrips'] as num?)?.toInt() ?? 0,
+        earnedToday: (json['earnedToday'] as num?)?.toDouble() ?? 0,
+        earnedThisMonth: (json['earnedThisMonth'] as num?)?.toDouble() ?? 0,
+        tripsToday: (json['tripsToday'] as num?)?.toInt() ?? 0,
+        recentReviews: (json['recentReviews'] as List? ?? const [])
+            .whereType<Map>()
+            .map((item) => DriverReview.fromJson(Map<String, dynamic>.from(item)))
+            .toList(growable: false),
+      );
+}
+
 /// Chat and passenger context for one booking.
 class TripChatRepository {
   TripChatRepository(this.api);
@@ -162,6 +209,22 @@ class TripChatRepository {
     );
     final data = response['data'];
     return TripMessage.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  /// The signed-in driver's own dashboard figures.
+  ///
+  /// Returns null rather than throwing: a dashboard that loses its stats strip
+  /// is still a working dashboard, and a driver waiting for a ride should not
+  /// be shown an error screen because one figure failed to load.
+  Future<DriverDashboard?> driverDashboard() async {
+    try {
+      final response = await api.getJson('/api/v1/driver/dashboard');
+      final data = response['data'];
+      if (data is! Map) return null;
+      return DriverDashboard.fromJson(Map<String, dynamic>.from(data));
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Customer only. Returns null when the server declines — a missing

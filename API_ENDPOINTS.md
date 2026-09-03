@@ -166,3 +166,16 @@ The ownership check is inside the SQL, not a test afterwards: a document id in a
 URL must never be enough to read another Driver's CNIC. A missing record and a
 missing file return different errors, because one means the upload never
 completed and the other means storage lost it, and the fixes are different.
+
+## Driver dashboard — rev 75
+
+- `GET /api/v1/driver/dashboard`
+
+  The signed-in Driver's own figures in one call: name, verification status,
+  rating and rating count, completed trips, earnings today, earnings this month,
+  trips today, and their five most recent Customer reviews.
+
+  Money is counted in Pakistan time. A Driver finishing at 2am wants that fare
+  in "today", and a UTC day boundary would move it five hours early — which
+  reads as earnings vanishing overnight. Earnings come from completed bookings,
+  so the figure is what was driven, not what has been settled.

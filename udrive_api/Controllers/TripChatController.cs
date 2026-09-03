@@ -21,6 +21,15 @@ namespace UDrive.Api.Controllers;
 [Route("api/v1/trips/{bookingId:guid}")]
 public sealed class TripChatController(TripChatService service) : ControllerBase
 {
+    /// <summary>The signed-in Driver's own dashboard figures.</summary>
+    /// <remarks>
+    /// Not booking-scoped, so it sits on its own route outside this
+    /// controller's prefix rather than pretending to belong to a trip.
+    /// </remarks>
+    [HttpGet("/api/v1/driver/dashboard")]
+    public async Task<IActionResult> DriverDashboard(CancellationToken ct) =>
+        Result(await service.DriverDashboardAsync(User.GetRequiredUserId(), ct));
+
     [HttpGet("messages")]
     public async Task<IActionResult> Messages(
         Guid bookingId,

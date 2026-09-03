@@ -251,6 +251,134 @@ public sealed class TripChatService(string connectionString)
     }
 
     /// <summary>
+    /// The signed-in Driver's own dashboard figures.
+    /// </summary>
+    /// <remarks>
+    /// Money is counted in Pakistan time, not UTC. A Driver finishing at 2am
+    /// wants that fare in "today", and a UTC day boundary would move it to
+    /// tomorrow five hours early — which reads as earnings vanishing overnight.
+    ///
+    /// Earnings come from completed bookings rather than the wallet ledger, so
+    /// the figure is what was driven today, not what has been settled.
+    /// </remarks>
+    public async Task<ServiceResult<DriverDashboardDto>> DriverDashboardAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            WITH me AS (
+                SELECT dp.id AS profile_id, u.id AS user_id, u.full_name,
+                       dp.verification_status
+                FROM udrive.driver_profiles dp
+                JOIN udrive.users u ON u.id = dp.user_id
+                WHERE dp.user_id = @user
+            )
+            SELECT me.full_name,
+                   me.verification_status,
+                   (SELECT round(avg(r.overall_rating)::numeric, 2)
+                      FROM udrive.trip_ratings r
+                     WHERE r.reviewee_user_id = me.user_id
+                       AND r.reviewer_role = 'Customer' AND r.is_visible),
+                   (SELECT count(*)::int
+                      FROM udrive.trip_ratings r2
+                     WHERE r2.reviewee_user_id = me.user_id
+                       AND r2.reviewer_role = 'Customer' AND r2.is_visible),
+                   (SELECT count(*)::int
+                      FROM udrive.bookings b
+                     WHERE b.driver_profile_id = me.profile_id
+                       AND b.status = 'Completed'),
+                   (SELECT COALESCE(sum(b2.total_amount), 0)
+                      FROM udrive.bookings b2
+                     WHERE b2.driver_profile_id = me.profile_id
+                       AND b2.status = 'Completed'
+                       AND (b2.updated_at AT TIME ZONE 'Asia/Karachi')::date
+                           = (now() AT TIME ZONE 'Asia/Karachi')::date),
+                   (SELECT COALESCE(sum(b3.total_amount), 0)
+                      FROM udrive.bookings b3
+                     WHERE b3.driver_profile_id = me.profile_id
+                       AND b3.status = 'Completed'
+                       AND date_trunc('month', b3.updated_at AT TIME ZONE 'Asia/Karachi')
+                           = date_trunc('month', now() AT TIME ZONE 'Asia/Karachi')),
+                   (SELECT count(*)::int
+                      FROM udrive.bookings b4
+                     WHERE b4.driver_profile_id = me.profile_id
+                       AND b4.status = 'Completed'
+                       AND (b4.updated_at AT TIME ZONE 'Asia/Karachi')::date
+                           = (now() AT TIME ZONE 'Asia/Karachi')::date),
+                   me.user_id
+            FROM me;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        string name;
+        string status;
+        decimal? rating;
+        int ratingCount;
+        int completed;
+        decimal today;
+        decimal month;
+        int tripsToday;
+        Guid driverUserId;
+
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("user", userId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return ServiceResult<DriverDashboardDto>.Fail(
+                    StatusCodes.Status404NotFound,
+                    "driver_profile_not_found",
+                    "You do not have a driver profile yet.");
+            }
+
+            name = reader.GetString(0);
+            status = reader.GetString(1);
+            rating = reader.IsDBNull(2) ? null : reader.GetDecimal(2);
+            ratingCount = reader.GetInt32(3);
+            completed = reader.GetInt32(4);
+            today = reader.GetDecimal(5);
+            month = reader.GetDecimal(6);
+            tripsToday = reader.GetInt32(7);
+            driverUserId = reader.GetGuid(8);
+        }
+
+        const string reviewsSql = """
+            SELECT r.overall_rating, r.review_text, r.created_at,
+                   split_part(btrim(ru.full_name), ' ', 1)
+            FROM udrive.trip_ratings r
+            JOIN udrive.users ru ON ru.id = r.reviewer_user_id
+            WHERE r.reviewee_user_id = @driver
+              AND r.reviewer_role = 'Customer' AND r.is_visible
+            ORDER BY r.created_at DESC
+            LIMIT 5;
+            """;
+
+        var reviews = new List<DriverReviewDto>();
+        await using (var command = new NpgsqlCommand(reviewsSql, connection))
+        {
+            command.Parameters.AddWithValue("driver", driverUserId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                reviews.Add(new DriverReviewDto(
+                    reader.GetInt16(0),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.IsDBNull(3) || reader.GetString(3).Length == 0
+                        ? "Customer"
+                        : reader.GetString(3),
+                    reader.GetFieldValue<DateTimeOffset>(2)));
+            }
+        }
+
+        return ServiceResult<DriverDashboardDto>.Ok(new DriverDashboardDto(
+            name, status, rating, ratingCount, completed,
+            today, month, tripsToday, reviews));
+    }
+
+    /// <summary>
     /// What past Customers have said about the Driver on this booking.
     /// </summary>
     /// <remarks>

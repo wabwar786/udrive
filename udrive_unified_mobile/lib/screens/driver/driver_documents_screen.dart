@@ -402,6 +402,10 @@ class _DocumentRow extends StatelessWidget {
     final uploaded = document != null;
     final notes = '${document?['reviewNotes'] ?? ''}'.trim();
 
+    // Upload when nothing is there, replace when it came back rejected.
+    // Everything in between is view-only.
+    final canReplace = !uploaded || rejected;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
       decoration: BoxDecoration(
@@ -510,30 +514,55 @@ class _DocumentRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 9),
               ],
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: busy || approved ? null : onUpload,
+              // Replacing is only offered when the reviewer has asked for it.
+              //
+              // A document that has been sent is evidence. Letting a Driver
+              // swap it while it sits in a queue means a reviewer can approve
+              // one file and a different one ends up on the record — and it
+              // gives anyone who has been rejected an easy way to keep
+              // resubmitting until a tired reviewer says yes. Once sent, it is
+              // view-only until someone asks for a new one.
+              if (canReplace)
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: busy ? null : onUpload,
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(40),
                   ),
-                  icon: busy
-                      ? const SizedBox(
-                          width: 15,
-                          height: 15,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(
-                          uploaded
-                              ? Icons.refresh_rounded
-                              : Icons.upload_rounded,
-                          size: 16,
-                        ),
-                  label: Text(
-                    uploaded ? 'Replace' : 'Upload',
-                    style: const TextStyle(fontSize: 12.5),
+                    icon: busy
+                        ? const SizedBox(
+                            width: 15,
+                            height: 15,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            rejected
+                                ? Icons.refresh_rounded
+                                : Icons.upload_rounded,
+                            size: 16,
+                          ),
+                    label: Text(
+                      rejected ? 'Replace' : 'Upload',
+                      style: const TextStyle(fontSize: 12.5),
+                    ),
+                  ),
+                )
+              else
+                // Says why there is no button, rather than leaving a greyed
+                // one the Driver presses and presses.
+                Expanded(
+                  child: Text(
+                    approved
+                        ? 'Approved — locked'
+                        : 'Sent. You can view it, but not change it while it '
+                            'is being reviewed.',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      height: 1.4,
+                      color: AppText.disabled,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ],

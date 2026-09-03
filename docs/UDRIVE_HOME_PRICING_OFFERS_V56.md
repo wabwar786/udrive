@@ -1076,6 +1076,46 @@ failed — which is what has happened three times now. Waiting for the Actions
 tick, or running `flutter analyze` locally before pushing, removes this entire
 class of round trip.
 
+## 31. Driver mode: the dashboard is now about the driver
+
+**It said nothing about them at all.** No earnings, no rating, no trip count. A
+first screen that only lists other people's requests is a queue, not a
+dashboard.
+
+`GET /api/v1/driver/dashboard` returns it all in one call — four round trips for
+four numbers on the first screen someone opens is four chances to show a
+half-loaded dashboard. Earnings today (large, green), earnings this month, trips
+today, star rating with its count, completed rides, and the last five customer
+reviews in a scrollable row.
+
+**Typography.** One bold number per card: the money. Everything else dropped to
+ordinary weight — the request card's "13 km trip", the addresses, the Route
+button. When every figure is bold, nothing is read first, which is what made the
+screen look busy rather than considered.
+
+The countdown pill only goes heavy under five seconds, where the weight actually
+means something.
+
+**No default rating.** A driver nobody has rated shows "No ratings yet", never
+"5.0".
+
+## 32. Documents: sent means sent
+
+Upload when nothing is there, **replace only when the reviewer has rejected it**,
+view-only in between.
+
+A document that has been sent is evidence. Letting a Driver swap it while it
+sits in a queue means a reviewer can approve one file and a different one ends
+up on the record — and it gives anyone rejected an easy way to keep resubmitting
+until a tired reviewer says yes.
+
+Where there is no button, the row says why rather than leaving a greyed one the
+Driver presses and presses: *"Approved — locked"* or *"Sent. You can view it,
+but not change it while it is being reviewed."*
+
+**My documents** is now in the driver's left menu, so it is reachable without
+going through Vehicles.
+
 ---
 
 ## Not done

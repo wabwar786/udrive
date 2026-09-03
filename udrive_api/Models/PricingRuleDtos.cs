@@ -196,3 +196,21 @@ public sealed record DriverReputationDto(
     int RatingCount,
     int CompletedTrips,
     IReadOnlyList<DriverReviewDto> RecentReviews);
+
+/// <summary>
+/// Everything a Driver's own dashboard shows about them.
+/// </summary>
+/// <remarks>
+/// One call, because it is one screen. Four round trips for four numbers on the
+/// first screen a Driver opens is four chances to show a half-loaded dashboard.
+/// </remarks>
+public sealed record DriverDashboardDto(
+    string FullName,
+    string VerificationStatus,
+    decimal? Rating,
+    int RatingCount,
+    int CompletedTrips,
+    decimal EarnedToday,
+    decimal EarnedThisMonth,
+    int TripsToday,
+    IReadOnlyList<DriverReviewDto> RecentReviews);
