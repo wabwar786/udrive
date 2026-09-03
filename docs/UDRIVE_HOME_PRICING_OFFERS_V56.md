@@ -1231,6 +1231,42 @@ choose between them is itself a small obstacle.
 A menu is a list of places you cannot already see. Everything else on it is
 noise to read past.
 
+## 39. The API would not start
+
+Migration 041 used `ON CONFLICT (idempotency_key)`. The index behind it,
+`ux_wallet_entries_idempotency`, is **partial** — `WHERE idempotency_key IS NOT
+NULL`. Postgres accepts a partial index as an ON CONFLICT arbiter only when the
+statement repeats its predicate; otherwise it raises 42P10, the migration runner
+aborts, and the service fails to boot. One missing `WHERE` cost a deployment.
+
+Fixed in three places, because the same fault was in two others:
+
+- `041_opening_commission_balance.sql`
+- `DriverWalletService.ChargeCommissionAsync` — would have failed on **every
+  trip completion**, rolling back the completion it runs inside
+- `PaymentService.CreateAsync` against `payments`, which has the same partial
+  index. Pre-existing, and it would have failed on every card payment
+
+### A checker for it
+
+`udrive_api/tool/check_on_conflict.py` reads every unique index and constraint
+out of the migrations, then checks each `ON CONFLICT` in the migrations and the
+services against the one it needs.
+
+It is **table-aware**, and that took a second attempt. The first version matched
+on column names alone and reported three healthy statements —
+`driver_ride_request_decisions` has `(ride_request_id, driver_profile_id)` as its
+primary key, while a different table has a partial index on the same pair. A
+check that cries wolf gets switched off, so it is better to miss a case than to
+invent three.
+
+Verified by putting the bug back and confirming the check fails, then removing
+it again.
+
+```bash
+cd udrive_api && python3 tool/check_on_conflict.py
+```
+
 ---
 
 ## Not done

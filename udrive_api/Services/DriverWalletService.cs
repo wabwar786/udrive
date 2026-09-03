@@ -475,7 +475,14 @@ public sealed class DriverWalletService(
             FROM charged
             -- Keyed on the booking. A completion that is retried, or a status
             -- that is set twice, must not charge the Driver twice.
-            ON CONFLICT (idempotency_key) DO NOTHING
+            --
+            -- The predicate is repeated because the index behind it is partial
+            -- (`WHERE idempotency_key IS NOT NULL`). Postgres only accepts a
+            -- partial index as an arbiter when the statement says so, and
+            -- without it this raises 42P10 and rolls back the trip completion
+            -- it is running inside.
+            ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
+            DO NOTHING
             RETURNING id;
             """;
 

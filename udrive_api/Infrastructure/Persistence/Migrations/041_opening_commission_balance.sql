@@ -37,4 +37,10 @@ SELECT gen_random_uuid(), w.id, 'CommissionTopup', 1000, 'Commission',
 FROM udrive.driver_wallets w
 JOIN udrive.driver_profiles dp ON dp.id = w.driver_profile_id
 WHERE dp.verification_status = 'Approved'
-ON CONFLICT (idempotency_key) DO NOTHING;
+-- `ux_wallet_entries_idempotency` is a PARTIAL unique index
+-- (`WHERE idempotency_key IS NOT NULL`). Postgres will only use a partial index
+-- as an ON CONFLICT arbiter when the statement repeats its predicate, so
+-- `ON CONFLICT (idempotency_key)` alone raises 42P10 — "no unique or exclusion
+-- constraint matching the ON CONFLICT specification" — and takes the whole
+-- migration run down with it.
+ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING;
