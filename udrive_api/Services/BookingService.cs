@@ -213,6 +213,20 @@ public sealed class BookingService(
             JOIN udrive.driver_presence_locations dpl ON dpl.driver_profile_id = @driverProfileId
             WHERE rr.status IN ('Open', 'ReceivingOffers')
               AND dpl.server_timestamp > now() - interval '2 minutes'
+              -- Prepaid commission must not have run out.
+              --
+              -- Checked here rather than at offer time, so a Driver with no
+              -- credit simply stops seeing requests instead of watching them
+              -- arrive and being refused when they answer. A trip already under
+              -- way is unaffected: this only decides what is offered next.
+              AND COALESCE(
+                    (SELECT w.commission_balance
+                       FROM udrive.driver_wallets w
+                      WHERE w.driver_profile_id = @driverProfileId), 0)
+                  > COALESCE(
+                    (SELECT (value_json #>> '{}')::numeric
+                       FROM udrive.system_settings
+                      WHERE key = 'driver.commission.minimum_balance'), 0)
               AND ST_DWithin(dpl.location, rr.pickup_location, 5000)
               AND rr.pickup_at > now() - interval '15 minutes'
               AND (rr.expires_at IS NULL OR rr.expires_at > now())

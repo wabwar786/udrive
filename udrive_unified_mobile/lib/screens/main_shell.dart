@@ -30,6 +30,7 @@ import 'driver/advanced_package_screen.dart';
 import 'driver/driver_tourism_tools.dart';
 import 'driver/vehicle_registration_screen.dart';
 import 'driver/driver_documents_screen.dart';
+import 'driver/driver_wallet_screen.dart';
 import 'driver/live_vehicle_list_screen.dart';
 import 'driver/onboarding/driver_verification_screen.dart';
 import 'maps/live_tracking_screen.dart';
@@ -454,6 +455,7 @@ class _MainShellState extends State<MainShell> {
         'payouts' => const DriverEarningsScreen(),
         'vehicles' => const LiveVehicleListScreen(),
         'driverDocuments' => const DriverDocumentsScreen(),
+        'driverWallet' => const DriverWalletScreen(),
         'documents' => const DriverVerificationScreen(),
         'availability' => const DriverAvailabilityScreen(),
         'reviews' => const DriverReviewsScreen(),
@@ -646,7 +648,8 @@ class _PremiumDrawer extends StatelessWidget {
         ('activeTrip', Icons.navigation_outlined, 'Active trip'),
         ('driverPackages', Icons.luggage_outlined, 'My routes & tours'),
         ('createPackage', Icons.add_box_outlined, 'Create route or tour'),
-        ('earnings', Icons.account_balance_wallet_outlined, 'Earnings'),
+        ('driverWallet', Icons.account_balance_wallet_rounded, 'Wallet & commission'),
+        ('earnings', Icons.payments_outlined, 'Earnings'),
         ('vehicles', Icons.directions_car_outlined, 'Vehicles'),
         ('driverDocuments', Icons.badge_outlined, 'My documents'),
         ('reviews', Icons.star_border_rounded, 'Reviews'),

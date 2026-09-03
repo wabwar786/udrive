@@ -94,3 +94,17 @@ A PostgreSQL trigger calls `udrive.ensure_driver_earning(booking_id)` when a boo
   raised 23514 and rolled back the entire transaction — the booking, the trip
   operation, the assignment and the notification were all written correctly and
   then discarded a few statements later.
+
+## 040_driver_commission_wallet (rev 76)
+
+- Adds `driver_wallets.commission_balance` — credit the Driver has paid the
+  platform in advance. Deliberately **not** `available_balance`, which means
+  money owed *to* the Driver. The two move in opposite directions and sharing
+  one column would make every reconciliation ambiguous.
+- New table `udrive.driver_wallet_topups`: amount, method, the Driver's own
+  EasyPaisa transaction id, a screenshot, and the review outcome.
+- Two settings rows: `driver.commission.percentage` (10) and
+  `driver.commission.minimum_balance` (0).
+- Commission is charged on trip completion inside the completion transaction,
+  with `idempotency_key = 'commission:{bookingId}'`, so a retried completion
+  cannot charge a Driver twice.

@@ -179,3 +179,24 @@ completed and the other means storage lost it, and the fixes are different.
   in "today", and a UTC day boundary would move it five hours early — which
   reads as earnings vanishing overnight. Earnings come from completed bookings,
   so the figure is what was driven, not what has been settled.
+
+## Driver prepaid commission — rev 76
+
+Driver:
+
+- `GET /api/v1/driver/wallet` — balance, minimum, commission %, whether requests
+  are flowing, recent top-ups and recent charges.
+- `POST /api/v1/driver/wallet/topups` (multipart) — amount, `senderReference`,
+  optional screenshot. **Credits nothing.** A screenshot is a claim, not a
+  receipt; crediting on upload would make the balance forgeable with an image
+  editor.
+
+Admin (`SuperAdmin,Admin,FinanceOfficer`):
+
+- `GET /api/v1/admin/wallet-topups/pending`
+- `POST /api/v1/admin/wallet-topups/{id}/review` `{ approve, notes }`
+
+Approving credits `driver_wallets.commission_balance` and writes a ledger entry
+in the same transaction, keyed `topup:{id}` so a retried approval cannot credit
+twice. The update requires `status = 'Pending'`, so two admins pressing approve
+at once credit once.

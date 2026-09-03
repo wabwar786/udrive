@@ -56,6 +56,10 @@ builder.Services.AddScoped<PricingRulesService>(_ => new PricingRulesService(con
 builder.Services.AddScoped<TourRatesService>(_ => new TourRatesService(connectionString));
 builder.Services.AddScoped<SeatFaresService>(_ => new SeatFaresService(connectionString));
 builder.Services.AddScoped<TripChatService>(_ => new TripChatService(connectionString));
+builder.Services.AddScoped<DriverWalletService>(serviceProvider =>
+    new DriverWalletService(
+        connectionString,
+        serviceProvider.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<DriverVerificationService>(serviceProvider =>

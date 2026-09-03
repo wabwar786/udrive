@@ -214,3 +214,45 @@ public sealed record DriverDashboardDto(
     decimal EarnedThisMonth,
     int TripsToday,
     IReadOnlyList<DriverReviewDto> RecentReviews);
+
+/// <summary>A payment a Driver says they have sent the company.</summary>
+/// <param name="DriverName">Only filled for the Admin queue.</param>
+public sealed record WalletTopupDto(
+    Guid Id,
+    string? DriverName,
+    decimal Amount,
+    string Method,
+    string? SenderReference,
+    string Status,
+    string? AdminNotes,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? ReviewedAt);
+
+/// <summary>One commission charge against the prepaid balance.</summary>
+public sealed record WalletChargeDto(
+    decimal Amount,
+    string Description,
+    DateTimeOffset CreatedAt);
+
+/// <summary>
+/// The Driver's prepaid commission balance.
+/// </summary>
+/// <param name="CanReceiveRides">
+/// False once the balance is at or below the platform minimum. Computed here so
+/// the app never has to reimplement the rule and get a different answer.
+/// </param>
+public sealed record DriverCommissionWalletDto(
+    decimal Balance,
+    decimal MinimumBalance,
+    decimal CommissionPercentage,
+    bool CanReceiveRides,
+    IReadOnlyList<WalletTopupDto> Topups,
+    IReadOnlyList<WalletChargeDto> RecentCharges);
+
+public sealed record SubmitTopupRequest(
+    [Range(1, 1000000)] decimal Amount,
+    [StringLength(120)] string? SenderReference);
+
+public sealed record ReviewTopupRequest(
+    bool Approve,
+    [StringLength(400)] string? Notes);
