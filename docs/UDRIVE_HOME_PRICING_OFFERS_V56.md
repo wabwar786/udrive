@@ -1411,6 +1411,63 @@ comes out **larger** than the original — which a lossless PNG copy of a JPEG
 often does — the original is kept. A slow upload is a far smaller problem than a
 document that will not send.
 
+## 47. "Ask driver to re-upload"
+
+The message now reads *"The attachment record exists, but its file is missing
+from API storage"* — which is the API being precise, and confirms the files are
+gone from disk. The volume still has to be mounted; that part is unchanged and
+is not something code can fix.
+
+But the report exposed a real hole I had made. A Driver cannot replace a
+submitted document — that is deliberate, so a file cannot be swapped while a
+reviewer is looking at it — and it means that when a file goes missing, or
+arrives unreadable, **the Driver is locked out of fixing the one thing standing
+between them and approval**. Neither side could act.
+
+Two changes close it:
+
+**The admin action row always renders.** It was inside `{objectUrl && (…)}`, so
+a document whose file had vanished showed a red error and *nothing else* — no
+delete, no way to ask for it again. The one case that most needed an action was
+the one case with none.
+
+**A new "Ask driver to re-upload" button**, on every document card. It marks
+that one document rejected with a reason the admin types, which is exactly the
+state the Driver app already unlocks for replacing — so the driver opens My
+documents, sees that row in red with the reason, and gets a Replace button.
+Nothing else is touched: asking for a new licence should not make someone
+photograph their CNIC again.
+
+Available to SuperAdmin, Admin and VerificationOfficer. It is not destructive —
+it asks for a file rather than removing one — so it does not need the narrower
+role that delete does.
+
+## 48. The volume is on the wrong service
+
+The screenshot shows `postgis-volume` attached to the **PostGIS** service. That
+is the database's own storage — where Postgres keeps its data files — and it
+does nothing for files the API writes.
+
+`udrive-api` and `PostGIS` are separate containers with separate filesystems. A
+volume on one is invisible to the other. `udrive-api` currently has no volume at
+all, so it is still writing uploads inside its own image, and they still go on
+every deploy.
+
+**What is needed:** a second volume, on `udrive-api`, mount path `/data`, plus
+`UPLOAD_ROOT=/data/uploads`.
+
+### Making this visible in the portal
+
+Rather than leaving the answer in a container log, **Diagnostics now has a File
+storage panel**: the upload root, whether it survives a deploy, whether the
+folder exists, and how many files are in it. When storage is ephemeral it shows
+a red box naming the fix, including the part that caused this — that a volume on
+the database service does not help.
+
+`StorageDiagnostics` gained an `Ephemeral` flag for it. The panel is SuperAdmin
+only, like the endpoint behind it, and its absence is not treated as an error
+for anyone else.
+
 ---
 
 ## Not done

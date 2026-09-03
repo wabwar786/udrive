@@ -256,3 +256,6 @@ public sealed record SubmitTopupRequest(
 public sealed record ReviewTopupRequest(
     bool Approve,
     [StringLength(400)] string? Notes);
+
+/// <summary>Asks a Driver to send one document again.</summary>
+public sealed record RequestReuploadRequest([StringLength(300)] string? Reason);

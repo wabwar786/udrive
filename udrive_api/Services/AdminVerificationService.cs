@@ -377,6 +377,66 @@ public sealed class AdminVerificationService(
         return ServiceResult<bool>.Ok(true, message);
     }
 
+    /// <summary>
+    /// Asks the Driver to send one specific document again.
+    /// </summary>
+    /// <remarks>
+    /// A Driver cannot replace a document they have already submitted — that is
+    /// deliberate, so a file cannot be swapped while a reviewer is looking at
+    /// it. But it also means that when a file goes missing from storage, or
+    /// arrives unreadable, the Driver is locked out of fixing the one thing
+    /// standing between them and approval.
+    ///
+    /// This is the way back in. The document is marked rejected with a reason,
+    /// which is exactly the state the Driver app already unlocks for replacing,
+    /// and the reason is shown to them in their own words rather than as a bare
+    /// refusal.
+    ///
+    /// It does not touch the other documents. Asking for a new licence should
+    /// not make someone photograph their CNIC again.
+    /// </remarks>
+    public async Task<ServiceResult<bool>> RequestDocumentReuploadAsync(
+        Guid adminUserId,
+        bool vehicleDocument,
+        Guid ownerId,
+        Guid documentId,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        var table = vehicleDocument
+            ? "udrive.vehicle_documents"
+            : "udrive.driver_documents";
+        var ownerColumn = vehicleDocument ? "vehicle_id" : "driver_profile_id";
+
+        var sql = $"""
+            UPDATE {table}
+            SET status = 'Rejected',
+                review_notes = @reason,
+                updated_at = now()
+            WHERE id = @documentId AND {ownerColumn} = @ownerId
+            RETURNING id;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("documentId", documentId);
+        command.Parameters.AddWithValue("ownerId", ownerId);
+        command.Parameters.AddWithValue(
+            "reason",
+            string.IsNullOrWhiteSpace(reason)
+                ? "Please upload this document again."
+                : reason.Trim());
+
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is null or DBNull
+            ? ServiceResult<bool>.Fail(
+                StatusCodes.Status404NotFound,
+                "document_not_found",
+                "That document was not found.")
+            : ServiceResult<bool>.Ok(true);
+    }
+
     public async Task<ServiceResult<bool>> DeleteDriverDocumentAsync(
         Guid adminUserId,
         Guid driverProfileId,

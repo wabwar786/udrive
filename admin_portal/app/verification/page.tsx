@@ -1177,6 +1177,9 @@ function DocumentGrid({
             deletePath={`/api/v1/admin/verification/${
               ownerType === 'driver' ? 'drivers' : 'vehicles'
             }/${ownerId}/documents/${document.id}`}
+            reuploadPath={`/api/v1/admin/verification/${
+              ownerType === 'driver' ? 'drivers' : 'vehicles'
+            }/${ownerId}/documents/${document.id}/request-reupload`}
             onChanged={onChanged}
             canDelete={canDelete}
           />
@@ -1196,12 +1199,14 @@ function ProtectedDocument({
   document,
   previewPath,
   deletePath,
+  reuploadPath,
   onChanged,
   canDelete,
 }: {
   document: VerificationDocument;
   previewPath: string;
   deletePath: string;
+  reuploadPath: string;
   onChanged: () => Promise<void>;
   canDelete: boolean;
 }) {
@@ -1209,7 +1214,36 @@ function ProtectedDocument({
   const [contentType, setContentType] = useState('');
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+
+  async function requestReupload() {
+    if (!reuploadPath) return;
+
+    const reason = window.prompt(
+      'What should the driver be told? They see this in their app.',
+      'This file could not be opened. Please upload it again.',
+    );
+    if (reason === null) return;
+
+    setRequesting(true);
+    setError('');
+    try {
+      await apiFetch(reuploadPath, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      });
+      await onChanged();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'Could not ask for a re-upload.',
+      );
+    } finally {
+      setRequesting(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -1359,38 +1393,68 @@ function ProtectedDocument({
           </p>
         )}
 
-        {objectUrl && (
-          <div className={styles.documentActions}>
-            <a
-              href={objectUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="secondaryButton"
-            >
-              <Eye size={16} />
-              Open
-            </a>
-            <a
-              href={objectUrl}
-              download={`${document.documentType.toLowerCase()}`}
-              className="secondaryButton"
-            >
-              <Download size={15} />
-              Download
-            </a>
-            {canDelete && (
-              <button
-                type="button"
-                className={styles.deleteFileButton}
-                disabled={deleting}
-                onClick={() => void deleteAttachment()}
+        {/*
+          Always rendered, not only when a preview loaded.
+          
+          This row used to be inside `{objectUrl && (…)}`, so a document whose
+          file had gone missing from storage showed a red error and *nothing
+          else* — no delete, no way to ask for it again. The one case that most
+          needs an action was the one case with none.
+        */}
+        <div className={styles.documentActions}>
+          {objectUrl && (
+            <>
+              <a
+                href={objectUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="secondaryButton"
               >
-                <Trash2 size={15} />
-                {deleting ? 'Deleting…' : 'Delete'}
-              </button>
-            )}
-          </div>
-        )}
+                <Eye size={16} />
+                Open
+              </a>
+              <a
+                href={objectUrl}
+                download={`${document.documentType.toLowerCase()}`}
+                className="secondaryButton"
+              >
+                <Download size={15} />
+                Download
+              </a>
+            </>
+          )}
+
+          {/*
+            Asks the driver for this one document again. They cannot replace a
+            submitted document on their own — deliberately, so a file cannot be
+            swapped while it is being reviewed — which means without this they
+            are locked out of fixing the only thing standing between them and
+            approval.
+          */}
+          {reuploadPath && (
+            <button
+              type="button"
+              className="secondaryButton"
+              disabled={requesting}
+              onClick={() => void requestReupload()}
+            >
+              <RefreshCw size={15} />
+              {requesting ? 'Asking…' : 'Ask driver to re-upload'}
+            </button>
+          )}
+
+          {canDelete && (
+            <button
+              type="button"
+              className={styles.deleteFileButton}
+              disabled={deleting}
+              onClick={() => void deleteAttachment()}
+            >
+              <Trash2 size={15} />
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          )}
+        </div>
       </div>
     </article>
   );

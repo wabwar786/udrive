@@ -68,6 +68,30 @@ public sealed class AdminVerificationController(
     // all day are Admins, and a reviewer who can see that a file is corrupt or
     // is the wrong document but cannot remove it has to find a SuperAdmin to
     // press one button. That queue is where applications sit for days.
+    /// <summary>Asks the Driver to send this one document again.</summary>
+    [Authorize(Roles = "SuperAdmin,Admin,VerificationOfficer")]
+    [HttpPost("drivers/{driverProfileId:guid}/documents/{documentId:guid}/request-reupload")]
+    public async Task<IActionResult> RequestDriverDocumentReupload(
+        Guid driverProfileId,
+        Guid documentId,
+        RequestReuploadRequest request,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await adminService.RequestDocumentReuploadAsync(
+            User.GetRequiredUserId(), false, driverProfileId, documentId,
+            request.Reason, cancellationToken));
+
+    /// <summary>The same, for a vehicle photograph or paper.</summary>
+    [Authorize(Roles = "SuperAdmin,Admin,VerificationOfficer")]
+    [HttpPost("vehicles/{vehicleId:guid}/documents/{documentId:guid}/request-reupload")]
+    public async Task<IActionResult> RequestVehicleDocumentReupload(
+        Guid vehicleId,
+        Guid documentId,
+        RequestReuploadRequest request,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await adminService.RequestDocumentReuploadAsync(
+            User.GetRequiredUserId(), true, vehicleId, documentId,
+            request.Reason, cancellationToken));
+
     [Authorize(Roles = "SuperAdmin,Admin")]
     [HttpDelete("drivers/{driverProfileId:guid}/documents/{documentId:guid}")]
     public async Task<IActionResult> DeleteDriverDocument(

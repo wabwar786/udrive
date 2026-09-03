@@ -2,7 +2,11 @@ namespace UDrive.Api.Services;
 
 public sealed record StoredFile(string RelativeUrl, long Size, string ContentType);
 public sealed record ResolvedStoredFile(string Path, string ContentType, string DownloadName);
-public sealed record StorageDiagnostics(string UploadRoot, bool UploadRootExists, int FileCount, IReadOnlyList<string> SearchRoots);
+/// <param name="Ephemeral">
+/// True when uploads are being written inside the container image rather than a
+/// mounted volume, so every deploy destroys them.
+/// </param>
+public sealed record StorageDiagnostics(string UploadRoot, bool UploadRootExists, int FileCount, IReadOnlyList<string> SearchRoots, bool Ephemeral);
 
 public sealed class LocalFileStorageService
 {
@@ -210,7 +214,7 @@ public sealed class LocalFileStorageService
             }
         }
 
-        return new StorageDiagnostics(_uploadRoot, Directory.Exists(_uploadRoot), count, roots);
+        return new StorageDiagnostics(_uploadRoot, Directory.Exists(_uploadRoot), count, roots, StorageIsEphemeral);
     }
 
     private ResolvedStoredFile? FindLegacyFile(string fileName)

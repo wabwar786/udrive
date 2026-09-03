@@ -200,3 +200,19 @@ Approving credits `driver_wallets.commission_balance` and writes a ledger entry
 in the same transaction, keyed `topup:{id}` so a retried approval cannot credit
 twice. The update requires `status = 'Pending'`, so two admins pressing approve
 at once credit once.
+
+## Ask a driver to re-upload — rev 84
+
+- `POST /api/v1/admin/verification/drivers/{driverProfileId}/documents/{documentId}/request-reupload`
+- `POST /api/v1/admin/verification/vehicles/{vehicleId}/documents/{documentId}/request-reupload`
+
+`{ "reason": "This file could not be opened. Please upload it again." }`
+
+Marks that one document rejected with the reason, which is the state the Driver
+app already unlocks for replacing. A Driver cannot replace a submitted document
+on their own — deliberately, so a file cannot be swapped while it is under
+review — so without this they are locked out of fixing the only thing standing
+between them and approval.
+
+Touches nothing else. Asking for a new licence does not make someone photograph
+their CNIC again.
