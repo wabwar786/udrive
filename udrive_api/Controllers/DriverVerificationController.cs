@@ -11,8 +11,75 @@ namespace UDrive.Api.Controllers;
 [Authorize]
 [Route("api/v1/driver")]
 public sealed class DriverVerificationController(
-    DriverVerificationService driverService) : ControllerBase
+    DriverVerificationService driverService,
+    VerificationFileLookupService fileLookup) : ControllerBase
 {
+    /// <summary>Lets a Driver look at a document they uploaded.</summary>
+    /// <remarks>
+    /// Until now only Admins could open these files, so a Driver could upload a
+    /// photograph of their licence and never see what had actually arrived —
+    /// they found out it was blurred or upside down when it came back rejected,
+    /// days later.
+    ///
+    /// The ownership check is inside the query, not a test afterwards. A
+    /// document id in a URL must never be enough to read another Driver's CNIC.
+    /// </remarks>
+    [HttpGet("documents/{documentId:guid}/file")]
+    public async Task<IActionResult> DownloadOwnDocument(
+        Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        return ServeOwn(await fileLookup.FindOwnDriverDocumentAsync(
+            documentId, User.GetRequiredUserId(), cancellationToken));
+    }
+
+    /// <summary>The same, for a document attached to the Driver's vehicle.</summary>
+    [HttpGet("vehicle-documents/{documentId:guid}/file")]
+    public async Task<IActionResult> DownloadOwnVehicleDocument(
+        Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        return ServeOwn(await fileLookup.FindOwnVehicleDocumentAsync(
+            documentId, User.GetRequiredUserId(), cancellationToken));
+    }
+
+    /// <summary>
+    /// Sends the file back, or says plainly which of the two things went wrong.
+    /// </summary>
+    /// <remarks>
+    /// A missing record and a missing file are different faults with different
+    /// fixes — one means the upload never completed, the other means storage
+    /// lost it — and collapsing both into "not found" sends the Driver to
+    /// support for something they could have re-uploaded themselves.
+    /// </remarks>
+    private IActionResult ServeOwn(VerificationFileLookupResult lookup)
+    {
+        if (!lookup.MetadataFound)
+        {
+            return NotFound(new
+            {
+                success = false,
+                error = "attachment_not_found",
+                message = "That document is not on your account.",
+            });
+        }
+
+        if (lookup.File is null)
+        {
+            return NotFound(new
+            {
+                success = false,
+                error = "attachment_file_missing",
+                message = "The file did not finish uploading. Please upload it again.",
+            });
+        }
+
+        return PhysicalFile(
+            lookup.File.Path,
+            lookup.File.ContentType,
+            lookup.File.DownloadName);
+    }
+
     [HttpGet("onboarding")]
     public async Task<IActionResult> GetOnboarding(CancellationToken cancellationToken)
     {

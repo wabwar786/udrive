@@ -1015,6 +1015,36 @@ database later can recover a link and re-send it. The public view stops the
 moment the trip completes or cancels — which is what makes it safe to put in a
 family group rather than a permanent window into where someone is.
 
+## 29. Driver documents
+
+**A Driver could not see what they had uploaded.** The files were readable only
+by Admins, so someone photographed their licence, sent it, and found out days
+later — via a rejection — that it was blurred or upside down. Two new routes
+serve a Driver their own documents, with the ownership check inside the SQL
+rather than after it.
+
+**One screen, four documents.** CNIC front, CNIC back, licence, photograph. Each
+row shows what it is, why it is being asked for, what state it is in, and gives
+two buttons: **View** and **Upload/Replace**. View opens the file full screen and
+zoomable, with the bearer token on the request — without that header it is a
+broken-image icon, from which a Driver reasonably concludes the upload failed.
+
+Deliberately four. Every extra document is a Driver who gives up halfway, and
+these establish that a person may drive and that the vehicle is theirs. Anything
+else can be asked for later by an Admin with a reason.
+
+**A rejection carries the reviewer's own words.** A rejected row turns red, keeps
+the note, and says "replace this one". A rejection with no reason is a wall, and
+the Driver simply uploads the same photograph again.
+
+**Submit is off until everything is present**, and the button says why. Sending
+an incomplete set costs a review cycle and a day of the Driver's time.
+
+**The dashboard card leads somewhere.** It used to read "Driver approval
+required — nearby rides start automatically after approval", which tells a
+stuck Driver nothing about which of the three states they are in and offers no
+way forward. It now names the next action and opens the documents screen.
+
 ---
 
 ## Not done

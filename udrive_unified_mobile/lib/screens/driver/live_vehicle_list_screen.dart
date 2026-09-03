@@ -4,6 +4,7 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../models/auth_models.dart';
+import 'driver_documents_screen.dart';
 import 'onboarding/live_vehicle_registration_screen.dart';
 import 'tour_rate_screen.dart';
 
@@ -46,6 +47,18 @@ class _LiveVehicleListScreenState extends State<LiveVehicleListScreen> {
             ),
             icon: const Icon(Icons.sell_outlined),
             label: Text(_t('Set your tour rate', 'اپنا ٹور کرایہ مقرر کریں')),
+          ),
+          const SizedBox(height: 10),
+          // Personal documents sit beside the vehicles because a Driver
+          // thinks of both as "my paperwork". Splitting them across two areas
+          // of the app is why people ask support where their licence went.
+          OutlinedButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DriverDocumentsScreen()),
+            ),
+            icon: const Icon(Icons.badge_outlined),
+            label: Text(_t('My documents', 'میرے کاغذات')),
           ),
           const SizedBox(height: 16),
           if (vehicles.isEmpty)

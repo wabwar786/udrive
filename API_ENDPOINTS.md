@@ -152,3 +152,17 @@ The token is returned once; only its hash is stored, so a link cannot be
 recovered from the database later. The public view stops working the moment the
 trip reaches TripCompleted or Cancelled — which is what makes it safe to put in
 a family group chat.
+
+## Driver document preview — rev 73
+
+- `GET /api/v1/driver/documents/{documentId}/file`
+- `GET /api/v1/driver/vehicle-documents/{documentId}/file`
+
+Until now only Admins could open these files, so a Driver could upload a
+photograph of their licence and never see what had arrived — they learned it was
+blurred or upside down when it came back rejected, days later.
+
+The ownership check is inside the SQL, not a test afterwards: a document id in a
+URL must never be enough to read another Driver's CNIC. A missing record and a
+missing file return different errors, because one means the upload never
+completed and the other means storage lost it, and the fixes are different.

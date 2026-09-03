@@ -16,6 +16,7 @@ import '../../core/widgets/common_widgets.dart';
 import '../../models/booking_models.dart';
 import '../../models/trip_operations_models.dart';
 import '../operations/live_trip_navigation_screen.dart';
+import 'driver_documents_screen.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({required this.onNavigate, super.key});
@@ -252,10 +253,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               message: 'Use the top menu to go online.',
             )
           else if (!controller.driverApproved)
-            const _DriverHomeInfoCard(
+            // Not just "approval required". A Driver stuck here needs to know
+            // which of the three things is true — nothing sent, waiting, or
+            // rejected — and be one tap from the screen that fixes it. The old
+            // card said none of that and led nowhere, so the only way forward
+            // was to guess or ring support.
+            _DriverHomeInfoCard(
               icon: Icons.verified_user_outlined,
-              title: 'Driver approval required',
-              message: 'Nearby rides start automatically after approval.',
+              title: 'Approval needed before you can drive',
+              message:
+                  'Upload your CNIC, licence and photograph, check each one, '
+                  'then send them for approval. The result appears there.',
+              actionLabel: 'Open my documents',
+              onAction: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const DriverDocumentsScreen(),
+                ),
+              ),
             )
           else if (verifiedVehicles.isEmpty)
             const _DriverHomeInfoCard(
