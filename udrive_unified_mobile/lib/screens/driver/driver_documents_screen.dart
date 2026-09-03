@@ -1,7 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/auth/auth_repository.dart';
 import '../../core/network/api_config.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -86,9 +85,6 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  AuthRepository get _repository =>
-      AuthRepository(AppControllerScope.of(context).apiClient);
-
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -96,10 +92,15 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
     });
 
     try {
-      final profile = await _repository.getDriverProfile();
+      // Two calls, because the profile carries the overall verification state
+      // and the documents live on their own endpoint — `DriverProfileLive` has
+      // no documents list; only `LiveVehicle` does.
+      final controller = AppControllerScope.of(context);
+      final profile = await controller.refreshDriverProfile();
+      final documents = await controller.driverDocuments();
       if (!mounted) return;
       setState(() {
-        _documents = profile?.documents ?? const [];
+        _documents = documents;
         _profileStatus = profile?.verificationStatus ?? 'Draft';
         _reviewNotes = profile?.reviewNotes;
         _loading = false;
@@ -129,20 +130,21 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
       (document) => '${document['status']}'.toLowerCase() == 'rejected');
 
   Future<void> _upload(_Required item) async {
-    final picked = await FilePicker.platform.pickFiles(
+    // `FilePicker.pickFiles`, not `FilePicker.platform.pickFiles`. This
+    // project's file_picker exposes the static form, which is what the two
+    // existing upload screens already use.
+    final picked = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['jpg', 'jpeg', 'png', 'pdf'],
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
       withData: true,
     );
-    final file = picked?.files.firstOrNull;
-    if (file == null || !mounted) return;
+    if (picked == null || picked.files.isEmpty || !mounted) return;
+    final file = picked.files.single;
 
     setState(() => _busyType = item.type);
     try {
-      await _repository.uploadDriverDocument(
-        documentType: item.type,
-        file: file,
-      );
+      await AppControllerScope.of(context)
+          .uploadDriverDocument(item.type, file);
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -166,8 +168,7 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
     // Read the token before navigating. The document routes are authenticated,
     // and an Image.network without the header shows a broken-image icon — from
     // which a Driver reasonably concludes their upload failed.
-    final controller = AppControllerScope.of(context);
-    final token = await controller.apiClient.sessionStore.readAccessToken();
+    final token = await AppControllerScope.of(context).accessTokenForMedia();
     if (!mounted) return;
 
     await Navigator.push(
@@ -185,7 +186,7 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
   Future<void> _submit() async {
     setState(() => _busyType = '__submit__');
     try {
-      await _repository.submitDriverProfile();
+      await AppControllerScope.of(context).submitDriverProfile();
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

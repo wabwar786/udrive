@@ -419,6 +419,23 @@ class AppController extends ChangeNotifier {
     return _driverProfile!;
   }
 
+  Future<List<Map<String, dynamic>>> driverDocuments() =>
+      _authRepository.getDriverDocuments();
+
+  /// The bearer token, for widgets that fetch a protected file directly.
+  ///
+  /// `Image.network` cannot go through [ApiClient], so a screen showing an
+  /// authenticated document has to attach the header itself. Exposed as a
+  /// narrow method rather than a token getter, so it reads as the one purpose
+  /// it has.
+  Future<String?> accessTokenForMedia() => _sessionStore.readAccessToken();
+
+  Future<DriverProfileLive?> refreshDriverProfile() async {
+    _driverProfile = await _authRepository.getDriverProfile();
+    notifyListeners();
+    return _driverProfile;
+  }
+
   Future<void> uploadDriverDocument(String type, PlatformFile file, {String? expiryDate}) async {
     await _authRepository.uploadDriverDocument(
       documentType: type,

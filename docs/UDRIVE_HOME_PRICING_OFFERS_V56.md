@@ -1045,6 +1045,37 @@ required — nearby rides start automatically after approval", which tells a
 stuck Driver nothing about which of the three states they are in and offers no
 way forward. It now names the next action and opens the documents screen.
 
+## 30. Three type errors, and the check that already exists
+
+`rev 73` did not compile. Three mistakes in one new file:
+
+- `AuthRepository` takes a `SessionStore`, not an `ApiClient`.
+- `DriverProfileLive` has no `documents` list — only `LiveVehicle` does. The
+  driver's documents come from `GET /api/v1/driver/documents`, which had no
+  repository method at all.
+- `FilePicker.pickFiles`, not `FilePicker.platform.pickFiles`. Both existing
+  upload screens use the static form.
+
+All three fixed: a `getDriverDocuments()` repository call, `driverDocuments()`
+and `refreshDriverProfile()` on the controller, and `accessTokenForMedia()` for
+the one place that has to attach a bearer header to an `Image.network`.
+
+**None of these are catchable by `tool/check_imports.py`, and no amount of
+extending it will be.** They are type errors — wrong argument type, missing
+member, missing static — and finding them needs a type checker, not pattern
+matching over source text.
+
+**The type checker is already wired up.** `.github/workflows/build-android-apk.yml`
+runs `flutter analyze` as its first job, before the web and APK builds, and its
+own comment says it exists to fail in a minute rather than after a full build.
+It would have caught all three.
+
+It runs on push to `main`. If Railway is deployed from the same commit without
+waiting for that job, the analyzer's answer arrives after the deploy has already
+failed — which is what has happened three times now. Waiting for the Actions
+tick, or running `flutter analyze` locally before pushing, removes this entire
+class of round trip.
+
 ---
 
 ## Not done

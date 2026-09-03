@@ -81,6 +81,18 @@ class AuthRepository {
     return DriverProfileLive.fromJson(response['data'] as Map<String, dynamic>);
   }
 
+  /// The Driver's own documents, with their review status.
+  ///
+  /// `DriverProfileLive` does not carry these — only `LiveVehicle` does — so a
+  /// Driver had no way to see what they had already sent.
+  Future<List<Map<String, dynamic>>> getDriverDocuments() async {
+    final response = await client.getJson('/api/v1/driver/documents');
+    return (response['data'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
   Future<Map<String, dynamic>> uploadDriverDocument({
     required String documentType,
     required PlatformFile file,
