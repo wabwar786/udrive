@@ -86,6 +86,13 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
   String _profileStatus = 'Draft';
   String? _reviewNotes;
 
+  /// Bearer token for the thumbnails and the full-screen view.
+  ///
+  /// The document routes are authenticated and `Image.network` cannot go
+  /// through the API client, so each image attaches the header itself. Read
+  /// once here rather than per row.
+  String? _token;
+
   @override
   void initState() {
     super.initState();
@@ -105,8 +112,10 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
       final controller = AppControllerScope.of(context);
       final profile = await controller.refreshDriverProfile();
       final documents = await controller.driverDocuments();
+      final token = await controller.accessTokenForMedia();
       if (!mounted) return;
       setState(() {
+        _token = token;
         _documents = documents;
         _profileStatus = profile?.verificationStatus ?? 'Draft';
         _reviewNotes = profile?.reviewNotes;
@@ -172,12 +181,7 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
     final id = '${document['id'] ?? ''}';
     if (id.isEmpty) return;
 
-    // Read the token before navigating. The document routes are authenticated,
-    // and an Image.network without the header shows a broken-image icon — from
-    // which a Driver reasonably concludes their upload failed.
-    final token = await AppControllerScope.of(context).accessTokenForMedia();
-    if (!mounted) return;
-
+    final token = _token;
     await Navigator.push(
       context,
       MaterialPageRoute(

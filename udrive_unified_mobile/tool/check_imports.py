@@ -233,3 +233,49 @@ for path, source in sorted(files.items()):
               f"{', '.join(clash)}")
         duplicates += 1
 print('AMBIGUOUS NAMES:', duplicates)
+
+
+# ------------------------------------------------ undeclared private members
+#
+# A fourth check, after `_token` was referenced in a widget build while the
+# field declaration had never actually landed — a batch edit asserted its way
+# out halfway and left the file using a member that did not exist. dart2js
+# caught it; nothing local did.
+#
+# Only private names, and only within the one file that uses them. `_foo` is
+# file-scoped by definition, so if no declaration of it appears anywhere in the
+# file, the reference cannot resolve. Public members would need to know about
+# every superclass and mixin, which is a type checker's job.
+
+DECLARE_FORMS = [
+    r'\b(?:final|const|var|late)\b[^;=\n]*?\b{name}\b',   # final String? _x
+    r'\b[A-Za-z_][\w<>,\s\?\[\]\.]*\s+{name}\s*[;=]',      # String? _x;  / _x =
+    r'\b{name}\s*\(',                                       # void _x( / _x()
+    r'\bget\s+{name}\b',                                    # get _x
+    r'\bset\s+{name}\b',
+    r'\bclass\s+{name}\b',
+    r'\benum\s+{name}\b',
+    r'\bmixin\s+{name}\b',
+    r'\bthis\.{name}\b',                                    # constructor param
+    r'\b{name}\s*:',                                        # named argument
+    r'\bstatic\b[^;=\n]*?\b{name}\b',
+    # A record type as the declared type: `({LatLng target, double zoom})? _x;`
+    r'\)\??\s+{name}\s*[;=]',
+]
+
+PRIVATE_USE = re.compile(r'(?<![\w$])(_[a-z]\w*)')
+
+undeclared = 0
+for path, source in sorted(files.items()):
+    if path in orphans:
+        continue
+    body = strip(source)
+    for name in sorted(set(PRIVATE_USE.findall(body))):
+        if any(re.search(form.format(name=re.escape(name)), body)
+               for form in DECLARE_FORMS):
+            continue
+        line = body.find(name)
+        line = body[:line].count('\n') + 1 if line >= 0 else 0
+        print(f"{path}:{line}: '{name}' is used but never declared in this file")
+        undeclared += 1
+print('UNDECLARED PRIVATE MEMBERS:', undeclared)

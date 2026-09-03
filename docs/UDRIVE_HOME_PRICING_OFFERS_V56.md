@@ -1267,6 +1267,42 @@ it again.
 cd udrive_api && python3 tool/check_on_conflict.py
 ```
 
+## 40. `_token` was never declared
+
+The documents screen referenced `_token` in three places and the field
+declaration was never there. A batch edit had asserted its way out halfway
+through, applying the later replacements and silently skipping the two that
+created the field and loaded it. The file balanced, the audit passed, and
+dart2js found it twenty seconds into CI.
+
+Field added, loaded alongside the profile and documents, and the full-screen
+preview now reads it instead of fetching the token again.
+
+### A fourth check
+
+`check_imports.py` now flags **private members used but never declared in the
+file that uses them**. `_foo` is file-scoped by definition, so if no declaration
+of it appears anywhere in that file, the reference cannot resolve — which makes
+this one of the few type errors that is genuinely findable with text.
+
+Only private names, and only within one file. Public members would need to know
+about every superclass and mixin, which is a type checker's job and not
+something worth half-doing.
+
+One correction while writing it: the first version reported `_pendingCamera` in
+`ud_map.dart`, whose declared type is a record — `({LatLng target, double zoom})?
+_pendingCamera;` — a shape none of the declaration patterns matched. Added.
+
+Verified by removing the `_token` declaration again and confirming the check
+fails.
+
+The four Flutter checks and the SQL one now stand at:
+
+```bash
+cd udrive_unified_mobile && python3 tool/audit_structure.py && python3 tool/check_imports.py
+cd udrive_api && python3 tool/check_on_conflict.py
+```
+
 ---
 
 ## Not done
