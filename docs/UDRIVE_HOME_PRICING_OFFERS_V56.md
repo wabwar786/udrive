@@ -1348,6 +1348,69 @@ explanation. Five options plus free text, and "Something else" must actually say
 something — an empty box selected and left blank tells the Driver exactly as
 little as no reason at all.
 
+## 44. The missing pictures are not a code bug
+
+Every attachment in the admin portal showed "This section or record is not
+available". The files are genuinely gone.
+
+`LocalFileStorageService` writes to `UPLOAD_ROOT`, and **when that variable is
+unset it falls back to a path inside the container image**. On Railway that
+filesystem is rebuilt on every deploy. The database keeps the document rows, so
+the portal shows a record that exists pointing at a file that no longer does.
+
+Between the vehicle being verified and the screenshot, this project deployed
+many times. Every uploaded document, vehicle photograph and payment screenshot
+went with them.
+
+**The fix is configuration, not code:**
+
+1. Railway → the API service → Volumes → add one with mount path `/data`
+2. Variables → `UPLOAD_ROOT=/data/uploads`
+3. Redeploy
+
+Anything uploaded before that is unrecoverable and has to be sent again.
+
+Three changes so this cannot hide again:
+
+- The API **prints a warning at boot** when `UPLOAD_ROOT` is unset or points
+  inside the container image.
+- The admin portal **shows the API's own 404 message** instead of a generic
+  one. The API already distinguishes "the record is missing" from "the record
+  exists and its file has gone from storage" — two faults with completely
+  different fixes — and the portal was collapsing both into one sentence. That
+  collapse is what turned a five-minute configuration problem into a hunt for a
+  code bug.
+- `PHASE_20_ENVIRONMENT.example` documents the variable.
+
+## 45. Deleting documents
+
+`canDelete` was SuperAdmin-only, in the portal and on the route. But the people
+reviewing verification all day are Admins, and a reviewer who can see that a
+file is corrupt or is the wrong document, yet cannot remove it, has to find a
+SuperAdmin to press one button. That queue is where applications sit for days.
+
+Both now allow SuperAdmin **and** Admin. Nobody below that.
+
+## 46. Photographs are shrunk before upload
+
+A phone camera produces four to eight megabytes a shot. On a mobile connection
+in Azad Kashmir that is a minute of waiting per document, four documents to
+send, and an upload that fails halfway leaves the driver with nothing. The
+server also refuses anything over ten megabytes, so a good camera could stop
+someone registering at all.
+
+`ImageCompressor` resizes to 1600px on the long edge before upload — more detail
+than a reviewer looks at on a CNIC or a number plate. Applied at all three
+upload points: driver documents, driver verification, vehicle photographs.
+
+It is dependency-free, using the codec Flutter already has rather than adding an
+image library on every platform for one resize. And it is careful in three ways:
+files under 900 KB and PDFs are passed through untouched; an image already under
+1600px is not re-encoded, since that would only lose quality; and if the result
+comes out **larger** than the original — which a lossless PNG copy of a JPEG
+often does — the original is kept. A slow upload is a far smaller problem than a
+document that will not send.
+
 ---
 
 ## Not done

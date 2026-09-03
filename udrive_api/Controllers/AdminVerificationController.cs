@@ -62,7 +62,13 @@ public sealed class AdminVerificationController(
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             cancellationToken));
 
-    [Authorize(Roles = "SuperAdmin")]
+    // Admin as well as SuperAdmin.
+    //
+    // Deleting a document is destructive, but the people reviewing verification
+    // all day are Admins, and a reviewer who can see that a file is corrupt or
+    // is the wrong document but cannot remove it has to find a SuperAdmin to
+    // press one button. That queue is where applications sit for days.
+    [Authorize(Roles = "SuperAdmin,Admin")]
     [HttpDelete("drivers/{driverProfileId:guid}/documents/{documentId:guid}")]
     public async Task<IActionResult> DeleteDriverDocument(
         Guid driverProfileId,
@@ -99,7 +105,7 @@ public sealed class AdminVerificationController(
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             cancellationToken));
 
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     [HttpDelete("vehicles/{vehicleId:guid}")]
     public async Task<IActionResult> DeleteVehicle(
         Guid vehicleId,

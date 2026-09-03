@@ -26,7 +26,19 @@ type Envelope<T> = {
 function friendlyApiError(status: number, body: Record<string, unknown>): string {
   if (status === 401) return 'Your session has expired. Please sign in again.';
   if (status === 403) return 'You do not have permission to open this section.';
-  if (status === 404) return 'This section or record is not available.';
+  if (status === 404) {
+    // Show the API's own message when it has one.
+    //
+    // Verification attachments return two different 404s — the record is
+    // missing, or the record exists and its file has gone from storage — and
+    // the fixes are completely different. Collapsing both into "not available"
+    // cost a long hunt for a code bug that turned out to be an unmounted
+    // volume.
+    const message = typeof body.message === 'string' ? body.message : '';
+    return message && !/traceid|request could not be completed/i.test(message)
+      ? message
+      : 'This section or record is not available.';
+  }
   if (status === 409) return 'This record was updated elsewhere. Refresh and try again.';
   if (status === 422 || status === 400) {
     const message = typeof body.message === 'string' ? body.message : '';

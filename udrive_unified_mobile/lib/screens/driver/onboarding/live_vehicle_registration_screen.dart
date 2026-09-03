@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../../../core/media/image_compressor.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/common_widgets.dart';
@@ -292,7 +293,11 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
     );
     if (result == null || result.files.isEmpty) return;
     await _run(() async {
-      await AppControllerScope.of(context).uploadLiveVehicleDocument(_created!.id, type, result.files.single);
+      // Vehicle photographs are the biggest files a Driver sends — four of
+      // them, straight from the camera. Shrunk before they leave the phone.
+      final file = await ImageCompressor.shrink(result.files.single);
+      if (!mounted) return;
+      await AppControllerScope.of(context).uploadLiveVehicleDocument(_created!.id, type, file);
       _uploaded.add(type);
     });
   }

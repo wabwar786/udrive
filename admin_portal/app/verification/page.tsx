@@ -149,7 +149,14 @@ export default function VerificationPage() {
   const [pageSize, setPageSize] = useState(50);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
-  const canDelete = readSession()?.user.roles.includes('SuperAdmin') ?? false;
+  // Admins review verification all day; SuperAdmins do not. A reviewer who can
+  // see that a file is corrupt or is the wrong document, but cannot remove it,
+  // has to find a SuperAdmin to press one button — and that is where
+  // applications sit for days.
+  const canDelete =
+    readSession()?.user.roles.some((role) =>
+      role === 'SuperAdmin' || role === 'Admin',
+    ) ?? false;
 
   const load = useCallback(async () => {
     setBusy(true);

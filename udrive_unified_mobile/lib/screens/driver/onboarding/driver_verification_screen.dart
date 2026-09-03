@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../../../core/media/image_compressor.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/common_widgets.dart';
@@ -261,8 +262,13 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
     );
     if (result == null || result.files.isEmpty) return;
     await _run(() async {
-      await AppControllerScope.of(context).uploadDriverDocument(type, result.files.single);
-      _message('${result.files.single.name} uploaded securely.');
+      // Shrunk first: see ImageCompressor. A four-megabyte camera photograph
+      // is a minute of waiting per document on a mobile connection, and the
+      // server refuses anything over ten.
+      final file = await ImageCompressor.shrink(result.files.single);
+      if (!mounted) return;
+      await AppControllerScope.of(context).uploadDriverDocument(type, file);
+      _message('${file.name} uploaded securely.');
     });
   }
 

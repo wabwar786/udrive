@@ -38,3 +38,13 @@ WA_ENGINE_BASE_URL=https://wa-engine-deploy-production.up.railway.app/
 WA_ENGINE_API_KEY=REPLACE_WITH_ROTATED_WA_ENGINE_KEY
 
 UDRIVE_SAFETY_WHATSAPP_NUMBER=923001234567
+
+# Where uploaded files live. MUST point at a mounted volume.
+#
+# Driver documents, vehicle photographs and payment screenshots are written
+# here. Left unset, they go inside the container image and every deploy
+# destroys them — the database keeps the rows, so the admin portal shows a
+# document that exists with a file that does not.
+#
+# Railway: add a volume with mount path /data, then set:
+UPLOAD_ROOT=/data/uploads

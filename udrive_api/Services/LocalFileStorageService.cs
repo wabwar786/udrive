@@ -12,9 +12,37 @@ public sealed class LocalFileStorageService
     private readonly string _uploadRoot =
         Environment.GetEnvironmentVariable("UPLOAD_ROOT") ?? Path.Combine(AppContext.BaseDirectory, "uploads");
 
+    /// <summary>True when uploads are going somewhere a deploy will erase.</summary>
+    /// <remarks>
+    /// Every uploaded document, vehicle photograph and payment screenshot lives
+    /// on this path. If it is inside the container image rather than a mounted
+    /// volume, all of it is destroyed on the next deploy — the database keeps
+    /// the rows, so the admin portal shows a document that exists with a file
+    /// that does not, and reports "this section or record is not available".
+    ///
+    /// Set <c>UPLOAD_ROOT=/data/uploads</c> and mount a volume there.
+    /// </remarks>
+    public bool StorageIsEphemeral { get; }
+
     public LocalFileStorageService()
     {
         Directory.CreateDirectory(_uploadRoot);
+
+        var configured = Environment.GetEnvironmentVariable("UPLOAD_ROOT");
+        StorageIsEphemeral = string.IsNullOrWhiteSpace(configured)
+            || Path.GetFullPath(configured)
+                .StartsWith(Path.GetFullPath(AppContext.BaseDirectory),
+                    StringComparison.OrdinalIgnoreCase);
+
+        if (StorageIsEphemeral)
+        {
+            // Loud, once, at boot. This has already cost a set of verification
+            // documents that had to be uploaded again.
+            Console.WriteLine(
+                "WARNING: UPLOAD_ROOT is unset or inside the container image "
+                + $"('{_uploadRoot}'). Every uploaded file will be lost on the "
+                + "next deploy. Mount a volume and set UPLOAD_ROOT=/data/uploads.");
+        }
     }
 
     public string UploadRoot => _uploadRoot;

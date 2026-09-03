@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/media/image_compressor.dart';
 import '../../core/network/api_config.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -155,10 +156,14 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
       withData: true,
     );
     if (picked == null || picked.files.isEmpty || !mounted) return;
-    final file = picked.files.single;
 
     setState(() => _busyType = item.type);
     try {
+      // Shrunk before it leaves the phone. A camera photograph is four to
+      // eight megabytes; none of that detail is needed to read a CNIC, and on
+      // a mobile connection here it is a minute of waiting per document.
+      final file = await ImageCompressor.shrink(picked.files.single);
+      if (!mounted) return;
       await AppControllerScope.of(context)
           .uploadDriverDocument(item.type, file);
       await _load();
