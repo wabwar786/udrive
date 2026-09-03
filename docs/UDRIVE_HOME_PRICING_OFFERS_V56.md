@@ -1303,6 +1303,51 @@ cd udrive_unified_mobile && python3 tool/audit_structure.py && python3 tool/chec
 cd udrive_api && python3 tool/check_on_conflict.py
 ```
 
+## 41. Once a ride is accepted, the dashboard is that ride
+
+Today's takings, the next-rides heading and the "locked for now" notice all
+describe work that is not happening. A Driver who has just accepted is driving
+to a pickup, and every other block is something to read past on the way to the
+one button they need. With an active trip, the dashboard shows the ride card and
+nothing else.
+
+**The card was unreadable.** It had a hard-coded mint background (`#EAF7F2`)
+from the old light scheme, and on the dark palette every line on it — the
+addresses, the passenger name, the fare — was there and invisible. It now takes
+its surface, border and ink from the theme, and `_RouteLine` states its colour
+instead of inheriting one meant for a light card.
+
+## 42. The driver's action row
+
+Message, call, and the action that moves the trip on — **all three at the bottom
+of the map**, where a Driver's thumb already is. The contact buttons used to sit
+at the top of the panel beside the name, which is the furthest point from it,
+and they were duplicated once I added them to the tracking screen.
+
+Emergency and Cancel share a row beneath: two exceptional actions together,
+neither of them competing with "I have arrived".
+
+## 43. Cancellation
+
+**Driver cancels before the trip starts: 2% of the fare**, taken from the
+prepaid balance, keyed on the booking so a retry cannot charge twice.
+
+A Customer who has been waiting has lost their place in the queue and has to
+start again; that cost should not fall entirely on them. It is deliberately
+small — enough that a casual cancellation is not free, not so much that a broken
+fan belt becomes a fine.
+
+Not charged once the trip has started. At that point the Customer is in the
+vehicle and a cancellation is a different and more serious event, which belongs
+with the disputes process rather than an automatic fee.
+
+**Customer cancels more than five minutes in: a reason is required.** Changing
+your mind straight after booking costs the Driver almost nothing; cancelling
+once they have driven across town does, and at that point they are owed an
+explanation. Five options plus free text, and "Something else" must actually say
+something — an empty box selected and left blank tells the Driver exactly as
+little as no reason at all.
+
 ---
 
 ## Not done

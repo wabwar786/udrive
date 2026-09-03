@@ -729,12 +729,14 @@ class _DriverLiveNavigationScreenState
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Row(children: [
-                      Expanded(child: Text('PKR ${widget.trip.fare.toStringAsFixed(0)} · ${widget.trip.bookingType}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12))),
-                      IconButton.filledTonal(onPressed: _openChat, icon: const Icon(Icons.chat_bubble_outline_rounded), tooltip: 'Message Customer'),
-                      const SizedBox(width: 6),
-                      IconButton.filledTonal(onPressed: _callCustomer, icon: const Icon(Icons.call_rounded), tooltip: 'Call Customer'),
-                    ]),
+                    // Just the fare here. Message and call moved down into the
+                    // action row — two ways to reach the same customer, at
+                    // opposite ends of the panel, is one way too many.
+                    Text(
+                      'PKR ${widget.trip.fare.toStringAsFixed(0)} · ${widget.trip.bookingType}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 13),
+                    ),
                     const SizedBox(height: 6),
                     Text(
                       '${_distanceKm?.toStringAsFixed(1) ?? '—'} km'
@@ -779,34 +781,56 @@ class _DriverLiveNavigationScreenState
                     if (_currentStatus != 'TripStarted' &&
                         _currentStatus != 'TripCompleted' &&
                         _currentStatus != 'Cancelled') ...[
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _actionBusy ? null : _cancelWithReason,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.danger,
-                            side: const BorderSide(color: Color(0x33E5484D)),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _actionBusy
+                                  ? null
+                                  : () => _changeStatus('Emergency'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(44),
+                              ),
+                              icon: const Icon(Icons.sos_rounded, size: 17),
+                              label: const Text('Emergency',
+                                  style: TextStyle(fontSize: 12.5)),
+                            ),
                           ),
-                          icon: const Icon(Icons.close_rounded, size: 18),
-                          label: const Text(
-                            'Cancel this ride',
-                            style: TextStyle(
-                                fontSize: 12.5, fontWeight: FontWeight.w800),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _actionBusy ? null : _cancelWithReason,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.danger,
+                                side: const BorderSide(color: Color(0x33E5484D)),
+                                minimumSize: const Size.fromHeight(44),
+                              ),
+                              icon: const Icon(Icons.close_rounded, size: 17),
+                              label: const Text('Cancel',
+                                  style: TextStyle(fontSize: 12.5)),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                       const SizedBox(height: 10),
                     ],
+                    // Message, call, then the one action that moves the trip
+                    // forward. All three within thumb reach at the bottom of
+                    // the map, because that is where a Driver's hand already is
+                    // — the contact buttons used to sit at the top of the panel
+                    // beside the name, which is the furthest point from it.
                     Row(
                       children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _actionBusy ? null : () => _changeStatus('Emergency'),
-                            icon: const Icon(Icons.sos_rounded),
-                            label: const Text('Emergency'),
-                          ),
+                        _DriverAction(
+                          icon: Icons.chat_bubble_outline_rounded,
+                          onTap: _actionBusy ? null : _openChat,
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
+                        _DriverAction(
+                          icon: Icons.call_rounded,
+                          onTap: _actionBusy ? null : _callCustomer,
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           flex: 2,
                           child: FilledButton.icon(
@@ -1133,28 +1157,146 @@ class _CustomerFullScreenTrackingScreenState
     if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
+  /// How long a Customer may cancel without explaining themselves.
+  ///
+  /// Five minutes. Changing your mind straight after booking costs the Driver
+  /// almost nothing; cancelling once they have driven halfway across town does,
+  /// and at that point they are owed a reason.
+  static const _freeCancelWindow = Duration(minutes: 5);
+
   Future<void> _cancelRide() async {
-    final confirmed = await showDialog<bool>(
+    final acceptedAt = _tracking?.driverLocation?.serverTimestamp ??
+        widget.trip.lastActivityAt;
+    final needsReason =
+        DateTime.now().difference(acceptedAt) > _freeCancelWindow;
+
+    final reason = TextEditingController();
+    var chosen = '';
+
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Cancel this ride?'),
-        content: const Text('The assigned Driver will be notified immediately.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Keep Ride')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Cancel Ride')),
-        ],
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20, 18, 20, MediaQuery.viewInsetsOf(context).bottom + 20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Cancel this ride?',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                    color: AppText.primary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  needsReason
+                      ? 'Your driver has been on the way for a while. Tell them '
+                          'why so they are not left guessing.'
+                      : 'The driver will be told straight away.',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    height: 1.5,
+                    color: AppText.secondary,
+                  ),
+                ),
+
+                if (needsReason) ...[
+                  const SizedBox(height: 16),
+                  for (final option in const [
+                    'My plans changed',
+                    'The driver is taking too long',
+                    'I found another ride',
+                    'The pickup point is wrong',
+                    'Something else',
+                  ])
+                    RadioListTile<String>(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      value: option,
+                      groupValue: chosen,
+                      onChanged: (value) => setSheet(() => chosen = value ?? ''),
+                      title: Text(
+                        option,
+                        style: const TextStyle(
+                            fontSize: 13.5, color: AppText.primary),
+                      ),
+                    ),
+                  if (chosen == 'Something else')
+                    TextField(
+                      controller: reason,
+                      maxLength: 200,
+                      style: const TextStyle(color: AppText.primary),
+                      decoration: const InputDecoration(
+                        labelText: 'What happened?',
+                        counterText: '',
+                      ),
+                    ),
+                ],
+
+                const SizedBox(height: 16),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.danger,
+                  ),
+                  // A reason is required once the window has passed, and
+                  // "Something else" has to actually say something — an empty
+                  // free-text box selected and left blank tells the driver
+                  // exactly as little as no reason at all.
+                  onPressed: !needsReason ||
+                          (chosen.isNotEmpty &&
+                              (chosen != 'Something else' ||
+                                  reason.text.trim().length >= 3))
+                      ? () => Navigator.pop(sheetContext, true)
+                      : null,
+                  child: const Text('Cancel ride'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(sheetContext, false),
+                  child: const Text('Keep this ride'),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
+
+    final detail = reason.text.trim();
+    reason.dispose();
     if (confirmed != true || !mounted) return;
+
+    final text = !needsReason
+        ? 'Customer cancelled within five minutes of booking.'
+        : chosen == 'Something else'
+            ? detail
+            : chosen;
+
     try {
-      await widget.repository.customerStatus(widget.trip.bookingId, 'Cancelled', reason: 'Customer cancelled the ride before trip start.');
+      await widget.repository
+          .customerStatus(widget.trip.bookingId, 'Cancelled', reason: text);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ride cancelled.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Ride cancelled.')));
       Navigator.pop(context);
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+        );
+      }
     }
   }
+
 
   String _customerStatusLabel(String? status) {
     switch (status) {
@@ -1904,6 +2046,31 @@ class _ReviewCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A square icon button in the Driver's action row.
+class _DriverAction extends StatelessWidget {
+  const _DriverAction({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFEEF3F1),
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(13),
+        child: SizedBox(
+          width: 52,
+          height: 50,
+          child: Icon(icon, size: 20, color: const Color(0xFF0E4F4F)),
+        ),
       ),
     );
   }

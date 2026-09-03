@@ -226,20 +226,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 30),
         children: [
-          // Today, in one line: rides done and money earned.
+          // With a ride accepted, the dashboard is that ride and nothing else.
           //
-          // The previous version put earnings, month totals, rating, trip count
-          // and five review cards above the requests — so the thing a Driver
-          // opens the app for, the next ride, started below the fold. Two
-          // numbers is what a dashboard needs at the top; the rest moved to
-          // Earnings in the menu, where someone goes when they want detail.
-          _TodayStrip(dashboard: _dashboard),
-          const SizedBox(height: 10),
+          // Today's takings, the next-rides section and the locked-requests
+          // notice all describe work that is not happening yet. A Driver who
+          // has just accepted is driving to a pickup, and every other block on
+          // the screen is something to read past on the way to the one button
+          // they need.
           if (activeTrip != null) ...[
             _LiveRideHeroCard(
               trip: activeTrip,
               onOpen: () => _openAcceptedRide(activeTrip),
             ),
+          ] else ...[
+            // Today, in one line: rides done and money earned.
+            _TodayStrip(dashboard: _dashboard),
             const SizedBox(height: 10),
           ],
           if (_recentFares.isNotEmpty) ...[
@@ -258,14 +259,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             }),
             const SizedBox(height: 2),
           ],
-          _CompactSectionRow(
-            title: activeTrip == null ? 'Nearby rides' : 'Next rides',
-            subtitle: activeTrip == null
-                ? 'Live requests within 5 KM'
-                : 'Unlock within 1 KM of destination',
-            count: requests.length,
-          ),
-          const SizedBox(height: 7),
+          if (activeTrip == null) ...[
+            _CompactSectionRow(
+              title: 'Nearby rides',
+              subtitle: 'Live requests within 5 KM',
+              count: requests.length,
+            ),
+            const SizedBox(height: 7),
+          ],
+          if (activeTrip == null)
           if (!_isOnline)
             const _DriverHomeInfoCard(
               icon: Icons.power_settings_new_rounded,
@@ -732,15 +734,19 @@ class _LiveRideHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(color: const Color(0xFFEAF7F2), borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.primary.withValues(alpha: .25))),
+        // Surface and border from the theme, not a hard-coded mint. On the
+        // dark palette that pale green left every line of text on this card
+        // effectively invisible — the addresses, the passenger name and the
+        // fare were all there and unreadable.
+        decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.secondary.withValues(alpha: .45))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [const Icon(Icons.navigation_rounded, color: AppColors.primaryDark), const SizedBox(width: 8), const Expanded(child: Text('ACTIVE RIDE', style: TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark, fontSize: 12))), StatusPill(label: trip.tripStatus, color: AppColors.primary)]),
+          Row(children: [const Icon(Icons.navigation_rounded, color: AppColors.secondary, size: 18), const SizedBox(width: 8), const Expanded(child: Text('ACTIVE RIDE', style: TextStyle(fontWeight: FontWeight.w800, color: AppText.secondary, fontSize: 11.5, letterSpacing: .8))), StatusPill(label: trip.tripStatus, color: AppColors.secondary)]),
           const SizedBox(height: 10),
           _RouteLine(icon: Icons.trip_origin_rounded, text: trip.pickupLabel, color: AppColors.primary),
           const SizedBox(height: 5),
           _RouteLine(icon: Icons.location_on_rounded, text: trip.destinationLabel, color: AppColors.danger),
           const SizedBox(height: 10),
-          Row(children: [Expanded(child: Text('${trip.customerName} · ${trip.passengerCount} passenger${trip.passengerCount == 1 ? '' : 's'}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800))), Text('PKR ${NumberFormat('#,###').format(trip.fare)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy))]),
+          Row(children: [Expanded(child: Text('${trip.customerName} · ${trip.passengerCount} passenger${trip.passengerCount == 1 ? '' : 's'}', style: const TextStyle(fontSize: 12, color: AppText.secondary))), Text('PKR ${NumberFormat('#,###').format(trip.fare)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppText.primary))]),
           const SizedBox(height: 11),
           SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: onOpen, icon: const Icon(Icons.navigation_rounded), label: const Text('Open live ride'))),
         ]),
@@ -1256,7 +1262,12 @@ class _RouteLine extends StatelessWidget {
               text,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+              // Explicit ink. The default inherited a light-surface colour and
+              // vanished once this card moved onto the dark theme.
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AppText.primary,
+              ),
             ),
           ),
         ],

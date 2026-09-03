@@ -429,6 +429,74 @@ public sealed class DriverWalletService(
     /// True when a charge was written. False when there was nothing to charge —
     /// a zero fare, or a booking already charged.
     /// </returns>
+    /// <summary>
+    /// Charges the Driver for abandoning a ride they had accepted.
+    /// </summary>
+    /// <remarks>
+    /// Two percent of the fare, taken from the prepaid balance when a Driver
+    /// cancels before the trip has started. A Customer who has been waiting has
+    /// lost their place in the queue and has to start again, and the cost of
+    /// that should not fall entirely on them.
+    ///
+    /// Deliberately small. This is meant to make a casual cancellation cost
+    /// something, not to trap a Driver whose vehicle has broken down — at two
+    /// percent, a genuine emergency costs about the price of a cup of tea.
+    ///
+    /// Not charged once the trip has started: at that point the Customer is in
+    /// the vehicle and a cancellation is a different, more serious event that
+    /// belongs with the disputes process, not an automatic fee.
+    /// </remarks>
+    internal static async Task<bool> ChargeCancellationAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid bookingId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            WITH booking AS (
+                SELECT b.id, b.driver_profile_id, b.total_amount
+                FROM udrive.bookings b
+                WHERE b.id = @booking AND b.driver_profile_id IS NOT NULL
+            ), wallet AS (
+                INSERT INTO udrive.driver_wallets
+                    (id, driver_profile_id, created_at, updated_at)
+                SELECT gen_random_uuid(), booking.driver_profile_id, now(), now()
+                FROM booking
+                ON CONFLICT (driver_profile_id) DO UPDATE SET updated_at = now()
+                RETURNING id
+            ), charged AS (
+                UPDATE udrive.driver_wallets w
+                SET commission_balance =
+                        w.commission_balance
+                        - round(booking.total_amount * 0.02, 2),
+                    version = w.version + 1,
+                    updated_at = now()
+                FROM booking, wallet
+                WHERE w.id = wallet.id AND booking.total_amount > 0
+                RETURNING w.id AS wallet_id,
+                          round(booking.total_amount * 0.02, 2) AS charge
+            )
+            INSERT INTO udrive.driver_wallet_entries
+                (id, wallet_id, booking_id, entry_type, amount, balance_bucket,
+                 description, idempotency_key, created_at)
+            SELECT gen_random_uuid(), charged.wallet_id, @booking,
+                   'CancellationCharge', -charged.charge, 'Commission',
+                   'Cancelled after accepting the ride (2%)',
+                   'cancel:' || @booking, now()
+            FROM charged
+            -- Keyed on the booking: a cancellation that is retried, or a status
+            -- set twice, must not charge twice.
+            ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
+            DO NOTHING
+            RETURNING id;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("booking", bookingId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is not null and not DBNull;
+    }
+
     internal static async Task<bool> ChargeCommissionAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
