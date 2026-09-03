@@ -108,3 +108,17 @@ A PostgreSQL trigger calls `udrive.ensure_driver_earning(booking_id)` when a boo
 - Commission is charged on trip completion inside the completion transaction,
   with `idempotency_key = 'commission:{bookingId}'`, so a retried completion
   cannot charge a Driver twice.
+
+## 041_opening_commission_balance (rev 78)
+
+Repairs the damage 040 did. That migration added `commission_balance` defaulting
+to 0 and a rule that a Driver only sees requests while their balance is *above*
+the minimum — which also defaults to 0. `0 > 0` is false, so **every existing
+Driver silently stopped receiving requests**. No error, no notice.
+
+Every currently-approved Driver is credited an opening balance of 1,000, with a
+ledger entry explaining where it came from. `GREATEST` is used so a Driver who
+had already paid keeps what they paid rather than being reset.
+
+Drivers registering after this still start at zero and must top up before their
+first ride, which is the intended arrangement.

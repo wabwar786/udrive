@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'package:intl/intl.dart';
+
 import '../../core/auth/session_store.dart';
 import '../../core/booking/driver_finance_repository.dart';
+import '../../core/booking/trip_chat_repository.dart';
 import '../../core/network/api_client.dart';
+import '../../core/state/app_controller.dart';
+import '../../core/theme/app_theme.dart';
 
 class DriverEarningsScreen extends StatefulWidget {
   const DriverEarningsScreen({super.key});
@@ -14,6 +19,13 @@ class DriverEarningsScreen extends StatefulWidget {
 class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
   late final DriverFinanceRepository _repository;
   Map<String, dynamic>? _data;
+
+  /// Rating, trip count, month total and what passengers wrote.
+  ///
+  /// This lives here rather than on the dashboard. It is worth reading, but not
+  /// while a ride request is coming in — the dashboard's job is the next ride.
+  DriverDashboard? _dashboard;
+
   String? _error;
   bool _busy = false;
 
@@ -22,6 +34,15 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
     super.initState();
     _repository = DriverFinanceRepository(ApiClient(SessionStore()));
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDashboard());
+  }
+
+  Future<void> _loadDashboard() async {
+    final controller = AppControllerScope.of(context);
+    final dashboard =
+        await TripChatRepository(controller.apiClient).driverDashboard();
+    if (!mounted || dashboard == null) return;
+    setState(() => _dashboard = dashboard);
   }
 
   Future<void> _load() async {
@@ -69,9 +90,13 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
           children: [
             const Text(
               'Earnings & wallet',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 14),
+            if (_dashboard != null) ...[
+              _DriverRecord(dashboard: _dashboard!),
+              const SizedBox(height: 16),
+            ],
             if (_busy && _data == null)
               const Padding(
                 padding: EdgeInsets.all(32),
@@ -226,5 +251,154 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+
+/// The Driver's own record: month, lifetime, rating, and recent reviews.
+///
+/// Moved off the dashboard, where it pushed the next ride below the fold. A
+/// Driver comes here to study; on the home screen they are working.
+class _DriverRecord extends StatelessWidget {
+  const _DriverRecord({required this.dashboard});
+
+  final DriverDashboard dashboard;
+
+  static String _money(num value) =>
+      NumberFormat('#,###').format(value.round());
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'This month',
+                      style: TextStyle(fontSize: 11, color: AppColors.muted),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'PKR ${_money(dashboard.earnedThisMonth)}',
+                      style: const TextStyle(
+                        fontSize: 26,
+                        height: 1.05,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.7,
+                        color: Color(0xFF148A5A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    'Rides completed',
+                    style: TextStyle(fontSize: 11, color: AppColors.muted),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${dashboard.completedTrips}',
+                    style: const TextStyle(fontSize: 17, color: AppColors.navy),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 13),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 11),
+
+          Row(
+            children: [
+              // Never a default score. A driver nobody has rated is shown as
+              // such, because "5.0" that nobody gave is worse than a blank.
+              if (dashboard.rating != null) ...[
+                const Icon(Icons.star_rounded,
+                    size: 17, color: Color(0xFFF5A524)),
+                const SizedBox(width: 4),
+                Text(
+                  dashboard.rating!.toStringAsFixed(1),
+                  style: const TextStyle(fontSize: 14, color: AppColors.navy),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  'from ${dashboard.ratingCount} passengers',
+                  style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                ),
+              ] else
+                const Text(
+                  'No ratings yet',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                ),
+            ],
+          ),
+
+          if (dashboard.recentReviews.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (final review in dashboard.recentReviews)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F9FB),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          for (var i = 1; i <= 5; i++)
+                            Icon(
+                              i <= review.rating
+                                  ? Icons.star_rounded
+                                  : Icons.star_outline_rounded,
+                              size: 12,
+                              color: const Color(0xFFF5A524),
+                            ),
+                          const SizedBox(width: 7),
+                          Text(
+                            review.reviewerFirstName,
+                            style: const TextStyle(
+                                fontSize: 11, color: AppColors.muted),
+                          ),
+                        ],
+                      ),
+                      if (review.text != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          review.text!,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            height: 1.4,
+                            color: AppColors.navy,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
   }
 }

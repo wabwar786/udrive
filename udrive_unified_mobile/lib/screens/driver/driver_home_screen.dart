@@ -226,22 +226,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 30),
         children: [
-          _CompactDriverHeader(
-            driverName: controller.currentUserName,
-            requestCount: requests.length,
-            hasActiveTrip: activeTrip != null,
-          ),
-          const SizedBox(height: 10),
-          // What the Driver has earned and what they are worth to customers.
+          // Today, in one line: rides done and money earned.
           //
-          // This is the first screen a Driver opens each morning and it used to
-          // say nothing about them at all — no earnings, no rating, no trip
-          // count. A dashboard that only lists other people's requests is a
-          // queue, not a dashboard.
-          if (_dashboard != null) ...[
-            _DriverStatsCard(dashboard: _dashboard!),
-            const SizedBox(height: 10),
-          ],
+          // The previous version put earnings, month totals, rating, trip count
+          // and five review cards above the requests — so the thing a Driver
+          // opens the app for, the next ride, started below the fold. Two
+          // numbers is what a dashboard needs at the top; the rest moved to
+          // Earnings in the menu, where someone goes when they want detail.
+          _TodayStrip(dashboard: _dashboard),
+          const SizedBox(height: 10),
           if (activeTrip != null) ...[
             _LiveRideHeroCard(
               trip: activeTrip,
@@ -572,26 +565,6 @@ class _RecentFareSent {
   final DateTime visibleUntil;
 }
 
-class _CompactDriverHeader extends StatelessWidget {
-  const _CompactDriverHeader({required this.driverName, required this.requestCount, required this.hasActiveTrip});
-  final String driverName;
-  final int requestCount;
-  final bool hasActiveTrip;
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
-    child: Row(children: [
-      Container(width: 38, height: 38, decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(12)), child: Icon(hasActiveTrip ? Icons.navigation_rounded : Icons.local_taxi_rounded, color: AppColors.primaryDark, size: 20)),
-      const SizedBox(width: 10),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Hi ${driverName.split(' ').first}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.navy)),
-        Text(hasActiveTrip ? 'Your active ride is live' : 'Nearby rides update automatically', style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
-      ])),
-      Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(999)), child: Text('$requestCount nearby', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.navy))),
-    ]),
-  );
-}
 
 class _CompactSectionRow extends StatelessWidget {
   const _CompactSectionRow({required this.title, required this.subtitle, required this.count});
@@ -809,184 +782,67 @@ class _WaitingForNearbyRide extends StatelessWidget {
 /// Earnings first and largest, because that is what a Driver opens the app to
 /// see. Rating and trip count beneath, because they are what a Driver is judged
 /// on and had no home anywhere in the app.
-class _DriverStatsCard extends StatelessWidget {
-  const _DriverStatsCard({required this.dashboard});
+/// Today's two numbers, in one line.
+///
+/// Rides and money, nothing else. Everything a Driver might want to study —
+/// the month, their rating, what passengers wrote — lives in Earnings, because
+/// studying it is not what they are doing while a request is coming in.
+class _TodayStrip extends StatelessWidget {
+  const _TodayStrip({required this.dashboard});
 
-  final DriverDashboard dashboard;
-
-  static String _money(double value) =>
-      NumberFormat('#,###').format(value.round());
+  final DriverDashboard? dashboard;
 
   @override
   Widget build(BuildContext context) {
+    final trips = dashboard?.tripsToday ?? 0;
+    final earned = dashboard?.earnedToday ?? 0;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Today',
+                  style: TextStyle(fontSize: 11, color: AppColors.muted),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$trips ride${trips == 1 ? '' : 's'}',
+                  style: const TextStyle(fontSize: 15, color: AppColors.navy),
+                ),
+              ],
+            ),
+          ),
+          Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Earned today',
-                      style: TextStyle(fontSize: 11, color: AppColors.muted),
-                    ),
-                    const SizedBox(height: 3),
-                    // The one bold number on the card. Everything else is
-                    // ordinary weight — a screen where every figure shouts is
-                    // one where nothing is read first.
-                    Text(
-                      'PKR ${_money(dashboard.earnedToday)}',
-                      style: const TextStyle(
-                        fontSize: 30,
-                        height: 1.05,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -1,
-                        color: Color(0xFF148A5A),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${dashboard.tripsToday} '
-                      'trip${dashboard.tripsToday == 1 ? '' : 's'} today',
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.muted),
-                    ),
-                  ],
-                ),
+              const Text(
+                'Earned',
+                style: TextStyle(fontSize: 11, color: AppColors.muted),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    'This month',
-                    style: TextStyle(fontSize: 11, color: AppColors.muted),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'PKR ${_money(dashboard.earnedThisMonth)}',
-                    style: const TextStyle(
-                      fontSize: 17,
-                      color: AppColors.navy,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 13),
-          const Divider(height: 1, color: AppColors.border),
-          const SizedBox(height: 11),
-
-          Row(
-            children: [
-              // A driver with no ratings is shown "No ratings yet", never a
-              // default score. A number nobody gave is worse than a blank.
-              if (dashboard.rating != null) ...[
-                const Icon(Icons.star_rounded,
-                    size: 17, color: Color(0xFFF5A524)),
-                const SizedBox(width: 4),
-                Text(
-                  dashboard.rating!.toStringAsFixed(1),
-                  style: const TextStyle(fontSize: 14, color: AppColors.navy),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '(${dashboard.ratingCount})',
-                  style:
-                      const TextStyle(fontSize: 12, color: AppColors.muted),
-                ),
-              ] else
-                const Text(
-                  'No ratings yet',
-                  style: TextStyle(fontSize: 12.5, color: AppColors.muted),
-                ),
-              const Spacer(),
+              const SizedBox(height: 2),
+              // The one bold thing on the strip.
               Text(
-                '${dashboard.completedTrips} rides completed',
-                style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+                'PKR ${NumberFormat('#,###').format(earned.round())}',
+                style: const TextStyle(
+                  fontSize: 22,
+                  height: 1.1,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -.5,
+                  color: Color(0xFF148A5A),
+                ),
               ),
             ],
           ),
-
-          if (dashboard.recentReviews.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 66,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.zero,
-                itemCount: dashboard.recentReviews.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final review = dashboard.recentReviews[index];
-                  return Container(
-                    width: 190,
-                    padding: const EdgeInsets.fromLTRB(11, 8, 11, 9),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF7F9FB),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            for (var i = 1; i <= 5; i++)
-                              Icon(
-                                i <= review.rating
-                                    ? Icons.star_rounded
-                                    : Icons.star_outline_rounded,
-                                size: 11,
-                                color: const Color(0xFFF5A524),
-                              ),
-                            const SizedBox(width: 5),
-                            Expanded(
-                              child: Text(
-                                review.reviewerFirstName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontSize: 10, color: AppColors.muted),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Expanded(
-                          child: Text(
-                            review.text ?? 'Rated without a comment.',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              height: 1.3,
-                              color: review.text == null
-                                  ? AppColors.muted
-                                  : AppColors.navy,
-                              fontStyle: review.text == null
-                                  ? FontStyle.italic
-                                  : FontStyle.normal,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
         ],
       ),
     );

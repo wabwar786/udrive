@@ -1155,6 +1155,42 @@ only reachable from orphaned files.
 first job in `.github/workflows/build-android-apk.yml` and would have caught
 this in about a minute.
 
+## 34. I switched off the marketplace
+
+Requests stopped reaching drivers, and it was migration 040.
+
+It added `commission_balance` defaulting to 0, and a rule that a Driver sees
+requests only while their balance is **above** the minimum — which also defaults
+to 0. `0 > 0` is false. Every Driver already on the platform went from working
+to receiving nothing, with no error and no notice.
+
+That is the wrong way to introduce a charge. Someone driving yesterday should
+not be cut off by a rule they were never told about, and the first they knew of
+it was an empty screen.
+
+Migration 041 credits every approved Driver an opening 1,000, with a ledger
+entry saying where it came from. `GREATEST` means a Driver who had already paid
+keeps what they paid. New Drivers still start at zero and top up before their
+first ride.
+
+## 35. The driver dashboard, cut back
+
+The previous version put earnings, month totals, rating, trip count and five
+review cards **above** the requests. The thing a Driver opens the app for — the
+next ride — started below the fold.
+
+The top is now one line: **rides today, earned today**. One bold number, the
+money.
+
+Everything else moved to **Earnings** in the menu: month total, lifetime rides,
+star rating with its count, and the recent reviews in full. It is worth reading,
+but not while a request is coming in.
+
+**The title bar** said "Good evening, Waseem" in 900-weight, which ran out of
+room on a phone and truncated to "Good evening, Was…" — a greeting that has
+stopped greeting anybody. It is now just the first name at ordinary weight. The
+time of day was not information.
+
 ---
 
 ## Not done

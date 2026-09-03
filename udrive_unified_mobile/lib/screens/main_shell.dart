@@ -91,21 +91,27 @@ class _MainShellState extends State<MainShell> {
       ),
       appBar: customerHome ? null : AppBar(
         titleSpacing: 4,
+        // Just the name, at ordinary weight.
+        //
+        // "Good evening, Waseem" in 900-weight ran out of room on a phone and
+        // truncated to "Good evening, Was…", which is a greeting that has
+        // stopped greeting anybody. The time of day is not information, and a
+        // heavy title makes every screen open with a shout.
         title: (customerHome || driverHome)
             ? Text(
-                '${_greeting()}, ${_firstName(controller.currentUserName)}',
+                _firstName(controller.currentUserName),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w600,
                   fontSize: 17,
                 ),
               )
             : Text(
                 title,
                 style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
                 ),
               ),
         actions: [
@@ -181,14 +187,6 @@ class _MainShellState extends State<MainShell> {
       ),
       bottomNavigationBar: driverNeedsVerification || !driver ? null : _bottomNavigation(driver),
     );
-  }
-
-  String _greeting() {
-    final pakistanNow =
-        DateTime.now().toUtc().add(const Duration(hours: 5));
-    if (pakistanNow.hour < 12) return 'Good morning';
-    if (pakistanNow.hour < 17) return 'Good afternoon';
-    return 'Good evening';
   }
 
   String _firstName(String name) {
