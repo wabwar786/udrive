@@ -1613,6 +1613,41 @@ If **Writable** is No, the red box gives the operating system's own reason. That
 is almost always the volume's mount path or its permissions, and it is fixed in
 Railway rather than in code.
 
+## 53. Why the volume was still not writable
+
+`/data` as the mount path with `UPLOAD_ROOT=/data/uploads` is correct. The
+Dockerfile was not.
+
+**The container runs as `udrive`, uid 10001.** Railway mounts a volume owned by
+root. A non-root process cannot create a directory inside it — which is the
+`UnauthorizedAccessException` behind everything in §52.
+
+The image could not fix this ahead of time either: `RUN mkdir -p /app/uploads &&
+chown …` runs at build time, and anything chowned then is hidden the moment the
+volume is mounted over it.
+
+**A start-up entrypoint does it instead.** The container now starts as root just
+long enough to create the directory and hand it to uid 10001, then `exec
+setpriv` drops privileges before the API starts. `exec` matters: it replaces the
+shell rather than spawning a child, so the API keeps PID 1 and still receives the
+signals Railway sends to stop it.
+
+Neither preparation step is fatal on its own. Some mounts arrive owned
+correctly, and others ignore `chown` while still being perfectly writable —
+refusing to start in those cases would trade a fixable warning for an outage.
+
+**`ENV UPLOAD_ROOT` also pointed at `/app/uploads`**, inside the image. Railway's
+service variable overrides it, so this was not the active fault, but a default
+that silently discards every upload is a trap for the next person. It now
+defaults to `/data/uploads`.
+
+While writing the Dockerfile I put the `util-linux` install *after*
+`rm -rf /var/lib/apt/lists/*`, which would have failed the build with nothing
+left to resolve against. Both packages now install before the lists are deleted.
+
+`RAILWAY_CHECKLIST.md` carries the full setup and the three rows to check
+afterwards.
+
 ---
 
 ## Not done
