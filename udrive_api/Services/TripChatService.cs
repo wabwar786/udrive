@@ -251,6 +251,73 @@ public sealed class TripChatService(string connectionString)
     }
 
     /// <summary>
+    /// Documents an Admin has asked this Driver to send again.
+    /// </summary>
+    /// <remarks>
+    /// Returned with a count of the rides they have completed since the oldest
+    /// such request. Two are allowed; after that requests stop reaching them
+    /// until the document is back.
+    ///
+    /// Two rather than none because a Driver mid-shift, possibly far from home,
+    /// cannot always photograph a licence there and then — and cutting their
+    /// income off the instant an Admin clicks a button turns an administrative
+    /// request into a punishment. Two rides is enough to finish what they are
+    /// doing and not enough to ignore it.
+    /// </remarks>
+    public async Task<ServiceResult<IReadOnlyList<PendingDocumentDto>>> PendingDocumentsAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            WITH me AS (
+                SELECT id FROM udrive.driver_profiles WHERE user_id = @user
+            ), rejected AS (
+                SELECT d.document_type, d.review_notes, d.updated_at, 'Driver' AS scope
+                FROM udrive.driver_documents d
+                JOIN me ON me.id = d.driver_profile_id
+                WHERE d.status = 'Rejected'
+                UNION ALL
+                SELECT vd.document_type, vd.review_notes, vd.updated_at, 'Vehicle'
+                FROM udrive.vehicle_documents vd
+                JOIN udrive.vehicles v ON v.id = vd.vehicle_id
+                JOIN me ON me.id = v.driver_profile_id
+                WHERE vd.status = 'Rejected'
+            )
+            SELECT rejected.document_type,
+                   rejected.review_notes,
+                   rejected.scope,
+                   rejected.updated_at,
+                   (SELECT count(*)::int
+                      FROM udrive.bookings b
+                      JOIN me ON me.id = b.driver_profile_id
+                     WHERE b.status = 'Completed'
+                       AND b.updated_at > (SELECT min(updated_at) FROM rejected))
+            FROM rejected
+            ORDER BY rejected.updated_at;
+            """;
+
+        var list = new List<PendingDocumentDto>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("user", userId);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var since = reader.GetInt32(4);
+            list.Add(new PendingDocumentDto(
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.GetString(2),
+                since,
+                Math.Max(0, 2 - since)));
+        }
+
+        return ServiceResult<IReadOnlyList<PendingDocumentDto>>.Ok(list);
+    }
+
+    /// <summary>
     /// The signed-in Driver's own dashboard figures.
     /// </summary>
     /// <remarks>

@@ -386,10 +386,25 @@ public sealed class DriverVerificationService(
         }
         if (existing.Status is "Verified" or "Suspended")
         {
-            return ServiceResult<VehicleDto>.Fail(
-                StatusCodes.Status409Conflict,
-                "verified_vehicle_locked",
-                "A verified or suspended vehicle cannot be edited until an Admin requests changes.");
+            // A verified vehicle is locked, unless an Admin has taken its
+            // documents away.
+            //
+            // Deleting the photographs, or asking for one back, is an Admin
+            // saying this record is no longer trusted — and it leaves the
+            // Driver holding a vehicle they cannot correct and cannot resubmit.
+            // Neither side could act, which is the same trap the document
+            // screen had.
+            var documentsIntact = await HasSubmittedVehicleDocumentsAsync(
+                vehicleId, cancellationToken);
+
+            if (documentsIntact)
+            {
+                return ServiceResult<VehicleDto>.Fail(
+                    StatusCodes.Status409Conflict,
+                    "verified_vehicle_locked",
+                    "A verified vehicle cannot be edited. Ask an Admin to "
+                    + "request changes to the documents first.");
+            }
         }
 
         var readiness = CalculateMountainReadiness(request);
@@ -767,6 +782,34 @@ public sealed class DriverVerificationService(
             types.Add(reader.GetString(0));
         }
         return types;
+    }
+
+    /// <summary>
+    /// Whether this vehicle still has documents an Admin has not rejected.
+    /// </summary>
+    /// <remarks>
+    /// False once every document has been deleted or sent back, which is how a
+    /// verified vehicle becomes editable again. It is not enough that a row
+    /// exists: a rejected document is one the Admin has already refused, and a
+    /// vehicle whose papers are all refused is no more trusted than one with
+    /// none.
+    /// </remarks>
+    private async Task<bool> HasSubmittedVehicleDocumentsAsync(
+        Guid vehicleId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT count(*)::int
+            FROM udrive.vehicle_documents
+            WHERE vehicle_id = @vehicleId
+              AND COALESCE(status, 'PendingReview') <> 'Rejected';
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("vehicleId", vehicleId);
+        return (int)(await command.ExecuteScalarAsync(cancellationToken))! > 0;
     }
 
     private static int CalculateMountainReadiness(VehicleUpsertRequest request)

@@ -21,6 +21,11 @@ namespace UDrive.Api.Controllers;
 [Route("api/v1/trips/{bookingId:guid}")]
 public sealed class TripChatController(TripChatService service) : ControllerBase
 {
+    /// <summary>Documents the Driver has been asked to send again.</summary>
+    [HttpGet("/api/v1/driver/pending-documents")]
+    public async Task<IActionResult> PendingDocuments(CancellationToken ct) =>
+        Result(await service.PendingDocumentsAsync(User.GetRequiredUserId(), ct));
+
     /// <summary>The signed-in Driver's own dashboard figures.</summary>
     /// <remarks>
     /// Not booking-scoped, so it sits on its own route outside this

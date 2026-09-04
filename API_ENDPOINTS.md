@@ -216,3 +216,19 @@ between them and approval.
 
 Touches nothing else. Asking for a new licence does not make someone photograph
 their CNIC again.
+
+## Documents awaiting re-upload — rev 90
+
+- `GET /api/v1/driver/pending-documents`
+
+Documents an Admin has rejected or asked for again, each with how many rides the
+Driver has completed since the oldest such request and how many remain before
+requests stop.
+
+**Two rides of grace.** A Driver mid-shift, possibly far from home, cannot
+always photograph a licence there and then, and cutting their income off the
+instant an Admin clicks a button turns an administrative request into a
+punishment. Two is enough to finish what they are doing and not enough to ignore.
+
+The limit is enforced in `GetEligibleRideRequestsAsync`, so a Driver who has run
+out simply stops seeing requests rather than being refused after answering one.

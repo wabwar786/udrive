@@ -1648,6 +1648,52 @@ left to resolve against. Both packages now install before the lists are deleted.
 `RAILWAY_CHECKLIST.md` carries the full setup and the three rows to check
 afterwards.
 
+## 54. Asking for a document again now has teeth
+
+`GET /api/v1/driver/pending-documents` returns everything an Admin has rejected
+or asked back, driver documents and vehicle documents together.
+
+**On the dashboard, above everything — including an active ride.** It is the
+only block on that screen with a consequence attached to ignoring it.
+
+Not a dialog. A popup is dismissed once and then gone; this has to stay in front
+of the Driver until the file is sent, so it sits at the top and does not leave on
+its own.
+
+It **names the documents** rather than counting them. "A document needs
+attention" sends someone into the documents screen to work out which one; the
+name saves that trip. The Admin's reason is shown with each.
+
+**Two rides of grace**, then requests stop. A Driver mid-shift cannot always
+photograph a licence there and then, and cutting their income off the instant an
+Admin clicks a button turns an administrative request into a punishment. Two is
+enough to finish what they are doing and not enough to ignore.
+
+Where several documents were asked for at different times, the banner shows the
+**smallest** remaining allowance — two requests must not read as four rides of
+grace.
+
+Enforced in `GetEligibleRideRequestsAsync`, so a Driver who has run out stops
+seeing requests rather than answering one and being refused.
+
+## 55. A verified vehicle can be edited once its papers are gone
+
+Deleting a vehicle's photographs, or asking for one back, is an Admin saying the
+record is no longer trusted. But the edit guard only looked at
+`status = 'Verified'`, so the Driver was left holding a vehicle they could
+neither correct nor resubmit — the same trap the documents screen had.
+
+The lock now also requires at least one document that has not been deleted or
+rejected. A vehicle whose papers are all refused is no more trusted than one
+with none.
+
+## 56. Driver verification screen
+
+`#F5F8F7` and `#FFF8E7` were mixed for the old light scheme and read as grey
+slabs on the teal palette, with text in ink chosen for a different background.
+Both blocks now use the theme's surfaces and tints, and the vehicle row states
+its ink instead of inheriting one.
+
 ---
 
 ## Not done

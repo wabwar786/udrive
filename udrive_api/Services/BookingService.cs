@@ -227,6 +227,39 @@ public sealed class BookingService(
                     (SELECT (value_json #>> '{}')::numeric
                        FROM udrive.system_settings
                       WHERE key = 'driver.commission.minimum_balance'), 0)
+              -- Documents an Admin has asked for again must be sent.
+              --
+              -- Two completed rides of grace from the moment of the request: a
+              -- Driver mid-shift cannot always photograph a licence there and
+              -- then, and cutting their income off the instant an Admin clicks
+              -- a button turns an administrative request into a punishment.
+              -- After two, requests stop until the document is back.
+              --
+              -- Checked here rather than at offer time, so a Driver who has run
+              -- out of grace simply stops seeing requests instead of watching
+              -- them arrive and being refused when they answer.
+              AND NOT EXISTS (
+                    WITH asked AS (
+                        SELECT min(d.updated_at) AS since
+                        FROM udrive.driver_documents d
+                        WHERE d.driver_profile_id = @driverProfileId
+                          AND d.status = 'Rejected'
+                        UNION ALL
+                        SELECT min(vd.updated_at)
+                        FROM udrive.vehicle_documents vd
+                        JOIN udrive.vehicles v ON v.id = vd.vehicle_id
+                        WHERE v.driver_profile_id = @driverProfileId
+                          AND vd.status = 'Rejected'
+                    )
+                    SELECT 1
+                    FROM asked
+                    WHERE asked.since IS NOT NULL
+                      AND (SELECT count(*)
+                             FROM udrive.bookings b
+                            WHERE b.driver_profile_id = @driverProfileId
+                              AND b.status = 'Completed'
+                              AND b.updated_at > asked.since) >= 2
+                  )
               AND ST_DWithin(dpl.location, rr.pickup_location, 5000)
               AND rr.pickup_at > now() - interval '15 minutes'
               AND (rr.expires_at IS NULL OR rr.expires_at > now())

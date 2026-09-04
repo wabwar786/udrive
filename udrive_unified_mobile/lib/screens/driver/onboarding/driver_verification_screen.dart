@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/media/image_compressor.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../models/auth_models.dart';
 import 'live_vehicle_registration_screen.dart';
@@ -194,13 +195,18 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
             Container(
               margin: const EdgeInsets.only(top: 10),
               padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(color: const Color(0xFFF5F8F7), borderRadius: BorderRadius.circular(18)),
+              // Theme surfaces, not a hard-coded near-white.
+              //
+              // `#F5F8F7` was mixed for the old light scheme and reads as a
+              // grey slab on the teal palette, with the vehicle name in ink
+              // chosen for a different background.
+              decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
               child: Row(children: [
-                const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.directions_car_filled_rounded, color: AppColors.primaryDark)),
+                const CircleAvatar(backgroundColor: AppTint.brand, child: Icon(Icons.directions_car_filled_rounded, color: AppColors.secondary)),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${vehicle.make} ${vehicle.model} ${vehicle.year}', style: const TextStyle(fontWeight: FontWeight.w900)),
-                  Text('${vehicle.registrationNumber} · ${vehicle.passengerCapacity} seats · readiness ${vehicle.mountainReadinessScore}%', style: const TextStyle(color: AppColors.muted, fontSize: 11)),
+                  Text('${vehicle.make} ${vehicle.model} ${vehicle.year}', style: const TextStyle(fontWeight: FontWeight.w800, color: AppText.primary)),
+                  Text('${vehicle.registrationNumber} · ${vehicle.passengerCapacity} seats · readiness ${vehicle.mountainReadinessScore}%', style: const TextStyle(color: AppText.secondary, fontSize: 11.5)),
                 ])),
                 _StatusPill(vehicle.status),
               ]),
@@ -308,13 +314,13 @@ class _StatusCard extends StatelessWidget {
   final String? notes;
   @override
   Widget build(BuildContext context) => PremiumCard(
-        color: status == 'Approved' ? const Color(0xFFE6F7EE) : const Color(0xFFFFF8E7),
+        color: status == 'Approved' ? AppTint.success : AppTint.warning,
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Icon(status == 'Approved' ? Icons.verified_rounded : Icons.pending_actions_rounded, color: status == 'Approved' ? AppColors.success : AppColors.warning, size: 30),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Verification status: $status', style: const TextStyle(fontWeight: FontWeight.w900)),
-            if (notes != null && notes!.isNotEmpty) ...[const SizedBox(height: 5), Text(notes!, style: const TextStyle(color: AppColors.muted, fontSize: 12))],
+            Text('Verification status: $status', style: TextStyle(fontWeight: FontWeight.w800, color: status == 'Approved' ? AppTint.successText : AppTint.warningText)),
+            if (notes != null && notes!.isNotEmpty) ...[const SizedBox(height: 5), Text(notes!, style: TextStyle(color: status == 'Approved' ? AppTint.successText : AppTint.warningText, fontSize: 12, height: 1.4))],
           ])),
         ]),
       );

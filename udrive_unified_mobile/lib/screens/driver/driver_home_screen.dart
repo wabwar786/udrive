@@ -47,6 +47,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   /// The Driver's own figures: earnings, rating, trips.
   DriverDashboard? _dashboard;
 
+  /// Documents an Admin has asked for again.
+  ///
+  /// Sits above everything else on the dashboard until they are sent, because
+  /// it is the only thing on this screen with a deadline attached.
+  List<PendingDocument> _pendingDocuments = const [];
+
   /// When each visible request stops being answerable.
   ///
   /// A Customer waiting on offers should not be shown one from a Driver who saw
@@ -149,10 +155,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   /// a number that ticks on its own invites watching it instead of driving.
   Future<void> _loadDashboard() async {
     final controller = AppControllerScope.of(context);
-    final dashboard =
-        await TripChatRepository(controller.apiClient).driverDashboard();
-    if (!mounted || dashboard == null) return;
-    setState(() => _dashboard = dashboard);
+    final repository = TripChatRepository(controller.apiClient);
+    final dashboard = await repository.driverDashboard();
+    final pending = await repository.pendingDocuments();
+    if (!mounted) return;
+    setState(() {
+      if (dashboard != null) _dashboard = dashboard;
+      _pendingDocuments = pending;
+    });
   }
 
   Future<void> _refresh() async {
@@ -226,6 +236,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 30),
         children: [
+          // Above everything, including an active ride. It is the only block
+          // on this screen with a consequence attached to ignoring it.
+          if (_pendingDocuments.isNotEmpty) ...[
+            _DocumentRequestBanner(
+              documents: _pendingDocuments,
+              onOpen: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DriverDocumentsScreen(),
+                  ),
+                );
+                if (mounted) await _refresh();
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
+
           // With a ride accepted, the dashboard is that ride and nothing else.
           //
           // Today's takings, the next-rides section and the locked-requests
@@ -788,6 +816,125 @@ class _WaitingForNearbyRide extends StatelessWidget {
 /// Earnings first and largest, because that is what a Driver opens the app to
 /// see. Rating and trip count beneath, because they are what a Driver is judged
 /// on and had no home anywhere in the app.
+/// Documents an Admin has asked for again, and what happens if they are not sent.
+///
+/// Deliberately not a dialog. A popup is dismissed once and then gone, and this
+/// has to stay in front of the Driver until the file is actually sent — so it
+/// sits at the top of the dashboard and does not go away on its own.
+class _DocumentRequestBanner extends StatelessWidget {
+  const _DocumentRequestBanner({
+    required this.documents,
+    required this.onOpen,
+  });
+
+  final List<PendingDocument> documents;
+  final Future<void> Function() onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    // The smallest allowance across the outstanding requests: two documents
+    // asked for at different times must not read as four rides of grace.
+    final remaining = documents
+        .map((document) => document.ridesRemaining)
+        .reduce((a, b) => a < b ? a : b);
+    final blocked = remaining <= 0;
+
+    return Material(
+      color: blocked ? const Color(0xFFFDECEC) : const Color(0xFFFFF6E5),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: () => onOpen(),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    blocked
+                        ? Icons.block_rounded
+                        : Icons.upload_file_rounded,
+                    size: 19,
+                    color: blocked
+                        ? AppColors.danger
+                        : const Color(0xFF8A5A00),
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      blocked
+                          ? 'Upload required before your next ride'
+                          : 'A document needs to be sent again',
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        color: blocked
+                            ? AppColors.danger
+                            : const Color(0xFF8A5A00),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 7),
+
+              // Named, not just counted. "A document" sends a Driver to open
+              // the screen and work out which one; the name saves that trip.
+              for (final document in documents)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text(
+                    document.reason == null
+                        ? '• ${document.label}'
+                        : '• ${document.label} — ${document.reason}',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      height: 1.4,
+                      color: Color(0xFF6B4A00),
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 6),
+              Text(
+                blocked
+                    ? 'No new ride requests will arrive until this is uploaded.'
+                    : remaining == 1
+                        ? 'One more ride, then requests stop until it is sent.'
+                        : '$remaining more rides, then requests stop until it '
+                            'is sent.',
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.45,
+                  fontWeight: FontWeight.w700,
+                  color: blocked
+                      ? AppColors.danger
+                      : const Color(0xFF8A5A00),
+                ),
+              ),
+              const SizedBox(height: 11),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => onOpen(),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                    backgroundColor:
+                        blocked ? AppColors.danger : const Color(0xFF8A5A00),
+                  ),
+                  child: const Text('Upload now'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Today's two numbers, in one line.
 ///
 /// Rides and money, nothing else. Everything a Driver might want to study —

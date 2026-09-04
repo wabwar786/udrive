@@ -259,3 +259,16 @@ public sealed record ReviewTopupRequest(
 
 /// <summary>Asks a Driver to send one document again.</summary>
 public sealed record RequestReuploadRequest([StringLength(300)] string? Reason);
+
+/// <summary>A document an Admin has asked the Driver to send again.</summary>
+/// <param name="Scope">'Driver' or 'Vehicle'.</param>
+/// <param name="RidesSince">Rides completed since the request was made.</param>
+/// <param name="RidesRemaining">
+/// How many more rides they may take before requests stop. Zero means stopped.
+/// </param>
+public sealed record PendingDocumentDto(
+    string DocumentType,
+    string? Reason,
+    string Scope,
+    int RidesSince,
+    int RidesRemaining);

@@ -177,6 +177,43 @@ class DriverDashboard {
       );
 }
 
+/// A document an admin has asked the driver to send again.
+class PendingDocument {
+  const PendingDocument({
+    required this.documentType,
+    required this.scope,
+    required this.ridesRemaining,
+    this.reason,
+  });
+
+  /// The API's own type string, e.g. `CNIC_FRONT` or `VEHICLE_FRONT`.
+  final String documentType;
+
+  /// 'Driver' or 'Vehicle'.
+  final String scope;
+
+  /// How many more rides may be taken before requests stop. Zero means stopped.
+  final int ridesRemaining;
+
+  final String? reason;
+
+  /// The type as a person would say it: `CNIC_FRONT` → `Cnic front`.
+  String get label {
+    final words = documentType.toLowerCase().replaceAll('_', ' ').trim();
+    if (words.isEmpty) return 'Document';
+    return words[0].toUpperCase() + words.substring(1);
+  }
+
+  factory PendingDocument.fromJson(Map<String, dynamic> json) => PendingDocument(
+        documentType: '${json['documentType'] ?? ''}',
+        scope: '${json['scope'] ?? 'Driver'}',
+        ridesRemaining: (json['ridesRemaining'] as num?)?.toInt() ?? 0,
+        reason: '${json['reason'] ?? ''}'.trim().isEmpty
+            ? null
+            : '${json['reason']}'.trim(),
+      );
+}
+
 /// Chat and passenger context for one booking.
 class TripChatRepository {
   TripChatRepository(this.api);
@@ -209,6 +246,24 @@ class TripChatRepository {
     );
     final data = response['data'];
     return TripMessage.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  /// Documents the driver has been asked to send again.
+  ///
+  /// Empty on failure. A dashboard that loses this strip is still usable; one
+  /// that refuses to load because of it is not.
+  Future<List<PendingDocument>> pendingDocuments() async {
+    try {
+      final response = await api.getJson('/api/v1/driver/pending-documents');
+      final data = response['data'];
+      if (data is! List) return const [];
+      return data
+          .whereType<Map>()
+          .map((item) => PendingDocument.fromJson(Map<String, dynamic>.from(item)))
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// The signed-in driver's own dashboard figures.
