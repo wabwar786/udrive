@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using UDrive.Api.Common;
 
 namespace UDrive.Api.Security;
 
@@ -11,6 +12,6 @@ public static class ClaimsPrincipalExtensions
 
         return Guid.TryParse(value, out var userId)
             ? userId
-            : throw new UnauthorizedAccessException("The access token does not contain a valid user ID.");
+            : throw new ApiAuthenticationException("The access token does not contain a valid user ID.");
     }
 }

@@ -6,7 +6,11 @@ public sealed record ResolvedStoredFile(string Path, string ContentType, string 
 /// True when uploads are being written inside the container image rather than a
 /// mounted volume, so every deploy destroys them.
 /// </param>
-public sealed record StorageDiagnostics(string UploadRoot, bool UploadRootExists, int FileCount, IReadOnlyList<string> SearchRoots, bool Ephemeral);
+/// <param name="Fault">
+/// Why the upload directory is unusable, or null when it is fine. Usually a
+/// permission problem on the mounted volume.
+/// </param>
+public sealed record StorageDiagnostics(string UploadRoot, bool UploadRootExists, int FileCount, IReadOnlyList<string> SearchRoots, bool Ephemeral, string? Fault);
 
 public sealed class LocalFileStorageService
 {
@@ -28,9 +32,33 @@ public sealed class LocalFileStorageService
     /// </remarks>
     public bool StorageIsEphemeral { get; }
 
+    /// <summary>Why the upload directory is unusable, or null when it is fine.</summary>
+    public string? StorageFault { get; }
+
     public LocalFileStorageService()
     {
-        Directory.CreateDirectory(_uploadRoot);
+        // Never throws from the constructor.
+        //
+        // This service is injected into controllers that only *read* — the
+        // driver documents list, for one — and a constructor that throws takes
+        // the whole request down before it reaches any code. When the uploads
+        // volume was mounted without write permission, `CreateDirectory` threw
+        // `UnauthorizedAccessException` here, and every Driver opening My
+        // documents was told their session was invalid.
+        //
+        // A broken upload directory should break uploads. It should not break
+        // reading a list.
+        try
+        {
+            Directory.CreateDirectory(_uploadRoot);
+        }
+        catch (Exception error)
+        {
+            StorageFault = error.Message;
+            Console.WriteLine(
+                $"WARNING: cannot use upload directory '{_uploadRoot}': "
+                + $"{error.Message}. Uploads will fail until this is fixed.");
+        }
 
         var configured = Environment.GetEnvironmentVariable("UPLOAD_ROOT");
         StorageIsEphemeral = string.IsNullOrWhiteSpace(configured)
@@ -57,6 +85,15 @@ public sealed class LocalFileStorageService
         Guid ownerId,
         CancellationToken cancellationToken)
     {
+        if (StorageFault is not null)
+        {
+            // Named plainly. A Driver retrying an upload against a directory
+            // the server cannot write to will retry for ever.
+            throw new InvalidOperationException(
+                "The server cannot store files right now. "
+                + $"Upload directory '{_uploadRoot}': {StorageFault}");
+        }
+
         if (file.Length <= 0)
         {
             throw new InvalidDataException(
@@ -225,7 +262,13 @@ public sealed class LocalFileStorageService
             }
         }
 
-        return new StorageDiagnostics(_uploadRoot, Directory.Exists(_uploadRoot), count, roots, StorageIsEphemeral);
+        return new StorageDiagnostics(
+            _uploadRoot,
+            Directory.Exists(_uploadRoot),
+            count,
+            roots,
+            StorageIsEphemeral,
+            StorageFault);
     }
 
     private ResolvedStoredFile? FindLegacyFile(string fileName)

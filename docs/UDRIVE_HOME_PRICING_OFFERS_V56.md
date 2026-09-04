@@ -1560,6 +1560,59 @@ needs the API's own logs. But the missing CORS header made *every* error on this
 endpoint indistinguishable from a dead connection, so whatever the underlying
 cause, this is why nothing useful reached the screen.
 
+## 52. "The current session is not authorized" — it was a directory
+
+Opening My documents returned 401 with that message. The session was fine.
+
+Two of my own changes combined into it:
+
+**One.** `LocalFileStorageService`'s constructor calls
+`Directory.CreateDirectory(_uploadRoot)`. With the volume now mounted but not
+writable by the container user, that throws — and .NET's exception for a denied
+path is `UnauthorizedAccessException`.
+
+**Two.** `GetRequiredUserId` also threw `UnauthorizedAccessException`, and the
+exception handler mapped that type to 401 *"The current session is not
+authorized for this action."* Two completely different faults, one exception
+type, and the response depended on telling them apart.
+
+So a permission problem on a disk was reported to every Driver as an invalid
+session. They would sign out, sign in, and be told the same thing.
+
+**Three.** It only started now because rev 73 added `VerificationFileLookupService`
+to `DriverVerificationController`'s constructor — so listing documents began
+constructing the storage service, and a throwing constructor takes the request
+down before any code runs.
+
+### Fixed
+
+- **`ApiAuthenticationException`** is its own type for "the token does not
+  identify a user". `UnauthorizedAccessException` now maps to a 500 that names
+  the real problem: the API cannot write to its uploads directory.
+- **The storage constructor never throws.** A broken upload directory should
+  break uploads; it should not break reading a list. The failure is recorded and
+  logged at boot instead.
+- **Saving reports it plainly** — a 503 saying the server cannot store files and
+  naming the directory — rather than letting a raw IO error become "an
+  unexpected error occurred", which sends a Driver back to retry an upload that
+  will fail identically every time.
+- **Diagnostics shows it.** The File storage panel now has a **Writable** row
+  and a red box with the exact fault when the directory cannot be written to.
+
+### What to check after deploying
+
+Open **Diagnostics → File storage**. Three rows have to be right:
+
+| Row | Needs to say |
+|---|---|
+| Upload root | `/data/uploads` |
+| Survives a deploy | Yes |
+| Writable | Yes |
+
+If **Writable** is No, the red box gives the operating system's own reason. That
+is almost always the volume's mount path or its permissions, and it is fixed in
+Railway rather than in code.
+
 ---
 
 ## Not done

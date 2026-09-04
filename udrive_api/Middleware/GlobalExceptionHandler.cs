@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using UDrive.Api.Common;
 
 namespace UDrive.Api.Middleware;
 
@@ -19,10 +20,26 @@ public sealed class GlobalExceptionHandler(
                 StatusCodes.Status400BadRequest,
                 "Invalid file or request data.",
                 invalidData.Message),
-            UnauthorizedAccessException => (
+            ApiAuthenticationException => (
                 StatusCodes.Status401Unauthorized,
                 "Authentication is required.",
                 "The current session is not authorized for this action."),
+            // Storage that cannot be written to. Its own message, because
+            // "an unexpected error occurred" sends a Driver back to retry an
+            // upload that will fail identically every time.
+            InvalidOperationException storage
+                when storage.Message.Contains("cannot store files") => (
+                StatusCodes.Status503ServiceUnavailable,
+                "File storage is unavailable.",
+                storage.Message),
+            // The filesystem denying access, not the caller. Reported as a
+            // server fault, because it is one — a Driver signing out and back
+            // in will never fix a directory they cannot write to.
+            UnauthorizedAccessException => (
+                StatusCodes.Status500InternalServerError,
+                "File storage is not writable.",
+                "The API cannot write to its uploads directory. Check the "
+                + "volume mounted at UPLOAD_ROOT and its permissions."),
             // A CHECK violation is a disagreement between the code and the
             // schema, not a user mistake. It used to fall into the catch-all
             // 500 — which is how a constraint that forbade the value every
