@@ -1099,3 +1099,17 @@
 .retryAttachmentButton:hover {
   background: #fff1f2;
 }
+
+/* Why Approve is unavailable, shown above the buttons rather than after a
+   refusal. Amber because it is a prerequisite, not a failure. */
+.decisionNote {
+  margin: 0 0 12px;
+  padding: 11px 13px;
+  background: #fff6e5;
+  border: 1px solid #f0dcb4;
+  border-radius: 12px;
+  color: #7a5300;
+  font-size: 12.5px;
+  line-height: 1.55;
+  font-weight: 600;
+}

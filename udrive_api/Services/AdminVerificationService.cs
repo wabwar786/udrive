@@ -247,29 +247,55 @@ public sealed class AdminVerificationService(
 
         if (string.Equals(request.Decision, "Approved", StringComparison.OrdinalIgnoreCase))
         {
+            // Names exactly what is missing.
+            //
+            // This used to say "verify all four required driver documents and
+            // at least one vehicle", which leaves a reviewer looking at four
+            // documents on screen with no idea why the button refuses. It also
+            // hid the ordering: a Driver cannot be approved until one of their
+            // vehicles is Verified, and nothing said so.
             await using var readinessCommand = new NpgsqlCommand("""
                 SELECT
-                    (SELECT count(DISTINCT document_type)
-                     FROM udrive.driver_documents
-                     WHERE driver_profile_id = @driverProfileId
-                       AND document_type IN ('CNIC_FRONT','CNIC_BACK','DRIVING_LICENCE','SELFIE')),
-                    EXISTS(
-                        SELECT 1 FROM udrive.vehicles
-                        WHERE driver_profile_id = @driverProfileId AND status = 'Verified');
+                    (SELECT string_agg(missing.document_type, ', ' ORDER BY missing.document_type)
+                     FROM (SELECT unnest(ARRAY['CNIC_FRONT','CNIC_BACK','DRIVING_LICENCE','SELFIE']) AS document_type) missing
+                     WHERE NOT EXISTS (
+                        SELECT 1 FROM udrive.driver_documents d
+                        WHERE d.driver_profile_id = @driverProfileId
+                          AND d.document_type = missing.document_type)),
+                    (SELECT count(*)::int FROM udrive.vehicles
+                     WHERE driver_profile_id = @driverProfileId),
+                    (SELECT count(*)::int FROM udrive.vehicles
+                     WHERE driver_profile_id = @driverProfileId AND status = 'Verified');
                 """, connection, transaction);
             readinessCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
             await using var readinessReader = await readinessCommand.ExecuteReaderAsync(cancellationToken);
             await readinessReader.ReadAsync(cancellationToken);
-            var documentCount = Convert.ToInt32(readinessReader.GetInt64(0));
-            var hasVerifiedVehicle = readinessReader.GetBoolean(1);
+            var missingDocuments = readinessReader.IsDBNull(0) ? null : readinessReader.GetString(0);
+            var vehicleCount = readinessReader.GetInt32(1);
+            var verifiedVehicles = readinessReader.GetInt32(2);
             await readinessReader.CloseAsync();
-            if (documentCount < 4 || !hasVerifiedVehicle)
+
+            var problems = new List<string>();
+            if (missingDocuments is not null)
+            {
+                problems.Add($"these driver documents have not been uploaded: {missingDocuments}");
+            }
+
+            if (verifiedVehicles == 0)
+            {
+                problems.Add(vehicleCount == 0
+                    ? "this driver has not registered a vehicle"
+                    : $"none of their {vehicleCount} vehicle(s) is Verified yet — "
+                      + "open the vehicle and set it to Verified first");
+            }
+
+            if (problems.Count > 0)
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return ServiceResult<bool>.Fail(
                     StatusCodes.Status400BadRequest,
                     "driver_not_ready_for_approval",
-                    "Verify all four required driver documents and at least one vehicle before approving the driver.");
+                    $"This driver cannot be approved yet because {string.Join("; and ", problems)}.");
             }
         }
 
@@ -624,21 +650,26 @@ public sealed class AdminVerificationService(
 
         if (string.Equals(request.Decision, "Verified", StringComparison.OrdinalIgnoreCase))
         {
+            // Names the missing photographs, for the same reason.
             await using var readinessCommand = new NpgsqlCommand("""
-                SELECT count(DISTINCT document_type)
-                FROM udrive.vehicle_documents
-                WHERE vehicle_id = @vehicleId
-                  AND document_type IN ('REGISTRATION_BOOK','VEHICLE_FRONT','VEHICLE_REAR','VEHICLE_INTERIOR');
+                SELECT string_agg(missing.document_type, ', ' ORDER BY missing.document_type)
+                FROM (SELECT unnest(ARRAY['REGISTRATION_BOOK','VEHICLE_FRONT','VEHICLE_REAR','VEHICLE_INTERIOR']) AS document_type) missing
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM udrive.vehicle_documents vd
+                    WHERE vd.vehicle_id = @vehicleId
+                      AND vd.document_type = missing.document_type);
                 """, connection, transaction);
             readinessCommand.Parameters.AddWithValue("vehicleId", vehicleId);
-            var documentCount = Convert.ToInt32((long)(await readinessCommand.ExecuteScalarAsync(cancellationToken) ?? 0L));
-            if (documentCount < 4)
+            var missingVehicleDocuments =
+                await readinessCommand.ExecuteScalarAsync(cancellationToken) as string;
+            if (!string.IsNullOrEmpty(missingVehicleDocuments))
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return ServiceResult<bool>.Fail(
                     StatusCodes.Status400BadRequest,
                     "vehicle_not_ready_for_verification",
-                    "All four required vehicle documents and photographs must be uploaded before verification.");
+                    "This vehicle cannot be verified yet — these documents have "
+                    + $"not been uploaded: {missingVehicleDocuments}.");
             }
         }
 

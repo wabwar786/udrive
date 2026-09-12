@@ -1694,6 +1694,36 @@ slabs on the teal palette, with text in ink chosen for a different background.
 Both blocks now use the theme's surfaces and tints, and the vehicle row states
 its ink instead of inheriting one.
 
+## 57. Why approval refused, and never said so
+
+The rules themselves are right, and both are deliberate:
+
+- A **vehicle** can be Verified only once all four of its documents exist.
+- A **driver** can be Approved only once all four of *their* documents exist
+  **and at least one of their vehicles is already Verified**.
+
+That second clause is the one nobody guesses. The order is vehicle first, then
+driver — and nothing in the portal said so.
+
+What the API returned was *"Verify all four required driver documents and at
+least one vehicle before approving the driver"*, which is useless to a reviewer
+looking at four documents on screen. It does not say which document, or whether
+the documents were even the problem.
+
+**The API now names it.** Missing driver documents are listed by type. If the
+vehicle is the blocker it says so, and distinguishes "no vehicle registered"
+from "none of their 2 vehicles is Verified yet — open the vehicle and set it to
+Verified first". Same for vehicle verification: the missing photographs are
+listed.
+
+**The portal says it before the button is pressed.** An amber note above the
+decision buttons lists exactly what is outstanding, and Approve is disabled
+while anything is. The check mirrors the server's rule rather than guessing at
+it, so the two cannot disagree.
+
+A refusal that arrives only after you act, and then does not say what to do, is
+the worst of both.
+
 ---
 
 ## Not done

@@ -994,10 +994,31 @@ function VerificationDetail({
                 </div>
               )}
 
+              {/*
+                Says why Approve will refuse, before it is pressed.
+
+                A driver can only be approved once all four of their documents
+                are uploaded and at least one of their vehicles is Verified.
+                Neither rule was visible anywhere, so a reviewer looking at a
+                full set of documents pressed Approve, got a refusal, and had
+                nothing to act on. The ordering — vehicle first, then driver —
+                is the part nobody guesses.
+              */}
+              {driverDetail && approvalBlockers(driverDetail).length > 0 && (
+                <div className={styles.decisionNote}>
+                  Approve is not available yet:{' '}
+                  {approvalBlockers(driverDetail).join('; ')}.
+                </div>
+              )}
+
               <div className={styles.decisionButtons}>
                 <button
                   className="primaryButton"
-                  disabled={acting}
+                  disabled={
+                    acting ||
+                    (driverDetail !== null &&
+                      approvalBlockers(driverDetail).length > 0)
+                  }
                   onClick={() => void decideDriver('Approved')}
                 >
                   <CheckCircle2 size={17} />
@@ -1052,6 +1073,35 @@ function VerificationDetail({
       </aside>
     </div>
   );
+}
+
+/**
+ * What still stands between this driver and approval.
+ *
+ * Mirrors the server's own rule rather than guessing at it: all four documents
+ * present, and at least one vehicle Verified. The API refuses for exactly these
+ * reasons, so showing them here turns a refusal into something to act on before
+ * anyone presses the button.
+ */
+function approvalBlockers(detail: DriverDetail): string[] {
+  const required = ['CNIC_FRONT', 'CNIC_BACK', 'DRIVING_LICENCE', 'SELFIE'];
+  const present = new Set(detail.documents.map((d) => d.documentType));
+  const missing = required.filter((type) => !present.has(type));
+
+  const verified = detail.vehicles.filter((v) => v.status === 'Verified').length;
+
+  const blockers: string[] = [];
+  if (missing.length > 0) {
+    blockers.push(`these documents are missing: ${missing.join(', ')}`);
+  }
+  if (verified === 0) {
+    blockers.push(
+      detail.vehicles.length === 0
+        ? 'no vehicle has been registered'
+        : 'no vehicle is Verified yet — verify the vehicle first, then the driver',
+    );
+  }
+  return blockers;
 }
 
 function DriverHero({ detail }: { detail: DriverDetail }) {
