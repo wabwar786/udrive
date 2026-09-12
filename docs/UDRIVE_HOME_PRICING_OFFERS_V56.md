@@ -1724,6 +1724,32 @@ it, so the two cannot disagree.
 A refusal that arrives only after you act, and then does not say what to do, is
 the worst of both.
 
+## 58. Deleting a vehicle left it half-deleted
+
+Deleting from the portal is a **soft** delete: the row stays with
+`status = 'Deleted'` so bookings, earnings and audit history that point at it do
+not break. That part is right. Two things were not.
+
+**The driver's app still listed it**, with "Deleted" quietly at the end of its
+details. They were left looking at a vehicle they could not use, could not
+remove, and could not replace.
+
+**And the plate stayed taken.** `registration_number` had a plain `UNIQUE`
+constraint across every row, deleted ones included. So the driver re-registered
+the same vehicle and was told the number was already registered — by a record
+neither of them could see.
+
+- The driver's vehicle list now excludes deleted rows.
+- The constraint is now a partial unique index that ignores them, and is
+  case-insensitive: "ADL-955" and "adl-955" are the same plate.
+- The duplicate message says the number belongs to **another active vehicle on
+  the platform**, and to ask support if it is theirs — because that is now the
+  only case in which it can happen.
+
+Everything customer-facing was already safe: nearby vehicles, ride eligibility
+and offer submission all require `status = 'Verified'`, which a deleted vehicle
+can never be. Only the driver's own list was wrong.
+
 ---
 
 ## Not done

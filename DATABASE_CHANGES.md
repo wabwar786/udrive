@@ -122,3 +122,16 @@ had already paid keeps what they paid rather than being reset.
 
 Drivers registering after this still start at zero and must top up before their
 first ride, which is the intended arrangement.
+
+## 042_free_deleted_registration (rev 92)
+
+- `vehicles.registration_number` had a plain `UNIQUE` constraint covering every
+  row, including soft-deleted ones. Deleting a vehicle from the admin portal
+  sets `status = 'Deleted'` and keeps the row — so bookings, earnings and audit
+  history that reference it do not break — but the constraint did not know that,
+  and the plate stayed permanently taken by a record neither the admin nor the
+  driver could see.
+- Replaced with a partial unique index that ignores deleted rows, and made
+  case-insensitive: "ADL-955" and "adl-955" are the same plate, and allowing
+  both would defeat the constraint.
+- Two live vehicles still cannot share a registration number.

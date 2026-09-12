@@ -362,7 +362,8 @@ public sealed class DriverVerificationService(
             return ServiceResult<VehicleDto>.Fail(
                 StatusCodes.Status409Conflict,
                 "registration_number_exists",
-                "This vehicle registration number is already registered.");
+                "This registration number belongs to another active vehicle on "
+                + "the platform. If it is yours, ask support to release it.");
         }
 
         return ServiceResult<VehicleDto>.Created(
@@ -457,11 +458,20 @@ public sealed class DriverVerificationService(
         Guid userId,
         CancellationToken cancellationToken)
     {
+        // Deleted vehicles are not the Driver's any more.
+        //
+        // The row is kept so bookings, earnings and audit history that
+        // reference it do not break — but it was still being listed in the app,
+        // with "Deleted" quietly at the end of its details. The Driver saw a
+        // vehicle they could not use, could not remove, and could not replace,
+        // because the registration number was still held by the record in front
+        // of them.
         const string sql = """
             SELECT v.id
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             WHERE dp.user_id = @userId
+              AND v.status <> 'Deleted'
             ORDER BY v.created_at DESC;
             """;
         var ids = new List<Guid>();
