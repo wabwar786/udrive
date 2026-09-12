@@ -2356,6 +2356,47 @@ badge from rev 102 alongside both tags. They are gone in this build, along with
 the quick tiles growing to 52px so the icon is not crowded by a label that is
 now 12pt.
 
+## 77. Why the boxes were different heights
+
+A real bug, and one I introduced.
+
+`_ProductCard` was wrapped in a `Stack` when the SOON badge was added. **A Stack
+passes loose constraints to its non-positioned children by default.** So the
+Stack filled its 172px slot while the card inside shrank to fit its own text —
+leaving City rides short, Tour and City to city uneven, and a gap under each.
+
+That is exactly what the screenshot shows, and no amount of adjusting heights
+would have fixed it: the slot was always the right size, the card just was not
+filling it.
+
+`fit: StackFit.expand` on that Stack. It was only ever there to hold a badge; it
+had no business changing how the card sizes.
+
+The quick tiles' Stack is deliberately left loose — there it *should* size to
+the icon box, and the badge is Positioned so it does not count.
+
+### Text clear of the artwork
+
+The subtitle ran the card's full width and "Hiace" printed over the car. The
+text column now has 56px of right padding on the large card, 34 on the small
+ones, so the words stop before the icon rather than crossing it.
+
+### Header on one line
+
+The logo was 38 and the buttons 40, in a row sizing itself to whichever was
+tallest — so the mark sat a pixel or two low against the circles beside it.
+All three are 42 now, inside a fixed-height row that centres them. Small, and
+exactly the kind of thing that reads as "not aligned" without being nameable.
+
+### And the header's vertical position
+
+Worth recording because it explains the screenshot before last. The header was a
+`SizedBox(height: 40)` directly inside a `StackFit.expand` stack, which forces
+tight constraints on it — so the SizedBox could not shrink and the Row centred
+its contents down the middle of the map. That is why the logo and icons appeared
+level with the pickup pill instead of at the top. The column-and-spacer layout
+in rev 104 removed it.
+
 ---
 
 ## Not done

@@ -960,33 +960,45 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          children: [
-                            UDriveMark(
-                              size: 40,
-                              // Already home, so this clears anything stacked
-                              // on top rather than pushing another copy of it.
-                              onTap: () => Navigator.of(context)
-                                  .popUntil((route) => route.isFirst),
-                            ),
-                            const Spacer(),
-                            _MapIconButton(
-                              semanticLabel: 'Switch to driver mode',
-                              child: SteeringWheelIcon(
-                                size: 21,
-                                color: AppColors.secondary,
+                        // One height for all three, and a row that centres
+                        // them on it.
+                        //
+                        // The logo was 38, the buttons 40, and the row was
+                        // sizing itself to whichever was tallest — so the mark
+                        // sat a pixel or two low against the two circles beside
+                        // it. Small, and exactly the kind of thing that reads
+                        // as "not aligned" without being nameable.
+                        SizedBox(
+                          height: 42,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              UDriveMark(
+                                size: 42,
+                                // Already home, so this clears anything stacked
+                                // on top rather than pushing another copy.
+                                onTap: () => Navigator.of(context)
+                                    .popUntil((route) => route.isFirst),
                               ),
-                              onTap: () =>
-                                  controller.switchMode(UserMode.driver),
-                            ),
-                            const SizedBox(width: 8),
-                            _MapIconButton(
-                              icon: Icons.notifications_none_rounded,
-                              semanticLabel: 'Notifications',
-                              showDot: _unreadNotifications,
-                              onTap: _openNotifications,
-                            ),
-                          ],
+                              const Spacer(),
+                              _MapIconButton(
+                                semanticLabel: 'Switch to driver mode',
+                                child: SteeringWheelIcon(
+                                  size: 22,
+                                  color: AppColors.secondary,
+                                ),
+                                onTap: () =>
+                                    controller.switchMode(UserMode.driver),
+                              ),
+                              const SizedBox(width: 8),
+                              _MapIconButton(
+                                icon: Icons.notifications_none_rounded,
+                                semanticLabel: 'Notifications',
+                                showDot: _unreadNotifications,
+                                onTap: _openNotifications,
+                              ),
+                            ],
+                          ),
                         ),
 
                         const Spacer(),
@@ -2059,8 +2071,8 @@ class _MapIconButton extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 42,
+              height: 42,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 // Solid white with a hairline, no shadow.
@@ -2801,6 +2813,9 @@ class _QuickTile extends StatelessWidget {
           opacity: closed ? .55 : 1,
           child: Column(
           children: [
+            // Not expanded here: this Stack sizes to the icon box, which is
+            // what should decide the tile's height. The badge is Positioned
+            // and does not count towards it.
             Stack(
               clipBehavior: Clip.none,
               children: [
@@ -2913,7 +2928,18 @@ class _ProductCard extends StatelessWidget {
         onTap: closed ? () => onClosed(service) : onTap,
         child: Opacity(
           opacity: closed ? .55 : 1,
+          // `StackFit.expand`, and this is the whole reason the cards were
+          // different heights.
+          //
+          // A Stack defaults to passing **loose** constraints to its
+          // non-positioned children. So this one filled its 172px slot while
+          // the card inside it shrank to fit its own text — leaving the left
+          // tile short, the two right tiles uneven, and a gap under each.
+          //
+          // The Stack was only added to hold the SOON badge; it had no business
+          // changing how the card sizes.
           child: Stack(
+            fit: StackFit.expand,
             children: [
         AnimatedContainer(
           duration: const Duration(milliseconds: 180),
@@ -2948,8 +2974,18 @@ class _ProductCard extends StatelessWidget {
                   color: accent.withValues(alpha: selected ? .40 : .22),
                 ),
               ),
+              // Text reserves the left side and stops short of the artwork.
+              //
+              // The subtitle ran the full width and "Hiace" was printing over
+              // the car. Right padding of 56 on the large card keeps the words
+              // clear of it without moving either.
               Padding(
-                padding: EdgeInsets.all(large ? 14 : 11),
+                padding: EdgeInsets.fromLTRB(
+                  large ? 14 : 11,
+                  large ? 14 : 11,
+                  large ? 56 : 34,
+                  large ? 14 : 11,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
