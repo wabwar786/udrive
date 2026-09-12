@@ -37,6 +37,29 @@ class VehicleImageRepository {
       case 'coster':
       case 'coaster':
         return 'vehicle.image.coaster';
+      // The category is free text — a driver registering a vehicle types
+      // whatever the form offered, and the seed fleet uses 'SUV' and 'Bus'.
+      // Matching only the four exact names meant most real vehicles fell
+      // through to no picture at all.
+      case 'suv':
+      case 'sedan':
+      case 'saloon':
+      case 'hatchback':
+      case 'private_car':
+        return 'vehicle.image.car';
+      case 'motorcycle':
+      case 'motorbike':
+      case 'scooter':
+        return 'vehicle.image.bike';
+      case 'bus':
+      case 'mini_bus':
+      case 'minibus':
+        return 'vehicle.image.coaster';
+      case 'van':
+      case 'hi_ace':
+      case 'highroof':
+      case 'high_roof':
+        return 'vehicle.image.hiace';
       default:
         return null;
     }

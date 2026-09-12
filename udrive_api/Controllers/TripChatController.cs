@@ -21,6 +21,32 @@ namespace UDrive.Api.Controllers;
 [Route("api/v1/trips/{bookingId:guid}")]
 public sealed class TripChatController(TripChatService service) : ControllerBase
 {
+    /// <summary>The Driver's photograph, for the Customer on this trip.</summary>
+    /// <remarks>
+    /// Their approved SELFIE document, which is the only picture of a Driver
+    /// the platform holds — there is no separate profile photo column, and
+    /// inventing one would mean a second upload for a picture already on file.
+    ///
+    /// Scoped to the booking. A Customer sees the Driver coming for them, and
+    /// nobody else. Driver photographs are not browsable.
+    /// </remarks>
+    [HttpGet("driver-photo")]
+    public async Task<IActionResult> DriverPhoto(
+        Guid bookingId,
+        [FromServices] VerificationFileLookupService fileLookup,
+        [FromServices] TripChatService chat,
+        CancellationToken ct)
+    {
+        var documentId = await chat.DriverPhotoDocumentIdAsync(
+            User.GetRequiredUserId(), bookingId, ct);
+        if (documentId is null) return NotFound();
+
+        var file = await fileLookup.FindDriverDocumentAsync(documentId.Value, ct);
+        return file.File is null
+            ? NotFound()
+            : PhysicalFile(file.File.Path, file.File.ContentType, file.File.DownloadName);
+    }
+
     /// <summary>Documents the Driver has been asked to send again.</summary>
     [HttpGet("/api/v1/driver/pending-documents")]
     public async Task<IActionResult> PendingDocuments(CancellationToken ct) =>

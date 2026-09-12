@@ -58,6 +58,16 @@ class _DriverLiveNavigationScreenState
   /// Who the Driver is collecting, from their history on the platform.
   PassengerStanding? _passenger;
 
+  /// Messages from the Customer, and the ones already announced.
+  ///
+  /// The Driver had no message polling at all: a Customer could write "I am at
+  /// the blue gate" and the Driver would never know, because the only place
+  /// messages were read was inside the chat screen.
+  List<TripMessage> _customerMessages = const [];
+  final Set<String> _announcedMessages = <String>{};
+  bool _messagesLoadedOnce = false;
+  Timer? _messagePoll;
+
   /// True once the Driver has moved the map themselves.
   ///
   /// After that the camera stops following. A map that snaps back every ten
@@ -71,7 +81,12 @@ class _DriverLiveNavigationScreenState
     _locationService = TripLocationService(widget.repository);
     _currentStatus = widget.trip.tripStatus;
     _begin();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPassenger());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadPassenger();
+      _pollMessages();
+    });
+    _messagePoll =
+        Timer.periodic(const Duration(seconds: 10), (_) => _pollMessages());
   }
 
   Future<void> _begin() async {
@@ -510,9 +525,43 @@ class _DriverLiveNavigationScreenState
 
   @override
   void dispose() {
+    _messagePoll?.cancel();
     _timer?.cancel();
     _locationService.stop();
     super.dispose();
+  }
+
+  /// Reads the Customer's messages, and sounds for any not yet seen.
+  Future<void> _pollMessages() async {
+    try {
+      final controller = AppControllerScope.of(context);
+      final messages = await TripChatRepository(controller.apiClient)
+          .messages(widget.trip.bookingId);
+      if (!mounted) return;
+
+      final fromCustomer = messages
+          .where((message) => message.senderRole == 'Customer')
+          .toList(growable: false);
+
+      final unseen = fromCustomer
+          .where((message) => !_announcedMessages.contains(message.id))
+          .toList(growable: false);
+      for (final message in unseen) {
+        _announcedMessages.add(message.id);
+      }
+
+      // Not on the first poll: everything is unseen then, and chiming through
+      // a conversation already read is noise.
+      if (unseen.isNotEmpty && _messagesLoadedOnce) {
+        SystemSound.play(SystemSoundType.alert);
+        HapticFeedback.mediumImpact();
+      }
+      _messagesLoadedOnce = true;
+
+      setState(() => _customerMessages = fromCustomer);
+    } catch (_) {
+      // A failed poll leaves what is already on screen.
+    }
   }
 
   @override
@@ -792,6 +841,43 @@ class _DriverLiveNavigationScreenState
                       Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 11)),
                     ],
                     const SizedBox(height: 13),
+                    // The Customer's last message, where the Driver will see
+                    // it. Tapping opens the thread.
+                    if (_customerMessages.isNotEmpty) ...[
+                      InkWell(
+                        onTap: _openChat,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 11),
+                          padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEAF2FF),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.chat_bubble_rounded,
+                                  size: 15, color: Color(0xFF1B4E9B)),
+                              const SizedBox(width: 9),
+                              Expanded(
+                                child: Text(
+                                  _customerMessages.last.body,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    height: 1.35,
+                                    color: Color(0xFF1B4E9B),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+
                     // Cancelling before the trip starts. Once the Customer is
                     // aboard this disappears — abandoning someone mid-journey
                     // on a mountain road is not a button, it is an emergency,
@@ -933,6 +1019,9 @@ class _CustomerFullScreenTrackingScreenState
 
   /// The driver's rating and what recent passengers said about them.
   DriverReputation? _reputation;
+
+  /// Bearer token for the driver photograph, which is an authenticated route.
+  String? _token;
 
   /// Messages already announced, so each chimes once.
   final Set<String> _announcedMessages = <String>{};
@@ -1105,8 +1194,17 @@ class _CustomerFullScreenTrackingScreenState
     }
   }
 
-  /// The photograph for the vehicle on its way, if the admin has set one.
+  /// The photograph for the vehicle on its way.
+  ///
+  /// This vehicle's own picture first, the category picture second. A driver
+  /// who uploaded photographs of their actual car should not have a stock
+  /// image of a different one shown in their place.
   String? get _vehicleImageUrl {
+    final own = _tracking?.vehicleImageUrl;
+    if (own != null && own.trim().isNotEmpty) {
+      return own.startsWith('http') ? own : '${ApiConfig.baseUrl}$own';
+    }
+
     final category = _tracking?.vehicleCategory;
     if (category == null || category.trim().isEmpty) return null;
     final key = VehicleImageRepository.settingKeyFor(category);
@@ -1115,12 +1213,33 @@ class _CustomerFullScreenTrackingScreenState
     return (url == null || url.isEmpty) ? null : url;
   }
 
+  /// The driver's initial, for when there is no photograph to show.
+  Widget _driverInitial(TripTracking? tracking) => Text(
+        (tracking?.driverName ?? widget.trip.driverName ?? 'D')
+            .trim()
+            .characters
+            .first
+            .toUpperCase(),
+        style: TextStyle(
+          fontSize: 26,
+          fontWeight: FontWeight.w900,
+          color: AppColors.secondary,
+        ),
+      );
+
+  /// The driver's own photograph, served from their approved SELFIE.
+  String? get _driverPhotoUrl => (_tracking?.driverHasPhoto ?? false)
+      ? '${ApiConfig.baseUrl}/api/v1/trips/${widget.trip.bookingId}/driver-photo'
+      : null;
+
   /// Reads the driver's rating and recent reviews, once.
   ///
   /// Their history does not change during a trip, so polling it would be noise
   /// on a screen already running two timers.
   Future<void> _loadReputation() async {
     final controller = AppControllerScope.of(context);
+    final token = await controller.accessTokenForMedia();
+    if (mounted && token != null) setState(() => _token = token);
     final reputation = await TripChatRepository(controller.apiClient)
         .driver(widget.trip.bookingId);
     if (!mounted || reputation == null) return;
@@ -1615,24 +1734,29 @@ class _CustomerFullScreenTrackingScreenState
                           width: 62,
                           height: 62,
                           alignment: Alignment.center,
+                          clipBehavior: Clip.antiAlias,
                           decoration: BoxDecoration(
                             color: AppTint.brand,
                             shape: BoxShape.circle,
                             border: Border.all(
                                 color: AppColors.secondary, width: 2),
                           ),
-                          child: Text(
-                            (t?.driverName ?? widget.trip.driverName ?? 'D')
-                                .trim()
-                                .characters
-                                .first
-                                .toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.secondary,
-                            ),
-                          ),
+                          child: _driverPhotoUrl != null
+                              ? Image.network(
+                                  _driverPhotoUrl!,
+                                  fit: BoxFit.cover,
+                                  width: 62,
+                                  height: 62,
+                                  headers: _token == null
+                                      ? null
+                                      : {'Authorization': 'Bearer $_token'},
+                                  // Initials if the photograph will not load.
+                                  // A broken-image glyph where a face should be
+                                  // is worse than a letter.
+                                  errorBuilder: (_, __, ___) =>
+                                      _driverInitial(t),
+                                )
+                              : _driverInitial(t),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -1766,6 +1890,59 @@ class _CustomerFullScreenTrackingScreenState
                         ],
                       ),
                     ),
+                    // The driver is outside, and the customer may not be.
+                    //
+                    // A snackbar was not enough: it lasts eight seconds and
+                    // vanishes, and the one person who most needs this is the
+                    // one who put the phone down. This stays until the trip
+                    // starts, and it replaces the ETA — "1 min away" is wrong
+                    // once they have arrived.
+                    if ((t?.tripStatus ?? widget.trip.tripStatus) ==
+                        'DriverArrived') ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppTint.success,
+                          borderRadius: AppRadii.all(AppRadii.panel),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.where_to_vote_rounded,
+                                size: 26, color: AppTint.successText),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Your driver is here',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppTint.successText,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    'Look for '
+                                    '${t?.registrationNumber ?? widget.trip.registrationNumber ?? 'the vehicle'}'
+                                    '. Give the trip code once you are inside.',
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      height: 1.45,
+                                      color: AppTint.successText,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 11),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -1836,7 +2013,13 @@ class _CustomerFullScreenTrackingScreenState
                       ),
                     ],
 
-                    if ((widget.tripOtp ?? '').isNotEmpty &&
+                    // From the server, not only from the booking response.
+                    //
+                    // The code used to live in whatever the confirmation
+                    // returned, so closing the app and coming back through
+                    // "Track ride" made the panel vanish and the trip could not
+                    // be started at all.
+                    if ((t?.tripOtp ?? widget.tripOtp ?? '').isNotEmpty &&
                         (t?.tripStatus ?? widget.trip.tripStatus) != 'TripStarted' &&
                         (t?.tripStatus ?? widget.trip.tripStatus) != 'TripCompleted') ...[
                       const SizedBox(height: 10),
@@ -1865,7 +2048,7 @@ class _CustomerFullScreenTrackingScreenState
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              widget.tripOtp!,
+                              t?.tripOtp ?? widget.tripOtp ?? '',
                               style: const TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w900,

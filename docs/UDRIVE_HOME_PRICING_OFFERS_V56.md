@@ -2063,6 +2063,59 @@ in the admin portal, single vehicle, plain background, side on, and all four at
 the same aspect ratio. No layout looks good around a lineup photo letterboxed
 into a card.
 
+## 71. Photographs, the trip code, arrival, and messages
+
+### The vehicle picture was looking in the wrong place
+
+It was resolved from the **category** — and categories are free text. A driver
+registering types whatever the form offered, and the seeded fleet uses `SUV` and
+`Bus`. Matching only `Car`, `Bike`, `Coster`, `Hiace` meant most real vehicles
+fell through to the fallback icon, which is exactly what the screenshot shows.
+
+Two fixes. `vehicles.image_url` — **the vehicle's own photograph** — now comes
+through tracking and is used first; a driver who uploaded pictures of their
+actual car should not have a stock image of a different one in their place. And
+the category mapping accepts the names people actually use: SUV, sedan, saloon,
+hatchback, motorcycle, scooter, bus, minibus, van, high roof.
+
+### The driver photograph exists after all
+
+There is still no profile-photo column, and I said twice that meant no picture.
+That was incomplete: **the approved SELFIE document is a photograph of the
+driver**, already uploaded and already reviewed. Asking for a second one would
+be asking for a picture the platform holds.
+
+`GET /api/v1/trips/{bookingId}/driver-photo` serves it, scoped to the booking —
+a Customer sees the Driver coming for them and nobody else. Driver photographs
+are not browsable. Initials remain the fallback, because a broken-image glyph
+where a face should be is worse than a letter.
+
+### The trip code could not survive a restart
+
+`trip_otp_hash` is a hash by design. But the Customer has to *read* the code
+out, and a hash cannot be read back — so it existed only in the response that
+created the booking. Reopen the app, go in through "Track ride", and the panel
+was simply gone. The trip could not be started at all.
+
+`bookings.trip_otp` stores it readable, returned only to the Customer who owns
+the booking. Not to the Driver — who would not need to ask for it, and the whole
+point is that they must. Not on a share link. Verification still compares
+against the hash.
+
+### Arrival stays on screen
+
+A snackbar lasts eight seconds and vanishes, and the person who most needs this
+is the one who put the phone down. A green block now replaces the ETA — "1 min
+away" is wrong once they are outside — and names the registration to look for.
+It stays until the trip starts.
+
+### The driver was never told about messages
+
+The Driver screen had **no message polling at all**. A Customer could write "I am
+at the blue gate" and the Driver would never know, because messages were only
+read inside the chat screen. Both sides now poll, sound once per message, and
+show the newest one inline — tappable straight into the thread.
+
 ---
 
 ## Not done

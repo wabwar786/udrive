@@ -45,6 +45,37 @@ public sealed class TripChatService(string connectionString)
         return value is string role ? role : null;
     }
 
+    /// <summary>
+    /// The Driver's approved photograph for this booking, if the caller is its
+    /// Customer.
+    /// </summary>
+    public async Task<Guid?> DriverPhotoDocumentIdAsync(
+        Guid userId,
+        Guid bookingId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT d.id
+            FROM udrive.bookings b
+            JOIN udrive.driver_profiles dp ON dp.id = b.driver_profile_id
+            JOIN udrive.driver_documents d ON d.driver_profile_id = dp.id
+            WHERE b.id = @booking
+              AND b.customer_user_id = @user
+              AND d.document_type = 'SELFIE'
+              AND COALESCE(d.status, 'PendingReview') <> 'Rejected'
+            ORDER BY d.created_at DESC
+            LIMIT 1;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("booking", bookingId);
+        command.Parameters.AddWithValue("user", userId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is Guid id ? id : null;
+    }
+
     /// <summary>Messages on a booking, oldest first.</summary>
     /// <param name="after">
     /// Only messages created after this instant. The app passes the timestamp

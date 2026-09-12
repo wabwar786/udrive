@@ -146,3 +146,15 @@ first ride, which is the intended arrangement.
   changes, including the status flipping to ReceivingOffers when the first offer
   lands, so every offer would have cleared every decision and re-alerted the
   whole area.
+
+## 044_booking_trip_otp (rev 99)
+
+- Adds `bookings.trip_otp` in plaintext beside `trip_otp_hash`.
+- The hash is right for verification and wrong for display: the Customer has to
+  **read** the code aloud to the Driver, and a hash cannot be read back. So the
+  code existed only in the single response that created the booking — close the
+  app, return through "Track ride", and the OTP panel vanished and the trip
+  could not be started at all.
+- Returned only to the Customer whose booking it is. Never to the Driver, never
+  to an admin, never on a public share link. Verification still compares against
+  the hash.

@@ -1087,14 +1087,14 @@ public sealed class BookingService(
                 (id, customer_user_id, driver_profile_id, vehicle_id,
                  ride_request_id, tour_package_id, booking_type, status,
                  seats_booked, total_amount, advance_amount, remaining_amount,
-                 pickup_at, return_at, trip_otp_hash, booking_reference,
+                 pickup_at, return_at, trip_otp_hash, trip_otp, booking_reference,
                  pickup_label, destination_label, party_type, selected_offer_id,
                  version, created_at, updated_at)
             VALUES
                 (@id, @customerUserId, @driverProfileId, @vehicleId,
                  @rideRequestId, NULL, @bookingType, 'DriverAccepted',
                  @seats, @totalAmount, @advanceAmount, @remainingAmount,
-                 @pickupAt, @returnAt, @tripOtpHash, @bookingReference,
+                 @pickupAt, @returnAt, @tripOtpHash, @tripOtp, @bookingReference,
                  @pickupLabel, @destinationLabel, @partyType, @offerId,
                  0, now(), now());
             """;
@@ -1113,6 +1113,9 @@ public sealed class BookingService(
             bookingCommand.Parameters.AddWithValue("pickupAt", pickupAt);
             bookingCommand.Parameters.Add(new NpgsqlParameter("returnAt", NpgsqlDbType.TimestampTz) { Value = (object?)returnAt ?? DBNull.Value });
             bookingCommand.Parameters.AddWithValue("tripOtpHash", tripOtpHash);
+            // Stored readable too, because the Customer has to say it out loud
+            // and a hash cannot be read back. Only ever returned to them.
+            bookingCommand.Parameters.AddWithValue("tripOtp", tripOtp);
             bookingCommand.Parameters.AddWithValue("bookingReference", bookingReference);
             bookingCommand.Parameters.AddWithValue("pickupLabel", pickupLabel);
             bookingCommand.Parameters.AddWithValue("destinationLabel", destinationLabel);
