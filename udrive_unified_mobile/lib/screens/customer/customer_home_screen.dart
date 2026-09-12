@@ -704,6 +704,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             pickupPoint: _pickupPoint,
             destinationPoint: destinationPoint,
             route: _activeRoute,
+            // All of them, so the next screen can offer the choice and reprice
+            // against it. Fetched once here; a second call would cost money to
+            // return the same answer.
+            routes: _routeResult.routes,
             service: _service,
             bookingType: _bookingType,
             seats: _seats,

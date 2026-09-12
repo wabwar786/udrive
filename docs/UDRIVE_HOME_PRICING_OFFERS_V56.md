@@ -2443,6 +2443,36 @@ The collapsed line carries what matters at a glance — the other person's name,
 the distance, the minutes — so the sheet does not have to be opened to answer
 the ordinary question.
 
+## 81. Route choice, and the fare that follows it
+
+The alternatives were already being fetched — `computeAlternativeRoutes` is on,
+and the home screen has held `_routeResult.routes` all along. They were simply
+never passed on. Now they are, so the choice costs nothing extra: a second
+Directions call would be money spent to return the same answer.
+
+**Shortest first, and selected by default.** Google returns its own order, which
+favours time. The customer is being charged by distance, so distance is the
+order that matches what they are about to pay.
+
+**The fare follows the route.** A longer way round costs more because it *is*
+more — more kilometres for the driver, more fuel, more time. One price for two
+different journeys would make the shorter one subsidise the longer.
+
+Choosing a route resets the fare to the recommendation for the new distance. An
+amount someone set for a 24 km trip is not an amount they set for a 31 km one,
+and carrying it over silently would send out an offer they never made.
+
+### Chips, not only the map
+
+A route drawn on a phone is a few pixels wide, and two alternatives run together
+for most of their length — a target nobody hits reliably. The chips say how far
+and how long for each; the map shows which is chosen, and its lines are still
+tappable for anyone who prefers that.
+
+The lines are drawn in reverse order so the selected one paints last. Otherwise
+it disappears under an alternative wherever they overlap, which is most of the
+way for most pairs.
+
 ---
 
 ## Not done

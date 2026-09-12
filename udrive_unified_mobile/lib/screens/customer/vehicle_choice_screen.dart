@@ -80,6 +80,31 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   /// and no bidding, because nobody haggles over a seat on a scheduled run.
   final Map<String, SeatFareQuote> _seatFares = <String, SeatFareQuote>{};
 
+  /// Which route the customer has chosen.
+  ///
+  /// The fare follows it. A longer way round costs more because it *is* more —
+  /// more kilometres for the driver, more fuel, more time — and quoting one
+  /// price for two different journeys would make the shorter one subsidise the
+  /// longer.
+  int _routeIndex = 0;
+
+  /// The routes to offer, shortest first.
+  ///
+  /// Google returns its own order, which favours time. The customer is being
+  /// charged by distance, so distance is the order that matches what they are
+  /// about to pay — and the shortest is selected by default.
+  late final List<TripRoute> _routes = () {
+    final all = widget.routes.isNotEmpty
+        ? [...widget.routes]
+        : [if (widget.route != null) widget.route!];
+    all.sort((a, b) => a.distanceMetres.compareTo(b.distanceMetres));
+    return all;
+  }();
+
+  TripRoute? get _route => _routes.isEmpty
+      ? widget.route
+      : _routes[_routeIndex.clamp(0, _routes.length - 1)];
+
   /// Drivers within a short drive of the pickup.
   ///
   /// Shown because "how long until someone comes" is the question sitting
@@ -188,6 +213,26 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     super.dispose();
   }
 
+  /// Picks a route, and reprices the trip against it.
+  ///
+  /// The whole point of offering a choice: a longer way round is a longer trip,
+  /// and the fare has to say so before the customer sends it out. Reloading the
+  /// options is what recomputes every vehicle's price from the new distance.
+  Future<void> _selectRoute(int index) async {
+    if (index == _routeIndex || index < 0 || index >= _routes.length) return;
+
+    setState(() {
+      _routeIndex = index;
+      // Reloading resets the fare to the recommendation for the new distance.
+      // That is right: an amount the customer set for a 24 km trip is not an
+      // amount they set for a 31 km one, and silently carrying it over would
+      // send out an offer they never actually made.
+      _loading = true;
+    });
+
+    await _load();
+  }
+
   /// Reads the drivers around the pickup, and keeps reading.
   ///
   /// Refreshed every five seconds. A driver who has moved on is worse than no
@@ -209,7 +254,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     final controller = AppControllerScope.of(context);
     final repository = VehicleOptionsRepository(controller.apiClient);
 
-    final route = widget.route;
+    final route = _route;
     final distanceKm = route?.distanceKm ??
         const Distance().as(
               LengthUnit.Kilometer,
@@ -458,7 +503,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
             vehicleName: option.label,
             pickupPoint: widget.pickupPoint,
             destinationPoint: widget.destinationPoint,
-            routePoints: widget.route?.points,
+            routePoints: _route?.points,
           ),
         ),
       );
@@ -524,7 +569,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
             _RouteHeader(
               pickup: widget.pickupLabel,
               destination: widget.destinationLabel,
-              route: widget.route,
+              route: _route,
               onBack: () => Navigator.pop(context),
             ),
             Expanded(
@@ -550,6 +595,33 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
 
     return Column(
       children: [
+        // Route options, when there is more than one.
+        //
+        // Chips rather than only tapping the lines on the map. A route drawn on
+        // a phone is a few pixels wide and two of them run together for most of
+        // their length — a target nobody can hit reliably. The map still shows
+        // which one is chosen; the chips are how it is chosen.
+        if (_routes.length > 1)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+            child: SizedBox(
+              height: 54,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _routes.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) => _RouteChip(
+                  route: _routes[index],
+                  // The first is the shortest by construction, and the one
+                  // people take unless they have a reason not to.
+                  shortest: index == 0,
+                  selected: index == _routeIndex,
+                  onTap: () => _selectRoute(index),
+                ),
+              ),
+            ),
+          ),
+
         // Every vehicle's fare, on its own pill.
         //
         // The comparison is the decision, and it used to be four swipes deep:
@@ -602,6 +674,31 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                             // whole point is that the customer can zoom out to
                             // see how far the nearest driver really is.
                             showMyLocation: false,
+                            // Every route, with the chosen one on top and in
+                            // the accent colour.
+                            //
+                            // Drawn in reverse so the selected line paints last
+                            // and is never buried under an alternative it
+                            // overlaps — which is most of the way, for most
+                            // pairs of routes.
+                            polylines: [
+                              for (var i = _routes.length - 1; i >= 0; i--)
+                                if (i != _routeIndex)
+                                  UdPolyline(
+                                    id: 'route-$i',
+                                    points: _routes[i].points,
+                                    color: AppText.disabled,
+                                    width: 3,
+                                    onTap: () => _selectRoute(i),
+                                  ),
+                              if (_route != null)
+                                UdPolyline(
+                                  id: 'route-selected',
+                                  points: _route!.points,
+                                  color: AppColors.secondary,
+                                  width: 5,
+                                ),
+                            ],
                             circles: [
                               UdCircle(
                                 id: 'nearby-radius',
@@ -977,6 +1074,72 @@ class _VehiclePill extends StatelessWidget {
 /// badge on the photograph itself, which costs no height at all. `_RateBasis`
 /// printed the per-kilometre rate, which is not something the customer was
 /// asked to check.
+
+/// One route option: how far, how long, and whether it is the short way.
+class _RouteChip extends StatelessWidget {
+  const _RouteChip({
+    required this.route,
+    required this.shortest,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final TripRoute route;
+  final bool shortest;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final minutes = (route.durationSeconds / 60).round();
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? AppTint.brand : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected ? AppColors.secondary : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                shortest ? 'Shortest' : 'Alternative',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .3,
+                  color: selected ? AppColors.secondary : AppText.disabled,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${route.distanceKm.toStringAsFixed(route.distanceKm < 10 ? 1 : 0)} km'
+                '  ·  $minutes min',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? AppText.primary : AppText.secondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// A small label over the vehicle photograph.
 ///
