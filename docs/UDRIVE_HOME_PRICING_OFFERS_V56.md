@@ -1983,6 +1983,46 @@ a regex instead of using the language. `flutter analyze` would have caught all
 thirty-eight in one pass. It is already the first job in
 `.github/workflows/build-android-apk.yml`.
 
+## 69. A third shape: default parameter values
+
+`UdCircle` declares its colours as defaults:
+
+```dart
+UdCircle({
+  this.fill = AppColors.secondary,
+  this.stroke = AppColors.secondary,
+});
+```
+
+**Every default parameter value in Dart must be a compile-time constant** —
+const constructor or not. The accent is a runtime getter now, so both are
+illegal, and neither of the two checks written yesterday sees them: there is no
+`const` keyword anywhere near.
+
+`fill` and `stroke` are nullable, with `fillColour` and `strokeColour` getters
+that fill in the accent when the circle is drawn. Callers pass neither, so
+nothing else changed.
+
+The check now also scans parameter lists. Verified against the v101 tree, where
+it reports both lines, and against this one, where it reports zero.
+
+### Counting honestly
+
+That is three distinct shapes the same conversion broke, across three builds:
+
+1. `const` on the line with the token — caught by the first check
+2. `const` several lines above it — missed; the check was line-based
+3. A default parameter value, with no `const` anywhere — missed by both
+
+Each time I extended the check after the compiler found the case, which means
+the check has only ever been as good as the failures already seen. A fourth
+shape may exist; I cannot rule it out by looking, because I am matching text
+against a language rule instead of asking the language.
+
+`flutter analyze` finds all three in one run, and every one of these three
+builds would have been stopped by the job that already sits first in
+`.github/workflows/build-android-apk.yml`.
+
 ---
 
 ## Not done

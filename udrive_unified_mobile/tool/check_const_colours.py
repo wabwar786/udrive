@@ -156,5 +156,41 @@ for root, _, names in os.walk('lib'):
                       f'`var` or type — {line.strip()[:60]}')
                 problems += 1
 
+# ---------------------------------------------- default parameter values
+#
+# Every default parameter value in Dart must be a compile-time constant —
+# const constructor or not. `UdCircle({this.fill = AppColors.secondary})` is
+# therefore illegal now that the accent is a runtime getter, and neither of the
+# checks above sees it: there is no `const` keyword anywhere near it.
+#
+# This was the third distinct shape the conversion broke, found by the compiler
+# rather than by me. The fix is a nullable parameter and a getter that fills in
+# the accent when the value is read.
+
+PARAM_DEFAULT = re.compile(
+    r'(?:this\.|required\s+)?\w+\s*=\s*(' + '|'.join(
+        re.escape(token) for token in TOKENS) + r')\s*[,)]')
+
+for root, _, names in os.walk('lib'):
+    for name in sorted(names):
+        if not name.endswith('.dart'):
+            continue
+        path = os.path.join(root, name)
+        src = open(path).read()
+        if not any(token in src for token in TOKENS):
+            continue
+
+        # Only inside a parameter list: `(` … `)` following an identifier at the
+        # start of a constructor or method signature.
+        for match in re.finditer(r'\b\w+\s*\(\s*\{', src):
+            end = group_end(src, src.index('(', match.start()))
+            body = src[match.start():end]
+            for hit in PARAM_DEFAULT.finditer(body):
+                line = src[:match.start() + hit.start()].count('\n') + 1
+                print(f'{path}:{line}: default parameter value uses '
+                      f'{hit.group(1)}, which is a runtime getter — make the '
+                      'parameter nullable and resolve it when read')
+                problems += 1
+
 print('CONST RUNTIME COLOURS:', problems)
 sys.exit(1 if problems else 0)

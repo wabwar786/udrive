@@ -86,9 +86,9 @@ class UdCircle {
     required this.id,
     required this.centre,
     required this.radiusMetres,
-    this.fill = AppColors.secondary,
+    this.fill,
     this.fillOpacity = .09,
-    this.stroke = AppColors.secondary,
+    this.stroke,
     this.strokeOpacity = .42,
     this.strokeWidth = 1.5,
   });
@@ -96,11 +96,26 @@ class UdCircle {
   final String id;
   final LatLng centre;
   final double radiusMetres;
-  final Color fill;
+
+  /// Null means the app's accent, resolved when the circle is drawn.
+  ///
+  /// It cannot be defaulted to `AppColors.secondary` here. Every default
+  /// parameter value in Dart must be a compile-time constant — const
+  /// constructor or not — and the accent is a runtime getter now, because the
+  /// customer can change it.
+  final Color? fill;
+
   final double fillOpacity;
-  final Color stroke;
+
+  /// Null means the app's accent. See [fill].
+  final Color? stroke;
+
   final double strokeOpacity;
   final double strokeWidth;
+
+  /// The colours to paint with, with the accent filled in.
+  Color get fillColour => fill ?? AppColors.secondary;
+  Color get strokeColour => stroke ?? AppColors.secondary;
 }
 
 /// Imperative handle so callers can recentre the map without caring which
@@ -662,9 +677,9 @@ class _UdMapState extends State<UdMap> {
               center:
                   gmap.LatLng(circle.centre.latitude, circle.centre.longitude),
               radius: circle.radiusMetres,
-              fillColor: circle.fill.withValues(alpha: circle.fillOpacity),
+              fillColor: circle.fillColour.withValues(alpha: circle.fillOpacity),
               strokeColor:
-                  circle.stroke.withValues(alpha: circle.strokeOpacity),
+                  circle.strokeColour.withValues(alpha: circle.strokeOpacity),
               strokeWidth: circle.strokeWidth.round(),
             ),
           )
@@ -753,9 +768,9 @@ class _UdMapState extends State<UdMap> {
                     point: circle.centre,
                     radius: circle.radiusMetres,
                     useRadiusInMeter: true,
-                    color: circle.fill.withValues(alpha: circle.fillOpacity),
+                    color: circle.fillColour.withValues(alpha: circle.fillOpacity),
                     borderColor:
-                        circle.stroke.withValues(alpha: circle.strokeOpacity),
+                        circle.strokeColour.withValues(alpha: circle.strokeOpacity),
                     borderStrokeWidth: circle.strokeWidth,
                   ),
                 )
