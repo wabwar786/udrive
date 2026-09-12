@@ -40,7 +40,7 @@ class OfflineAwareTileLayer extends StatelessWidget {
     // the path, which would turn {z}/{x}/{y} into %7Bz%7D and leave flutter_map
     // with no placeholders to substitute.
     final googleTiles =
-        '${ApiConfig.baseUrl}/api/v1/places/tiles/{z}/{x}/{y}';
+        '${ApiConfig.baseUrl}/api/v1/places/tiles/v${ApiConfig.tileStyleVersion}/{z}/{x}/{y}';
 
     return TileLayer(
       urlTemplate: googleTiles,

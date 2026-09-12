@@ -539,6 +539,22 @@ public sealed class PlacesController(
     /// Tiles are immutable for practical purposes, so they are cached hard.
     /// After the first visit to an area the browser stops asking.
     /// </remarks>
+    /// <remarks>
+    /// The <c>v</c> segment is a cache buster, and it exists because of a real
+    /// failure: the basemap style was changed from dark to light, and customers
+    /// kept seeing the dark one. The URL had not changed, the tiles are cached
+    /// for a week, so the browser never asked the server again — one phone
+    /// showed a light map and another a dark one, for the same account, at the
+    /// same moment.
+    ///
+    /// Bump <see cref="TileStyleVersion"/> whenever the style changes. Every
+    /// tile becomes a new URL, nothing stale can be served, and nobody waits a
+    /// week.
+    /// </remarks>
+    /// <summary>Bumped whenever the basemap style changes.</summary>
+    public const int TileStyleVersion = 2;
+
+    [HttpGet("tiles/v{v:int}/{z:int}/{x:int}/{y:int}")]
     [HttpGet("tiles/{z:int}/{x:int}/{y:int}")]
     [ResponseCache(Duration = 604800, Location = ResponseCacheLocation.Any)]
     public async Task<IActionResult> Tile(

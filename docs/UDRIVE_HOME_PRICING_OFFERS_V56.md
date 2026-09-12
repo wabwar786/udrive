@@ -2397,6 +2397,52 @@ its contents down the middle of the map. That is why the logo and icons appeared
 level with the pickup pill instead of at the top. The column-and-spacer layout
 in rev 104 removed it.
 
+## 78. Black map on one phone, white on another
+
+Both screenshots are the same build. The Android one shows a light map, the iOS
+web one a dark map, same account, same minute.
+
+That is the browser cache, and it is the answer I gave before without fixing the
+cause. Tiles are served with a seven-day cache and the URL never changed when
+the style did, so the browser had no reason to ask again.
+
+The tile URL now carries a style version. Bump it on both sides and every tile
+becomes a new URL — nothing stale can be served, and nobody waits a week.
+
+## 79. One ride at a time
+
+A customer could open three requests at once, accept offers on all three, and
+leave two drivers holding a booking for someone already sitting in another car.
+The drivers pay for that: they turned down other work for it.
+
+`CreateRideRequestAsync` now refuses while a request is still searching or a
+booking is under way, with a different message for each — "cancel that request"
+and "finish or cancel it" are different instructions.
+
+Scheduled trips are unaffected: only live requests and running bookings count.
+
+## 80. The live sheets start collapsed
+
+Both live screens opened with the panel at full height, covering most of the map
+— the one thing both people are watching. Where the other person is, and how far
+off.
+
+`CollapsibleMapSheet` shows a single line and **bounces gently** until it has
+been opened once, which is the only reliable way to say "there is more here"
+without a label explaining itself. Six pixels: enough to catch the eye at the
+edge of vision, small enough not to look like a fault.
+
+The bounce stops permanently after the first tap. An invitation that keeps
+arriving after it has been accepted is nagging.
+
+Open, it has a close control in the corner where one is expected. Without that
+the sheet can be opened and not shut, and the map stays covered for the rest of
+the trip.
+
+The collapsed line carries what matters at a glance — the other person's name,
+the distance, the minutes — so the sheet does not have to be opened to answer
+the ordinary question.
+
 ---
 
 ## Not done

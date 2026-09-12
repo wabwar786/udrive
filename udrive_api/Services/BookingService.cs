@@ -28,6 +28,55 @@ public sealed class BookingService(
                 validation.Value.Message);
         }
 
+        // One live ride at a time.
+        //
+        // Without this a Customer can put three requests out at once, take
+        // offers on all three, and leave two Drivers holding a booking for
+        // someone who is already in another car. The Drivers are the ones who
+        // pay for that — they turned down other work for it.
+        //
+        // Scheduled trips are not affected: this counts only requests still
+        // looking for a Driver and bookings still under way.
+        await using (var existing = new NpgsqlConnection(connectionString))
+        {
+            await existing.OpenAsync(cancellationToken);
+            const string activeSql = """
+                SELECT
+                    (SELECT count(*) FROM udrive.ride_requests rr
+                      WHERE rr.customer_user_id = @user
+                        AND rr.status IN ('Open','SearchingDrivers','ReceivingOffers')
+                        AND (rr.expires_at IS NULL OR rr.expires_at > now())),
+                    (SELECT count(*) FROM udrive.bookings b
+                      WHERE b.customer_user_id = @user
+                        AND b.status IN ('Confirmed','DriverAssigned','InProgress'));
+                """;
+
+            await using var command = new NpgsqlCommand(activeSql, existing);
+            command.Parameters.AddWithValue("user", userId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            await reader.ReadAsync(cancellationToken);
+            var searching = reader.GetInt64(0);
+            var running = reader.GetInt64(1);
+
+            if (running > 0)
+            {
+                return ServiceResult<RideRequestDto>.Fail(
+                    StatusCodes.Status409Conflict,
+                    "ride_in_progress",
+                    "You already have a ride under way. Finish or cancel it "
+                    + "before booking another.");
+            }
+
+            if (searching > 0)
+            {
+                return ServiceResult<RideRequestDto>.Fail(
+                    StatusCodes.Status409Conflict,
+                    "request_already_open",
+                    "You are already looking for a driver. Cancel that request "
+                    + "before starting a new one.");
+            }
+        }
+
         var id = Guid.NewGuid();
         var expiresAt = DateTimeOffset.UtcNow.AddHours(1);
 

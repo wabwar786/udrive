@@ -247,3 +247,25 @@ admin invented would render a tile that opens nothing.
 drivers keep registering vehicles and admins keep verifying them, so the service
 has a fleet on the day it opens. Without that the platform deadlocks: closed
 because there are no vehicles, no vehicles because it is closed.
+
+## Tile style versioning — rev 106
+
+`GET /api/v1/places/tiles/v{v}/{z}/{x}/{y}` alongside the unversioned route.
+
+The style was changed from dark to light and customers kept seeing dark tiles:
+the URL had not changed, tiles are cached for a week, so browsers never asked
+again — one phone showed light and another dark, same account, same moment.
+
+Bump `PlacesController.TileStyleVersion` and `ApiConfig.tileStyleVersion`
+together whenever the basemap style changes. Every tile becomes a new URL and
+nothing stale can be served.
+
+## One live ride per customer — rev 106
+
+`POST /api/v1/bookings/ride-requests` now refuses while the customer already has
+a request searching (`request_already_open`) or a booking under way
+(`ride_in_progress`).
+
+Without it a customer could put three requests out, take offers on all three,
+and leave two drivers holding a booking for someone already in another car — and
+those drivers had turned down other work for it.

@@ -19,6 +19,7 @@ import '../../core/network/api_config.dart';
 import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/routing/live_leg.dart';
 import '../../core/services/trip_location_service.dart';
+import '../../core/widgets/collapsible_map_sheet.dart';
 import '../../core/state/app_controller.dart';
 import 'trip_chat_screen.dart';
 import 'trip_rating_screen.dart';
@@ -696,21 +697,33 @@ class _DriverLiveNavigationScreenState
           Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(
-              minimum: const EdgeInsets.all(12),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                // The app's own surface. This panel was white while every
-                // other screen moved to the dark palette, so opening a live
-                // ride looked like leaving the app.
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.border),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x66000000), blurRadius: 28, offset: Offset(0, 8)),
+              // Collapsed by default. A Driver on the way to a pickup is
+              // watching the road on the map, not reading the passenger's
+              // history — that is for the moment they arrive, and it is one tap
+              // away.
+              child: CollapsibleMapSheet(
+                collapsed: Row(
+                  children: [
+                    Icon(Icons.navigation_rounded,
+                        size: 18, color: AppColors.secondary),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        '${widget.trip.customerName}  ·  '
+                        '${_distanceKm?.toStringAsFixed(1) ?? '—'} km'
+                        '${_etaMinutes == null ? '' : '  ·  $_etaMinutes min'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppText.primary,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-                child: Column(
+                expanded: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1702,21 +1715,38 @@ class _CustomerFullScreenTrackingScreenState
                         ),
                       ),
                     ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                decoration: BoxDecoration(
-                  // The app's own surface, not white. A white sheet on a dark
-                  // teal map read as a different application pasted over this
-                  // one, and the muted greys inside it were mixed for a light
-                  // background so the driver's name was barely legible.
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.border),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x66000000), blurRadius: 28),
+              // Collapsed by default, so the map is the screen.
+              //
+              // A customer waiting is watching one thing: where the car is and
+              // how far off. The driver's name, rating, reviews, fare and trip
+              // code are all worth having — and all worth having *after* that
+              // question is answered, which is one tap away.
+              CollapsibleMapSheet(
+                collapsed: Row(
+                  children: [
+                    Icon(Icons.directions_car_rounded,
+                        size: 18, color: AppColors.secondary),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        eta == null
+                            ? (t?.driverName ??
+                                widget.trip.driverName ??
+                                'Your driver')
+                            : '${t?.driverName ?? widget.trip.driverName ?? 'Driver'}'
+                                '  ·  $eta min away',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppText.primary,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-                child: Column(
+                expanded: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

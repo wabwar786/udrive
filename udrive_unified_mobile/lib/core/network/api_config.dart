@@ -1,4 +1,12 @@
 abstract final class ApiConfig {
+  /// The basemap style version, matching the API's `TileStyleVersion`.
+  ///
+  /// Part of the tile URL so that changing the map's styling cannot be hidden
+  /// by a week-old browser cache. Without it, the style was changed from dark
+  /// to light and customers kept seeing dark tiles — the URL had not changed,
+  /// so the browser never asked again. Bump both sides together.
+  static const int tileStyleVersion = 2;
+
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'https://udrive-api-production.up.railway.app',
