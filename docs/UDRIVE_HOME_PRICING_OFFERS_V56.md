@@ -2272,6 +2272,52 @@ buttons reads as something to press.
 
 Everything is seeded open except `carRental`, which has no screen behind it yet.
 
+## 75. The home screen I broke
+
+Fair report. The screenshot shows the header, the pickup pill and the nearby
+chip stacked on top of each other, the attribution bar still black across the
+map, "Show map" still there, and the artwork printing through the card text.
+
+Three separate failures, and the first is the one worth naming.
+
+### I implemented half of an approved design
+
+The cleanup mockup removed the attribution bar and the "Show map" row. That
+mockup was approved. I then implemented the transparent header and the service
+switches — and **left both of those untouched**, because they were described in
+the reply rather than written down as work.
+
+They are done now: a plain `Google` label in the corner instead of the bar, and
+the handle row deleted along with `_SheetHandle` and `_lowerSheet`.
+
+On the attribution: Google's terms do require it on Map Tiles imagery, so it
+cannot go entirely. But two thirds of that bar was required by nobody —
+`flutter_map` is the name of a library, and OpenStreetMap is only the fallback
+source. What is left is what Google's own SDK shows.
+
+### The transparent header collided with everything
+
+Moving the header into the map was right; leaving the map at 22% of the screen
+was not. That is about 170 pixels holding a header, a centred pickup pill, a
+nearby chip and a locate button — so they sat on each other.
+
+The map is one fixed height now (30%, 230–330px). The two-height lifted/lowered
+state went with the handle: with the sheet fixed open there was no second state
+to reach. The centre pin is offset below the header rather than centred in a
+stack that now starts at the top of the screen, and the bottom overlays moved
+from 60px up to 14px, since the fade they were clearing is gone.
+
+### The type change broke the cards
+
+The artwork was oversized and bleeding off the bottom corner, behind the words.
+That worked at 15pt titles and stopped working at 17 — the car icon prints
+straight through "Car · Bike · Coster · Hiace" in the screenshot. The icons are
+smaller and inset now, and the card block went from 148 to 172 to fit the larger
+subtitles.
+
+A type change is never only a type change. I raised every size in the theme and
+checked nothing that had been laid out around the old ones.
+
 ---
 
 ## Not done

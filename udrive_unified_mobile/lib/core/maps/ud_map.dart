@@ -794,16 +794,30 @@ class _UdMapState extends State<UdMap> {
                 )
                 .toList(growable: false),
           ),
-        // Google's terms require visible attribution on Map Tiles imagery, and
-        // OpenStreetMap's licence requires it on the fallback. Naming both
-        // covers whichever is actually being served.
-        const fmap.SimpleAttributionWidget(
-          source: Text(
-            'Google · © OpenStreetMap',
-            style: TextStyle(fontSize: 9, color: AppText.disabled),
-          ),
-          backgroundColor: Color(0xCC0B1417),
+        // Attribution, as small as the terms allow.
+        //
+        // Google's terms require it to be visible on Map Tiles imagery, so it
+        // cannot be removed — but `SimpleAttributionWidget` painted a black bar
+        // across the map reading "flutter_map | © Google · © OpenStreetMap".
+        // Two thirds of that is not required by anyone: "flutter_map" is the
+        // name of a library, and OpenStreetMap is only the fallback source.
+        //
+        // A plain label in the corner, the way Google's own SDK does it.
+        const Align(
           alignment: Alignment.bottomLeft,
+          child: IgnorePointer(
+            child: Padding(
+              padding: EdgeInsets.only(left: 7, bottom: 3),
+              child: Text(
+                'Google',
+                style: TextStyle(
+                  fontSize: 9,
+                  letterSpacing: .2,
+                  color: AppText.disabled,
+                ),
+              ),
+            ),
+          ),
         ),
         if (widget.showMyLocation && widget.myLocation != null)
           fmap.CircleLayer(

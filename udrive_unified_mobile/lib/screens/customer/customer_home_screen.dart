@@ -886,11 +886,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// look at the map; raising the card back is what tapping anything on it
   /// already does, and a control that means two opposite things depending on
   /// hidden state is a control people stop trusting.
-  void _lowerSheet() {
-    FocusScope.of(context).unfocus();
-    if (!_sheetLifted) return;
-    setState(() => _sheetLifted = false);
-  }
+
 
 
 
@@ -904,9 +900,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     // Lifted, the map keeps just enough of itself to stay a map — the pin, the
     // vehicles around it and the locate button. Hiding it entirely would leave
     // the customer setting a pickup they cannot see.
-    final mapHeight = _sheetLifted
-        ? (height * .22).clamp(160.0, 250.0)
-        : (height * .58).clamp(340.0, 600.0);
+    // One height. With the sheet fixed open there is no second state to
+    // switch to, and the old lifted value — 22% of the screen — is what left
+    // the header, the pickup pill and the nearby chip stacked on top of each
+    // other in about 170 pixels.
+    final mapHeight = (height * .30).clamp(230.0, 330.0);
 
     return Container(
       color: AppColors.background,
@@ -929,6 +927,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
                 if (_pinActive)
                   Positioned.fill(
+                    // Below the header, not behind it. The pin centres in the
+                    // stack, and the stack now starts at the top of the screen
+                    // — so without this the pickup label rode up under the logo.
+                    top: MediaQuery.paddingOf(context).top + 52,
                     child: IgnorePointer(
                       child: Center(
                         child: _CentrePin(
@@ -989,7 +991,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   // Floats on the map rather than occupying a strip of its own.
                   Positioned(
                     right: 14,
-                    bottom: 60,
+                    bottom: 14,
                     child: _LocateButton(
                       busy: _locating,
                       onTap: _loadLocation,
@@ -999,7 +1001,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   if (_service.isVehicle && _pinActive)
                     Positioned(
                       left: 14,
-                      bottom: 62,
+                      bottom: 16,
                       right: 70,
                       child: _NearbyCountChip(
                         service: _service,
@@ -1131,7 +1133,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           children: [
             // Outside the scroll view, so it stays reachable however far down
             // the card the customer has scrolled.
-            _SheetHandle(lifted: _sheetLifted, onLower: _lowerSheet),
+            // No "Show map" handle.
+            //
+            // The card is fully open by default and stays that way, so a row
+            // whose only job was to lower it was a line of chrome across the
+            // top of the sheet earning nothing. The map is already visible
+            // above it.
+            const SizedBox(height: 8),
             Expanded(
               child: SingleChildScrollView(
                 controller: _sheetScroll,
@@ -1941,66 +1949,6 @@ class _PickupRow extends StatelessWidget {
   }
 }
 
-class _SheetHandle extends StatelessWidget {
-  const _SheetHandle({required this.lifted, required this.onLower});
-
-  final bool lifted;
-  final VoidCallback onLower;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: lifted ? 'Show more map' : 'Show more of the booking card',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: lifted ? onLower : null,
-        onVerticalDragEnd: (details) {
-          // Downward only, matching the tap. A flick upward does nothing
-          // because the card is already as high as it goes.
-          if ((details.primaryVelocity ?? 0) > 80 && lifted) onLower();
-        },
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 38,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-              const SizedBox(width: 10),
-              if (lifted) ...[
-                const Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 18,
-                  color: AppText.disabled,
-                ),
-                const SizedBox(width: 4),
-                // Says what it does, not what state it is in. "More" on a card
-                // that is already fully open was a promise of something else
-                // underneath.
-                const Text(
-                  'Show map',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppText.disabled,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _LocationControl extends StatelessWidget {
   const _LocationControl({
     required this.expanded,
@@ -2652,7 +2600,12 @@ class _ServiceCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 148,
+      // Taller, for the larger type.
+      //
+      // 148 was set when titles were 15pt and subtitles 10.5. At 17 and 11.5
+      // the two right-hand cards had their subtitles clipped by the artwork
+      // and each other.
+      height: 172,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2974,13 +2927,20 @@ class _ProductCard extends StatelessWidget {
               // label reading from the top. The eye lands on the word first
               // and the picture only confirms it — the other way round, four
               // tiles read as four pictures with captions.
+              // Artwork in the bottom-right corner, out of the text's way.
+              //
+              // It used to be oversized and bleeding off the corner, behind the
+              // words. That worked at the old type size and stopped working at
+              // the new one: the car was printing straight through "Car · Bike
+              // · Coster · Hiace". Smaller, inset, and the text column now
+              // reserves the space it needs above it.
               Positioned(
-                right: large ? -18 : -10,
-                bottom: large ? -16 : -10,
+                right: large ? 10 : 6,
+                bottom: large ? 8 : 5,
                 child: Icon(
                   icon,
-                  size: large ? 104 : 58,
-                  color: accent.withValues(alpha: selected ? .38 : .16),
+                  size: large ? 46 : 28,
+                  color: accent.withValues(alpha: selected ? .40 : .22),
                 ),
               ),
               Padding(
