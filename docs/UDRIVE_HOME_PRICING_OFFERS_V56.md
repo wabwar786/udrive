@@ -2318,6 +2318,44 @@ subtitles.
 A type change is never only a type change. I raised every size in the theme and
 checked nothing that had been laid out around the old ones.
 
+## 76. Alignment, structurally
+
+The last round moved offsets around. That was the wrong fix — fixed offsets in a
+stack collide again at the next height. This one changes the structure.
+
+### The map overlays are a column
+
+They were four separate `Positioned` widgets: a header pinned to the top, a
+locate button at bottom 60, a nearby chip at bottom 62. At a tall map they
+looked right; when the map shrank they landed on each other, which is what every
+screenshot has shown.
+
+One `Column` inside the map now: header row, `Spacer`, bottom row. **A column
+cannot overlap itself.** The header takes the height it needs, the spacer
+absorbs the rest, and the bottom row sits above the map's edge at any map height
+at all.
+
+The nearby chip and the locate button share that bottom row rather than being
+positioned near each other and hoping. Where the chip is not shown, a `Spacer`
+holds its place so the button does not jump.
+
+### One spacing scale in the sheet
+
+The sheet used 12 for panel padding, 12 or 14 inside panels, 10 between blocks,
+7 between tiles. Values close enough to look accidental rather than chosen —
+which is most of what "not aligned" means when you look at a screen and
+something feels off without being able to name it.
+
+It is 14 for gutters, 12 between blocks, 8 between tiles, everywhere.
+
+### The two tags
+
+`flutter_map | © Google · © OpenStreetMap` and the "Show map" row were both
+removed in **rev 103**, which the screenshot predates — it still shows the SOON
+badge from rev 102 alongside both tags. They are gone in this build, along with
+the quick tiles growing to 52px so the icon is not crowded by a label that is
+now 12pt.
+
 ---
 
 ## Not done

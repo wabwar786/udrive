@@ -942,74 +942,82 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ),
                   ),
 
+                // Everything that floats on the map, in one column.
+                //
+                // These were four separate `Positioned` widgets at fixed
+                // offsets — a header pinned to the top, a locate button at
+                // bottom 60, a nearby chip at bottom 62. At a tall map they
+                // looked fine; when the map shrank they landed on top of one
+                // another, which is what the screenshots kept showing.
+                //
+                // A column cannot overlap itself. The header takes the height
+                // it needs, the spacer absorbs whatever is left, and the bottom
+                // row sits above the map's edge at any map height at all.
                 SafeArea(
                   bottom: false,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-                    child: SizedBox(
-                      height: 40,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                    UDriveMark(
-                      size: 38,
-                      // Already home, so this clears anything stacked on top
-                      // rather than pushing another copy of it.
-                      onTap: () => Navigator.of(context)
-                          .popUntil((route) => route.isFirst),
-                    ),
-                    const Spacer(),
-                    _MapIconButton(
-                      semanticLabel: 'Switch to driver mode',
-                      child: SteeringWheelIcon(
-                        size: 20,
-                        color: AppColors.secondary,
-                      ),
-                      onTap: () => controller.switchMode(UserMode.driver),
-                    ),
-                    const SizedBox(width: 8),
-                    _MapIconButton(
-                      icon: Icons.notifications_none_rounded,
-                      semanticLabel: 'Notifications',
-                      showDot: _unreadNotifications,
-                      onTap: _openNotifications,
-                    ),
-                        ],
-                      ),
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            UDriveMark(
+                              size: 40,
+                              // Already home, so this clears anything stacked
+                              // on top rather than pushing another copy of it.
+                              onTap: () => Navigator.of(context)
+                                  .popUntil((route) => route.isFirst),
+                            ),
+                            const Spacer(),
+                            _MapIconButton(
+                              semanticLabel: 'Switch to driver mode',
+                              child: SteeringWheelIcon(
+                                size: 21,
+                                color: AppColors.secondary,
+                              ),
+                              onTap: () =>
+                                  controller.switchMode(UserMode.driver),
+                            ),
+                            const SizedBox(width: 8),
+                            _MapIconButton(
+                              icon: Icons.notifications_none_rounded,
+                              semanticLabel: 'Notifications',
+                              showDot: _unreadNotifications,
+                              onTap: _openNotifications,
+                            ),
+                          ],
+                        ),
+
+                        const Spacer(),
+
+                        // The nearby count and the locate button share one row,
+                        // so neither can drift under the other.
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (_service.isVehicle && _pinActive)
+                              Expanded(
+                                child: _NearbyCountChip(
+                                  service: _service,
+                                  count: _visibleVehicles.length,
+                                  loading: _nearbyLoading,
+                                  offline: _offline,
+                                ),
+                              )
+                            else
+                              const Spacer(),
+                            const SizedBox(width: 10),
+                            _LocateButton(
+                              busy: _locating,
+                              onTap: _loadLocation,
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ),
-
-                  // No fade over the map.
-                  //
-                  // A gradient from transparent to the page colour existed to
-                  // soften the join with the sheet. On a white page it reads as
-                  // a grey wash over the bottom of the map — a smudge, not a
-                  // transition — and the sheet's own rounded top already does
-                  // the softening.
-
-                  // Floats on the map rather than occupying a strip of its own.
-                  Positioned(
-                    right: 14,
-                    bottom: 14,
-                    child: _LocateButton(
-                      busy: _locating,
-                      onTap: _loadLocation,
-                    ),
-                  ),
-
-                  if (_service.isVehicle && _pinActive)
-                    Positioned(
-                      left: 14,
-                      bottom: 16,
-                      right: 70,
-                      child: _NearbyCountChip(
-                        service: _service,
-                        count: _visibleVehicles.length,
-                        loading: _nearbyLoading,
-                        offline: _offline,
-                      ),
-                    ),
               ],
             ),
           ),
@@ -1131,19 +1139,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Outside the scroll view, so it stays reachable however far down
-            // the card the customer has scrolled.
-            // No "Show map" handle.
+            // No "Show map" handle: the card is fully open and stays that way,
+            // so a row whose only job was to lower it earned nothing.
             //
-            // The card is fully open by default and stays that way, so a row
-            // whose only job was to lower it was a line of chrome across the
-            // top of the sheet earning nothing. The map is already visible
-            // above it.
-            const SizedBox(height: 8),
+            // One gutter for the whole sheet — 14 on every side, 12 between
+            // blocks. The panels used 12, the panel insides 12 or 14, and the
+            // gaps between them 10 — close enough to look accidental rather
+            // than chosen, which is most of what "not aligned" means.
             Expanded(
               child: SingleChildScrollView(
                 controller: _sheetScroll,
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 20),
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 child: Column(
@@ -1155,9 +1161,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         trip: _activeTrip!,
                         onTrack: _openActiveTrip,
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                     ],
-
 
                     // What you are booking.
                     _SheetPanel(
@@ -1173,7 +1178,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                             onClosed: _serviceClosed,
                             nearbyCount: _visibleVehicles.length,
                           ),
-                          const SizedBox(height: 11),
+                          const SizedBox(height: 12),
                           // The second rank: things people reach for less
                           // often, as icons rather than cards.
                           //
@@ -1195,7 +1200,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
 
                     // Where you are going, and — once that is known —
                     // everything needed to send the request.
@@ -2631,7 +2636,7 @@ class _ServiceCards extends StatelessWidget {
               onTap: () => onSelect(HomeService.car),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             flex: 20,
             child: Column(
@@ -2653,7 +2658,7 @@ class _ServiceCards extends StatelessWidget {
                     onTap: () => onSelect(HomeService.tour),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Expanded(
                   // Hotels moved down to the icon row, so this slot carries
                   // the other kind of ride: out of the city rather than across
@@ -2718,7 +2723,7 @@ class _QuickRow extends StatelessWidget {
             onClosed: onClosed,
           ),
         ),
-        const SizedBox(width: 7),
+        const SizedBox(width: 8),
         Expanded(
           child: _QuickTile(
             icon: Icons.vpn_key_rounded,
@@ -2732,7 +2737,7 @@ class _QuickRow extends StatelessWidget {
             onClosed: onClosed,
           ),
         ),
-        const SizedBox(width: 7),
+        const SizedBox(width: 8),
         Expanded(
           child: _QuickTile(
             icon: Icons.airport_shuttle_rounded,
@@ -2743,7 +2748,7 @@ class _QuickRow extends StatelessWidget {
             onClosed: onClosed,
           ),
         ),
-        const SizedBox(width: 7),
+        const SizedBox(width: 8),
         Expanded(
           child: _QuickTile(
             icon: Icons.explore_rounded,
@@ -2801,7 +2806,7 @@ class _QuickTile extends StatelessWidget {
               children: [
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
-                  height: 46,
+                  height: 52,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: selected ? AppTint.brand : AppColors.surfaceAlt,
@@ -2839,7 +2844,7 @@ class _QuickTile extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 6),
             Text(
               label,
               maxLines: 1,
