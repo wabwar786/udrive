@@ -1877,6 +1877,112 @@ request changes — including the status flipping to ReceivingOffers the moment
 the first offer lands — so reusing it would have cleared every Driver's decision
 on every offer and re-alerted the whole area each time.
 
+## 64. Messages, arrival, and the trip code
+
+**A message now sounds.** The bubbles float over the map, but a customer
+standing at a kerb is usually not looking at the screen — a message arriving
+silently is read minutes later, by which time the driver has given up asking.
+Once per message id, and never on the first load: everything is unseen then, and
+chiming through a conversation somebody has already read is noise.
+
+**"I have arrived" reaches the customer.** Sound, a heavy buzz, and a snackbar
+that stays eight seconds. It is the one status change a waiting customer must
+not miss — they may be indoors while the driver is already outside.
+
+**The trip code explains itself.** The driver's dialog said "Enter Trip OTP",
+which is mechanics and no purpose — and a step whose purpose is unclear is one
+people work around, asking for the code through a car window or starting a trip
+with the wrong passenger aboard. Both sides now say what it is for: it confirms
+the right person is in the vehicle and it starts the fare, so nobody is charged
+for a trip they did not take and no driver is blamed for one they did not carry.
+
+## 65. The driver's live ride screen
+
+It was still white cards on light greys while the rest of the app moved to the
+dark teal palette, so opening a live ride looked like leaving the app. Surfaces,
+borders, ink, the ETA chip and the action buttons all come from the theme now.
+The map pin stays white — it sits on a map, where white is the right contrast.
+
+**A proper passenger record**, in place of the one-line chip: how many rides
+they have taken on UDrive, how drivers have rated them and how many did the
+rating, and any cancellations. The same information the customer already gets
+about the driver, pointed the other way — a driver pulling up to a stranger is
+entitled to know something about them, and the app told them a name and nothing
+else.
+
+No default rating here either. "No driver ratings yet" rather than a five
+nobody gave.
+
+## 66. A steering wheel on the top button
+
+The customer header's mode button showed `swap_horiz` — two arrows, which say
+"change something" without saying into what. It now carries the drawn steering
+wheel.
+
+## 67. The audit caught me removing four widgets
+
+Replacing `_PassengerChip` with the larger record, I sliced from its doc comment
+to the next class and took `_FloatingMessage`, `_RoundAction`, `_DriverAction`,
+`_DriverStars`, `_ReviewCard` and `_VehicleFallback` with it — six widgets, all
+still referenced.
+
+`audit_structure.py` reported every one as an undeclared widget, and I restored
+them. This is the second time an index-based slice has eaten code in this file;
+the lesson is that `s[start:end]` between two class names is only safe when
+nothing lives between them, and in a 2,000-line file something usually does.
+
+## 68. The const conversion broke the build, and my check said it was fine
+
+`rev 94` turned the accent tokens into runtime getters and removed `const` from
+the places that used them. The check I wrote to guard that looked **one line at
+a time** — and `const` is not line-based. An outer `const TextStyle(` four lines
+up makes everything inside it constant too, so:
+
+```dart
+style: const TextStyle(        // line 130 — no token here
+  fontSize: 15,
+  fontWeight: FontWeight.w900,
+  color: AppColors.secondary,  // line 133 — fails
+),
+```
+
+My check passed clean on thirty-six such sites. `rev 95` shipped on top of the
+same fault.
+
+### Fixed
+
+All thirty-six, plus two more the compiler surfaced:
+
+- **`DriverReviewsScreen`'s constructor lost its `const`.** In
+  `driver_pages.dart` each class sits on one line, so a blunt line edit hit the
+  *declaration*, and every `const DriverReviewsScreen()` call site then failed.
+- **Two top-level declarations lost their keyword entirely** — `const services =
+  [` became `services = [`, which is not valid Dart at all. They are `final` now.
+
+### `tool/check_const_colours.py`
+
+The replacement walks the balanced bracket group each `const` opens and checks
+the whole body, not the line. It also carries two guards for the damage the
+first pass did:
+
+- a class invoked as `const X(` must declare a const constructor
+- a top-level assignment must have `final`, `const`, `var` or a type
+
+Verified by running it against the v99 tree, where it reports **38 problems**,
+and against this one, where it reports **0**.
+
+The narrow scope is deliberate. The keyword-less check first matched class
+fields and method bodies too — a hundred harmless lines — and a check that cries
+wolf is one people switch off. Column zero only.
+
+### The honest part
+
+This is the second time a guard I wrote reported clean while the build was
+broken, and both times for the same reason: I approximated a language rule with
+a regex instead of using the language. `flutter analyze` would have caught all
+thirty-eight in one pass. It is already the first job in
+`.github/workflows/build-android-apk.yml`.
+
 ---
 
 ## Not done

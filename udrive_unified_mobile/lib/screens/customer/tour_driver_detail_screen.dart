@@ -342,7 +342,7 @@ class _DriverBanner extends StatelessWidget {
             child: Center(
               child: Text(
                 _initials,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 56,
                   fontWeight: FontWeight.w900,
                   color: AppColors.secondary,

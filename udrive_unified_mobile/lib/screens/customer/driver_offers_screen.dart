@@ -861,7 +861,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
           const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(99),
-            child: const LinearProgressIndicator(
+            child: LinearProgressIndicator(
               minHeight: 3,
               backgroundColor: AppColors.surfaceAlt,
               color: AppColors.secondary,
@@ -1232,13 +1232,13 @@ class _DriverAvatar extends StatelessWidget {
       width: 44,
       height: 44,
       alignment: Alignment.center,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTint.brand,
         shape: BoxShape.circle,
       ),
       child: Text(
         initial,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w900,
           color: AppColors.secondary,
@@ -1310,7 +1310,7 @@ class _AcceptButton extends StatelessWidget {
           // down, which meant the main action on the screen spent most of its
           // life washed out — and a half-faded button reads as disabled, which
           // is the opposite of what it is.
-          const Positioned.fill(
+          Positioned.fill(
             child: ColoredBox(color: AppColors.secondary),
           ),
 
@@ -1346,7 +1346,7 @@ class _AcceptButton extends StatelessWidget {
                 width: double.infinity,
                 child: Center(
                   child: busy
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 19,
                           height: 19,
                           child: CircularProgressIndicator(
@@ -1356,7 +1356,7 @@ class _AcceptButton extends StatelessWidget {
                         )
                       : Text(
                           label,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
                             color: AppText.onBrand,

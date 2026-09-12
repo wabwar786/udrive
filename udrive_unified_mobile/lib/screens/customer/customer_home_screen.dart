@@ -21,6 +21,7 @@ import '../../core/places/recent_places_store.dart';
 import '../../core/services/place_search_service.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/accent_store.dart';
+import '../../core/widgets/steering_wheel_icon.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/brand.dart';
@@ -928,8 +929,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ),
                     const SizedBox(width: 8),
                     _MapIconButton(
-                      icon: Icons.swap_horiz_rounded,
                       semanticLabel: 'Switch to driver mode',
+                      child: SteeringWheelIcon(
+                        size: 20,
+                        color: AppColors.secondary,
+                      ),
                       onTap: () => controller.switchMode(UserMode.driver),
                     ),
                     const SizedBox(width: 8),
@@ -1911,7 +1915,7 @@ class _PickupRow extends StatelessWidget {
             Container(
               width: 9,
               height: 9,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: AppColors.secondary,
                 shape: BoxShape.circle,
               ),
@@ -1937,7 +1941,7 @@ class _PickupRow extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             else
-              const Text(
+              Text(
                 'Change',
                 style: TextStyle(
                   fontSize: 12,
@@ -2087,13 +2091,20 @@ class _LocationControl extends StatelessWidget {
 
 class _MapIconButton extends StatelessWidget {
   const _MapIconButton({
-    required this.icon,
     required this.semanticLabel,
     required this.onTap,
+    this.icon,
+    this.child,
     this.showDot = false,
   });
 
-  final IconData icon;
+  /// Either an [icon] or a [child], not both.
+  ///
+  /// The driver-mode button needs a drawn steering wheel, which Material does
+  /// not have as a glyph — and `swap_horiz`, the arrows it used to show, says
+  /// "change something" without saying into what.
+  final IconData? icon;
+  final Widget? child;
   final String semanticLabel;
   final VoidCallback onTap;
   final bool showDot;
@@ -2118,7 +2129,8 @@ class _MapIconButton extends StatelessWidget {
                 borderRadius: BorderRadius.circular(11),
                 boxShadow: AppShadows.floating,
               ),
-              child: Icon(icon, size: 20, color: AppColors.secondary),
+              child: child ??
+                  Icon(icon, size: 20, color: AppColors.secondary),
             ),
             if (showDot)
               Positioned(
@@ -2240,7 +2252,7 @@ class _LocateButton extends StatelessWidget {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.my_location_rounded,
+              : Icon(Icons.my_location_rounded,
                   size: 19, color: AppColors.secondary),
         ),
       ),
@@ -3103,7 +3115,7 @@ class _TripSummary extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.schedule_rounded,
+                Icon(Icons.schedule_rounded,
                     size: 19, color: AppColors.secondary),
                 const SizedBox(width: 11),
                 Expanded(
@@ -3305,7 +3317,7 @@ class _RouteSummaryFields extends StatelessWidget {
                   Container(
                     width: 9,
                     height: 9,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: AppColors.secondary,
                       shape: BoxShape.circle,
                     ),
@@ -3701,7 +3713,7 @@ class _StickyCta extends StatelessWidget {
           borderRadius: AppRadii.all(AppRadii.cta),
           child: Center(
             child: busy
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
@@ -3808,7 +3820,7 @@ class _ActiveTripBanner extends StatelessWidget {
             child: InkWell(
               onTap: onTrack,
               borderRadius: BorderRadius.circular(99),
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 child: Text(
                   'Track Ride',

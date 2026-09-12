@@ -245,7 +245,7 @@ class _DriverAvatar extends StatelessWidget {
         width: 48,
         height: 48,
         alignment: Alignment.center,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppTint.brand,
           shape: BoxShape.circle,
         ),

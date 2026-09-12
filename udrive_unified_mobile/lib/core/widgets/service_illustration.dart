@@ -56,7 +56,8 @@ const _designWidth = 400.0;
 const _designHeight = 240.0;
 
 const _bodyLight = Color(0xFFB6E96A);
-_bodyMid = AppColors.secondary;
+// Follows the accent the customer picked, so it cannot be `const`.
+final _bodyMid = AppColors.secondary;
 const _bodyDeep = Color(0xFF6BA81E);
 const _glass = Color(0xFFDCEFF5);
 const _glassDeep = Color(0xFFBBDCE8);

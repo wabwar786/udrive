@@ -115,7 +115,7 @@ class _RouteConnector extends StatelessWidget {
           Container(
             width: 10,
             height: 10,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppColors.secondary,
               shape: BoxShape.circle,
             ),

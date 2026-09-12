@@ -283,30 +283,12 @@ print('UNDECLARED PRIVATE MEMBERS:', undeclared)
 
 # ------------------------------------------------------ runtime colour tokens
 #
-# A fifth check. `AppColors.secondary`, `AppColors.accent`, `AppTint.brand` and
-# `AppText.onBrand` follow the accent the customer picks, so they are runtime
-# getters rather than compile-time constants. Dart rejects any of them inside a
-# `const` expression, and there is no Flutter compiler here to say so — this is
-# the only guard.
+# This check used to live here and looked one line at a time, which is not how
+# `const` works — an outer `const TextStyle(` four lines up makes everything
+# inside it constant too. It reported zero while thirty-six sites were broken,
+# and the build failed.
 #
-# Seventeen such places existed when the tokens were converted; all were fixed.
-# Any new one fails here instead of in CI twenty seconds later.
-
-RUNTIME_COLOURS = (
-    'AppColors.secondary',
-    'AppColors.accent',
-    'AppTint.brand',
-    'AppText.onBrand',
-)
-
-const_colours = 0
-for path, source in sorted(files.items()):
-    for number, line in enumerate(source.split('\n'), 1):
-        if not any(token in line for token in RUNTIME_COLOURS):
-            continue
-        if not re.search(r'\bconst\b', line):
-            continue
-        print(f"{path}:{number}: a runtime colour token cannot be used in a "
-              f"const expression — {line.strip()[:80]}")
-        const_colours += 1
-print('CONST RUNTIME COLOURS:', const_colours)
+# The replacement walks the balanced bracket group each `const` opens. It is in
+# `tool/check_const_colours.py`, which must be run as well:
+#
+#     python3 tool/check_const_colours.py

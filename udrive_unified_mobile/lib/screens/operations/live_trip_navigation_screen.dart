@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -201,12 +202,24 @@ class _DriverLiveNavigationScreenState
     final otp = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Enter Trip OTP'),
+        title: const Text('Start the trip'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Ask the Customer for the 4-digit code shown in their app.'),
+            // Says what the code is for, not just what to type.
+            //
+            // "Enter Trip OTP" tells a Driver the mechanics and none of the
+            // purpose, and a step whose purpose is unclear is one people work
+            // around — asking for the code through a car window, or starting
+            // the trip with the wrong passenger aboard.
+            const Text(
+              'Ask the passenger for the 4-digit code in their app.\n\n'
+              'It confirms the right person is in your vehicle, and it starts '
+              'the fare. Nobody can be charged for a trip they did not take, '
+              'and you cannot be blamed for one you did not carry.',
+              style: TextStyle(height: 1.5),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
@@ -594,17 +607,18 @@ class _DriverLiveNavigationScreenState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Material(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(14),
                     elevation: 3,
                     child: IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.arrow_back_rounded),
+                      icon: const Icon(Icons.arrow_back_rounded,
+                          color: AppText.primary),
                     ),
                   ),
                   const Spacer(),
                   Material(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(16),
                     elevation: 3,
                     child: Padding(
@@ -636,11 +650,15 @@ class _DriverLiveNavigationScreenState
               minimum: const EdgeInsets.all(12),
               child: Container(
                 padding: const EdgeInsets.all(16),
+                // The app's own surface. This panel was white while every
+                // other screen moved to the dark palette, so opening a live
+                // ride looked like leaving the app.
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.border),
                   boxShadow: const [
-                    BoxShadow(color: Color(0x24000000), blurRadius: 24, offset: Offset(0, 8)),
+                    BoxShadow(color: Color(0x66000000), blurRadius: 28, offset: Offset(0, 8)),
                   ],
                 ),
                 child: Column(
@@ -659,8 +677,8 @@ class _DriverLiveNavigationScreenState
                               ),
                               const SizedBox(height: 2),
                               if (_passenger != null) ...[
-                                _PassengerChip(standing: _passenger!),
-                                const SizedBox(height: 4),
+                                _PassengerRecord(standing: _passenger!),
+                                const SizedBox(height: 5),
                               ],
                               // Who is being carried, in one line. A Driver
                               // pulling up needs to know how many people to
@@ -672,7 +690,7 @@ class _DriverLiveNavigationScreenState
                                 '  ·  ${widget.trip.bookingType}'
                                 '  ·  ${widget.trip.paymentStatus}',
                                 style: const TextStyle(
-                                  color: Colors.black54,
+                                  color: AppText.secondary,
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -682,7 +700,7 @@ class _DriverLiveNavigationScreenState
                                 _targetLabel,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.black54),
+                                style: const TextStyle(color: AppText.secondary),
                               ),
                               if ((widget.trip.instructions ?? '').trim().isNotEmpty) ...[
                                 const SizedBox(height: 5),
@@ -692,7 +710,7 @@ class _DriverLiveNavigationScreenState
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 9, vertical: 6),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFFFF6E5),
+                                    color: AppTint.warning,
                                     borderRadius: BorderRadius.circular(9),
                                   ),
                                   child: Text(
@@ -702,7 +720,7 @@ class _DriverLiveNavigationScreenState
                                     style: const TextStyle(
                                       fontSize: 11.5,
                                       height: 1.35,
-                                      color: Color(0xFF7A5200),
+                                      color: AppTint.warningText,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
@@ -715,14 +733,14 @@ class _DriverLiveNavigationScreenState
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE4F2F0),
+                              color: AppColors.surfaceAlt,
                               borderRadius: BorderRadius.circular(13),
                             ),
                             child: Text(
                               '≈ ${_etaMinutes} min',
-                              style: const TextStyle(
-                                color: Color(0xFF0E4F4F),
-                                fontWeight: FontWeight.w900,
+                              style: TextStyle(
+                                color: AppColors.secondary,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ),
@@ -916,6 +934,15 @@ class _CustomerFullScreenTrackingScreenState
   /// The driver's rating and what recent passengers said about them.
   DriverReputation? _reputation;
 
+  /// Messages already announced, so each chimes once.
+  final Set<String> _announcedMessages = <String>{};
+
+  /// False until the first poll returns.
+  bool _messagesLoadedOnce = false;
+
+  /// The last trip status announced, so arrival is told once.
+  String? _announcedStatus;
+
   /// Messages from the Driver, newest last.
   ///
   /// Shown floating over the map rather than only behind the chat button. A
@@ -982,6 +1009,25 @@ class _CustomerFullScreenTrackingScreenState
           ),
         );
         return;
+      }
+
+      // "The driver is here" is the one status change a waiting customer must
+      // not miss — they may be indoors, and the driver is already outside.
+      if (tracking.tripStatus != _announcedStatus) {
+        final previous = _announcedStatus;
+        _announcedStatus = tracking.tripStatus;
+        if (previous != null && tracking.tripStatus == 'DriverArrived') {
+          SystemSound.play(SystemSoundType.alert);
+          HapticFeedback.heavyImpact();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                duration: Duration(seconds: 8),
+                content: Text('Your driver has arrived at the pickup point.'),
+              ),
+            );
+          }
+        }
       }
 
       final location = tracking.driverLocation;
@@ -1091,9 +1137,30 @@ class _CustomerFullScreenTrackingScreenState
       final messages = await TripChatRepository(controller.apiClient)
           .messages(widget.trip.bookingId);
       if (!mounted) return;
-      setState(() => _driverMessages = messages
+      final fromDriver = messages
           .where((message) => message.senderRole == 'Driver')
-          .toList(growable: false));
+          .toList(growable: false);
+
+      // Sound and a buzz for anything not already seen.
+      //
+      // The bubbles float over the map, but a customer standing at a kerb is
+      // usually not looking at the screen — a message that arrives silently is
+      // read minutes later, by which time the driver has given up asking.
+      final unseen = fromDriver
+          .where((message) => !_announcedMessages.contains(message.id))
+          .toList(growable: false);
+      for (final message in unseen) {
+        _announcedMessages.add(message.id);
+      }
+      // Not on the first load: everything is unseen then, and chiming for a
+      // conversation the customer has already read is noise.
+      if (unseen.isNotEmpty && _messagesLoadedOnce) {
+        SystemSound.play(SystemSoundType.alert);
+        HapticFeedback.mediumImpact();
+      }
+      _messagesLoadedOnce = true;
+
+      setState(() => _driverMessages = fromDriver);
     } catch (_) {
       // A failed poll leaves whatever was already on screen. Blanking the
       // driver's last message over one bad request would be worse than showing
@@ -1560,7 +1627,7 @@ class _CustomerFullScreenTrackingScreenState
                                 .characters
                                 .first
                                 .toUpperCase(),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 26,
                               fontWeight: FontWeight.w900,
                               color: AppColors.secondary,
@@ -1669,7 +1736,7 @@ class _CustomerFullScreenTrackingScreenState
                                 if (eta != null) ...[
                                   Text(
                                     '$eta',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 34,
                                       height: 1,
                                       fontWeight: FontWeight.w900,
@@ -1784,8 +1851,10 @@ class _CustomerFullScreenTrackingScreenState
                           children: [
                             const Expanded(
                               child: Text(
-                                'Trip OTP · give this only once you are inside '
-                                'the vehicle',
+                                'Trip code — read it to the driver only after '
+                                'you are in the vehicle. It proves to us that '
+                                'the right person got in, and the trip cannot '
+                                'start without it.',
                                 style: TextStyle(
                                   fontSize: 11,
                                   height: 1.35,
@@ -1874,16 +1943,20 @@ class _CustomerFullScreenTrackingScreenState
   }
 }
 
-/// The passenger's history, in one line the Driver can read at a glance.
+/// Who the Driver is about to carry.
+///
+/// A Driver pulling up to a stranger is entitled to know something about them,
+/// and until now the app told them a name and nothing else. This is the same
+/// information the Customer already gets about the Driver, pointed the other
+/// way: how many trips they have taken, how Drivers have rated them, and how
+/// long they have been on the platform.
 ///
 /// Three plain outcomes rather than a tier ladder. "Gold" and "Silver" would
-/// imply the platform is ranking people; a Driver deciding whether to take a
-/// fare needs a fact, not a loyalty grade.
-///
-/// "New" is not a warning. Everyone is new once, and the word says only that
-/// there is nothing to go on yet.
-class _PassengerChip extends StatelessWidget {
-  const _PassengerChip({required this.standing});
+/// imply the platform is ranking people; a Driver deciding whether to open the
+/// door needs a fact, not a loyalty grade. "New" is not a warning — everyone is
+/// new once, and the word says only that there is nothing to go on yet.
+class _PassengerRecord extends StatelessWidget {
+  const _PassengerRecord({required this.standing});
 
   final PassengerStanding standing;
 
@@ -1896,40 +1969,98 @@ class _PassengerChip extends StatelessWidget {
       _ => (const Color(0xFFEAF2FF), const Color(0xFF1B4E9B)),
     };
 
-    // The rating is only shown when someone actually gave one. A default of
-    // five would be a reassurance nobody earned.
-    final parts = <String>[
-      standing.standing,
-      if (standing.rating != null)
-        '${standing.rating!.toStringAsFixed(1)}★ (${standing.ratingCount})',
-      '${standing.completedTrips} trip'
-          '${standing.completedTrips == 1 ? '' : 's'}',
-      if (standing.cancelledTrips > 0) '${standing.cancelledTrips} cancelled',
-    ];
-
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      margin: const EdgeInsets.only(top: 2),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(99),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
-        parts.join('  ·  '),
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          color: ink,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: ink.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  standing.standing.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    letterSpacing: .8,
+                    fontWeight: FontWeight.w900,
+                    color: ink,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // The trip count is the number that matters most here: somebody
+              // on their fortieth ride behaves differently from somebody on
+              // their first, whatever anyone has rated them.
+              Text(
+                '${standing.completedTrips} ride'
+                '${standing.completedTrips == 1 ? '' : 's'} on UDrive',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: ink,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Row(
+            children: [
+              // Shown only when a Driver has actually rated them. A default of
+              // five would be a reassurance nobody gave.
+              if (standing.rating != null) ...[
+                Icon(Icons.star_rounded, size: 13, color: ink),
+                const SizedBox(width: 3),
+                Text(
+                  '${standing.rating!.toStringAsFixed(1)} '
+                  'from ${standing.ratingCount} driver'
+                  '${standing.ratingCount == 1 ? '' : 's'}',
+                  style: TextStyle(fontSize: 11.5, color: ink),
+                ),
+              ] else
+                Text(
+                  'No driver ratings yet',
+                  style: TextStyle(fontSize: 11.5, color: ink),
+                ),
+              if (standing.cancelledTrips > 0) ...[
+                const SizedBox(width: 10),
+                Text(
+                  '${standing.cancelledTrips} cancelled',
+                  style: TextStyle(fontSize: 11.5, color: ink),
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-/// One of the two actions on the tracking panel.
-///
-/// Full-width halves rather than small circular icon buttons: on a phone held
-/// one-handed at a roadside, "message the driver" should not be a target the
-/// size of a fingernail.
+/// Shown when there is no photograph for the vehicle on its way.
+class _VehicleFallback extends StatelessWidget {
+  const _VehicleFallback();
+
+  @override
+  Widget build(BuildContext context) => const Center(
+        child: Icon(
+          Icons.directions_car_rounded,
+          size: 44,
+          color: AppText.disabled,
+        ),
+      );
+}
+
 /// The driver's star rating, beside their name.
 ///
 /// The count is always shown. An average over three ratings and one over three
@@ -1985,7 +2116,7 @@ class _DriverStars extends StatelessWidget {
   }
 }
 
-/// One passenger's review, in a card the customer can scroll through.
+/// One passenger's review of the driver, for the customer to scroll through.
 class _ReviewCard extends StatelessWidget {
   const _ReviewCard({required this.review});
 
@@ -2039,9 +2170,8 @@ class _ReviewCard extends StatelessWidget {
                 height: 1.35,
                 fontStyle:
                     review.text == null ? FontStyle.italic : FontStyle.normal,
-                color: review.text == null
-                    ? AppText.disabled
-                    : AppText.primary,
+                color:
+                    review.text == null ? AppText.disabled : AppText.primary,
               ),
             ),
           ),
@@ -2051,32 +2181,7 @@ class _ReviewCard extends StatelessWidget {
   }
 }
 
-/// A square icon button in the Driver's action row.
-class _DriverAction extends StatelessWidget {
-  const _DriverAction({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0xFFEEF3F1),
-      borderRadius: BorderRadius.circular(13),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(13),
-        child: SizedBox(
-          width: 52,
-          height: 50,
-          child: Icon(icon, size: 20, color: const Color(0xFF0E4F4F)),
-        ),
-      ),
-    );
-  }
-}
-
-/// A small round call or message button.
+/// A small round call or message button on the customer's panel.
 class _RoundAction extends StatelessWidget {
   const _RoundAction({required this.icon, required this.onTap});
 
@@ -2095,6 +2200,31 @@ class _RoundAction extends StatelessWidget {
           width: 40,
           height: 40,
           child: Icon(icon, size: 18, color: AppColors.secondary),
+        ),
+      ),
+    );
+  }
+}
+
+/// A square icon button in the Driver's action row.
+class _DriverAction extends StatelessWidget {
+  const _DriverAction({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surfaceAlt,
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(13),
+        child: SizedBox(
+          width: 52,
+          height: 50,
+          child: Icon(icon, size: 20, color: AppColors.secondary),
         ),
       ),
     );
@@ -2138,14 +2268,14 @@ class _FloatingMessage extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.chat_bubble_rounded,
+                    Icon(Icons.chat_bubble_rounded,
                         size: 11, color: AppColors.secondary),
                     const SizedBox(width: 6),
                     Text(
                       message.senderName.trim().isEmpty
                           ? 'Driver'
                           : message.senderName,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w800,
                         color: AppColors.secondary,
@@ -2176,20 +2306,6 @@ class _FloatingMessage extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Shown when there is no photograph for the vehicle on its way.
-class _VehicleFallback extends StatelessWidget {
-  const _VehicleFallback();
-
-  @override
-  Widget build(BuildContext context) => const Center(
-        child: Icon(
-          Icons.directions_car_rounded,
-          size: 44,
-          color: AppText.disabled,
-        ),
-      );
 }
 
 class _MapMarker extends StatelessWidget {

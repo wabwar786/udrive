@@ -168,7 +168,7 @@ class _TripRatingScreenState extends State<TripRatingScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(22, 26, 22, 20),
             children: [
-              const Text(
+              Text(
                 'Trip completed',
                 style: TextStyle(
                   fontSize: 12,

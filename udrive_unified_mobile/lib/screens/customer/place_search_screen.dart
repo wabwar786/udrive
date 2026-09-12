@@ -332,7 +332,7 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                         Container(
                           width: 9,
                           height: 9,
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             color: AppColors.secondary,
                             shape: BoxShape.circle,
                           ),
@@ -582,7 +582,7 @@ class _ActionRow extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: AppColors.secondary,

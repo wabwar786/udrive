@@ -45,7 +45,7 @@ class _CreatePackageScreenState extends State<CreatePackageScreen> {
               height: 165,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(22),
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   colors: [AppColors.primary, AppColors.secondary],
                 ),
               ),

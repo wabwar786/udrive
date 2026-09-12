@@ -370,7 +370,7 @@ class _FormSheet extends StatelessWidget {
             FilledButton.icon(
               onPressed: !accepted || busy ? null : onContinue,
               icon: busy
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(

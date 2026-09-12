@@ -808,7 +808,7 @@ class _RouteHeader extends StatelessWidget {
                 Container(
                   width: 9,
                   height: 9,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColors.secondary,
                     shape: BoxShape.circle,
                   ),
@@ -864,12 +864,12 @@ class _RouteHeader extends StatelessWidget {
                   const SizedBox(height: 9),
                   Row(
                     children: [
-                      const Icon(Icons.schedule_rounded,
+                      Icon(Icons.schedule_rounded,
                           size: 14, color: AppColors.secondary),
                       const SizedBox(width: 6),
                       Text(
                         '${route!.durationLabel}  ·  ${route!.distanceLabel}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: AppColors.secondary,
@@ -1519,7 +1519,7 @@ class _FarePanel extends StatelessWidget {
                   borderRadius: AppRadii.all(AppRadii.cta),
                   child: Center(
                     child: submitting
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
@@ -1527,7 +1527,7 @@ class _FarePanel extends StatelessWidget {
                               color: AppText.onBrand,
                             ),
                           )
-                        : const Text(
+                        : Text(
                             'Find offers',
                             style: TextStyle(
                               fontSize: 15,

@@ -286,7 +286,7 @@ class _TripChatScreenState extends State<TripChatScreen> {
                     height: 46,
                     child: Center(
                       child: _sending
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
@@ -294,7 +294,7 @@ class _TripChatScreenState extends State<TripChatScreen> {
                                 color: AppText.onBrand,
                               ),
                             )
-                          : const Icon(
+                          : Icon(
                               Icons.send_rounded,
                               size: 20,
                               color: AppText.onBrand,

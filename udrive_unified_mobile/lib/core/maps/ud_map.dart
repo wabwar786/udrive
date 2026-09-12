@@ -82,7 +82,7 @@ class UdPolyline {
 
 /// A translucent circle, used for the "vehicles within N km" ring on Home.
 class UdCircle {
-  const UdCircle({
+  UdCircle({
     required this.id,
     required this.centre,
     required this.radiusMetres,

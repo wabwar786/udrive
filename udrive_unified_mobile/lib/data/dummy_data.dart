@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import 'models.dart';
 
-const services = [
+final services = [
   ServiceItem(id: 'local', titleKey: 'localRide', icon: Icons.local_taxi_rounded, color: AppColors.primary),
   ServiceItem(id: 'intercity', titleKey: 'intercity', icon: Icons.route_rounded, color: AppColors.secondary),
   ServiceItem(id: 'perSeat', titleKey: 'perSeat', icon: Icons.event_seat_rounded, color: Color(0xFF7C3AED)),

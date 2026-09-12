@@ -127,7 +127,7 @@ class _OtpScreenState extends State<OtpScreen> {
                         Text(
                           widget.phone,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w900,
                             color: AppColors.secondary,
@@ -197,7 +197,7 @@ class _OtpScreenState extends State<OtpScreen> {
                               ? null
                               : _verify,
                           icon: controller.authBusy
-                              ? const SizedBox(
+                              ? SizedBox(
                                   width: 18,
                                   height: 18,
                                   child: CircularProgressIndicator(
