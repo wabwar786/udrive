@@ -1,15 +1,35 @@
-/// Dark map styling for Google Maps.
+/// Map styling for Google Maps.
 ///
-/// A default Google map is light grey. Against a near-black app it looks like a
-/// window into a different product, and the brand-green route is hard to pick
-/// out on pale roads. This palette is built from the app's own surfaces so the
-/// map reads as part of the screen.
+/// Two palettes. [light] is the default the customer sees; [dark] is kept for
+/// the driver screens, which sit on a dark chrome.
 ///
-/// Points of interest and transit labels are turned off deliberately: the map
-/// exists to show a route and nearby vehicles, and every extra label competes
-/// with the markers that matter.
+/// The customer map used to be dark too, on the argument that it should match
+/// the app. That was the wrong trade: the map is the one part of the screen a
+/// person is reading rather than looking at — street names, junctions, which
+/// side of the road a pin is on — and a dark tint costs legibility on a phone
+/// held at arm's length in daylight. The panels around it carry the theme
+/// instead.
+///
+/// Points of interest and transit labels stay off in both: the map exists to
+/// show a route and nearby vehicles, and every extra label competes with the
+/// markers that matter.
 class MapStyles {
   const MapStyles._();
+
+  /// The customer's map: a plain, readable light surface.
+  ///
+  /// Deliberately close to Google's own default. Anything more styled is a
+  /// designer's preference paid for by the person trying to find their street.
+  static const String light = '''
+[
+  {"elementType":"labels.icon","stylers":[{"visibility":"off"}]},
+  {"featureType":"poi","stylers":[{"visibility":"off"}]},
+  {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#E8F3E8"}]},
+  {"featureType":"transit","stylers":[{"visibility":"off"}]},
+  {"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#55606B"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#D9E9F2"}]}
+]
+''';
 
   static const String dark = '''
 [

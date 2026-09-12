@@ -20,6 +20,7 @@ import '../../core/config/app_config.dart';
 import '../../core/places/recent_places_store.dart';
 import '../../core/services/place_search_service.dart';
 import '../../core/state/app_controller.dart';
+import '../../core/theme/accent_store.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/brand.dart';
@@ -144,7 +145,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// the bottom of it sat under the fold. Rather than shrink the map for
   /// everyone, the customer decides: the handle above "Where to?" lifts the
   /// card over the map and drops it back.
-  bool _sheetLifted = false;
+  /// The booking card starts raised, showing everything from the products down
+  /// to the recent destinations.
+  ///
+  /// It used to start low, with the card cut off below the fold and a handle to
+  /// pull it up. That put the ordinary path — pick a product, name a
+  /// destination — behind a gesture, and the map it was making room for is not
+  /// what a customer opens the app to look at.
+  bool _sheetLifted = true;
 
   LatLng _pickupPoint =
       const LatLng(AppConfig.fallbackLatitude, AppConfig.fallbackLongitude);
@@ -862,9 +870,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   ///
   /// The keyboard is dismissed first: leaving it up while the panel resizes
   /// makes the card jump twice for one gesture.
-  void _toggleSheet() {
+  /// Lowers the card. It does not raise it again.
+  ///
+  /// One direction on purpose. The handle exists so someone can get a longer
+  /// look at the map; raising the card back is what tapping anything on it
+  /// already does, and a control that means two opposite things depending on
+  /// hidden state is a control people stop trusting.
+  void _lowerSheet() {
     FocusScope.of(context).unfocus();
-    setState(() => _sheetLifted = !_sheetLifted);
+    if (!_sheetLifted) return;
+    setState(() => _sheetLifted = false);
   }
 
   Future<void> _toggleLanguage(AppController controller) async {
@@ -883,8 +898,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     // vehicles around it and the locate button. Hiding it entirely would leave
     // the customer setting a pickup they cannot see.
     final mapHeight = _sheetLifted
-        ? (height * .20).clamp(150.0, 230.0)
-        : (height * .52).clamp(320.0, 560.0);
+        ? (height * .22).clamp(160.0, 250.0)
+        : (height * .58).clamp(340.0, 600.0);
 
     return Container(
       color: AppColors.background,
@@ -1120,7 +1135,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           children: [
             // Outside the scroll view, so it stays reachable however far down
             // the card the customer has scrolled.
-            _SheetHandle(lifted: _sheetLifted, onToggle: _toggleSheet),
+            _SheetHandle(lifted: _sheetLifted, onLower: _lowerSheet),
             Expanded(
               child: SingleChildScrollView(
                 controller: _sheetScroll,
@@ -1138,6 +1153,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       ),
                       const SizedBox(height: 10),
                     ],
+
+                    // Three swatches, at the top of the card.
+                    //
+                    // Here rather than buried in Settings because it is a
+                    // personalisation, not a configuration — someone changes it
+                    // once, on the screen they look at most, and then forgets
+                    // it exists.
+                    const _AccentPicker(),
+                    const SizedBox(height: 10),
 
                     // What you are booking.
                     _SheetPanel(
@@ -1597,6 +1621,73 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 /// does the same, because a bar that looks draggable and is not reads as a
 /// broken control. The label states which way the next press goes rather than
 /// showing a bare chevron nobody has to guess about.
+/// Lets the customer choose the app's accent colour.
+///
+/// Three swatches, not a colour wheel. A free picker lets someone land on a
+/// colour that fails contrast against the dark surfaces, or one that collides
+/// with the red used for danger and the green used for success — and then every
+/// warning in the app quietly stops reading as a warning.
+class _AccentPicker extends StatelessWidget {
+  const _AccentPicker();
+
+  @override
+  Widget build(BuildContext context) {
+    final current = AccentStore.instance.accent;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadii.all(AppRadii.panel),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'App colour',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: AppText.secondary,
+              ),
+            ),
+          ),
+          for (final accent in AppAccent.values)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Semantics(
+                button: true,
+                selected: accent == current,
+                label: accent.label,
+                child: GestureDetector(
+                  onTap: () => AccentStore.instance.select(accent),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: accent.seed,
+                      shape: BoxShape.circle,
+                      // A ring rather than a tick inside the swatch: the tick
+                      // needs a colour of its own, and on three different
+                      // backgrounds one of them always reads badly.
+                      border: Border.all(
+                        color: accent == current
+                            ? AppText.primary
+                            : Colors.transparent,
+                        width: 2.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A rounded block on the page.
 ///
 /// The sheet is two of these — what you are booking, then where you are going.
@@ -1850,10 +1941,10 @@ class _PickupRow extends StatelessWidget {
 }
 
 class _SheetHandle extends StatelessWidget {
-  const _SheetHandle({required this.lifted, required this.onToggle});
+  const _SheetHandle({required this.lifted, required this.onLower});
 
   final bool lifted;
-  final VoidCallback onToggle;
+  final VoidCallback onLower;
 
   @override
   Widget build(BuildContext context) {
@@ -1862,14 +1953,11 @@ class _SheetHandle extends StatelessWidget {
       label: lifted ? 'Show more map' : 'Show more of the booking card',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onToggle,
-        // A drag in the direction it is not already in toggles it. Dragging
-        // the way it already sits does nothing, so the gesture cannot fight
-        // itself mid-flick.
+        onTap: lifted ? onLower : null,
         onVerticalDragEnd: (details) {
-          final velocity = details.primaryVelocity ?? 0;
-          if (velocity < -80 && !lifted) onToggle();
-          if (velocity > 80 && lifted) onToggle();
+          // Downward only, matching the tap. A flick upward does nothing
+          // because the card is already as high as it goes.
+          if ((details.primaryVelocity ?? 0) > 80 && lifted) onLower();
         },
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
@@ -1885,24 +1973,25 @@ class _SheetHandle extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              AnimatedRotation(
-                turns: lifted ? .5 : 0,
-                duration: AppConfig.panelSwitch,
-                child: const Icon(
-                  Icons.keyboard_arrow_up_rounded,
+              if (lifted) ...[
+                const Icon(
+                  Icons.keyboard_arrow_down_rounded,
                   size: 18,
                   color: AppText.disabled,
                 ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                lifted ? 'Show map' : 'More',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppText.disabled,
+                const SizedBox(width: 4),
+                // Says what it does, not what state it is in. "More" on a card
+                // that is already fully open was a promise of something else
+                // underneath.
+                const Text(
+                  'Show map',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppText.disabled,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

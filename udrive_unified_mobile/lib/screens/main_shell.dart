@@ -29,6 +29,8 @@ import 'driver/driver_pages.dart' hide DriverEarningsScreen;
 import 'driver/advanced_package_screen.dart';
 import 'driver/driver_tourism_tools.dart';
 import 'driver/vehicle_registration_screen.dart';
+import '../core/widgets/steering_wheel_icon.dart';
+import 'settings/cache_reset_screen.dart';
 import 'driver/driver_documents_screen.dart';
 import 'driver/driver_wallet_screen.dart';
 import 'driver/live_vehicle_list_screen.dart';
@@ -452,6 +454,7 @@ class _MainShellState extends State<MainShell> {
         'earnings' => const DriverEarningsScreen(),
         'payouts' => const DriverEarningsScreen(),
         'vehicles' => const LiveVehicleListScreen(),
+        'refresh' => const CacheResetScreen(),
         'driverDocuments' => const DriverDocumentsScreen(),
         'driverWallet' => const DriverWalletScreen(),
         'documents' => const DriverVerificationScreen(),
@@ -587,14 +590,24 @@ class _PremiumDrawer extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     height: 54,
-                    child: FilledButton(
+                    // A steering wheel for Driver mode, a passenger for
+                    // Customer mode. The two modes are the same app wearing a
+                    // different hat, and an icon says which hat faster than the
+                    // words underneath it do.
+                    child: FilledButton.icon(
                       onPressed: onSwitchMode,
                       style: FilledButton.styleFrom(
                         backgroundColor: lime,
                         foregroundColor: const Color(0xFF101310),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
-                      child: Text(
+                      icon: driver
+                          ? const Icon(Icons.person_rounded, size: 22)
+                          : const SteeringWheelIcon(
+                              size: 22,
+                              color: Color(0xFF101310),
+                            ),
+                      label: Text(
                         driver ? 'Customer mode' : 'Driver mode',
                         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                       ),
@@ -634,6 +647,7 @@ class _PremiumDrawer extends StatelessWidget {
         ('notifications', Icons.notifications_none_rounded, 'Notifications'),
         ('safety', Icons.health_and_safety_outlined, 'Safety'),
         ('settings', Icons.settings_outlined, 'Settings'),
+        ('refresh', Icons.cleaning_services_outlined, 'Clear cached data'),
         ('help', Icons.info_outline_rounded, 'Help'),
         ('support', Icons.chat_bubble_outline_rounded, 'Support'),
       ];

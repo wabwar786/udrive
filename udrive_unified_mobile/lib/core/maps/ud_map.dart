@@ -162,6 +162,7 @@ class UdMap extends StatefulWidget {
     this.onCameraMoveStarted,
     this.onCameraIdle,
     this.interactive = true,
+    this.darkStyle = false,
     this.onTap,
     this.onSourceChanged,
     super.key,
@@ -197,6 +198,12 @@ class UdMap extends StatefulWidget {
   final ValueChanged<LatLng>? onCameraIdle;
 
   final bool interactive;
+
+  /// Use the dark palette instead of the light one.
+  ///
+  /// Off by default, because the customer's map is the common case and it is
+  /// light. The driver screens, which sit on dark chrome, pass true.
+  final bool darkStyle;
   final ValueChanged<LatLng>? onTap;
   final ValueChanged<UdMapSource>? onSourceChanged;
 
@@ -550,9 +557,10 @@ class _UdMapState extends State<UdMap> {
   Widget _buildGoogle() {
     return gmap.GoogleMap(
       key: const ValueKey('ud-google-map'),
-      // Dark styling so the map belongs to the app rather than looking like a
-      // pale window cut into it. Also makes the green route stand out.
-      style: MapStyles.dark,
+      // Light by default. The map is the one part of the screen a person is
+      // reading rather than looking at — street names, junctions, which side
+      // of the road a pin is on — and a dark tint costs legibility in daylight.
+      style: widget.darkStyle ? MapStyles.dark : MapStyles.light,
       initialCameraPosition: gmap.CameraPosition(
         target: gmap.LatLng(_center.latitude, _center.longitude),
         zoom: _zoom,

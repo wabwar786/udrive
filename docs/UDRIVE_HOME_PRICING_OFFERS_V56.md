@@ -1750,6 +1750,81 @@ Everything customer-facing was already safe: nearby vehicles, ride eligibility
 and offer submission all require `status = 'Verified'`, which a deleted vehicle
 can never be. Only the driver's own list was wrong.
 
+## 59. Customer mode
+
+Driver mode untouched, as asked.
+
+**The map is light.** It was dark on the argument that it should match the app.
+That was the wrong trade: the map is the one part of the screen a person is
+*reading* rather than looking at — street names, junctions, which side of the
+road a pin is on — and a tint costs legibility on a phone held at arm's length
+in daylight. The panels around it carry the theme instead. `UdMap` takes a
+`darkStyle` flag, off by default, so the driver screens can keep the dark
+palette if they ever need it.
+
+**The booking card starts open.** It used to start low with the card cut off and
+a handle to pull it up, which put the ordinary path — pick a product, name a
+destination — behind a gesture.
+
+**The handle only closes.** One direction on purpose: it exists so someone can
+get a longer look at the map, and raising the card back is what tapping anything
+on it already does. A control that means two opposite things depending on hidden
+state is one people stop trusting. It reads "Show map" rather than "More" —
+"More" on a card that is already fully open promises something underneath.
+
+**A steering wheel for Driver mode.** Material has no such glyph; `drive_eta` is
+a car seen from the side, which reads as "a vehicle" rather than "you are
+driving it", and that distinction is the entire point of the control. Drawn in
+`SteeringWheelIcon` — rim, hub, three spokes, stroke scaled to the icon size.
+
+**Three accent colours, on the home card.** Not a colour wheel: a free picker
+lets someone land on a colour that fails contrast against the dark surfaces, or
+one that collides with the red used for danger and the green used for success —
+and then every warning in the app quietly stops reading as a warning. Amber,
+Sky and Lime were each checked against those and against the ink placed on top.
+Saved locally, restored before the first frame so the app never paints in one
+colour and flips to another.
+
+**Clear cached data**, in the menu. It removes cached copies and pulls
+everything down again. It does **not** sign anyone out — losing a session
+because you wanted a fresh photograph is a poor trade, and on a weak signal
+signing back in is not small. Any key containing "token" or "session" is skipped
+whatever it is called, so a key list that drifts out of date costs a stale cache
+rather than someone signed out mid-trip.
+
+**A sound when an offer arrives.** `SystemSound` and a haptic, not a bundled
+clip: the phone's own notification tone already respects silent mode and the
+volume the person set, where an audio file would ignore both and play at full
+volume in a mosque. Fired once per offer id — an alert tied to "offers exist"
+rather than "a new offer arrived" would chime continuously while someone read
+the first one.
+
+## 60. I cannot run the app
+
+Asked to run the whole thing and check it works. I cannot, and it is worth being
+exact about why rather than implying otherwise.
+
+There is no Flutter or Dart SDK available here, and the network policy blocks
+the installers — `apt-get install dart` finds no package, and dot.net and
+pub.dev are not on the allowlist. The .NET SDK installed from the Ubuntu archive
+this week, which is how `check_syntax.sh` became possible, but there is no
+equivalent for Dart.
+
+What runs against this ZIP:
+
+| Check | Result |
+|---|---|
+| `audit_structure.py` | clean |
+| `check_imports.py` (4 checks) | clean |
+| `check_on_conflict.py` | clean |
+| `check_syntax.sh` — real Roslyn parse | clean |
+| admin portal `tsc` + `next build` | compiled |
+
+The admin portal is the only part genuinely compiled here, and it has not broken
+a deploy once. The Flutter side has four text-level checks and no compiler,
+which is exactly why `flutter analyze` in CI matters more than anything I can
+add.
+
 ---
 
 ## Not done

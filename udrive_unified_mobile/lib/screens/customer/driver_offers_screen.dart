@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -64,6 +65,13 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   final Map<String, DateTime> _customerDecisionDeadline = <String, DateTime>{};
   final Set<String> _declinedOfferIds = <String>{};
   final Set<String> _declineInFlight = <String>{};
+
+  /// Offers that have already announced themselves.
+  ///
+  /// Kept so the alert fires once per offer. The screen polls every few
+  /// seconds, and an alert tied to "offers exist" rather than "a new offer
+  /// arrived" would chime continuously while someone read the first one.
+  final Set<String> _announced = <String>{};
 
   final _mapController = UdMapController();
   bool _cancelling = false;
@@ -360,6 +368,31 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     }
   }
 
+  /// Sound and a short buzz when a driver answers.
+  ///
+  /// A customer waiting for offers is usually not looking at the screen —
+  /// they are standing on a roadside, or have put the phone in a pocket. An
+  /// offer lives for seconds, so arriving silently means it is often gone
+  /// before it is seen.
+  ///
+  /// `SystemSound` rather than an audio file: it uses the phone's own
+  /// notification tone, which already respects silent mode and the volume the
+  /// person has set. A bundled clip would ignore both and play at full volume
+  /// in a mosque. The haptic covers the case where the phone *is* silenced.
+  void _announce(List<LiveDriverOffer> offers) {
+    final fresh = offers
+        .where((offer) => !_announced.contains(offer.id))
+        .toList(growable: false);
+    if (fresh.isEmpty) return;
+
+    for (final offer in fresh) {
+      _announced.add(offer.id);
+    }
+
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.mediumImpact();
+  }
+
   void _registerDecisionWindows(List<LiveDriverOffer> offers) {
     final now = DateTime.now();
     for (final offer in offers) {
@@ -622,6 +655,12 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     final controller = AppControllerScope.of(context);
     _registerDecisionWindows(controller.liveDriverOffers);
     final offers = _visibleOffers(controller);
+
+    // After the frame, not during it: playing a sound inside build would fire
+    // again on every unrelated rebuild.
+    if (offers.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _announce(offers));
+    }
 
     // Checked during build rather than on a timer, because the decision depends
     // on how many offers are on screen — which is a build-time fact.

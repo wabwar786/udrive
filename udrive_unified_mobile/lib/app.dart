@@ -5,6 +5,7 @@ import 'core/state/app_controller.dart';
 import 'core/theme/app_theme.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_shell.dart';
+import 'core/theme/accent_store.dart';
 import 'screens/splash_screen.dart';
 
 class UDriveApp extends StatefulWidget {
@@ -30,7 +31,10 @@ class _UDriveAppState extends State<UDriveApp> {
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-        animation: _controller,
+        // Rebuilds on both: the controller for session and language, the accent
+        // store for the colour the customer picked. Without the second, the
+        // choice only appeared after the next unrelated rebuild.
+        animation: Listenable.merge([_controller, AccentStore.instance]),
         builder: (context, _) => AppControllerScope(
           controller: _controller,
           child: MaterialApp(

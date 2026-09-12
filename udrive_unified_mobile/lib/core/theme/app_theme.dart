@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'accent_store.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// UDrive's dark premium palette.
@@ -63,13 +65,19 @@ class AppTheme {
   /// as an alias so existing call sites keep working.
   static ThemeData get light => dark;
 
+  /// The theme, built around whichever accent the customer has chosen.
+  ///
+  /// The accent is read here rather than threaded through every widget: it
+  /// changes the colour of buttons, selected states and the fare, and those
+  /// appear on nearly every screen.
   static ThemeData get dark {
+    final accent = AccentStore.instance.accent;
     final scheme = ColorScheme.fromSeed(
-      seedColor: AppColors.secondary,
+      seedColor: accent.seed,
       brightness: Brightness.dark,
-      primary: AppColors.secondary,
-      onPrimary: AppColors.primary,
-      secondary: AppColors.secondary,
+      primary: accent.seed,
+      onPrimary: accent.ink,
+      secondary: accent.seed,
       surface: AppColors.surface,
       onSurface: AppColors.text,
       error: AppColors.danger,
@@ -125,7 +133,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.secondary, width: 1.6),
+          borderSide: BorderSide(color: accent.seed, width: 1.6),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -134,7 +142,7 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: AppColors.secondary,
+          backgroundColor: accent.seed,
           foregroundColor: AppColors.primary,
           minimumSize: const Size.fromHeight(54),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
@@ -153,12 +161,12 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         height: 72,
         backgroundColor: AppColors.surface,
-        indicatorColor: AppColors.secondary.withValues(alpha: .22),
+        indicatorColor: accent.seed.withValues(alpha: .22),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             fontSize: 11,
             fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w600,
-            color: states.contains(WidgetState.selected) ? AppColors.secondary : AppColors.muted,
+            color: states.contains(WidgetState.selected) ? accent.seed : AppColors.muted,
           ),
         ),
       ),
@@ -171,7 +179,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surfaceAlt,
-        selectedColor: AppColors.secondary.withValues(alpha: .20),
+        selectedColor: accent.seed.withValues(alpha: .20),
         side: const BorderSide(color: AppColors.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         labelStyle: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
