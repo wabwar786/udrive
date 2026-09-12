@@ -93,7 +93,7 @@ class _OfferCard extends StatelessWidget {
             CircleAvatar(radius: 27, backgroundColor: AppColors.primary.withValues(alpha: .12), child: Text(offer.name.substring(0, 1), style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primary))),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [Flexible(child: Text(offer.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900))), if (offer.verified) const Padding(padding: EdgeInsets.only(left: 5), child: Icon(Icons.verified_rounded, size: 18, color: AppColors.secondary))]),
+              Row(children: [Flexible(child: Text(offer.name, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900))), if (offer.verified) Padding(padding: EdgeInsets.only(left: 5), child: Icon(Icons.verified_rounded, size: 18, color: AppColors.secondary))]),
               const SizedBox(height: 4),
               Text(offer.vehicle, style: const TextStyle(color: AppColors.muted)),
             ])),
@@ -104,7 +104,7 @@ class _OfferCard extends StatelessWidget {
           ]),
           const Divider(height: 26),
           Row(children: [
-            const Icon(Icons.star_rounded, color: AppColors.accent, size: 19), Text(' ${offer.rating}'),
+            Icon(Icons.star_rounded, color: AppColors.accent, size: 19), Text(' ${offer.rating}'),
             const SizedBox(width: 16), const Icon(Icons.route_rounded, size: 18, color: AppColors.muted), Text(' ${offer.trips} trips'),
             const Spacer(), if (selected) const Icon(Icons.check_circle_rounded, color: AppColors.primary),
           ]),

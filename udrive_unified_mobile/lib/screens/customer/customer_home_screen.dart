@@ -1632,6 +1632,18 @@ class _AccentPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Listens to the store rather than reading it once.
+    //
+    // Without this the swatches appeared and selecting one did nothing
+    // visible: the store notified, but nothing in this subtree was subscribed,
+    // so the ring never moved to the colour just chosen.
+    return AnimatedBuilder(
+      animation: AccentStore.instance,
+      builder: (context, _) => _swatches(),
+    );
+  }
+
+  Widget _swatches() {
     final current = AccentStore.instance.accent;
 
     return Container(

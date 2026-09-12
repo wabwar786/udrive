@@ -22,10 +22,18 @@ import 'package:google_fonts/google_fonts.dart';
 /// doubt, and amber is the one warm tone that does not collide with the red
 /// used for danger.
 class AppColors {
-  /// Amber. The only saturated colour in the system; it carries every primary
-  /// action, so it stays loud against the dark surfaces.
-  static const secondary = Color(0xFFF5A524);
-  static const accent = Color(0xFFF5A524);
+  /// The action colour, and the one thing the customer can change.
+  ///
+  /// A getter, not a `const`. It carries every primary action, so a picker that
+  /// only repainted the handful of widgets driven by `ThemeData` would leave
+  /// most of the app in the old colour and look broken rather than customised.
+  ///
+  /// The cost is that it cannot appear inside a `const` expression. There are
+  /// seventeen such places and they have had their `const` removed;
+  /// `tool/check_imports.py` fails the build if a new one appears, which is the
+  /// only compiler-like guard available here.
+  static Color get secondary => AccentStore.instance.accent.seed;
+  static Color get accent => AccentStore.instance.accent.seed;
 
   /// Deepest layer — the app background behind everything.
   static const background = Color(0xFF0A1614);

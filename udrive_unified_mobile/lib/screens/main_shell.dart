@@ -493,7 +493,7 @@ class _PremiumDrawer extends StatelessWidget {
     final driver = mode == UserMode.driver;
     final entries = driver ? _driverEntries(context) : _customerEntries(context);
     const drawerColor = AppColors.surface;
-    const lime = AppColors.secondary;
+    final lime = AppColors.secondary;
 
     return Drawer(
       width: MediaQuery.sizeOf(context).width.clamp(300, 360).toDouble(),

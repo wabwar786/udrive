@@ -53,7 +53,7 @@ class _RideBookingScreenState extends State<RideBookingScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _destination,
-                      decoration: InputDecoration(labelText: context.tr('destination'), prefixIcon: const Icon(Icons.location_on_rounded, color: AppColors.secondary)),
+                      decoration: InputDecoration(labelText: context.tr('destination'), prefixIcon: Icon(Icons.location_on_rounded, color: AppColors.secondary)),
                       validator: _required,
                     ),
                     const SizedBox(height: 12),

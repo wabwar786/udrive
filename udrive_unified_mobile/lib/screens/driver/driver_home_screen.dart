@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/theme/app_tokens.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
@@ -60,6 +61,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   /// short and deliberate: it is the same one the Customer gets to answer an
   /// offer, so neither side is left holding a decision the other has abandoned.
   final Map<String, DateTime> _requestDeadline = <String, DateTime>{};
+
+  /// Requests that have already sounded.
+  ///
+  /// A Driver waiting for work is not staring at the screen. A request lives
+  /// for fifteen seconds, so arriving silently means it is usually gone before
+  /// it is noticed — which looks to them like the platform has no work.
+  final Set<String> _announcedRequests = <String>{};
 
   @override
   void didChangeDependencies() {
@@ -334,7 +342,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               onRefresh: _refreshNearbyRequests,
             )
           else
-            ..._liveRequests(requests).map(
+            ...(() {
+              final live = _liveRequests(requests);
+              // After the frame, not during it: playing a sound inside build
+              // would fire again on every unrelated rebuild.
+              if (live.isNotEmpty) {
+                WidgetsBinding.instance.addPostFrameCallback(
+                  (_) => _announceRequests(live),
+                );
+              }
+              return live;
+            })().map(
               (request) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _DashboardRequestCard(
@@ -362,6 +380,30 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         ],
       ),
     );
+  }
+
+  /// Sounds once for each request the Driver has not yet seen.
+  ///
+  /// `SystemSound` rather than a bundled clip: the phone's own notification
+  /// tone already respects silent mode and the volume the person has set, where
+  /// an audio file would ignore both. The haptic covers a silenced phone, which
+  /// on a driver's handset is the usual state.
+  void _announceRequests(List<LiveRideRequest> requests) {
+    final fresh = requests
+        .where((request) => !_announcedRequests.contains(request.id))
+        .toList(growable: false);
+    if (fresh.isEmpty) return;
+
+    for (final request in fresh) {
+      _announcedRequests.add(request.id);
+    }
+
+    // Only while online. A Driver who has switched off should not be buzzed by
+    // work they have declined to receive.
+    if (!_isOnline) return;
+
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.mediumImpact();
   }
 
   /// Requests still inside their decision window.
@@ -604,7 +646,7 @@ class _CompactSectionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(children: [
     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.navy)), Text(subtitle, style: const TextStyle(fontSize: 10, color: AppColors.muted))])),
-    if (count > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(999)), child: Text('$count', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.primaryDark))),
+    if (count > 0) Container(padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(999)), child: Text('$count', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.primaryDark))),
   ]);
 }
 
@@ -768,7 +810,7 @@ class _LiveRideHeroCard extends StatelessWidget {
         // fare were all there and unreadable.
         decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.secondary.withValues(alpha: .45))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [const Icon(Icons.navigation_rounded, color: AppColors.secondary, size: 18), const SizedBox(width: 8), const Expanded(child: Text('ACTIVE RIDE', style: TextStyle(fontWeight: FontWeight.w800, color: AppText.secondary, fontSize: 11.5, letterSpacing: .8))), StatusPill(label: trip.tripStatus, color: AppColors.secondary)]),
+          Row(children: [Icon(Icons.navigation_rounded, color: AppColors.secondary, size: 18), SizedBox(width: 8), Expanded(child: Text('ACTIVE RIDE', style: TextStyle(fontWeight: FontWeight.w800, color: AppText.secondary, fontSize: 11.5, letterSpacing: .8))), StatusPill(label: trip.tripStatus, color: AppColors.secondary)]),
           const SizedBox(height: 10),
           _RouteLine(icon: Icons.trip_origin_rounded, text: trip.pickupLabel, color: AppColors.primary),
           const SizedBox(height: 5),

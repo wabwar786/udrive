@@ -1326,7 +1326,7 @@ class _AcceptButton extends StatelessWidget {
               children: [
                 Expanded(
                   flex: (fraction * 1000).round().clamp(1, 1000),
-                  child: const ColoredBox(color: AppText.onBrand),
+                  child: ColoredBox(color: AppText.onBrand),
                 ),
                 Expanded(
                   flex: ((1 - fraction) * 1000).round().clamp(1, 1000),

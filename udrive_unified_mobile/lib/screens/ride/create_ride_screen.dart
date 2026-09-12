@@ -91,7 +91,7 @@ class _RoutePreview extends StatelessWidget {
     decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), gradient: const LinearGradient(colors: [Color(0xFFDCEFEA), Color(0xFFDDE8FB)])),
     child: Stack(children: [
       const Positioned(left: 34, top: 32, child: Icon(Icons.trip_origin, color: AppColors.primary)),
-      const Positioned(right: 38, bottom: 28, child: Icon(Icons.location_on, color: AppColors.secondary, size: 36)),
+      Positioned(right: 38, bottom: 28, child: Icon(Icons.location_on, color: AppColors.secondary, size: 36)),
       Positioned(left: 58, top: 51, right: 62, child: Container(height: 3, transform: Matrix4.rotationZ(.2), color: Colors.white)),
       const Center(child: Icon(Icons.directions_car_rounded, color: AppColors.text, size: 34)),
     ]),

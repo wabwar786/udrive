@@ -118,7 +118,7 @@ class _FamilyTourPlannerScreenState extends State<FamilyTourPlannerScreen> {
           PremiumCard(
             color: const Color(0xFF0D4337),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [const Icon(Icons.auto_awesome_rounded, color: AppColors.accent), const SizedBox(width: 9), Expanded(child: Text(context.tr('yourFamilyPlanReady'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 19)))]),
+              Row(children: [Icon(Icons.auto_awesome_rounded, color: AppColors.accent), SizedBox(width: 9), Expanded(child: Text(context.tr('yourFamilyPlanReady'), style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 19)))]),
               const SizedBox(height: 14),
               Text('${plan.startLocation} → ${plan.destination}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20)),
               const SizedBox(height: 6),
@@ -126,7 +126,7 @@ class _FamilyTourPlannerScreenState extends State<FamilyTourPlannerScreen> {
             ]),
           ),
           const SizedBox(height: 14),
-          Row(children: [MetricTile(icon: Icons.shield_rounded, label: context.tr('safetyScore'), value: '${plan.safetyScore}/100', color: AppColors.success), const SizedBox(width: 10), MetricTile(icon: Icons.payments_rounded, label: context.tr('estimatedTotal'), value: '${(plan.estimatedTotal / 1000).toStringAsFixed(0)}K', color: AppColors.secondary)]),
+          Row(children: [MetricTile(icon: Icons.shield_rounded, label: context.tr('safetyScore'), value: '${plan.safetyScore}/100', color: AppColors.success), SizedBox(width: 10), MetricTile(icon: Icons.payments_rounded, label: context.tr('estimatedTotal'), value: '${(plan.estimatedTotal / 1000).toStringAsFixed(0)}K', color: AppColors.secondary)]),
           const SizedBox(height: 18),
           SectionHeader(title: context.tr('recommendedItinerary')),
           const SizedBox(height: 9),

@@ -282,6 +282,16 @@ public sealed class BookingService(
                   FROM udrive.driver_ride_request_decisions d
                   WHERE d.ride_request_id = rr.id
                     AND d.driver_profile_id = @driverProfileId
+                    -- A raised fare puts the request back in front of every
+                    -- Driver, including the ones who already declined or
+                    -- offered.
+                    --
+                    -- Their earlier answer was to a different price. Holding it
+                    -- against them means the Customer raises the fare and the
+                    -- request reaches a *smaller* pool than before — which is
+                    -- the opposite of what raising it is for.
+                    AND (rr.fare_updated_at IS NULL
+                         OR d.updated_at >= rr.fare_updated_at)
                     AND (
                       d.decision = 'Rejected'
                       OR COALESCE(d.customer_reject_count, 0) >= 5
@@ -767,7 +777,10 @@ public sealed class BookingService(
     {
         const string sql = """
             UPDATE udrive.ride_requests
-            SET customer_offer = @offer, version = version + 1, updated_at = now()
+            SET customer_offer = @offer,
+                fare_updated_at = now(),
+                version = version + 1,
+                updated_at = now()
             WHERE id = @rideRequestId
               AND customer_user_id = @customerUserId
               AND status IN ('Open','SearchingDrivers','ReceivingOffers')

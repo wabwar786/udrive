@@ -238,7 +238,7 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
         children: [
           Text(
             caption,
-            style: const TextStyle(fontSize: 11, color: AppColors.secondary),
+            style: TextStyle(fontSize: 11, color: AppColors.secondary),
           ),
           TextField(
             controller: _query,

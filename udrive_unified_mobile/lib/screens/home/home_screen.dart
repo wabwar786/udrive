@@ -48,7 +48,7 @@ class HomeScreen extends StatelessWidget {
                   Container(
                     width: 48, height: 48,
                     decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: .14), borderRadius: BorderRadius.circular(15)),
-                    child: const Icon(Icons.warning_amber_rounded, color: AppColors.accent),
+                    child: Icon(Icons.warning_amber_rounded, color: AppColors.accent),
                   ),
                   const SizedBox(width: 14),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -98,7 +98,7 @@ class HomeScreen extends StatelessWidget {
                             Text(item.route, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted)),
                             const SizedBox(height: 12),
                             Row(children: [
-                              const Icon(Icons.star_rounded, color: AppColors.accent, size: 18),
+                              Icon(Icons.star_rounded, color: AppColors.accent, size: 18),
                               Text(' ${item.rating}'),
                               const Spacer(),
                               Text('PKR ${item.price}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primary)),
@@ -150,7 +150,7 @@ class _MapPreview extends StatelessWidget {
     ),
     child: Stack(children: [
       ...List.generate(6, (i) => Positioned(left: 20.0 + i * 55, top: i.isEven ? 28 : 110, child: Container(width: 70, height: 3, transform: Matrix4.rotationZ(i.isEven ? .45 : -.35), color: Colors.white.withValues(alpha: .75)))),
-      const Positioned(left: 55, top: 65, child: Icon(Icons.location_on_rounded, color: AppColors.secondary, size: 42)),
+      Positioned(left: 55, top: 65, child: Icon(Icons.location_on_rounded, color: AppColors.secondary, size: 42)),
       const Positioned(right: 60, bottom: 35, child: Icon(Icons.directions_car_filled_rounded, color: AppColors.primary, size: 36)),
       Positioned(right: 12, top: 12, child: IconButton.filled(onPressed: () {}, icon: const Icon(Icons.my_location_rounded))),
       const Positioned(left: 16, bottom: 14, child: Chip(avatar: Icon(Icons.circle, size: 12, color: AppColors.primary), label: Text('Muzaffarabad'))),

@@ -135,3 +135,14 @@ first ride, which is the intended arrangement.
   case-insensitive: "ADL-955" and "adl-955" are the same plate, and allowing
   both would defeat the constraint.
 - Two live vehicles still cannot share a registration number.
+
+## 043_fare_updated_at (rev 94)
+
+- Adds `ride_requests.fare_updated_at`, set only when the Customer raises their
+  offer. Driver decisions older than it are ignored, so a raised fare is offered
+  again to everyone — including Drivers who had already declined or quoted,
+  whose earlier answer was to a different price.
+- `updated_at` could not be used: it moves whenever anything about the request
+  changes, including the status flipping to ReceivingOffers when the first offer
+  lands, so every offer would have cleared every decision and re-alerted the
+  whole area.

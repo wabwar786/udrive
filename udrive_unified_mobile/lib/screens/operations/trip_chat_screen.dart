@@ -261,7 +261,7 @@ class _TripChatScreenState extends State<TripChatScreen> {
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(22),
                       borderSide:
-                          const BorderSide(color: AppColors.secondary, width: 1.5),
+                          BorderSide(color: AppColors.secondary, width: 1.5),
                     ),
                   ),
                 ),

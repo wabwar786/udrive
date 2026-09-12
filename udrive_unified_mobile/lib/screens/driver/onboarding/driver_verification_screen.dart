@@ -202,7 +202,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
               // chosen for a different background.
               decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
               child: Row(children: [
-                const CircleAvatar(backgroundColor: AppTint.brand, child: Icon(Icons.directions_car_filled_rounded, color: AppColors.secondary)),
+                CircleAvatar(backgroundColor: AppTint.brand, child: Icon(Icons.directions_car_filled_rounded, color: AppColors.secondary)),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${vehicle.make} ${vehicle.model} ${vehicle.year}', style: const TextStyle(fontWeight: FontWeight.w800, color: AppText.primary)),

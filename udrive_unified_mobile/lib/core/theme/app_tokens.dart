@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'accent_store.dart';
+
 import 'app_theme.dart';
 
 /// Tint / surface colours introduced by the Home & Tour Booking redesign.
@@ -13,7 +15,7 @@ class AppTint {
   /// Selected service tile and active bottom-nav pill — a low-opacity wash of
   /// the amber action colour rather than a pale tint, so it reads on the dark
   /// teal surfaces.
-  static const brand = Color(0xFF3A2A0E);
+  static Color get brand => AccentStore.instance.accent.wash;
 
   /// Secondary surface — inset rows such as the tour-booking toggle strip.
   static const surface = AppColors.surfaceAlt;
@@ -43,7 +45,7 @@ class AppText {
   ///
   /// Near-black rather than white: amber is a light colour, and white on it
   /// fails contrast at the sizes buttons use.
-  static const onBrand = Color(0xFF1A1200);
+  static Color get onBrand => AccentStore.instance.accent.ink;
 }
 
 /// Per-product colours.

@@ -115,7 +115,7 @@ class MapPreview extends StatelessWidget {
           children: [
             Positioned.fill(child: CustomPaint(painter: _MapPainter())),
             const Positioned(left: 34, top: 38, child: _MapPin(color: AppColors.primary, icon: Icons.trip_origin_rounded)),
-            const Positioned(right: 38, bottom: 35, child: _MapPin(color: AppColors.secondary, icon: Icons.location_on_rounded)),
+            Positioned(right: 38, bottom: 35, child: _MapPin(color: AppColors.secondary, icon: Icons.location_on_rounded)),
             if (showCar)
               Center(
                 child: Container(

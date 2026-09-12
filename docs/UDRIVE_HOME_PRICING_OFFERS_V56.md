@@ -1825,6 +1825,58 @@ a deploy once. The Flutter side has four text-level checks and no compiler,
 which is exactly why `flutter analyze` in CI matters more than anything I can
 add.
 
+## 61. The colour picker did nothing
+
+Two faults, and the second is the one that mattered.
+
+**The picker did not redraw itself.** Nothing in that subtree was subscribed to
+the store, so selecting a colour notified listeners and the ring never moved.
+
+**And almost nothing else would have changed anyway.** `AppColors.secondary` was
+a compile-time constant used in 101 places. Only the handful of widgets driven
+by `ThemeData` would have repainted — the rest would have stayed amber, which
+looks broken rather than customised.
+
+The accent tokens — `AppColors.secondary`, `AppColors.accent`, `AppTint.brand`,
+`AppText.onBrand` — are now runtime getters reading the store. The cost is that
+Dart rejects them inside `const` expressions: there were seventeen such places,
+all fixed, and **`check_imports.py` now fails if a new one appears**. With no
+Flutter compiler here that guard is the only thing standing between this and
+another failed deploy.
+
+## 62. Sound on both sides
+
+Neither side was told anything had happened.
+
+A Driver waiting for work is not staring at the screen, and a request lives
+fifteen seconds — arriving silently means it is usually gone before it is
+noticed, which looks to them like the platform has no work. Same for a Customer
+waiting on offers.
+
+`SystemSound` and a haptic on both, not a bundled clip: the phone's own
+notification tone already respects silent mode and the volume the person set,
+where an audio file ignores both and plays at full volume in a mosque. The
+haptic covers a silenced phone, which on a driver's handset is the usual state.
+
+Fired once per request or offer id. An alert tied to "requests exist" rather
+than "a new request arrived" would chime continuously while someone read the
+first one. The driver's alert is also skipped while they are offline — someone
+who has switched off should not be buzzed by work they declined to receive.
+
+## 63. A raised fare goes back to everyone
+
+Drivers who had already declined or quoted were excluded from seeing the request
+again. So the Customer raised their fare and it reached a **smaller** pool than
+before — the opposite of what raising it is for. The Driver who quoted 2,000 and
+was passed over never learned the Customer had come up to 1,900.
+
+Decisions older than the fare change are now ignored.
+
+This needed its own column. `updated_at` moves whenever anything about the
+request changes — including the status flipping to ReceivingOffers the moment
+the first offer lands — so reusing it would have cleared every Driver's decision
+on every offer and re-alerted the whole area each time.
+
 ---
 
 ## Not done

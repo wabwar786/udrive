@@ -101,7 +101,7 @@ class SharedTourCard extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(15),
-              decoration: const BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.vertical(top: Radius.circular(23))),
+              decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.vertical(top: Radius.circular(23))),
               child: Row(
                 children: [
                   StatusPill(label: '${tour.matchPercent}% ${context.tr('match')}'),
@@ -392,7 +392,7 @@ class _SafetyLine extends StatelessWidget {
 
 class _InterestHero extends StatelessWidget {
   @override
-  Widget build(BuildContext context) => PremiumCard(color: const Color(0xFFFFF8E5), child: Row(children: [Container(width: 50, height: 50, decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: .2), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF8A5B00))), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('cannotFindTour'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)), const SizedBox(height: 4), Text(context.tr('registerAndNotify'), style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35))]))]));
+  Widget build(BuildContext context) => PremiumCard(color: Color(0xFFFFF8E5), child: Row(children: [Container(width: 50, height: 50, decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: .2), borderRadius: BorderRadius.circular(16)), child: Icon(Icons.auto_awesome_rounded, color: Color(0xFF8A5B00))), SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('cannotFindTour'), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)), SizedBox(height: 4), Text(context.tr('registerAndNotify'), style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35))]))]));
 }
 
 class _DatePickerField extends StatelessWidget {

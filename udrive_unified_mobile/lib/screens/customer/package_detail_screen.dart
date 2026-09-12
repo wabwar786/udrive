@@ -65,7 +65,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
               padding: const EdgeInsets.fromLTRB(18, 20, 18, 130),
               sliver: SliverList.list(
                 children: [
-                  Row(children: [StatusPill(label: '${widget.package.days} days'), const SizedBox(width: 8), StatusPill(label: '${widget.package.rating} ★', color: AppColors.accent), const SizedBox(width: 8), StatusPill(label: '${widget.package.safetyScore}/100', color: AppColors.success), const Spacer(), IconButton.filledTonal(onPressed: () { setState(() => _favorite = !_favorite); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_favorite ? 'Package saved to favourites.' : 'Package removed from favourites.'))); }, icon: Icon(_favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: _favorite ? AppColors.danger : null))]),
+                  Row(children: [StatusPill(label: '${widget.package.days} days'), SizedBox(width: 8), StatusPill(label: '${widget.package.rating} ★', color: AppColors.accent), SizedBox(width: 8), StatusPill(label: '${widget.package.safetyScore}/100', color: AppColors.success), Spacer(), IconButton.filledTonal(onPressed: () { setState(() => _favorite = !_favorite); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_favorite ? 'Package saved to favourites.' : 'Package removed from favourites.'))); }, icon: Icon(_favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: _favorite ? AppColors.danger : null))]),
                   const SizedBox(height: 14),
                   Text(widget.package.title, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -.7)),
                   const SizedBox(height: 8),

@@ -27,7 +27,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
         ),
         SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(18, 20, 18, 120), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(item.title, style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
-          Row(children: [const Icon(Icons.star_rounded, color: AppColors.accent), Text(' ${item.rating} · ${item.driver}'), const Spacer(), const Icon(Icons.verified_rounded, color: AppColors.secondary)]),
+          Row(children: [Icon(Icons.star_rounded, color: AppColors.accent), Text(' ${item.rating} · ${item.driver}'), Spacer(), Icon(Icons.verified_rounded, color: AppColors.secondary)]),
           const SizedBox(height: 18),
           Card(child: Padding(padding: const EdgeInsets.all(16), child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
             _MiniStat(icon: Icons.calendar_month, value: '${item.days} days'),
