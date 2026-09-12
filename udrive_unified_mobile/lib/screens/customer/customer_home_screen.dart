@@ -882,10 +882,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     setState(() => _sheetLifted = false);
   }
 
-  Future<void> _toggleLanguage(AppController controller) async {
-    final next = controller.locale.languageCode == 'ur' ? 'en' : 'ur';
-    await controller.setLanguage(next);
-  }
+
 
   // ------------------------------------------------------------------ building
 
@@ -922,11 +919,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           .popUntil((route) => route.isFirst),
                     ),
                     const Spacer(),
-                    _LanguagePill(
-                      isEnglish: controller.locale.languageCode != 'ur',
-                      onTap: () => _toggleLanguage(controller),
-                    ),
-                    const SizedBox(width: 8),
                     _MapIconButton(
                       semanticLabel: 'Switch to driver mode',
                       child: SteeringWheelIcon(
@@ -969,30 +961,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       ),
                     ),
 
-                  // Fades the map into the sheet so the join does not read as a
-                  // hard edge between two panels.
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: 56,
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              AppColors.background.withValues(alpha: 0),
-                              AppColors.background.withValues(alpha: .75),
-                              AppColors.background,
-                            ],
-                            stops: const [0, .6, 1],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // No fade over the map.
+                  //
+                  // A gradient from transparent to the page colour existed to
+                  // soften the join with the sheet. On a white page it reads as
+                  // a grey wash over the bottom of the map — a smudge, not a
+                  // transition — and the sheet's own rounded top already does
+                  // the softening.
 
                   // Floats on the map rather than occupying a strip of its own.
                   Positioned(
@@ -1127,10 +1102,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final planning = hotel || _destination.text.trim().isNotEmpty;
 
     return ColoredBox(
-      // The page behind the panels, not the panels themselves. Two dark greys
-      // one step apart is what gives the layout its depth; a single flat
-      // surface made every block run into the next.
-      color: AppColors.background,
+      // The page behind the panels.
+      //
+      // A very light grey, so the white panels on top of it read as cards. On
+      // the dark theme this was the darker of two greys; inverted, the page is
+      // the quiet surface and the content is the bright one.
+      color: AppColors.surface,
       child: SafeArea(
         top: false,
         child: Column(
@@ -1536,7 +1513,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     child: Text(
                       place.name,
                       style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: selected
                             ? AppColors.secondary
@@ -1699,7 +1676,7 @@ class _TourRateGuideCard extends StatelessWidget {
                       ? 'What drivers ask · $days days'
                       : 'What drivers ask · per day',
                   style: const TextStyle(
-                    fontSize: 11.5,
+                    fontSize: 13,
                     fontWeight: FontWeight.w800,
                     color: AppText.secondary,
                   ),
@@ -1720,7 +1697,7 @@ class _TourRateGuideCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: AppText.primary,
                       ),
@@ -1731,7 +1708,7 @@ class _TourRateGuideCard extends StatelessWidget {
                       'PKR ${_money(entry.lowestPerDay * days)}'
                       ' – ${_money(entry.highestPerDay * days)}',
                       style: const TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: AppText.primary,
                       ),
@@ -1740,7 +1717,7 @@ class _TourRateGuideCard extends StatelessWidget {
                   Text(
                     '${entry.vehicleCount}',
                     style: const TextStyle(
-                      fontSize: 11.5,
+                      fontSize: 13,
                       color: AppText.disabled,
                     ),
                   ),
@@ -1753,7 +1730,7 @@ class _TourRateGuideCard extends StatelessWidget {
             'Each driver sets their own tour price. Offer what you think the '
             'trip is worth — drivers reply with theirs.',
             style: TextStyle(
-              fontSize: 10.5,
+              fontSize: 12,
               height: 1.4,
               color: AppText.disabled,
             ),
@@ -1771,11 +1748,18 @@ class _SheetPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // White with a hairline, not a grey block.
+    //
+    // On the dark theme these panels were lighter than the page and that was
+    // enough to separate them. On white, a grey panel on a white page is the
+    // wrong way round — the content should be the bright part and the page the
+    // quiet one. A border does the separating instead.
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.background,
         borderRadius: AppRadii.all(AppRadii.panel),
+        border: Border.all(color: AppColors.border),
       ),
       child: child,
     );
@@ -1812,7 +1796,7 @@ class _SearchPill extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 17,
+                    fontSize: 18.5,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -.2,
                     color: AppText.primary,
@@ -1869,7 +1853,7 @@ class _PickupRow extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 14.5,
                   fontWeight: FontWeight.w600,
                   color: AppText.secondary,
                 ),
@@ -1886,7 +1870,7 @@ class _PickupRow extends StatelessWidget {
               Text(
                 'Change',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 13.5,
                   fontWeight: FontWeight.w800,
                   color: AppColors.secondary,
                 ),
@@ -1944,7 +1928,7 @@ class _SheetHandle extends StatelessWidget {
                 const Text(
                   'Show map',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: AppText.disabled,
                   ),
@@ -2003,7 +1987,7 @@ class _LocationControl extends StatelessWidget {
                             const Text(
                               'Current location',
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 12.5,
                                 fontWeight: FontWeight.w700,
                                 color: AppText.secondary,
                               ),
@@ -2013,7 +1997,7 @@ class _LocationControl extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 13,
+                                fontSize: 14.5,
                                 fontWeight: FontWeight.w800,
                                 color: AppText.primary,
                               ),
@@ -2154,7 +2138,7 @@ class _NearbyCountChip extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 12.5,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: AppText.primary,
               ),
@@ -2261,7 +2245,7 @@ class _VehicleMarkerSheet extends StatelessWidget {
                       Text(
                         vehicle.category,
                         style: const TextStyle(
-                          fontSize: 17,
+                          fontSize: 18.5,
                           fontWeight: FontWeight.w900,
                           color: AppText.primary,
                         ),
@@ -2271,7 +2255,7 @@ class _VehicleMarkerSheet extends StatelessWidget {
                         '${vehicle.distanceKm.toStringAsFixed(1)} km away  ·  '
                         'about ${vehicle.etaMinutes} min',
                         style: const TextStyle(
-                          fontSize: 13,
+                          fontSize: 14.5,
                           color: AppText.secondary,
                         ),
                       ),
@@ -2288,7 +2272,7 @@ class _VehicleMarkerSheet extends StatelessWidget {
                       Text(
                         vehicle.rating.toStringAsFixed(1),
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 15.5,
                           fontWeight: FontWeight.w900,
                           color: AppText.primary,
                         ),
@@ -2320,7 +2304,7 @@ class _VehicleMarkerSheet extends StatelessWidget {
                               ? 'Booked as a whole vehicle.'
                               : 'Per seat or whole vehicle.',
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 13.5,
                         color: AppText.secondary,
                       ),
                     ),
@@ -2331,7 +2315,7 @@ class _VehicleMarkerSheet extends StatelessWidget {
             const SizedBox(height: 10),
             const Text(
               'Driver details are shared once your booking is confirmed.',
-              style: TextStyle(fontSize: 11.5, color: AppText.disabled),
+              style: TextStyle(fontSize: 13, color: AppText.disabled),
             ),
           ],
         ),
@@ -2340,72 +2324,12 @@ class _VehicleMarkerSheet extends StatelessWidget {
   }
 }
 
-/// Language switch shown as a labelled pill/// Language switch shown as a labelled pill so the current language is
-/// readable at a glance rather than hidden behind a glyph.
-class _LanguagePill extends StatelessWidget {
-  const _LanguagePill({required this.isEnglish, required this.onTap});
+/// Language switch shown as a labelled pill/// The EN/اردو pill used to sit here.
+///
+/// Removed from the home screen. Language is set once and then never again,
+/// and it was taking a permanent seat in the header next to the two controls
+/// people use every day. It belongs in Settings.
 
-  final bool isEnglish;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Switch language. Currently ${isEnglish ? 'English' : 'Urdu'}.',
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 5),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceHigh.withValues(alpha: .94),
-            borderRadius: BorderRadius.circular(11),
-            boxShadow: AppShadows.floating,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _LanguageChip(label: 'EN', active: isEnglish),
-              const SizedBox(width: 3),
-              _LanguageChip(label: 'اردو', active: !isEnglish),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LanguageChip extends StatelessWidget {
-  const _LanguageChip({required this.label, required this.active});
-
-  final String label;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: active ? AppColors.secondary : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w900,
-          color: active ? AppText.onBrand : AppText.secondary,
-        ),
-      ),
-    );
-  }
-}
-
-/// Notifications shown as a popup so the customer stays on Home.
 class _NotificationsPopup extends StatelessWidget {
   const _NotificationsPopup();
 
@@ -2430,7 +2354,7 @@ class _NotificationsPopup extends StatelessWidget {
                     child: Text(
                       'Notifications',
                       style: TextStyle(
-                        fontSize: 17,
+                        fontSize: 18.5,
                         fontWeight: FontWeight.w900,
                         color: AppText.primary,
                       ),
@@ -2459,7 +2383,7 @@ class _NotificationsPopup extends StatelessWidget {
                       Text(
                         'No notifications yet',
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 15.5,
                           fontWeight: FontWeight.w800,
                           color: AppText.primary,
                         ),
@@ -2470,7 +2394,7 @@ class _NotificationsPopup extends StatelessWidget {
                         'here.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 13.5,
                           height: 1.45,
                           color: AppText.secondary,
                         ),
@@ -2488,7 +2412,7 @@ class _NotificationsPopup extends StatelessWidget {
                 AppConfig.buildLabel,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 10.5,
+                  fontSize: 12,
                   color: AppText.disabled,
                 ),
               ),
@@ -2557,7 +2481,7 @@ class _CentrePin extends StatelessWidget {
                       const Text(
                         'Pickup point',
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w700,
                           color: AppText.secondary,
                         ),
@@ -2574,7 +2498,7 @@ class _CentrePin extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 13.5,
+                                fontSize: 15,
                                 fontWeight: FontWeight.w800,
                                 color: AppText.primary,
                               ),
@@ -2845,7 +2769,7 @@ class _QuickTile extends StatelessWidget {
                       child: Text(
                         badge!,
                         style: TextStyle(
-                          fontSize: 7.5,
+                          fontSize: 9,
                           fontWeight: FontWeight.w900,
                           letterSpacing: .3,
                           color: AppText.onBrand,
@@ -2861,7 +2785,7 @@ class _QuickTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 10.5,
+                fontSize: 12,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 color: selected ? AppText.primary : AppText.secondary,
               ),
@@ -3005,7 +2929,7 @@ class _LocationErrorBanner extends StatelessWidget {
             child: Text(
               message,
               style: const TextStyle(
-                fontSize: 12,
+                fontSize: 13.5,
                 height: 1.4,
                 fontWeight: FontWeight.w600,
                 color: AppTint.warningText,
@@ -3058,7 +2982,7 @@ class _RecentRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 14.5,
+                      fontSize: 16,
                       fontWeight: FontWeight.w700,
                       color: AppText.primary,
                     ),
@@ -3070,7 +2994,7 @@ class _RecentRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 13.5,
                         color: AppText.secondary,
                       ),
                     ),
@@ -3122,7 +3046,7 @@ class _TripSummary extends StatelessWidget {
               Text(
                 'Working out the route…',
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 14.5,
                   fontWeight: FontWeight.w700,
                   color: AppText.secondary,
                 ),
@@ -3162,7 +3086,7 @@ class _TripSummary extends StatelessWidget {
                     Text(
                       message,
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 13.5,
                         height: 1.4,
                         fontWeight: FontWeight.w600,
                         color: AppTint.warningText,
@@ -3176,7 +3100,7 @@ class _TripSummary extends StatelessWidget {
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 10.5,
+                          fontSize: 12,
                           height: 1.35,
                           color: AppText.disabled,
                         ),
@@ -3220,7 +3144,7 @@ class _TripSummary extends StatelessWidget {
                       Text(
                         '${active.durationLabel}  ·  ${active.distanceLabel}',
                         style: const TextStyle(
-                          fontSize: 14.5,
+                          fontSize: 16,
                           fontWeight: FontWeight.w700,
                           color: AppText.primary,
                         ),
@@ -3232,7 +3156,7 @@ class _TripSummary extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 13.5,
                             color: AppText.secondary,
                           ),
                         ),
@@ -3263,7 +3187,7 @@ class _TripSummary extends StatelessWidget {
                     '${result.routes.length == 2 ? 'route' : 'routes'} — tap '
                     'one on the map',
                     style: const TextStyle(
-                      fontSize: 11.5,
+                      fontSize: 13,
                       color: AppText.disabled,
                     ),
                   ),
@@ -3307,7 +3231,7 @@ class _BookingTypeSelector extends StatelessWidget {
                     ? 'Whole vehicle — nearby vehicles seat 5 or fewer'
                     : 'Per seat only',
                 style: const TextStyle(
-                  fontSize: 12.5,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: AppText.secondary,
                 ),
@@ -3358,7 +3282,7 @@ class _BookingTypeSelector extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 11.5,
+                          fontSize: 13,
                           height: 1.2,
                           fontWeight:
                               selected ? FontWeight.w900 : FontWeight.w600,
@@ -3468,7 +3392,7 @@ class _RouteSummaryFields extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4),
               minimumSize: const Size(0, 34),
               textStyle: const TextStyle(
-                fontSize: 12.5,
+                fontSize: 14,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -3505,7 +3429,7 @@ class _RouteRow extends StatelessWidget {
           children: [
             Text(
               caption,
-              style: const TextStyle(fontSize: 11, color: AppText.disabled),
+              style: const TextStyle(fontSize: 12.5, color: AppText.disabled),
             ),
             const SizedBox(height: 2),
             Text(
@@ -3513,7 +3437,7 @@ class _RouteRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 15.5,
                 fontWeight: FontWeight.w600,
                 color: empty ? AppText.disabled : AppText.primary,
               ),
@@ -3562,7 +3486,7 @@ class _AdvanceDisclosure extends StatelessWidget {
             child: Text(
               _text,
               style: const TextStyle(
-                fontSize: 12.5,
+                fontSize: 14,
                 height: 1.45,
                 fontWeight: FontWeight.w600,
                 color: AppTint.successText,
@@ -3604,7 +3528,7 @@ class _PlainField extends StatelessWidget {
           Text(
             caption,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 13.5,
               fontWeight: FontWeight.w700,
               color: AppText.secondary,
             ),
@@ -3613,7 +3537,7 @@ class _PlainField extends StatelessWidget {
             controller: controller,
             onChanged: onChanged,
             style: const TextStyle(
-              fontSize: 16,
+              fontSize: 17.5,
               fontWeight: FontWeight.w800,
               color: AppText.primary,
             ),
@@ -3626,7 +3550,7 @@ class _PlainField extends StatelessWidget {
               focusedBorder: InputBorder.none,
               hintText: hint,
               hintStyle: const TextStyle(
-                fontSize: 13,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w600,
                 color: AppText.disabled,
               ),
@@ -3668,7 +3592,7 @@ class _MoneyField extends StatelessWidget {
           Text(
             caption,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 13.5,
               fontWeight: FontWeight.w700,
               color: AppText.secondary,
             ),
@@ -3678,7 +3602,7 @@ class _MoneyField extends StatelessWidget {
               const Text(
                 'PKR',
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 16.5,
                   fontWeight: FontWeight.w900,
                   color: AppText.secondary,
                 ),
@@ -3691,7 +3615,7 @@ class _MoneyField extends StatelessWidget {
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   style: const TextStyle(
-                    fontSize: 16,
+                    fontSize: 17.5,
                     fontWeight: FontWeight.w800,
                     color: AppText.primary,
                   ),
@@ -3704,7 +3628,7 @@ class _MoneyField extends StatelessWidget {
                     focusedBorder: InputBorder.none,
                     hintText: hint,
                     hintStyle: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 14.5,
                       fontWeight: FontWeight.w600,
                       color: AppText.disabled,
                     ),
@@ -3754,7 +3678,7 @@ class _TapField extends StatelessWidget {
                   Text(
                     caption,
                     style: const TextStyle(
-                      fontSize: 12,
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w700,
                       color: AppText.secondary,
                     ),
@@ -3765,7 +3689,7 @@ class _TapField extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 16.5,
                       fontWeight: FontWeight.w800,
                       color: AppText.primary,
                     ),
@@ -3818,7 +3742,7 @@ class _StickyCta extends StatelessWidget {
                 : Text(
                     label,
                     style: TextStyle(
-                      fontSize: 16.5,
+                      fontSize: 18,
                       fontWeight: FontWeight.w800,
                       color: enabled ? AppText.onBrand : AppText.disabled,
                     ),
@@ -3850,7 +3774,7 @@ class _OfflineNotice extends StatelessWidget {
               'You are offline. Saved maps are in use and bookings will need a '
               'connection.',
               style: TextStyle(
-                fontSize: 12.5,
+                fontSize: 14,
                 height: 1.4,
                 fontWeight: FontWeight.w600,
                 color: AppTint.warningText,
@@ -3888,7 +3812,7 @@ class _ActiveTripBanner extends StatelessWidget {
                 const Text(
                   'Trip in progress',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w700,
                     color: AppText.secondary,
                   ),
@@ -3899,7 +3823,7 @@ class _ActiveTripBanner extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 16.5,
                     fontWeight: FontWeight.w800,
                     color: AppText.primary,
                   ),
@@ -3919,7 +3843,7 @@ class _ActiveTripBanner extends StatelessWidget {
                 child: Text(
                   'Track Ride',
                   style: TextStyle(
-                    fontSize: 13.5,
+                    fontSize: 15,
                     fontWeight: FontWeight.w900,
                     color: AppText.onBrand,
                   ),

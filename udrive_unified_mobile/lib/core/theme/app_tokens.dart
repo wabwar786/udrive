@@ -115,36 +115,45 @@ class AppRadii {
 class AppShadows {
   const AppShadows._();
 
+  /// Shadows tuned for a white page.
+  ///
+  /// These were black at 35–50% opacity, which is what a dark theme needs to
+  /// lift a panel off a near-black page. On white the same values print as grey
+  /// smudges under every card and button — visible as haloes around the header
+  /// icons, which is not depth, it is dirt.
+  ///
+  /// A white page separates surfaces with a hairline border and a very faint
+  /// shadow, or with nothing at all.
+
   static List<BoxShadow> get card => [
         BoxShadow(
-          color: Colors.black.withValues(alpha: .35),
-          blurRadius: 20,
-          offset: const Offset(0, 6),
+          color: const Color(0xFF0F1512).withValues(alpha: .06),
+          blurRadius: 12,
+          offset: const Offset(0, 3),
         ),
       ];
 
   static List<BoxShadow> get panel => [
         BoxShadow(
-          color: Colors.black.withValues(alpha: .45),
-          blurRadius: 30,
-          offset: const Offset(0, 12),
-        ),
-      ];
-
-  static List<BoxShadow> get floating => [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: .50),
-          blurRadius: 18,
+          color: const Color(0xFF0F1512).withValues(alpha: .08),
+          blurRadius: 20,
           offset: const Offset(0, 6),
         ),
       ];
 
-  /// Upward shadow for the bottom navigation bar (no border-top).
+  /// Controls that sit on top of the map.
+  ///
+  /// Empty. On a light map these had nothing to lift off, and the shadow read
+  /// as a ring of dirt around each icon. A white button on a light map is
+  /// already distinct; its own edge does the work.
+  static List<BoxShadow> get floating => const <BoxShadow>[];
+
+  /// The bottom navigation bar, shadowed upward.
   static List<BoxShadow> get navBar => [
         BoxShadow(
-          color: Colors.black.withValues(alpha: .40),
-          blurRadius: 24,
-          offset: const Offset(0, -6),
+          color: const Color(0xFF0F1512).withValues(alpha: .06),
+          blurRadius: 14,
+          offset: const Offset(0, -3),
         ),
       ];
 }

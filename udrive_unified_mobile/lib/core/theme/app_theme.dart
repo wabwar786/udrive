@@ -114,16 +114,22 @@ class AppTheme {
       fontFamily: GoogleFonts.montserrat().fontFamily,
       visualDensity: VisualDensity.compact,
       textTheme: GoogleFonts.montserratTextTheme(
+        // Two points up across the board.
+        //
+        // These were sized for a dark page, where light text on dark reads a
+        // little larger than it measures. On white the same numbers look thin
+        // and cramped — and a fair number of the people using this are reading
+        // in sunlight, on a cracked screen, at arm's length.
         const TextTheme(
-          displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.w800),
-          headlineLarge: TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
-          headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          titleLarge: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-          titleMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          bodyLarge: TextStyle(fontSize: 13),
-          bodyMedium: TextStyle(fontSize: 12),
-          bodySmall: TextStyle(fontSize: 10.5),
-          labelLarge: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          displayLarge: TextStyle(fontSize: 34, fontWeight: FontWeight.w800),
+          headlineLarge: TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
+          headlineMedium: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+          titleLarge: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+          titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          bodyLarge: TextStyle(fontSize: 15),
+          bodyMedium: TextStyle(fontSize: 14),
+          bodySmall: TextStyle(fontSize: 12.5),
+          labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
         ),
       ).apply(bodyColor: AppColors.text, displayColor: AppColors.text),
       appBarTheme: const AppBarTheme(

@@ -449,51 +449,36 @@ public sealed class PlacesController(
                 language = "en-US",
                 region = "PK",
                 overlay = false,
-                // Styled at the source. Darkening tiles in the client would dim
-                // the route and markers with them; here only the basemap is
-                // affected.
+                // Styled at the source. Restyling tiles in the client would
+                // affect the route and markers with them; here only the
+                // basemap changes.
                 //
-                // Points of interest and transit are dropped: the map exists to
+                // Light, and close to Google's own default. The map is the one
+                // part of the screen a person reads rather than looks at —
+                // street names, junctions, which side of the road a pin is on —
+                // and a dark basemap costs legibility in the daylight where a
+                // ride app is actually used.
+                //
+                // Points of interest and transit stay off: the map exists to
                 // show a route and nearby vehicles, and every extra label
                 // competes with the markers that matter.
                 styles = new object[]
                 {
-                    new { elementType = "geometry",
-                          stylers = new[] { new { color = "#16232D" } } },
                     new { elementType = "labels.icon",
                           stylers = new object[] { new { visibility = "off" } } },
-                    new { elementType = "labels.text.fill",
-                          stylers = new[] { new { color = "#9FB3BB" } } },
-                    new { elementType = "labels.text.stroke",
-                          stylers = new[] { new { color = "#0E1A21" } } },
-                    new { featureType = "administrative",
-                          elementType = "geometry",
-                          stylers = new[] { new { color = "#2B3F4C" } } },
-                    new { featureType = "administrative.locality",
-                          elementType = "labels.text.fill",
-                          stylers = new[] { new { color = "#D6E3E8" } } },
                     new { featureType = "poi",
                           stylers = new object[] { new { visibility = "off" } } },
                     new { featureType = "transit",
                           stylers = new object[] { new { visibility = "off" } } },
-                    new { featureType = "landscape.natural",
+                    new { featureType = "poi.park",
                           elementType = "geometry",
-                          stylers = new[] { new { color = "#18262F" } } },
-                    new { featureType = "road",
-                          elementType = "geometry",
-                          stylers = new[] { new { color = "#2A3D49" } } },
-                    new { featureType = "road.arterial",
-                          elementType = "geometry",
-                          stylers = new[] { new { color = "#324856" } } },
-                    new { featureType = "road.highway",
-                          elementType = "geometry",
-                          stylers = new[] { new { color = "#3C5666" } } },
+                          stylers = new[] { new { color = "#E8F3E8" } } },
                     new { featureType = "road",
                           elementType = "labels.text.fill",
-                          stylers = new[] { new { color = "#94AAB5" } } },
+                          stylers = new[] { new { color = "#55606B" } } },
                     new { featureType = "water",
                           elementType = "geometry",
-                          stylers = new[] { new { color = "#0E2833" } } },
+                          stylers = new[] { new { color = "#D9E9F2" } } },
                 }
             };
 

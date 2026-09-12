@@ -2177,6 +2177,55 @@ broken — but they are not on the tokens either, and they will need their own
 pass when we get to the driver home. Not touching them was the point: you said
 driver mode comes after.
 
+## 73. The map was dark on the server, not in the app
+
+The basemap stayed dark after the theme flipped, because it is not styled in the
+app at all — `PlacesController` styles it when it creates the Google tile
+session, and that payload was still painting geometry `#16232D` with pale grey
+labels.
+
+Restyled light, close to Google's own default. Points of interest and transit
+stay off: the map exists to show a route and nearby vehicles, and every extra
+label competes with the markers that matter.
+
+**This is an API change.** The tiles will keep arriving dark until the API is
+deployed, whatever the app does.
+
+### The shade over the map
+
+A gradient from transparent to the page colour, softening the join with the
+sheet. It made sense on a dark page. On white it is a grey wash over the bottom
+of the map — a smudge rather than a transition — and the sheet's own rounded top
+already does the softening. Removed.
+
+### The shadows
+
+`AppShadows` were black at 35–50% opacity, which is what a dark theme needs to
+lift a panel off a near-black page. On white the same values print as grey
+smudges under every card, and as the haloes visible around the header icons.
+
+Reduced to 6–8% for cards and panels. `floating` — the controls that sit on the
+map — is now **empty**: on a light map they had nothing to lift off, and the
+shadow read as a ring of dirt around each icon. A white button on a light map is
+already distinct.
+
+### Panels are white, the page is grey
+
+The other way round from before. A grey panel on a white page is inverted: the
+content should be the bright part and the page the quiet one. Panels are white
+with a hairline border, on a `#F5F8F6` page.
+
+### Type is two points larger
+
+The old sizes were set for a dark page, where light text on dark reads slightly
+larger than it measures. On white the same numbers look thin. Every step of the
+text theme went up two points, and the home screen's own sizes by 1.5.
+
+### The language pill is gone
+
+Language is set once and then never again, and it was taking a permanent seat in
+the header beside the two controls people use daily. It belongs in Settings.
+
 ---
 
 ## Not done
