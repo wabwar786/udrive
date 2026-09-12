@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/booking/booking_options.dart';
@@ -147,6 +148,18 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     final fixed = _fixedSeatFare;
     if (fixed != null) return fixed.perSeatFare * _seats;
     return _selected?.fareFor(perSeat: _perSeat, seats: _seats) ?? 0;
+  }
+
+  /// What one vehicle would cost, for the price shown on its pill.
+  ///
+  /// Always the whole-vehicle fare, whatever the customer has chosen for the
+  /// selected one. The pills are a comparison between vehicles, and comparing a
+  /// Coster priced for two seats against a whole Car is not a comparison — it
+  /// is two different questions with one number each.
+  int _fareForOption(VehicleOption option) {
+    final fixed = _seatFares[option.category];
+    if (fixed != null) return fixed.perSeatFare;
+    return option.fareFor(perSeat: false, seats: option.seats);
   }
 
   /// The lowest offer this vehicle will take, from the admin's own rate table.
@@ -537,24 +550,30 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
 
     return Column(
       children: [
-        // Vehicle types as pills. They stay in place and in order whichever is
-        // chosen — nothing is promoted out of the row.
-        SizedBox(
-          height: 46,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            itemCount: _options.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 7),
-            itemBuilder: (context, index) {
-              final option = _options[index];
-              return _VehiclePill(
-                key: _pillKeys.putIfAbsent(option.category, GlobalKey.new),
-                option: option,
-                selected: option.category == selected.category,
-                onTap: () => _select(option),
-              );
-            },
+        // Every vehicle's fare, on its own pill.
+        //
+        // The comparison is the decision, and it used to be four swipes deep:
+        // the customer had to page through the photographs one at a time to
+        // find out what a Coster cost. Four numbers side by side answer it at a
+        // glance, and the row still fits without scrolling because the labels
+        // are short.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+          child: Row(
+            children: [
+              for (final option in _options) ...[
+                Expanded(
+                  child: _VehiclePill(
+                    key: _pillKeys.putIfAbsent(option.category, GlobalKey.new),
+                    option: option,
+                    fare: _fareForOption(option),
+                    selected: option.category == selected.category,
+                    onTap: () => _select(option),
+                  ),
+                ),
+                if (option != _options.last) const SizedBox(width: 6),
+              ],
+            ],
           ),
         ),
 
@@ -562,19 +581,12 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(0, 14, 0, 10),
             children: [
-              // Photograph or map, in the same space. Two views rather than a
-              // map bolted underneath, so neither has to be squeezed and the
-              // swipe gesture on the photographs never fights a map pan.
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _HeroToggle(
-                  showMap: _showMap,
-                  nearbyCount: _nearby.length,
-                  onChanged: (value) => setState(() => _showMap = value),
-                ),
-              ),
-              const SizedBox(height: 10),
-
+              // No separate Vehicle / Drivers toggle any more.
+              //
+              // It was a second row of controls under the pills, and the
+              // driver count — the thing a waiting customer actually wants —
+              // was hidden behind it. The count now sits on the photograph, and
+              // tapping it turns the photograph into the map.
               SizedBox(
                 height: heroHeight,
                 child: _showMap
@@ -614,71 +626,72 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                           ),
                         ),
                       )
-                    : PageView.builder(
-                        controller: _pages,
-                        itemCount: _options.length,
-                        onPageChanged: _onPageChanged,
-                        itemBuilder: (context, index) {
-                          final option = _options[index];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: _VehiclePhoto(
-                              option: option,
-                              imageUrl: _images[
-                                  VehicleImageRepository.settingKeyFor(
-                                          option.category) ??
-                                      ''],
+                    : Stack(
+                        children: [
+                          PageView.builder(
+                            controller: _pages,
+                            itemCount: _options.length,
+                            onPageChanged: _onPageChanged,
+                            itemBuilder: (context, index) {
+                              final option = _options[index];
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
+                                child: _VehiclePhoto(
+                                  option: option,
+                                  imageUrl: _images[
+                                      VehicleImageRepository.settingKeyFor(
+                                              option.category) ??
+                                          ''],
+                                ),
+                              );
+                            },
+                          ),
+
+                          // Seats, bottom left. Two words of description under
+                          // the photograph told the customer less than a number
+                          // and a figure on top of it.
+                          Positioned(
+                            left: 26,
+                            bottom: 12,
+                            child: _PhotoBadge(
+                              icon: Icons.people_alt_rounded,
+                              label: '${selected.seats}',
                             ),
-                          );
-                        },
+                          ),
+
+                          // Drivers nearby, bottom right, tappable.
+                          //
+                          // Always visible, so the answer to "is anyone around"
+                          // does not need a tab. Tapping swaps the photograph
+                          // for the map rather than opening another screen.
+                          Positioned(
+                            right: 26,
+                            bottom: 12,
+                            child: _PhotoBadge(
+                              icon: Icons.my_location_rounded,
+                              label: '${_nearby.length} nearby',
+                              highlight: _nearby.isNotEmpty,
+                              onTap: () => setState(() => _showMap = true),
+                            ),
+                          ),
+                        ],
                       ),
               ),
 
-              const SizedBox(height: 14),
-              if (!_showMap) _PageDots(count: _options.length, index: _index),
-
-              const SizedBox(height: 14),
-              // Name small and under the photograph, not over it. The picture
-              // already says which vehicle this is; the words are there to
-              // confirm it, not to announce it.
-              Text(
-                selected.label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -.2,
-                  color: AppText.primary,
-                ),
-              ),
-              const SizedBox(height: 5),
-              const SizedBox(height: 8),
-              // The admin's own figures, stated plainly.
-              //
-              // A price with no visible basis reads as a number the app made
-              // up. The rate and the distance together let the customer check
-              // the arithmetic — and let anyone spot a rate entered wrong
-              // without having to book a ride to find out.
-              _RateBasis(
-                option: selected,
-                distanceKm: widget.route?.distanceKm,
-                fixed: _fixedSeatFare != null,
-              ),
-              const SizedBox(height: 10),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  '${selected.seats} · ${selected.description}',
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    height: 1.4,
-                    color: AppText.secondary,
+              const SizedBox(height: 12),
+              if (!_showMap)
+                _PageDots(count: _options.length, index: _index)
+              else
+                // The way back from the map. A view you can enter and not leave
+                // is a trap, and the badge that opened it is now covered by it.
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => _showMap = false),
+                    icon: const Icon(Icons.photo_outlined, size: 16),
+                    label: const Text('Show the vehicle'),
                   ),
                 ),
-              ),
 
               // Only a vehicle with seats to spare can be sold by the seat. For
               // everything else the row is absent rather than disabled: a
@@ -800,65 +813,50 @@ class _RouteHeader extends StatelessWidget {
             color: AppText.primary,
             tooltip: 'Back',
           ),
-          const SizedBox(width: 2),
-          Padding(
-            padding: const EdgeInsets.only(top: 16),
-            child: Column(
-              children: [
-                Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    color: AppColors.secondary,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                Container(
-                  width: 1.5,
-                  height: 26,
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  color: AppColors.border,
-                ),
-                Container(width: 8, height: 8, color: AppText.primary),
-              ],
-            ),
-          ),
-          const SizedBox(width: 13),
+          const SizedBox(width: 4),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 10),
-                const Text(
-                  'From',
-                  style: TextStyle(fontSize: 11, color: AppText.disabled),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  pickup,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppText.primary,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'To',
-                  style: TextStyle(fontSize: 11, color: AppText.disabled),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  destination,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppText.primary,
-                  ),
+                const SizedBox(height: 12),
+                // Both ends on one line.
+                //
+                // Two stacked From/To blocks spent about ninety pixels of a
+                // phone screen saying what an arrow says. The destination is
+                // the part that matters and keeps its weight; the pickup is
+                // where the customer is standing, and they know that already.
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        pickup,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          color: AppText.secondary,
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 7),
+                      child: Icon(Icons.arrow_forward_rounded,
+                          size: 14, color: AppText.disabled),
+                    ),
+                    Flexible(
+                      flex: 2,
+                      child: Text(
+                        destination,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: AppText.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 if (route != null) ...[
                   const SizedBox(height: 9),
@@ -905,12 +903,17 @@ class _RouteHeader extends StatelessWidget {
 class _VehiclePill extends StatelessWidget {
   const _VehiclePill({
     required this.option,
+    required this.fare,
     required this.selected,
     required this.onTap,
     super.key,
   });
 
   final VehicleOption option;
+
+  /// What this vehicle would cost for this trip.
+  final int fare;
+
   final bool selected;
   final VoidCallback onTap;
 
@@ -919,25 +922,42 @@ class _VehiclePill extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: option.label,
+      label: '${option.label}, PKR $fare',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 170),
-          padding: const EdgeInsets.symmetric(horizontal: 15),
-          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           decoration: BoxDecoration(
             color: selected ? AppColors.secondary : AppColors.surfaceAlt,
-            borderRadius: BorderRadius.circular(99),
+            borderRadius: BorderRadius.circular(14),
           ),
-          child: Text(
-            option.label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? AppText.onBrand : AppText.secondary,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                option.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? AppText.onBrand : AppText.secondary,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                NumberFormat('#,###').format(fare),
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -.2,
+                  color: selected ? AppText.onBrand : AppText.primary,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -950,149 +970,62 @@ class _VehiclePill extends StatelessWidget {
 /// This is the only picture on the screen and there is room for it, so it gets
 /// real size — a small image floating in empty space reads as a placeholder
 /// nobody finished.
-/// Switches the hero between the vehicle photograph and the map.
+/// The hero toggle, its `_Half` button and `_RateBasis` used to sit here.
 ///
-/// Named rather than an icon pair, because "Drivers nearby" is a promise about
-/// what the customer will find there, and a map pin icon is not.
-class _HeroToggle extends StatelessWidget {
-  const _HeroToggle({
-    required this.showMap,
-    required this.nearbyCount,
-    required this.onChanged,
-  });
+/// All three are gone. The toggle was a second row of controls under the
+/// pills whose only job was to reveal a driver count — that count is now a
+/// badge on the photograph itself, which costs no height at all. `_RateBasis`
+/// printed the per-kilometre rate, which is not something the customer was
+/// asked to check.
 
-  final bool showMap;
-  final int nearbyCount;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Row(
-        children: [
-          _Half(
-            label: 'Vehicle',
-            selected: !showMap,
-            onTap: () => onChanged(false),
-          ),
-          _Half(
-            // The count is the reason to look, so it goes in the label. An
-            // empty map with no warning is a worse surprise than a zero.
-            label: nearbyCount > 0
-                ? 'Drivers nearby · $nearbyCount'
-                : 'Drivers nearby',
-            selected: showMap,
-            onTap: () => onChanged(true),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Half extends StatelessWidget {
-  const _Half({
+/// A small label over the vehicle photograph.
+///
+/// On the picture rather than under it. The space beneath was a line of grey
+/// text nobody read, and putting seats and the driver count where the eye
+/// already is costs no extra height.
+class _PhotoBadge extends StatelessWidget {
+  const _PhotoBadge({
+    required this.icon,
     required this.label,
-    required this.selected,
-    required this.onTap,
+    this.highlight = false,
+    this.onTap,
   });
 
+  final IconData icon;
   final String label;
-  final bool selected;
-  final VoidCallback onTap;
+
+  /// Draws attention when the number is worth acting on — drivers are nearby.
+  final bool highlight;
+
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+    final ink = highlight ? AppColors.secondary : AppText.secondary;
+
+    return Material(
+      color: AppColors.surface.withValues(alpha: .92),
+      borderRadius: BorderRadius.circular(99),
+      child: InkWell(
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 170),
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          decoration: BoxDecoration(
-            color: selected ? AppColors.surface : Colors.transparent,
-            borderRadius: BorderRadius.circular(99),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w800,
-              color: selected ? AppText.primary : AppText.secondary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// What the fare is built from, in the admin's own numbers.
-///
-/// Shown because a quoted price with nothing behind it is something a customer
-/// can only accept or reject, not check. With the rate and the distance in
-/// front of them they can do the multiplication themselves — and so can
-/// whoever set the rate, which is how a mistyped figure gets caught.
-class _RateBasis extends StatelessWidget {
-  const _RateBasis({
-    required this.option,
-    required this.distanceKm,
-    required this.fixed,
-  });
-
-  final VehicleOption option;
-  final double? distanceKm;
-
-  /// A listed route fare has no per-kilometre basis to show.
-  final bool fixed;
-
-  @override
-  Widget build(BuildContext context) {
-    if (fixed) return const SizedBox.shrink();
-
-    final parts = <String>[
-      'PKR ${option.perKmRate.round()} / km',
-      if (distanceKm != null && distanceKm! > 0)
-        '× ${distanceKm!.toStringAsFixed(distanceKm! < 10 ? 1 : 0)} km',
-      'min PKR ${option.wholeVehicleMinimum}',
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: AppRadii.all(AppRadii.row),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.receipt_long_outlined,
-                size: 14, color: AppText.disabled),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                parts.join('   ·   '),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 11.5,
+        borderRadius: BorderRadius.circular(99),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: ink),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: AppText.secondary,
+                  color: ink,
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

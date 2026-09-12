@@ -2023,6 +2023,46 @@ against a language rule instead of asking the language.
 builds would have been stopped by the job that already sits first in
 `.github/workflows/build-android-apk.yml`.
 
+## 70. Vehicle choice screen, rebuilt as "prices on the pills"
+
+Same bones as before — photograph, category pills, nearby drivers — with the
+four things that were wrong taken out.
+
+**Every vehicle's fare sits on its own pill.** The comparison is the decision,
+and it used to be four swipes deep: to find out what a Coster cost you paged
+through the photographs one at a time. Four numbers side by side answer it at a
+glance. The pills are equal width now, so all four fit without scrolling.
+
+The pill fare is always the **whole-vehicle** price, even when the selected
+vehicle is set to per-seat. Comparing a Coster priced for two seats against a
+whole Car is not a comparison — it is two different questions with one number
+each.
+
+**The per-kilometre line is gone.** It was also the line being cut in half by
+the bottom bar in the screenshot.
+
+**Seats and the driver count moved onto the photograph.** The line of grey text
+under it — `4 seats · Saloon car…` — was the kind nobody reads, and the driver
+count was hidden behind a second row of controls. Both are now badges on the
+picture, costing no height at all. The nearby badge is tappable: it swaps the
+photograph for the map, with a plain way back, because a view you can enter and
+not leave is a trap.
+
+**The route is one line.** Two stacked From/To blocks spent about ninety pixels
+saying what an arrow says. The destination keeps its weight; the pickup is where
+the customer is standing and they know that already.
+
+`_HeroToggle`, `_Half` and `_RateBasis` are deleted — all three existed to
+support what was removed.
+
+### Still needed from you
+
+The photographs. The one in the screenshot is Toyota's five-car marketing shot
+— not your vehicle, not the one arriving. Upload one clear picture per category
+in the admin portal, single vehicle, plain background, side on, and all four at
+the same aspect ratio. No layout looks good around a lineup photo letterboxed
+into a card.
+
 ---
 
 ## Not done
