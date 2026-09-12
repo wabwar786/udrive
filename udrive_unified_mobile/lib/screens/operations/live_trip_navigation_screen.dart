@@ -444,8 +444,37 @@ class _DriverLiveNavigationScreenState
       if (target != null) points.add(target);
     }
     if (points.isEmpty) return;
+
+    final current = _currentPoint;
+    final target = _targetPoint;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+
+      // The Driver's own position, centred, zoomed by how far is left.
+      //
+      // Fitting the whole leg put the car at the edge of the screen with the
+      // road ahead of it off-frame — the opposite of what a map is for while
+      // driving. Their position stays in the middle and the zoom carries the
+      // distance, so the junction they are about to reach is always visible.
+      if (current != null) {
+        final metres = target == null
+            ? 0.0
+            : const Distance().as(LengthUnit.Meter, current, target);
+
+        _mapController.move(
+          current,
+          switch (metres) {
+            < 400 => 17.0,
+            < 1200 => 16.0,
+            < 3000 => 15.0,
+            < 8000 => 13.5,
+            _ => 12.0,
+          },
+        );
+        return;
+      }
+
       if (points.length == 1) {
         _mapController.move(points.first, 14);
       } else {
@@ -589,7 +618,14 @@ class _DriverLiveNavigationScreenState
             mapController: _mapController,
             options: MapOptions(
               initialCenter: center,
-              initialZoom: 13,
+              // Close enough to recognise the street the car is on.
+              //
+              // 13 showed a district. On the first frame — before any tracking
+              // has arrived — the screen opened on a wide view of somewhere the
+              // customer could not place, and only tightened once a position
+              // came in. Opening close and widening if the car turns out to be
+              // far is the better way round.
+              initialZoom: 16,
               onPositionChanged: (_, hasGesture) {
                 if (hasGesture && !_cameraHeld) {
                   setState(() => _cameraHeld = true);
@@ -651,6 +687,36 @@ class _DriverLiveNavigationScreenState
               ),
             ],
           ),
+          // Back to following.
+          //
+          // Panning stops the camera, which is right — a map that snaps back
+          // cannot be used to look ahead. But without a way to resume, one
+          // accidental swipe ends live tracking for the rest of the trip, and
+          // nothing on screen says why the car has stopped moving.
+          if (_cameraHeld)
+            Positioned(
+              right: 14,
+              bottom: 104,
+              child: Material(
+                color: AppColors.background,
+                shape: const CircleBorder(),
+                elevation: 3,
+                child: InkWell(
+                  onTap: () {
+                    setState(() => _cameraHeld = false);
+                    _fitMap();
+                  },
+                  customBorder: const CircleBorder(),
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(Icons.my_location_rounded,
+                        size: 20, color: AppColors.secondary),
+                  ),
+                ),
+              ),
+            ),
+
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(14),
@@ -1169,22 +1235,7 @@ class _CustomerFullScreenTrackingScreenState
       if (_cameraHeld) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _cameraHeld) return;
-        // Frame the whole approach rather than centring on the car. "Where is
-        // it and how far off" is the question; a close-up of the car answers
-        // neither half.
-        final points = _leg.points.isNotEmpty
-            ? _leg.points
-            : <LatLng>[driver, if (target != null) target];
-        if (points.length < 2) {
-          _mapController.move(points.first, 14);
-        } else {
-          _mapController.fitCamera(
-            CameraFit.coordinates(
-              coordinates: points,
-              padding: const EdgeInsets.fromLTRB(48, 90, 48, 240),
-            ),
-          );
-        }
+        _followDriver(driver, target);
       });
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
@@ -1330,6 +1381,36 @@ class _CustomerFullScreenTrackingScreenState
   }
 
   bool _sharing = false;
+
+  /// Keeps the camera on the car, at a zoom that suits how far away it is.
+  ///
+  /// It used to frame both ends of the approach. That reads well on paper —
+  /// "where is it and how far off" — and badly in practice: with the driver
+  /// five kilometres out, both ends fit only at a zoom where the car is a dot
+  /// among streets nobody recognises, which is what "it is showing some other
+  /// location" means.
+  ///
+  /// The car is the thing being watched, so the car stays centred. The zoom
+  /// carries the distance instead: close in, you see the street it is turning
+  /// into; far out, you see enough road to judge the wait.
+  ///
+  /// Stops the moment the customer pans. A map that snaps back while someone is
+  /// looking at something is worse than one that never moves.
+  void _followDriver(LatLng driver, LatLng? target) {
+    final metres = target == null
+        ? 0.0
+        : const Distance().as(LengthUnit.Meter, driver, target);
+
+    final zoom = switch (metres) {
+      < 400 => 17.0,
+      < 1200 => 16.0,
+      < 3000 => 15.0,
+      < 8000 => 13.5,
+      _ => 12.0,
+    };
+
+    _mapController.move(driver, zoom);
+  }
 
   /// Sends a link that lets someone follow this ride without an account.
   ///
@@ -1577,7 +1658,9 @@ class _CustomerFullScreenTrackingScreenState
             mapController: _mapController,
             options: MapOptions(
               initialCenter: center,
-              initialZoom: 13,
+              // Close, for the same reason as the driver's map: the first
+              // frame should show a street, not a district.
+              initialZoom: 16,
               onPositionChanged: (_, hasGesture) {
                 if (hasGesture && !_cameraHeld) {
                   setState(() => _cameraHeld = true);
@@ -1710,6 +1793,38 @@ class _CustomerFullScreenTrackingScreenState
               ),
             ),
           ),
+          // Back to following the car, for the same reason as on the driver's
+          // map: one accidental swipe should not end live tracking.
+          if (_cameraHeld)
+            Positioned(
+              right: 14,
+              bottom: 104,
+              child: Material(
+                color: AppColors.background,
+                shape: const CircleBorder(),
+                elevation: 3,
+                child: InkWell(
+                  onTap: () {
+                    setState(() => _cameraHeld = false);
+                    final at = t?.driverLocation;
+                    if (at != null) {
+                      _followDriver(
+                        LatLng(at.latitude, at.longitude),
+                        target,
+                      );
+                    }
+                  },
+                  customBorder: const CircleBorder(),
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(Icons.my_location_rounded,
+                        size: 20, color: AppColors.secondary),
+                  ),
+                ),
+              ),
+            ),
+
           Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(

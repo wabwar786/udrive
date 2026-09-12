@@ -2580,6 +2580,38 @@ be reachable by a typo.
 The tracking screen starts at the default and re-times itself once the server
 answers, rather than showing nothing while it asks how often to show things.
 
+## 87. The map follows the car now
+
+Both live maps framed **both ends** of the journey — the car and where it was
+going — and fitted the camera to hold them.
+
+That reads well as an argument: "where is it and how far off" is the question.
+It is wrong in practice. With the driver five kilometres out, both ends fit only
+at a zoom where the car is a dot among streets nobody recognises. That is what
+"it is showing some other location" means: the car was on screen, at a scale
+where it could not be found.
+
+**The car stays centred and the zoom carries the distance.** Under 400 m you see
+the street it is turning into; at 8 km you see enough road to judge the wait.
+Same on the driver's map, where fitting the leg put their own position at the
+edge of the screen with the road ahead off-frame — the opposite of what a map is
+for while driving.
+
+Both maps also open at zoom 16 rather than 13. The first frame, before any
+tracking has arrived, used to show a district; opening close and widening if the
+car turns out to be far is the better way round.
+
+### A way back to following
+
+Panning stops the camera, which is right — a map that snaps back cannot be used
+to look ahead. But there was no way to resume, so **one accidental swipe ended
+live tracking for the rest of the trip**, with nothing on screen to say why the
+car had stopped moving.
+
+A recentre button now appears on both maps, and only once the camera has been
+taken: a control that does nothing until it is needed does not need to be there
+before.
+
 ---
 
 ## Not done
