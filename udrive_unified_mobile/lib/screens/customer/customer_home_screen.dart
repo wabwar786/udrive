@@ -193,6 +193,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// Trip states that mean a ride is genuinely under way. Matches the set the
   /// previous Home screen used, so banner behaviour is unchanged.
   static const _activeTripStatuses = {
+    // Everything from a driver being assigned to the trip ending.
+    //
+    // `Confirmed` and `DriverAssigned` were missing, which is why a second
+    // booking could still be started while a car was already on its way — the
+    // banner appeared, but nothing treated that as "a ride is running".
+    'Confirmed',
+    'DriverAssigned',
     'DriverEnRoute',
     'DriverArrived',
     'TripStarted',
@@ -489,11 +496,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return;
       }
 
+      // The pickup point, so it is worth waiting for a good fix.
+      //
+      // `best` rather than `high`: this single reading decides where a driver
+      // is sent, and a hundred metres of error is the difference between the
+      // right gate and the wrong street. It is taken once, not continuously,
+      // so the battery cost is a rounding error.
+      //
+      // The last-known fallback is kept for the case where no fix arrives at
+      // all — a stale pickup the customer can correct beats a blank map — but
+      // it is only reached after the good one has failed.
       Position? position;
       try {
         position = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
+            accuracy: LocationAccuracy.best,
             timeLimit: Duration(seconds: 15),
           ),
         );
@@ -688,6 +705,30 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   Future<void> _pushVehicleSelection() async {
+    // One ride at a time, stopped here rather than at the end.
+    //
+    // The server refuses a second booking, but only after the customer has
+    // picked a destination, chosen a vehicle, named a fare and pressed Find
+    // offers. Being told "no" at the end of all that is worse than not being
+    // offered the path — they have to work out what they did wrong, and the
+    // answer is a ride they may have forgotten is running.
+    //
+    // So it opens the ride instead. That is what they would have to do next
+    // anyway, and it answers the question rather than blocking it.
+    final running = _activeTrip;
+    if (running != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'You already have a ride under way. Finish or cancel it before '
+            'booking another.',
+          ),
+        ),
+      );
+      await _openActiveTrip();
+      return;
+    }
+
     final destinationPoint = await _resolveDestination();
     if (!mounted) return;
 

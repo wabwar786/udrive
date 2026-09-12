@@ -129,7 +129,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
-      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      // `best`: this is the position published as the driver's own, and it is
+      // what decides which requests reach them and how far away a customer
+      // thinks they are.
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
       if (!mounted) return;
       setState(() =>
           _myLocation = LatLng(position.latitude, position.longitude));

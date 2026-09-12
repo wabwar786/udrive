@@ -34,6 +34,16 @@ const NAMES: Record<string, string> = {
 
 export default function Page() {
   const [rows, setRows] = useState<Service[]>([]);
+
+  /**
+   * How often a driver publishes their position.
+   *
+   * Here rather than in code because the right answer changes without a
+   * release: fast makes the map smooth and costs battery and data, slow makes
+   * the car jump a block at a time. Which trade is right depends on how many
+   * drivers are online and what a megabyte costs them.
+   */
+  const [ping, setPing] = useState(2);
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -44,6 +54,10 @@ export default function Page() {
     setError('');
     try {
       setRows(await apiFetch<Service[]>('/api/v1/admin/services'));
+      const tracking = await apiFetch<{ pingSeconds: number }>(
+        '/api/v1/settings/tracking',
+      );
+      setPing(tracking.pingSeconds);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load services.');
     } finally {
@@ -84,11 +98,58 @@ export default function Page() {
     }
   }
 
+  async function savePing(seconds: number) {
+    setPing(seconds);
+    setError('');
+    setSaved('');
+    try {
+      await apiFetch('/api/v1/admin/settings/tracking', {
+        method: 'PUT',
+        body: JSON.stringify({ pingSeconds: seconds }),
+      });
+      setSaved(`Drivers will now report every ${seconds} second${seconds === 1 ? '' : 's'}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save that.');
+    }
+  }
+
   return (
     <AdminFrame
       title="Services"
       subtitle="Turn a service off for customers without hiding it from drivers."
     >
+      <section className="panel">
+        <header className="panelHeader">
+          <div>
+            <h2>Driver location updates</h2>
+            <p>
+              How often a driver&apos;s phone reports its position while a trip
+              is live. The customer&apos;s map polls at the same rate.
+              Faster is smoother and costs the driver battery and data; slower
+              makes the car appear to jump between fixes.
+            </p>
+          </div>
+        </header>
+
+        <div className="pingRow">
+          {[1, 2, 3, 5, 10, 15, 30].map((seconds) => (
+            <button
+              key={seconds}
+              type="button"
+              className={seconds === ping ? 'pingOn' : 'pingOff'}
+              onClick={() => void savePing(seconds)}
+            >
+              {seconds}s
+            </button>
+          ))}
+        </div>
+        <p className="pingNote">
+          Currently every {ping} second{ping === 1 ? '' : 's'}. Drivers pick this
+          up when their next trip starts, so a change does not interrupt a trip
+          already under way.
+        </p>
+      </section>
+
       <section className="panel">
         <header className="panelHeader">
           <div>

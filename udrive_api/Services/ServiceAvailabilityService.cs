@@ -50,6 +50,69 @@ public sealed class ServiceAvailabilityService(string connectionString)
         return ServiceResult<IReadOnlyList<ServiceAvailabilityDto>>.Ok(list);
     }
 
+    /// <summary>How often a Driver publishes their position, in seconds.</summary>
+    /// <remarks>
+    /// An operational dial rather than a constant. Two seconds makes the map
+    /// smooth and costs battery and data; ten is cheap and makes the car jump a
+    /// block at a time. Which is right depends on things that change without a
+    /// release — how many drivers are online, what a megabyte costs them, how
+    /// much of the fleet is on an old handset — so it belongs where it can be
+    /// turned without one.
+    ///
+    /// Clamped to 1–60. Below one second the fixes arrive faster than the GPS
+    /// produces them and the extra calls are pure cost; above a minute the map
+    /// is no longer live in any useful sense, and a value that makes the
+    /// product stop working should not be reachable by a typo.
+    /// </remarks>
+    public async Task<int> TrackingIntervalSecondsAsync(
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT value_json #>> '{}' FROM udrive.system_settings
+            WHERE key = 'tracking.ping.seconds';
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        var value = await command.ExecuteScalarAsync(cancellationToken) as string;
+
+        return int.TryParse(value, out var seconds)
+            ? Math.Clamp(seconds, 1, 60)
+            : 2;
+    }
+
+    /// <summary>Sets how often Drivers publish their position.</summary>
+    public async Task<ServiceResult<bool>> SetTrackingIntervalAsync(
+        Guid adminUserId,
+        int seconds,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO udrive.system_settings
+                (key, value_json, description, is_public,
+                 updated_by_user_id, created_at, updated_at)
+            VALUES ('tracking.ping.seconds', to_jsonb(@value::text),
+                    'How often a driver publishes their position, in seconds.',
+                    true, @admin, now(), now())
+            ON CONFLICT (key) DO UPDATE
+            SET value_json = EXCLUDED.value_json,
+                is_public = true,
+                updated_by_user_id = EXCLUDED.updated_by_user_id,
+                updated_at = now();
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue(
+            "value", Math.Clamp(seconds, 1, 60).ToString());
+        command.Parameters.AddWithValue("admin", adminUserId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
     /// <summary>Updates one service.</summary>
     /// <remarks>
     /// Updates only, never inserts. The key set is fixed because each key maps

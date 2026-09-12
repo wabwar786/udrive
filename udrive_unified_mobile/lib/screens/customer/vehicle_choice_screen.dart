@@ -33,6 +33,7 @@ class VehicleChoiceScreen extends StatefulWidget {
     required this.pickupPoint,
     required this.destinationPoint,
     required this.route,
+    this.routes = const [],
     required this.service,
     required this.bookingType,
     required this.seats,
@@ -47,6 +48,13 @@ class VehicleChoiceScreen extends StatefulWidget {
   /// The route already computed on Home, so this screen does not pay for a
   /// second Directions call to draw the same line.
   final TripRoute? route;
+
+  /// Every route the directions service offered.
+  ///
+  /// Passed through for the same reason as [route]: Home already made the call
+  /// and asked for alternatives, so a second one would spend money to return
+  /// the same answer. Empty falls back to [route] alone.
+  final List<TripRoute> routes;
 
   final HomeService service;
   final BookingType bookingType;
@@ -94,7 +102,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   /// charged by distance, so distance is the order that matches what they are
   /// about to pay — and the shortest is selected by default.
   late final List<TripRoute> _routes = () {
-    final all = widget.routes.isNotEmpty
+    final List<TripRoute> all = widget.routes.isNotEmpty
         ? [...widget.routes]
         : [if (widget.route != null) widget.route!];
     all.sort((a, b) => a.distanceMetres.compareTo(b.distanceMetres));

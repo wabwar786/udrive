@@ -2473,6 +2473,113 @@ The lines are drawn in reverse order so the selected one paints last. Otherwise
 it disappears under an alternative wherever they overlap, which is most of the
 way for most pairs.
 
+## 82. Location, properly
+
+### Every two seconds, not every ten
+
+`TripLocationService` published the driver's position on a ten-second timer. At
+40 km/h a car covers over a hundred metres between fixes — so the customer
+watched it jump a block at a time, and the arrival estimate was stale before it
+finished drawing.
+
+Two seconds now, and the customer's tracking screen polls at two seconds to
+match. Polling slower than the driver reports throws away fixes already paid for
+in battery; polling faster returns the same point twice. They should be the same
+number, and they were not.
+
+It costs battery and data, and that is the right trade while somebody is
+standing at a kerb. It stops the moment the trip ends.
+
+### Accuracy raised on both sides
+
+`bestForNavigation` for the driver's live stream. `high` is roughly ten metres
+and lets the platform smooth and batch readings, which on a moving vehicle
+produces a position a second or two behind the car and a heading that lags
+corners — exactly the wobble that makes a live map look broken.
+
+`best` for both one-off fixes: the customer's pickup and the driver's own
+position. The pickup decides where a driver is *sent*, and a hundred metres of
+error is the difference between the right gate and the wrong street. These are
+taken once rather than continuously, so the battery cost is a rounding error.
+
+The driver's fix also has a shorter time limit. A fix arriving after the next
+one was due is worse than no fix — it publishes a stale position as current.
+
+## 83. The second booking, stopped earlier
+
+The server already refused it (rev 106). But only at the end: after the customer
+had picked a destination, chosen a vehicle, named a fare and pressed Find
+offers. Being told "no" after all that is worse than never being offered the
+path — they have to work out what they did wrong, and the answer is a ride they
+may have forgotten was running.
+
+Two changes:
+
+**`_activeTripStatuses` was missing `Confirmed` and `DriverAssigned`.** That is
+why a second booking could still be started while a car was on its way: the
+banner showed, but nothing else treated it as a ride in progress.
+
+**The flow stops at the start and opens the running ride instead.** That is what
+they would have to do next anyway, and it answers the question rather than
+blocking it.
+
+Tour and package bookings are deliberately **not** covered. A tour booked for
+next Tuesday is not a live ride, and two tours on different dates is a
+reasonable thing to want.
+
+## 84. A check that has not earned its place
+
+I said an inline `//` comment had commented out the rest of a dense line, and
+wrote a check for it. It had not: `return;// note` followed by a newline is
+valid, and the code after it was on the following line.
+
+The check is corrected — its first version flagged a perfectly good trailing
+comment — and kept, because it is cheap. But it has caught nothing real, and I
+should not have announced a bug I had not verified.
+
+## 85. The build break, and a check that would have caught it
+
+`VehicleChoiceScreen` used `widget.routes` and never declared it. The edit
+script that added the field asserted its way out partway through, so the code
+*using* the field landed and the declaration did not — the same shape of failure
+as §40, and the second time it has shipped.
+
+### A seventh check
+
+Within one file this is decidable. A `State` reaches its widget through
+`widget.<name>`, and a `widget.foo` with no `foo` declared anywhere in the file
+cannot resolve. `check_imports.py` now reports it.
+
+Verified by removing the `routes` field again and confirming the check fails.
+
+Its first version matched the class body with a regex needing a newline before
+the closing brace — and several of these files write a whole class on one line,
+so it matched nothing and reported two perfectly good widgets as broken. Looser
+is right here: the question is whether the name exists at all.
+
+## 86. The location interval is an admin dial
+
+Hard-coding two seconds was replacing one wrong constant with another. Fast
+makes the map smooth and costs the driver battery and data; slow makes the car
+jump a block at a time. **Which trade is right depends on how many drivers are
+online, what a megabyte costs them, and how much of the fleet is on an old
+handset** — none of which is a reason to cut a release.
+
+`system_settings.tracking.ping.seconds`, with buttons for 1, 2, 3, 5, 10, 15 and
+30 seconds on the admin Services page.
+
+Both apps read the same number, which is the point: the driver publishes at it
+and the customer polls at it. They were 10 and 5 before — the customer asking
+twice for every fix, and still seeing a car that jumped.
+
+Clamped 1–60 on the server. Below a second the fixes arrive faster than GPS
+produces them and the extra calls are pure cost; above a minute the map is not
+live in any useful sense. A value that makes the product stop working should not
+be reachable by a typo.
+
+The tracking screen starts at the default and re-times itself once the server
+answers, rather than showing nothing while it asks how often to show things.
+
 ---
 
 ## Not done

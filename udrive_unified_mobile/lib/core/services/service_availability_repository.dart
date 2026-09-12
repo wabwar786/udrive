@@ -73,6 +73,26 @@ class ServiceAvailabilityRepository {
     }
   }
 
+  /// How often the driver should publish, and the customer poll.
+  ///
+  /// One number from the server so the two never drift apart. Falls back to two
+  /// seconds if the call fails — the value the platform ships with, and a safe
+  /// one to be wrong about for a few minutes.
+  static const int defaultPingSeconds = 2;
+
+  Future<int> trackingPingSeconds() async {
+    try {
+      final response = await api.getJson('/api/v1/settings/tracking');
+      final data = response['data'];
+      if (data is! Map) return defaultPingSeconds;
+      final seconds = (data['pingSeconds'] as num?)?.toInt();
+      if (seconds == null) return defaultPingSeconds;
+      return seconds.clamp(1, 60);
+    } catch (_) {
+      return defaultPingSeconds;
+    }
+  }
+
   /// Fetches the current list, and caches it.
   ///
   /// Returns an empty map on failure, which the callers read as "everything is

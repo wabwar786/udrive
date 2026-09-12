@@ -18,6 +18,7 @@ import '../../core/maps/ud_vehicle_sprites.dart';
 import '../../core/network/api_config.dart';
 import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/routing/live_leg.dart';
+import '../../core/services/service_availability_repository.dart';
 import '../../core/services/trip_location_service.dart';
 import '../../core/widgets/collapsible_map_sheet.dart';
 import '../../core/state/app_controller.dart';
@@ -1072,7 +1073,16 @@ class _CustomerFullScreenTrackingScreenState
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _load());
+    // The server's interval, matching how often the driver publishes.
+    //
+    // Polling slower than the driver reports throws away fixes that were paid
+    // for in battery; polling faster returns the same point twice. They should
+    // be the same number, and now they read it from the same place.
+    _timer = Timer.periodic(
+      Duration(seconds: ServiceAvailabilityRepository.defaultPingSeconds),
+      (_) => _load(),
+    );
+    _applyServerPingInterval();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _pollMessages();
       _loadVehicleImages();
@@ -1249,6 +1259,25 @@ class _CustomerFullScreenTrackingScreenState
   ///
   /// Their history does not change during a trip, so polling it would be noise
   /// on a screen already running two timers.
+  /// Re-times the poll to whatever the admin has set.
+  ///
+  /// Started at the default and corrected a moment later, rather than waiting
+  /// on a network call before the map updates at all. A screen that shows
+  /// nothing for a second because it is asking how often to show things is a
+  /// poor trade.
+  Future<void> _applyServerPingInterval() async {
+    final controller = AppControllerScope.of(context);
+    final seconds = await ServiceAvailabilityRepository(controller.apiClient)
+        .trackingPingSeconds();
+    if (!mounted ||
+        seconds == ServiceAvailabilityRepository.defaultPingSeconds) {
+      return;
+    }
+
+    _timer?.cancel();
+    _timer = Timer.periodic(Duration(seconds: seconds), (_) => _load());
+  }
+
   Future<void> _loadReputation() async {
     final controller = AppControllerScope.of(context);
     final token = await controller.accessTokenForMedia();

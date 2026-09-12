@@ -292,3 +292,99 @@ print('UNDECLARED PRIVATE MEMBERS:', undeclared)
 # `tool/check_const_colours.py`, which must be run as well:
 #
 #     python3 tool/check_const_colours.py
+
+
+# ------------------------------------------- line comments inside dense lines
+#
+# A sixth check, after a `//` comment was inserted into the middle of a
+# single-line function body in `trip_location_service.dart` — which comments out
+# the rest of the line, and that file writes whole methods on one line.
+#
+# The rule: a `//` may only appear on a line that has no code after the closing
+# of a statement, i.e. the comment must be the last thing on its line AND the
+# line must not continue an unterminated statement. Approximated here as: a
+# `//` with a `;` or `{` after it on the same line is almost certainly code that
+# has just been commented out by accident.
+
+comment_swallow = 0
+for path, source in sorted(files.items()):
+    for number, line in enumerate(source.split('\n'), 1):
+        stripped = line.strip()
+        if stripped.startswith('//') or stripped.startswith('///'):
+            continue
+        marker = line.find('//')
+        if marker == -1:
+            continue
+        # Inside a string literal? Count quotes before it.
+        before = line[:marker]
+        if before.count("'") % 2 or before.count('"') % 2:
+            continue
+        # The test is what comes *before* the comment, not after.
+        #
+        # A trailing note on a finished statement is normal and everywhere:
+        # `final x = {}; // name -> value`. What is not normal is a comment
+        # opening while the statement is still unfinished — that means whatever
+        # followed it on the line has been commented out.
+        #
+        # The first version matched a `{` in the comment's own text and flagged
+        # a perfectly good line. A check that cries wolf gets switched off.
+        code = before.rstrip()
+        if not code:
+            continue
+        if code[-1] in ';{}),':
+            continue
+        print(f'{path}:{number}: a `//` comment opens mid-statement, so the '
+              f'rest of the line is commented out: {stripped[:70]}')
+        comment_swallow += 1
+print('SWALLOWED CODE:', comment_swallow)
+
+
+# ------------------------------------------------- widget.<field> must exist
+#
+# A seventh check, and the second time this exact failure has shipped: a script
+# that edits a file asserts its way out partway through, so the code that *uses*
+# a new widget field lands while the field declaration does not. The compiler
+# then says "No named parameter with the name 'routes'" twenty seconds into CI.
+#
+# Within one file this is decidable. A `State` reaches its widget's fields
+# through `widget.<name>`, and the widget class is almost always declared in the
+# same file — so a `widget.foo` with no `foo` on any StatefulWidget in that file
+# cannot resolve.
+#
+# Files whose State refers to a widget class declared elsewhere are skipped
+# rather than guessed at.
+
+WIDGET_FIELD = re.compile(r'\bwidget\.([a-z]\w*)')
+
+missing_widget_fields = 0
+for path, source in sorted(files.items()):
+    if path in orphans:
+        continue
+    body = strip(source)
+    if 'extends StatefulWidget' not in body:
+        continue
+
+    # Names declared anywhere in the file, rather than inside a parsed class
+    # body.
+    #
+    # The first version matched the class block with a regex that needed a
+    # newline before its closing brace — and several of these files write a
+    # whole class on one line, so it matched nothing and reported two perfectly
+    # good widgets as broken. Looser is right here: the question is whether the
+    # name exists at all, and a name declared on the wrong class in the same
+    # file is a different mistake that the compiler will catch anyway.
+    declared = set(re.findall(r'\bthis\.(\w+)', body))
+    declared |= set(re.findall(r'\bfinal\s+[^;=()]*?\b(\w+)\s*[;=]', body))
+    declared |= set(re.findall(r'\bget\s+(\w+)', body))
+
+    # Inherited members every State can reach.
+    declared |= {'key'}
+
+    used = set(WIDGET_FIELD.findall(body))
+    for name in sorted(used - declared):
+        line = body.find(f'widget.{name}')
+        line = body[:line].count('\n') + 1 if line >= 0 else 0
+        print(f"{path}:{line}: 'widget.{name}' is used but no StatefulWidget "
+              'in this file declares it')
+        missing_widget_fields += 1
+print('MISSING WIDGET FIELDS:', missing_widget_fields)

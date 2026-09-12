@@ -287,3 +287,6 @@ public sealed record UpdateServiceAvailabilityRequest(
     bool IsOpen,
     [StringLength(24)] string? BadgeLabel,
     [StringLength(200)] string? ClosedMessage);
+
+/// <summary>How often drivers publish their position, in seconds.</summary>
+public sealed record SetTrackingIntervalRequest([Range(1, 60)] int PingSeconds);

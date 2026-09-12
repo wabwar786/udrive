@@ -25,6 +25,20 @@ public sealed class PublicServiceAvailabilityController(
         var result = await service.ListAsync(ct);
         return Ok(ApiResponse<IReadOnlyList<ServiceAvailabilityDto>>.Ok(result.Data!));
     }
+
+    /// <summary>How often Drivers should publish their position.</summary>
+    /// <remarks>
+    /// Read by both apps at launch — the Driver app to know how often to
+    /// publish, the Customer app to know how often to poll. They must agree:
+    /// polling slower than the Driver reports throws away fixes already paid
+    /// for in battery, and polling faster returns the same point twice.
+    /// </remarks>
+    [HttpGet("/api/v1/settings/tracking")]
+    public async Task<IActionResult> Tracking(CancellationToken ct) =>
+        Ok(ApiResponse<object>.Ok(new
+        {
+            pingSeconds = await service.TrackingIntervalSecondsAsync(ct),
+        }));
 }
 
 /// <summary>Opening and closing services.</summary>
@@ -39,6 +53,17 @@ public sealed class AdminServiceAvailabilityController(
     {
         var result = await service.ListAsync(ct);
         return Ok(ApiResponse<IReadOnlyList<ServiceAvailabilityDto>>.Ok(result.Data!));
+    }
+
+    /// <summary>Sets how often Drivers publish their position.</summary>
+    [HttpPut("/api/v1/admin/settings/tracking")]
+    public async Task<IActionResult> SetTracking(
+        SetTrackingIntervalRequest request,
+        CancellationToken ct)
+    {
+        await service.SetTrackingIntervalAsync(
+            User.GetRequiredUserId(), request.PingSeconds, ct);
+        return Ok(ApiResponse<bool>.Ok(true));
     }
 
     [HttpPut("{serviceKey}")]

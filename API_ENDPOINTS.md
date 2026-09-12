@@ -269,3 +269,18 @@ a request searching (`request_already_open`) or a booking under way
 Without it a customer could put three requests out, take offers on all three,
 and leave two drivers holding a booking for someone already in another car — and
 those drivers had turned down other work for it.
+
+## Driver location interval — rev 109
+
+- `GET /api/v1/settings/tracking` — anonymous, `{ pingSeconds }`
+- `PUT /api/v1/admin/settings/tracking` `{ pingSeconds }` (SuperAdmin, Admin)
+
+Read by both apps: the Driver app to know how often to publish, the Customer app
+to know how often to poll. They must agree — polling slower than the driver
+reports throws away fixes already paid for in battery, and polling faster
+returns the same point twice.
+
+Stored in `system_settings` under `tracking.ping.seconds`, clamped 1–60. Below a
+second the fixes arrive faster than GPS produces them; above a minute the map is
+not live in any useful sense, and a value that breaks the product should not be
+reachable by a typo.
