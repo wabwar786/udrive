@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/maps/ud_map.dart';
 import '../../core/routing/route_repository.dart';
+import '../../core/services/service_availability_repository.dart';
 import '../../core/vehicles/nearby_repository.dart';
 import '../../core/vehicles/nearby_vehicle.dart';
 import '../../core/vehicles/tour_rates_repository.dart';
@@ -126,6 +127,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   // ------------------------------------------------------------------- state
   HomeService _service = HomeService.car;
+
+  /// Which services the admin has open, keyed as the portal keys them.
+  ///
+  /// Empty means everything is open — see [ServiceAvailabilityRepository]. A
+  /// failed call must not close the app.
+  Map<String, ServiceAvailability> _availability = const {};
   BookingType _bookingType = BookingType.wholeVehicle;
 
   /// Seats requested in per-seat mode.
@@ -201,7 +208,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _connectivity =
         Connectivity().onConnectivityChanged.listen(_applyConnectivity);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLocation());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadLocation();
+      _loadAvailability(AppControllerScope.of(context));
+    });
     RecentPlacesStore.load().then((places) {
       if (mounted) setState(() => _recent = places);
     });
@@ -900,17 +910,45 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
     return Container(
       color: AppColors.background,
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-              child: SizedBox(
-                height: 40,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
+      child: Column(
+        children: [
+          AnimatedContainer(
+            duration: AppConfig.panelSwitch,
+            curve: Curves.easeOutCubic,
+            // The header is inside the map now, not above it.
+            //
+            // A white bar across the top was about fifty pixels spent on a logo
+            // and two buttons — the same fifty pixels the map wanted. The
+            // controls float on the map instead, which is where every other map
+            // app puts them, and the map reaches the top of the screen.
+            height: mapHeight + MediaQuery.paddingOf(context).top + 52,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _buildMap(),
+
+                if (_pinActive)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Center(
+                        child: _CentrePin(
+                          lifted: _draggingMap,
+                          label: _pickup.text.trim(),
+                          resolving: _resolvingPin,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                    child: SizedBox(
+                      height: 40,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
                     UDriveMark(
                       size: 38,
                       // Already home, so this clears anything stacked on top
@@ -934,32 +972,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       showDot: _unreadNotifications,
                       onTap: _openNotifications,
                     ),
-                  ],
-                ),
-              ),
-            ),
-
-            AnimatedContainer(
-              duration: AppConfig.panelSwitch,
-              curve: Curves.easeOutCubic,
-              height: mapHeight,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _buildMap(),
-
-                  if (_pinActive)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: Center(
-                          child: _CentrePin(
-                            lifted: _draggingMap,
-                            label: _pickup.text.trim(),
-                            resolving: _resolvingPin,
-                          ),
-                        ),
+                        ],
                       ),
                     ),
+                  ),
+                ),
 
                   // No fade over the map.
                   //
@@ -991,13 +1008,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         offline: _offline,
                       ),
                     ),
-                ],
-              ),
+              ],
             ),
+          ),
 
-            Expanded(child: _buildSheet()),
-          ],
-        ),
+          Expanded(child: _buildSheet()),
+        ],
       ),
     );
   }
@@ -1142,7 +1158,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         children: [
                           _ServiceCards(
                             selected: _service,
+                            cityRides: _availabilityOf('cityRides'),
+                            tour: _availabilityOf('tour'),
+                            cityToCity: _availabilityOf('cityToCity'),
                             onSelect: _selectService,
+                            onClosed: _serviceClosed,
                             nearbyCount: _visibleVehicles.length,
                           ),
                           const SizedBox(height: 11),
@@ -1155,9 +1175,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           // destination you already know you want.
                           _QuickRow(
                             selected: _service,
+                            hotels: _availabilityOf('hotels'),
+                            carRental: _availabilityOf('carRental'),
+                            coster: _availabilityOf('coster'),
+                            explore: _availabilityOf('explore'),
                             onSelect: _selectService,
                             onExplore: _openExplore,
-                            onCarRental: _carRentalNotReady,
+                            onClosed: _serviceClosed,
                           ),
                         ],
                       ),
@@ -1328,6 +1352,41 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   ///
   /// It does nothing else on purpose. A form that collects interest and posts
   /// it nowhere would be worse than this.
+  /// Loads the service switches: cache first, then the server.
+  Future<void> _loadAvailability(AppController controller) async {
+    final cached = await ServiceAvailabilityRepository.readCache();
+    if (cached.isNotEmpty && mounted) {
+      setState(() => _availability = cached);
+    }
+
+    final fresh =
+        await ServiceAvailabilityRepository(controller.apiClient).refresh();
+    if (fresh.isNotEmpty && mounted) {
+      setState(() => _availability = fresh);
+    }
+  }
+
+  /// The switch for one service, or an open default.
+  ///
+  /// Defaulting to open matters: a key the server has not heard of, or a call
+  /// that failed, leaves the service working. Closing on absence would mean one
+  /// bad response takes the whole home screen down.
+  ServiceAvailability _availabilityOf(String key) =>
+      _availability[key] ??
+      ServiceAvailability(
+        key: key,
+        isOpen: true,
+        badgeLabel: 'SOON',
+        closedMessage: 'This service is not open yet.',
+      );
+
+  /// Tapping a closed tile says why, in the admin's own words.
+  void _serviceClosed(ServiceAvailability service) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(service.closedMessage)),
+    );
+  }
+
   void _carRentalNotReady() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -2051,9 +2110,14 @@ class _MapIconButton extends StatelessWidget {
               height: 40,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.surfaceHigh.withValues(alpha: .94),
-                borderRadius: BorderRadius.circular(11),
-                boxShadow: AppShadows.floating,
+                // Solid white with a hairline, no shadow.
+                //
+                // These sit on the map now. A shadow on a light map is a ring
+                // of grey around the icon rather than depth, and translucency
+                // let street names show through the button.
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
               ),
               child: child ??
                   Icon(icon, size: 20, color: AppColors.secondary),
@@ -2564,12 +2628,20 @@ class _CentrePin extends StatelessWidget {
 class _ServiceCards extends StatelessWidget {
   const _ServiceCards({
     required this.selected,
+    required this.cityRides,
+    required this.tour,
+    required this.cityToCity,
     required this.onSelect,
+    required this.onClosed,
     required this.nearbyCount,
   });
 
   final HomeService selected;
+  final ServiceAvailability cityRides;
+  final ServiceAvailability tour;
+  final ServiceAvailability cityToCity;
   final ValueChanged<HomeService> onSelect;
+  final ValueChanged<ServiceAvailability> onClosed;
   final int nearbyCount;
 
   bool get _rideSelected =>
@@ -2601,6 +2673,8 @@ class _ServiceCards extends StatelessWidget {
               subInk: AppProduct.rideSub,
               selected: _rideSelected,
               large: true,
+              service: cityRides,
+              onClosed: onClosed,
               onTap: () => onSelect(HomeService.car),
             ),
           ),
@@ -2621,6 +2695,8 @@ class _ServiceCards extends StatelessWidget {
                     subInk: AppProduct.tourSub,
                     selected: selected == HomeService.tour,
                     large: false,
+                    service: tour,
+                    onClosed: onClosed,
                     onTap: () => onSelect(HomeService.tour),
                   ),
                 ),
@@ -2639,6 +2715,8 @@ class _ServiceCards extends StatelessWidget {
                     subInk: AppProduct.hotelSub,
                     selected: false,
                     large: false,
+                    service: cityToCity,
+                    onClosed: onClosed,
                     onTap: () => onSelect(HomeService.car),
                   ),
                 ),
@@ -2655,15 +2733,23 @@ class _ServiceCards extends StatelessWidget {
 class _QuickRow extends StatelessWidget {
   const _QuickRow({
     required this.selected,
+    required this.hotels,
+    required this.carRental,
+    required this.coster,
+    required this.explore,
     required this.onSelect,
     required this.onExplore,
-    required this.onCarRental,
+    required this.onClosed,
   });
 
   final HomeService selected;
+  final ServiceAvailability hotels;
+  final ServiceAvailability carRental;
+  final ServiceAvailability coster;
+  final ServiceAvailability explore;
   final ValueChanged<HomeService> onSelect;
   final VoidCallback onExplore;
-  final VoidCallback onCarRental;
+  final ValueChanged<ServiceAvailability> onClosed;
 
   @override
   Widget build(BuildContext context) {
@@ -2673,8 +2759,10 @@ class _QuickRow extends StatelessWidget {
           child: _QuickTile(
             icon: Icons.apartment_rounded,
             label: 'Hotels',
+            service: hotels,
             selected: selected == HomeService.hotel,
             onTap: () => onSelect(HomeService.hotel),
+            onClosed: onClosed,
           ),
         ),
         const SizedBox(width: 7),
@@ -2682,11 +2770,13 @@ class _QuickRow extends StatelessWidget {
           child: _QuickTile(
             icon: Icons.vpn_key_rounded,
             label: 'Car rental',
-            // Badged rather than hidden: the customer learns the answer is
-            // "not yet" instead of assuming it is "never".
-            badge: 'SOON',
+            service: carRental,
             selected: false,
-            onTap: onCarRental,
+            // Never opens: there is no screen behind it yet, so the closed
+            // path is the only one. When one exists, the admin switch is all
+            // that has to change.
+            onTap: () {},
+            onClosed: onClosed,
           ),
         ),
         const SizedBox(width: 7),
@@ -2694,8 +2784,10 @@ class _QuickRow extends StatelessWidget {
           child: _QuickTile(
             icon: Icons.airport_shuttle_rounded,
             label: 'Coster',
+            service: coster,
             selected: selected == HomeService.bus,
             onTap: () => onSelect(HomeService.bus),
+            onClosed: onClosed,
           ),
         ),
         const SizedBox(width: 7),
@@ -2703,8 +2795,10 @@ class _QuickRow extends StatelessWidget {
           child: _QuickTile(
             icon: Icons.explore_rounded,
             label: 'Explore',
+            service: explore,
             selected: false,
             onTap: onExplore,
+            onClosed: onClosed,
           ),
         ),
       ],
@@ -2716,27 +2810,38 @@ class _QuickTile extends StatelessWidget {
   const _QuickTile({
     required this.icon,
     required this.label,
+    required this.service,
     required this.selected,
     required this.onTap,
-    this.badge,
+    required this.onClosed,
   });
 
   final IconData icon;
   final String label;
+
+  /// The admin's switch for this service.
+  final ServiceAvailability service;
+
   final bool selected;
   final VoidCallback onTap;
-  final String? badge;
+  final ValueChanged<ServiceAvailability> onClosed;
 
   @override
   Widget build(BuildContext context) {
+    final closed = !service.isOpen;
+
     return Semantics(
       button: true,
       selected: selected,
-      label: badge == null ? label : '$label, $badge',
+      label: closed ? '$label, ${service.badgeLabel}' : label,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Column(
+        // A closed tile still responds — it explains itself. A dead tap leaves
+        // the customer wondering whether the app is broken.
+        onTap: closed ? () => onClosed(service) : onTap,
+        child: Opacity(
+          opacity: closed ? .55 : 1,
+          child: Column(
           children: [
             Stack(
               clipBehavior: Clip.none,
@@ -2755,7 +2860,7 @@ class _QuickTile extends StatelessWidget {
                     color: selected ? AppColors.secondary : AppText.secondary,
                   ),
                 ),
-                if (badge != null)
+                if (closed)
                   Positioned(
                     top: -4,
                     right: -2,
@@ -2763,16 +2868,18 @@ class _QuickTile extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 5, vertical: 1),
                       decoration: BoxDecoration(
-                        color: AppColors.secondary,
+                        // Grey, not the brand colour. A badge in the action
+                        // colour reads as something to press.
+                        color: AppText.secondary,
                         borderRadius: BorderRadius.circular(99),
                       ),
                       child: Text(
-                        badge!,
+                        service.badgeLabel,
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w900,
                           letterSpacing: .3,
-                          color: AppText.onBrand,
+                          color: AppColors.background,
                         ),
                       ),
                     ),
@@ -2791,6 +2898,7 @@ class _QuickTile extends StatelessWidget {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -2808,7 +2916,9 @@ class _ProductCard extends StatelessWidget {
     required this.subInk,
     required this.selected,
     required this.large,
+    required this.service,
     required this.onTap,
+    required this.onClosed,
   });
 
   final String title;
@@ -2820,10 +2930,17 @@ class _ProductCard extends StatelessWidget {
   final Color subInk;
   final bool selected;
   final bool large;
+
+  /// The admin's switch for this service.
+  final ServiceAvailability service;
+
   final VoidCallback onTap;
+  final ValueChanged<ServiceAvailability> onClosed;
 
   @override
   Widget build(BuildContext context) {
+    final closed = !service.isOpen;
+
     // Unselected tiles drop to the neutral surface and muted ink, so the chosen
     // product is unmistakable rather than one of three bright boxes.
     final background = selected ? surface : AppColors.surfaceAlt;
@@ -2831,11 +2948,16 @@ class _ProductCard extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: title,
+      label: closed ? '$title, ${service.badgeLabel}' : title,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: AnimatedContainer(
+        // A closed tile explains itself rather than doing nothing.
+        onTap: closed ? () => onClosed(service) : onTap,
+        child: Opacity(
+          opacity: closed ? .55 : 1,
+          child: Stack(
+            children: [
+        AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           decoration: BoxDecoration(
             color: background,
@@ -2893,6 +3015,33 @@ class _ProductCard extends StatelessWidget {
                   ],
                 ),
               ),
+            ],
+          ),
+        ),
+              if (closed)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      // Grey, not the action colour: a badge in the colour of
+                      // buttons reads as something to press.
+                      color: AppText.secondary,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      service.badgeLabel,
+                      style: TextStyle(
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: .3,
+                        color: AppColors.background,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

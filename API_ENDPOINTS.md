@@ -232,3 +232,18 @@ punishment. Two is enough to finish what they are doing and not enough to ignore
 
 The limit is enforced in `GetEligibleRideRequestsAsync`, so a Driver who has run
 out simply stops seeing requests rather than being refused after answering one.
+
+## Service availability — rev 102
+
+- `GET /api/v1/services` — anonymous. The customer app reads this before anyone
+  signs in, and it is the same information the tiles display.
+- `GET /api/v1/admin/services`
+- `PUT /api/v1/admin/services/{serviceKey}` `{ isOpen, badgeLabel, closedMessage }`
+
+Update only, never insert: each key maps to a screen in the app, so a key an
+admin invented would render a tile that opens nothing.
+
+**Customer-side only.** A closed service does not touch the Driver app at all —
+drivers keep registering vehicles and admins keep verifying them, so the service
+has a fleet on the day it opens. Without that the platform deadlocks: closed
+because there are no vehicles, no vehicles because it is closed.

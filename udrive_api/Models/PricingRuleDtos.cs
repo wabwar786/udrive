@@ -272,3 +272,18 @@ public sealed record PendingDocumentDto(
     string Scope,
     int RidesSince,
     int RidesRemaining);
+
+/// <summary>Whether one service is open to customers.</summary>
+/// <param name="BadgeLabel">Shown on the tile when closed, e.g. "SOON".</param>
+/// <param name="ClosedMessage">What a customer is told on tapping it.</param>
+public sealed record ServiceAvailabilityDto(
+    string ServiceKey,
+    bool IsOpen,
+    string BadgeLabel,
+    string ClosedMessage,
+    DateTimeOffset UpdatedAt);
+
+public sealed record UpdateServiceAvailabilityRequest(
+    bool IsOpen,
+    [StringLength(24)] string? BadgeLabel,
+    [StringLength(200)] string? ClosedMessage);

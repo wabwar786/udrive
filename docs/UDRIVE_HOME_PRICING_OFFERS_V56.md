@@ -2226,6 +2226,52 @@ text theme went up two points, and the home screen's own sizes by 1.5.
 Language is set once and then never again, and it was taking a permanent seat in
 the header beside the two controls people use daily. It belongs in Settings.
 
+## 74. Transparent header, and services the admin can close
+
+### The header floats on the map
+
+A white bar across the top spent about fifty pixels on a logo and two buttons —
+the same fifty the map wanted. The controls sit on the map now, which is where
+every other map app puts them, and the map reaches the top of the screen.
+
+The buttons became solid white with a hairline and no shadow. On a light map a
+shadow is a ring of grey around the icon rather than depth, and the old 94%
+translucency let street names show through them.
+
+### Coming soon is an admin switch, not a code change
+
+`udrive.service_availability` holds one row per service: open or not, the badge
+to show, and the sentence a customer is told on tapping. The admin portal has a
+**Services** page to edit them.
+
+Whether Coster is ready is an operational fact that changes without a release —
+it needs vehicles registered first, car rental needs a fleet, city-to-city needs
+drivers willing to leave town. Hard-coding that meant a deploy each time one
+became ready.
+
+**Closing a service is customer-side only, and that is the important part.**
+Drivers keep registering vehicles for a closed service and admins keep verifying
+them, so on the day the switch flips there is already a fleet. Without it the
+platform deadlocks: closed because there are no vehicles, and no vehicles
+because it is closed. This is exactly what you asked for — *"driver ko option
+hoga ke wo apni vehicles add kar sake"*.
+
+Three decisions inside it:
+
+- **Closed tiles are shown, not hidden.** Dimmed to 55% with a grey badge. "Can
+  I do this yet" is a question customers ask, and a missing tile answers it with
+  silence.
+- **A closed tile still responds** — it shows the admin's sentence. A dead tap
+  leaves someone wondering whether the app is broken.
+- **Missing means open.** A failed call or an unknown key leaves the service
+  working. Closing on absence would let one bad response take the whole home
+  screen down.
+
+The badge is grey rather than the action colour: a badge in the colour of
+buttons reads as something to press.
+
+Everything is seeded open except `carRental`, which has no screen behind it yet.
+
 ---
 
 ## Not done

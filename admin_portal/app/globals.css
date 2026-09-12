@@ -72,3 +72,15 @@
 .guidePanelFoot{padding:14px 20px;background:#fff;border-top:1px solid #e3ece8}
 .guidePanelFoot a{display:inline-flex;align-items:center;gap:5px;color:#0a7a58;font-weight:800}
 @media(max-width:650px){.guideTrigger span{display:none}.guideTrigger{width:40px;padding:0;justify-content:center}.guidePanel{width:100%}}
+
+/* Service availability rows */
+.serviceRow{border:1px solid #e3ebe7;border-radius:14px;padding:14px;margin-bottom:10px}
+.serviceRowHead{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.serviceRowHead strong{display:block;font-size:14px}
+.serviceRowHead small{display:block;margin-top:3px;color:#6f817a}
+.serviceToggle{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#3f584f;cursor:pointer}
+.serviceToggle input{width:18px;height:18px;accent-color:#0a7a58}
+.serviceRowBody{margin-top:12px;padding-top:12px;border-top:1px solid #eff3f1;display:grid;gap:10px}
+.serviceNote{margin:0;color:#0a7a58;font-size:12px;font-weight:600}
+.serviceRowFoot{display:flex;justify-content:flex-end;margin-top:12px}
+.successNote{margin:0 18px 12px;padding:10px 12px;background:#eef8f4;border:1px solid #cfe6dc;border-radius:11px;color:#0a7a58;font-size:12.5px;font-weight:600}

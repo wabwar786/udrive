@@ -78,6 +78,7 @@ const groups = [
     items: [
       ['/safety', 'Safety incidents', ShieldAlert],
       ['/disputes', 'Complaints & disputes', MessageSquareWarning],
+      ['/services', 'Services', CircleDollarSign],
       ['/pricing', 'Pricing & fares', CircleDollarSign],
       ['/wallet-topups', 'Driver top-ups', CircleDollarSign],
       ['/finance', 'Finance & settlements', CircleDollarSign],

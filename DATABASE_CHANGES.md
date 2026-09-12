@@ -158,3 +158,10 @@ first ride, which is the intended arrangement.
 - Returned only to the Customer whose booking it is. Never to the Driver, never
   to an admin, never on a public share link. Verification still compares against
   the hash.
+
+## 045_service_availability (rev 102)
+
+- New table `udrive.service_availability`: one row per service, with `is_open`,
+  the badge shown when closed, and the sentence the customer is told on tapping.
+- Seeded with every service open except `carRental`, which has no screen yet.
+- The key set is fixed. The portal offers on/off and wording, not new services.
