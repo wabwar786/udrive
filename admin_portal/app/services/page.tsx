@@ -44,6 +44,17 @@ export default function Page() {
    * drivers are online and what a megabyte costs them.
    */
   const [ping, setPing] = useState(2);
+
+  /**
+   * How far a request reaches, and how far customers see.
+   *
+   * Two numbers, not one. The request radius is about reach — how far a driver
+   * may be and still be offered the job. The nearby radius is about honesty —
+   * only showing cars that would realistically come. Tying them together would
+   * mean widening the map every time you widened the search.
+   */
+  const [requestKm, setRequestKm] = useState(5);
+  const [nearbyKm, setNearbyKm] = useState(1);
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -54,10 +65,14 @@ export default function Page() {
     setError('');
     try {
       setRows(await apiFetch<Service[]>('/api/v1/admin/services'));
-      const tracking = await apiFetch<{ pingSeconds: number }>(
-        '/api/v1/settings/tracking',
-      );
-      setPing(tracking.pingSeconds);
+      const ops = await apiFetch<{
+        pingSeconds: number;
+        requestRadiusKm: number;
+        nearbyRadiusKm: number;
+      }>('/api/v1/settings/operations');
+      setPing(ops.pingSeconds);
+      setRequestKm(ops.requestRadiusKm);
+      setNearbyKm(ops.nearbyRadiusKm);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load services.');
     } finally {
@@ -113,6 +128,27 @@ export default function Page() {
     }
   }
 
+  async function saveRadius(request: number, nearby: number) {
+    setRequestKm(request);
+    setNearbyKm(nearby);
+    setError('');
+    setSaved('');
+    try {
+      await apiFetch('/api/v1/admin/settings/radius', {
+        method: 'PUT',
+        body: JSON.stringify({
+          requestRadiusKm: request,
+          nearbyRadiusKm: nearby,
+        }),
+      });
+      setSaved(
+        `Requests now reach ${request} km; customers see ${nearby} km around them.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save that.');
+    }
+  }
+
   return (
     <AdminFrame
       title="Services"
@@ -148,6 +184,60 @@ export default function Page() {
           up when their next trip starts, so a change does not interrupt a trip
           already under way.
         </p>
+      </section>
+
+      <section className="panel">
+        <header className="panelHeader">
+          <div>
+            <h2>How far a request travels</h2>
+            <p>
+              A driver further than this from the pickup is never offered the
+              job. Wider reaches more drivers and sends more of them a request
+              they will not take; narrower is quieter and can leave a customer
+              with nobody at all.
+            </p>
+          </div>
+        </header>
+        <div className="pingRow">
+          {[1, 2, 3, 5, 8, 12, 20].map((km) => (
+            <button
+              key={km}
+              type="button"
+              className={km === requestKm ? 'pingOn' : 'pingOff'}
+              onClick={() => void saveRadius(km, nearbyKm)}
+            >
+              {km} km
+            </button>
+          ))}
+        </div>
+        <p className="pingNote">Currently {requestKm} km.</p>
+      </section>
+
+      <section className="panel">
+        <header className="panelHeader">
+          <div>
+            <h2>How far customers see vehicles</h2>
+            <p>
+              What the home map shows around the customer. Keep it tighter than
+              the request radius — a car shown eight kilometres away is a car
+              nobody is waiting for, and an empty-looking map is more honest
+              than a busy one that produces no driver.
+            </p>
+          </div>
+        </header>
+        <div className="pingRow">
+          {[0.5, 1, 2, 3, 5, 8].map((km) => (
+            <button
+              key={km}
+              type="button"
+              className={km === nearbyKm ? 'pingOn' : 'pingOff'}
+              onClick={() => void saveRadius(requestKm, km)}
+            >
+              {km} km
+            </button>
+          ))}
+        </div>
+        <p className="pingNote">Currently {nearbyKm} km.</p>
       </section>
 
       <section className="panel">

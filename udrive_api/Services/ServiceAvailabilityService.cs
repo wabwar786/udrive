@@ -50,6 +50,98 @@ public sealed class ServiceAvailabilityService(string connectionString)
         return ServiceResult<IReadOnlyList<ServiceAvailabilityDto>>.Ok(list);
     }
 
+    /// <summary>One numeric operational setting, with a default and a clamp.</summary>
+    /// <remarks>
+    /// These are dials, not constants. Each one's right value depends on things
+    /// that change without a release — how many drivers are online, how spread
+    /// out a town is, what data costs — so they live where they can be turned
+    /// without cutting one.
+    ///
+    /// Every read is clamped. A value that makes the platform stop working
+    /// should not be reachable by a typo in a text field.
+    /// </remarks>
+    private async Task<double> ReadNumberAsync(
+        string key,
+        double fallback,
+        double min,
+        double max,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT value_json #>> '{}' FROM udrive.system_settings
+            WHERE key = @key;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("key", key);
+        var value = await command.ExecuteScalarAsync(cancellationToken) as string;
+
+        return double.TryParse(value, out var parsed)
+            ? Math.Clamp(parsed, min, max)
+            : fallback;
+    }
+
+    private async Task WriteNumberAsync(
+        Guid adminUserId,
+        string key,
+        string description,
+        double value,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO udrive.system_settings
+                (key, value_json, description, is_public,
+                 updated_by_user_id, created_at, updated_at)
+            VALUES (@key, to_jsonb(@value::text), @description, true,
+                    @admin, now(), now())
+            ON CONFLICT (key) DO UPDATE
+            SET value_json = EXCLUDED.value_json,
+                is_public = true,
+                updated_by_user_id = EXCLUDED.updated_by_user_id,
+                updated_at = now();
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("key", key);
+        command.Parameters.AddWithValue("value", value.ToString("0.##"));
+        command.Parameters.AddWithValue("description", description);
+        command.Parameters.AddWithValue("admin", adminUserId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>How far from a pickup a Driver may be and still be offered it.</summary>
+    /// <remarks>
+    /// Five kilometres in a dense town is a lot of drivers and a lot of wasted
+    /// notifications; in a valley where the next car is twenty minutes away it
+    /// is not nearly enough. Nobody can pick one number for both.
+    /// </remarks>
+    public Task<double> RequestRadiusKmAsync(CancellationToken ct) =>
+        ReadNumberAsync("marketplace.request.radius.km", 5, 0.5, 50, ct);
+
+    /// <summary>How far around themselves a Customer sees vehicles.</summary>
+    /// <remarks>
+    /// Separate from the request radius on purpose. This one is about honesty —
+    /// showing cars that are realistically going to come — and the other is
+    /// about reach. Setting them together would mean widening the map every
+    /// time you widened the search.
+    /// </remarks>
+    public Task<double> NearbyRadiusKmAsync(CancellationToken ct) =>
+        ReadNumberAsync("marketplace.nearby.radius.km", 1, 0.2, 25, ct);
+
+    public Task SetRequestRadiusAsync(Guid admin, double km, CancellationToken ct) =>
+        WriteNumberAsync(admin, "marketplace.request.radius.km",
+            "How far from a pickup a driver may be and still be offered it, in km.",
+            Math.Clamp(km, 0.5, 50), ct);
+
+    public Task SetNearbyRadiusAsync(Guid admin, double km, CancellationToken ct) =>
+        WriteNumberAsync(admin, "marketplace.nearby.radius.km",
+            "How far around themselves a customer sees vehicles, in km.",
+            Math.Clamp(km, 0.2, 25), ct);
+
     /// <summary>How often a Driver publishes their position, in seconds.</summary>
     /// <remarks>
     /// An operational dial rather than a constant. Two seconds makes the map

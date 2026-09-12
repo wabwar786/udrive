@@ -290,3 +290,8 @@ public sealed record UpdateServiceAvailabilityRequest(
 
 /// <summary>How often drivers publish their position, in seconds.</summary>
 public sealed record SetTrackingIntervalRequest([Range(1, 60)] int PingSeconds);
+
+/// <summary>How far a request reaches, and how far customers see vehicles.</summary>
+public sealed record SetRadiusRequest(
+    [Range(0.5, 50)] double RequestRadiusKm,
+    [Range(0.2, 25)] double NearbyRadiusKm);

@@ -2612,6 +2612,32 @@ A recentre button now appears on both maps, and only once the camera has been
 taken: a control that does nothing until it is needed does not need to be there
 before.
 
+## 88. Both radii are admin dials now
+
+Yes — and it turned out to be two settings rather than one.
+
+**Request radius.** How far from a pickup a driver may be and still be offered
+the job. It was `ST_DWithin(..., 5000)` written into the eligibility SQL. Five
+kilometres in a dense town is a lot of drivers and a lot of notifications nobody
+acts on; in a valley where the next car is twenty minutes away it is nowhere
+near enough. One number cannot serve both.
+
+**Nearby radius.** How far around themselves a customer is shown vehicles on the
+home map. This was 5 km in the app, which is why the map could show cars that
+were never realistically going to come. The default is now 1 km.
+
+They are deliberately separate. Reach and honesty are different questions, and
+tying them together would mean widening the map every time you widened the
+search. Keeping the map tighter than the search is usually right: an
+empty-looking map is more honest than a busy one that produces no driver.
+
+Both are on the admin Services page, alongside the location interval. Clamped on
+the server — 0.5–50 km and 0.2–25 km — because a value that makes the platform
+stop working should not be reachable by a typo.
+
+The app reads them on the same call as the ping interval, so three settings cost
+one round trip.
+
 ---
 
 ## Not done

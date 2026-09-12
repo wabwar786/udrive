@@ -80,11 +80,26 @@ class ServiceAvailabilityRepository {
   /// one to be wrong about for a few minutes.
   static const int defaultPingSeconds = 2;
 
+  /// How far around themselves a customer should be shown vehicles.
+  ///
+  /// Cached in memory for the session after the first read, because the home
+  /// screen and the offers screen both ask and the answer does not change
+  /// while an app is open.
+  static double _nearbyRadiusKm = defaultNearbyRadiusKm;
+  static double get nearbyRadiusKm => _nearbyRadiusKm;
+
+  static const double defaultNearbyRadiusKm = 1;
+
   Future<int> trackingPingSeconds() async {
     try {
-      final response = await api.getJson('/api/v1/settings/tracking');
+      final response = await api.getJson('/api/v1/settings/operations');
       final data = response['data'];
       if (data is! Map) return defaultPingSeconds;
+      // The radii come back on the same call, so they are picked up here
+      // rather than costing a second round trip for two numbers.
+      final radius = (data['nearbyRadiusKm'] as num?)?.toDouble();
+      if (radius != null) _nearbyRadiusKm = radius.clamp(0.2, 25);
+
       final seconds = (data['pingSeconds'] as num?)?.toInt();
       if (seconds == null) return defaultPingSeconds;
       return seconds.clamp(1, 60);

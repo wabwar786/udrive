@@ -14,7 +14,7 @@ class AppConfig {
   /// Exists so "is this build actually deployed?" is a question with an answer.
   /// Several hours were lost to fixes that looked ineffective because the build
   /// carrying them had not reached the server. Visible under Notifications.
-  static const String buildLabel = 'rev 110 · 2026-09-05';
+  static const String buildLabel = 'rev 111 · 2026-09-05';
 
   /// How long each side has to answer the other.
   ///
@@ -90,7 +90,12 @@ class AppConfig {
 
   // ------------------------------------------------- nearby vehicles (home)
   /// Radius of the "vehicles around you" ring on Home.
-  static const double nearbyVehiclesRadiusKm = 5;
+  /// Superseded by the admin setting.
+  ///
+  /// Kept as the value used before the server answers, and as the fallback when
+  /// it cannot be reached. It was 5 km, which showed cars far enough away that
+  /// nobody was going to take the ride — the admin default is 1.
+  static const double nearbyVehiclesRadiusKm = 1;
 
   /// How often the home map refreshes vehicle positions.
   ///

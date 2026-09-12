@@ -74,7 +74,10 @@ builder.Services.AddScoped<AdminVerificationService>(serviceProvider =>
         connectionString,
         serviceProvider.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<BookingService>(_ =>
-    new BookingService(connectionString, authOptions));
+    new BookingService(
+        connectionString,
+        authOptions,
+        new ServiceAvailabilityService(connectionString)));
 builder.Services.AddScoped<PackageMarketplaceService>(_ =>
     new PackageMarketplaceService(connectionString, authOptions));
 builder.Services.AddScoped<TourInterestService>(_ =>

@@ -284,3 +284,19 @@ Stored in `system_settings` under `tracking.ping.seconds`, clamped 1–60. Below
 second the fixes arrive faster than GPS produces them; above a minute the map is
 not live in any useful sense, and a value that breaks the product should not be
 reachable by a typo.
+
+## Operational radii — rev 111
+
+- `GET /api/v1/settings/operations` — anonymous. Returns `pingSeconds`,
+  `requestRadiusKm`, `nearbyRadiusKm`. `/api/v1/settings/tracking` is kept as an
+  alias because the app already calls it.
+- `PUT /api/v1/admin/settings/radius` `{ requestRadiusKm, nearbyRadiusKm }`
+
+**Two radii, not one.** The request radius is reach — how far a driver may be
+and still be offered the job, previously hard-coded at 5 km in the eligibility
+SQL. The nearby radius is honesty — how far around themselves a customer is
+shown vehicles, previously 5 km in the app and showing cars nobody was going to
+wait for.
+
+Clamped 0.5–50 and 0.2–25. A value that makes the platform stop working should
+not be reachable by a typo in a text field.

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/services/service_availability_repository.dart';
 import '../../core/booking/booking_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/config/app_config.dart';
@@ -164,7 +165,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     final vehicles = await NearbyVehicleRepository(controller.apiClient).nearby(
       latitude: pickup.latitude,
       longitude: pickup.longitude,
-      radiusKm: AppConfig.nearbyVehiclesRadiusKm,
+      radiusKm: ServiceAvailabilityRepository.nearbyRadiusKm,
     );
 
     if (!mounted) return;

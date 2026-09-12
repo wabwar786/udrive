@@ -33,11 +33,18 @@ public sealed class PublicServiceAvailabilityController(
     /// polling slower than the Driver reports throws away fixes already paid
     /// for in battery, and polling faster returns the same point twice.
     /// </remarks>
+    /// <remarks>
+    /// The `tracking` path is kept as an alias because the app already calls
+    /// it; `operations` is the honest name now that it carries radii too.
+    /// </remarks>
+    [HttpGet("/api/v1/settings/operations")]
     [HttpGet("/api/v1/settings/tracking")]
-    public async Task<IActionResult> Tracking(CancellationToken ct) =>
+    public async Task<IActionResult> Operations(CancellationToken ct) =>
         Ok(ApiResponse<object>.Ok(new
         {
             pingSeconds = await service.TrackingIntervalSecondsAsync(ct),
+            requestRadiusKm = await service.RequestRadiusKmAsync(ct),
+            nearbyRadiusKm = await service.NearbyRadiusKmAsync(ct),
         }));
 }
 
@@ -63,6 +70,18 @@ public sealed class AdminServiceAvailabilityController(
     {
         await service.SetTrackingIntervalAsync(
             User.GetRequiredUserId(), request.PingSeconds, ct);
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    /// <summary>Sets how far a request reaches, and how far customers see.</summary>
+    [HttpPut("/api/v1/admin/settings/radius")]
+    public async Task<IActionResult> SetRadius(
+        SetRadiusRequest request,
+        CancellationToken ct)
+    {
+        var admin = User.GetRequiredUserId();
+        await service.SetRequestRadiusAsync(admin, request.RequestRadiusKm, ct);
+        await service.SetNearbyRadiusAsync(admin, request.NearbyRadiusKm, ct);
         return Ok(ApiResponse<bool>.Ok(true));
     }
 

@@ -12,7 +12,8 @@ namespace UDrive.Api.Services;
 
 public sealed class BookingService(
     string connectionString,
-    AuthOptions authOptions)
+    AuthOptions authOptions,
+    ServiceAvailabilityService settings)
 {
     public async Task<ServiceResult<RideRequestDto>> CreateRideRequestAsync(
         Guid userId,
@@ -309,7 +310,7 @@ public sealed class BookingService(
                               AND b.status = 'Completed'
                               AND b.updated_at > asked.since) >= 2
                   )
-              AND ST_DWithin(dpl.location, rr.pickup_location, 5000)
+              AND ST_DWithin(dpl.location, rr.pickup_location, @requestRadiusMetres)
               AND rr.pickup_at > now() - interval '15 minutes'
               AND (rr.expires_at IS NULL OR rr.expires_at > now())
               AND rr.customer_user_id <> @driverUserId
@@ -357,6 +358,13 @@ public sealed class BookingService(
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("driverUserId", driverUserId);
         command.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
+        // The reach of a request, set by an Admin rather than fixed at five
+        // kilometres. Five is a lot of wasted notifications in a dense town and
+        // nowhere near enough in a valley where the next car is twenty minutes
+        // away — one number cannot serve both.
+        command.Parameters.AddWithValue(
+            "requestRadiusMetres",
+            await settings.RequestRadiusKmAsync(cancellationToken) * 1000);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {

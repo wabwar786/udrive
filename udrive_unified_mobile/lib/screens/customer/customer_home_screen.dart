@@ -380,7 +380,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final results = await repository.nearby(
       latitude: _pickupPoint.latitude,
       longitude: _pickupPoint.longitude,
-      radiusKm: AppConfig.nearbyVehiclesRadiusKm,
+      radiusKm: ServiceAvailabilityRepository.nearbyRadiusKm,
       tourOnly: _service.isTour,
     );
     if (!mounted) return;
