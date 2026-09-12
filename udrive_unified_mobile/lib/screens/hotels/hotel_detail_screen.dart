@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/theme/app_tokens.dart';
 import '../../core/hotels/hotel_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/hotel_models.dart';
@@ -133,7 +134,7 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                 ]),
                 if ((_details?.description ?? '').isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  Text(_details!.description, style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.5)),
+                  Text(_details!.description, style: const TextStyle(color: AppText.secondary, fontSize: 12, height: 1.5)),
                 ],
                 const SizedBox(height: 14),
                 SizedBox(
@@ -156,7 +157,7 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                 if (_details!.rooms.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Text('No rooms available for these dates.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    child: Text('No rooms available for these dates.', style: TextStyle(color: AppText.disabled, fontSize: 12)),
                   ),
               ],
             ),
@@ -194,7 +195,7 @@ class _RoomCard extends StatelessWidget {
               width: 66,
               height: 60,
               decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(13)),
-              child: const Icon(Icons.bed_rounded, size: 32, color: Colors.white70),
+              child: const Icon(Icons.bed_rounded, size: 32, color: AppText.secondary),
             ),
             const SizedBox(width: 11),
             Expanded(

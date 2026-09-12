@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/theme/app_tokens.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
@@ -30,7 +31,7 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
   @override Widget build(BuildContext context){
     final c=AppControllerScope.of(context);
     return RefreshIndicator(onRefresh:c.refreshPhase9Marketplace,child:ListView(padding:const EdgeInsets.fromLTRB(18,8,18,30),children:[
-      PremiumCard(color:Color(0xFF0D4337),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(Icons.auto_awesome_rounded,color:AppColors.accent,size:34),SizedBox(height:12),Text(_t(context,'Tell Udrive where you want to go','یو ڈرائیو کو بتائیں آپ کہاں جانا چاہتے ہیں'),style:TextStyle(color:Colors.white,fontWeight:FontWeight.w900,fontSize:20)),SizedBox(height:6),Text(_t(context,'We match your date, group, seats, budget and pickup city with approved Driver packages.','ہم آپ کی تاریخ، گروپ، نشستوں، بجٹ اور شہر کو منظور شدہ ڈرائیور پیکجز سے میچ کرتے ہیں۔'),style:TextStyle(color:Colors.white70,height:1.4))])),
+      PremiumCard(color:Color(0xFF0D4337),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(Icons.auto_awesome_rounded,color:AppColors.accent,size:34),SizedBox(height:12),Text(_t(context,'Tell Udrive where you want to go','یو ڈرائیو کو بتائیں آپ کہاں جانا چاہتے ہیں'),style:TextStyle(color:Colors.white,fontWeight:FontWeight.w900,fontSize:20)),SizedBox(height:6),Text(_t(context,'We match your date, group, seats, budget and pickup city with approved Driver packages.','ہم آپ کی تاریخ، گروپ، نشستوں، بجٹ اور شہر کو منظور شدہ ڈرائیور پیکجز سے میچ کرتے ہیں۔'),style:TextStyle(color:AppText.secondary,height:1.4))])),
       const SizedBox(height:16),
       DropdownButtonFormField<String>(initialValue:_destinationId,decoration:const InputDecoration(labelText:'Destination',prefixIcon:Icon(Icons.landscape_rounded)),items:destinations.entries.map((e)=>DropdownMenuItem(value:e.key,child:Text(e.value))).toList(),onChanged:(v)=>setState(()=>_destinationId=v!)),
       const SizedBox(height:10),TextField(controller:_pickup,decoration:const InputDecoration(labelText:'Pickup city',prefixIcon:Icon(Icons.location_city_rounded))),

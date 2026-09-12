@@ -7,7 +7,16 @@ import 'package:google_fonts/google_fonts.dart';
 ///
 /// One scheme for the whole app — customer, driver and owner modes all read
 /// from here, so nothing has to hard-code a hex value.
-/// UDrive's palette: deep teal ground, amber action.
+///
+/// Light, after a spell on dark teal. A ride app is used outdoors in daylight
+/// far more than it is used at night, and a dark surface in the sun is the one
+/// condition where every contrast ratio gets worse at once.
+///
+/// Two greens, not one. The logo's green is light, and white text on a light
+/// green fails contrast at button sizes — so [secondary] is a deep green that
+/// carries the actions, and the light one lives in `AppTint.brand` as a wash
+/// behind selected tiles and badges.
+/// UDrive's palette: white ground, near-black text, green action.
 ///
 /// One scheme for the whole app — customer, driver and owner modes all read
 /// from here, so nothing has to hard-code a hex value.
@@ -36,36 +45,39 @@ class AppColors {
   static Color get accent => AccentStore.instance.accent.seed;
 
   /// Deepest layer — the app background behind everything.
-  static const background = Color(0xFF0A1614);
+  static const background = Color(0xFFFFFFFF);
 
-  /// Cards and panels sit one step above the background.
-  static const surface = Color(0xFF102422);
+  /// Cards and panels. On a white page these sit *below* the background
+  /// rather than above it — a raised white card on a white page needs a shadow
+  /// to exist, and a faint grey needs nothing.
+  static const surface = Color(0xFFF5F8F6);
 
-  /// Inset rows, chips and pressed states sit one step above [surface].
-  static const surfaceAlt = Color(0xFF1A3330);
+  /// Inset rows, chips and pressed states, one step further from white.
+  static const surfaceAlt = Color(0xFFECF1EE);
 
-  /// Elevated sheets and dialogs.
-  static const surfaceHigh = Color(0xFF204340);
+  /// Elevated sheets and dialogs. White, so they read as lifted off the page.
+  static const surfaceHigh = Color(0xFFFFFFFF);
 
-  /// Deep teal. Structural rather than decorative: headings, the casing under
-  /// the route line, and the dark ink that sits ON the amber action colour.
-  static const primary = Color(0xFF0E4F4F);
+  /// Structural rather than decorative: headings, and the casing under the
+  /// route line.
+  static const primary = Color(0xFF0F1512);
 
-  /// Near-black with a teal cast, for text on light driver surfaces.
-  static const primaryDark = Color(0xFF06201F);
-  static const navy = Color(0xFF0E4F4F);
+  /// Near-black, for text on light surfaces.
+  static const primaryDark = Color(0xFF0F1512);
+  static const navy = Color(0xFF0F1512);
 
-  static const muted = Color(0xFF9BB3AE);
-  static const border = Color(0xFF24423E);
+  static const muted = Color(0xFF5E6B65);
+  static const border = Color(0xFFE3EAE6);
 
-  // Status colours, tuned to stay legible on the teal surfaces.
-  static const danger = Color(0xFFE5484D);
-  static const success = Color(0xFF2FB27C);
-  static const info = Color(0xFF4C9AFF);
-  static const warning = Color(0xFFE8A33D);
+  // Status colours, dark enough to read on white. The dark-theme versions
+  // were mint, coral and sky — all of which vanish on a white page.
+  static const danger = Color(0xFFCF3A3A);
+  static const success = Color(0xFF178B55);
+  static const info = Color(0xFF1B5FA8);
+  static const warning = Color(0xFFA76A00);
 
-  /// Body copy on dark surfaces.
-  static const text = Color(0xFFF2F7F5);
+  /// Body copy.
+  static const text = Color(0xFF0F1512);
 }
 
 class AppTheme {
@@ -82,7 +94,7 @@ class AppTheme {
     final accent = AccentStore.instance.accent;
     final scheme = ColorScheme.fromSeed(
       seedColor: accent.seed,
-      brightness: Brightness.dark,
+      brightness: Brightness.light,
       primary: accent.seed,
       onPrimary: accent.ink,
       secondary: accent.seed,
@@ -93,6 +105,10 @@ class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
+      // Light, and stated. Without this Material picks its own defaults for
+      // anything the scheme does not cover — dialog scrims, ripples, switch
+      // tracks — and picks dark ones.
+      brightness: Brightness.light,
       colorScheme: scheme,
       scaffoldBackgroundColor: AppColors.background,
       fontFamily: GoogleFonts.montserrat().fontFamily,

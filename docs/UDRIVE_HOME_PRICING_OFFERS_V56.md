@@ -2116,6 +2116,67 @@ at the blue gate" and the Driver would never know, because messages were only
 read inside the chat screen. Both sides now poll, sound once per message, and
 show the newest one inline — tappable straight into the thread.
 
+## 72. Light theme, and the home screen rebuilt
+
+### The whole app is light now, not just home
+
+Changing one screen to white would have left the app half dark — one screen
+white, the next black. The palette tokens moved instead, so every screen that
+reads them came along.
+
+Background `#FFFFFF`, surfaces `#F5F8F6` and `#ECF1EE`, text `#0F1512`, border
+`#E3EAE6`. Status colours all darkened: the dark theme's mint, coral and sky
+disappear on a white page.
+
+**Two greens, not one.** The logo's green is light, and white text on a light
+green fails contrast at button sizes — unreadable in daylight, which is where a
+ride app is used. So the action colour is a deep `#178B55`, and the light green
+lives in `AppTint.brand` as a wash behind selected tiles and badges, where it
+carries colour and no text.
+
+The three accents became Green, Blue and Amber, all dark enough to carry white.
+Green is the default.
+
+`brightness: Brightness.light` is set on `ThemeData` as well as the scheme,
+because without it Material picks dark defaults for everything the scheme does
+not cover — scrims, ripples, switch tracks.
+
+### Home, as H8
+
+Map on top with the pickup pill, then the service card, then search and recents.
+
+**Two ranks of service.** Cards for the two that start a booking — City rides
+and City to city — and an icon row beneath for the rest. A card carries a title,
+a subtitle and a picture; four of them side by side is four things competing. An
+icon and one word is enough for somewhere you already know you want to go.
+
+Hotels moved down into that row, which freed the second card for **City to
+city** — the other kind of ride, out of town rather than across it.
+
+**Car rental is there with a SOON badge**, and tapping says so plainly. Shown
+rather than hidden because "can I rent a car myself" is a question customers ask
+and the app gave no answer to at all — not even "no". It does nothing else on
+purpose: a form that collects interest and posts it nowhere would be worse.
+
+**City rides says the driver count** when there is one. "3 nearby now" is the
+most useful thing that tile can say, and the vehicle list is on the next screen
+anyway.
+
+**The colour picker moved to Settings**, beside Clear cached data. It is a
+personalisation someone sets once, and it was sitting above the thing they open
+the app to do.
+
+### The sweep, and what it did not reach
+
+`Colors.white70` and `Colors.black` were light-on-dark choices that invert on a
+white page. Seventeen files swept across the customer side.
+
+**Driver mode and the live trip screens were deliberately left out.** They were
+already built on light surfaces with their own hard-coded inks, so they are not
+broken — but they are not on the tokens either, and they will need their own
+pass when we get to the driver home. Not touching them was the point: you said
+driver mode comes after.
+
 ---
 
 ## Not done

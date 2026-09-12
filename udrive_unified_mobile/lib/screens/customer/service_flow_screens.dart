@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../../core/theme/app_tokens.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/booking_models.dart';
 import 'driver_offers_screen.dart';
@@ -376,7 +377,7 @@ class _CityRideScreenState extends State<CityRideScreen> {
                         return ListTile(
                           dense: true,
                           contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.location_on_outlined, color: Colors.white54, size: 22),
+                          leading: const Icon(Icons.location_on_outlined, color: AppText.disabled, size: 22),
                           title: Text(place.title, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
                           subtitle: Text(place.subtitle,
                               maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 10.5)),
@@ -419,7 +420,7 @@ class _CityRideScreenState extends State<CityRideScreen> {
                   if (!_wholeVehicle) ...[
                     const SizedBox(height: 8),
                     Row(children: [
-                      const Text('Seats', style: TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      const Text('Seats', style: TextStyle(color: AppText.secondary, fontSize: 11.5, fontWeight: FontWeight.w700)),
                       const Spacer(),
                       _round(Icons.remove, _seats > 1 ? () => setState(() => _seats--) : null),
                       Padding(
@@ -452,10 +453,10 @@ class _CityRideScreenState extends State<CityRideScreen> {
                       onPressed: _submitting ? null : _findDriver,
                       style: FilledButton.styleFrom(
                           backgroundColor: _lime,
-                          foregroundColor: Colors.black,
+                          foregroundColor: AppText.onBrand,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                       child: _submitting
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black))
+                          ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: AppText.onBrand))
                           : const Text('Find a driver', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
                     ),
                   ),
@@ -485,7 +486,7 @@ class _CityRideScreenState extends State<CityRideScreen> {
                   _onDestinationChanged('');
                   setState(() => _destination = null);
                 },
-                icon: const Icon(Icons.cancel_rounded, color: Colors.white54, size: 20))
+                icon: const Icon(Icons.cancel_rounded, color: AppText.disabled, size: 20))
             : null,
         filled: true,
         fillColor: _tile,
@@ -515,7 +516,7 @@ class _CityRideScreenState extends State<CityRideScreen> {
           alignment: Alignment.center,
           decoration: BoxDecoration(color: selected ? _lime : Colors.transparent, borderRadius: BorderRadius.circular(10)),
           child: Text(label,
-              style: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w900)),
+              style: TextStyle(color: selected ? AppText.onBrand : AppText.secondary, fontSize: 11.5, fontWeight: FontWeight.w900)),
         ),
       );
 
@@ -587,7 +588,7 @@ class _CityRideScreenState extends State<CityRideScreen> {
 Widget _pill(String label, String value) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
-      child: Text('$label: $value', style: const TextStyle(color: Colors.white70, fontSize: 9.5, fontWeight: FontWeight.w700)),
+      child: Text('$label: $value', style: const TextStyle(color: AppText.secondary, fontSize: 9.5, fontWeight: FontWeight.w700)),
     );
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -816,7 +817,7 @@ class _ToursScreenState extends State<ToursScreen> {
                         return ListTile(
                           dense: true,
                           contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.place_outlined, color: Colors.white54, size: 22),
+                          leading: const Icon(Icons.place_outlined, color: AppText.disabled, size: 22),
                           title: Text(place.title, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
                           subtitle: Text(place.subtitle,
                               maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 10.5)),
@@ -861,7 +862,7 @@ class _ToursScreenState extends State<ToursScreen> {
                         Icon(Icons.directions_bus_filled_rounded, color: _lime),
                         SizedBox(width: 10),
                         Expanded(child: Text('No scheduled tour to this destination in the next 30 days. Try a nearby valley or check back soon.',
-                            style: TextStyle(color: Colors.white70, fontSize: 11.5, height: 1.35))),
+                            style: TextStyle(color: AppText.secondary, fontSize: 11.5, height: 1.35))),
                       ]),
                     )
                   else
@@ -903,7 +904,7 @@ class _ToursScreenState extends State<ToursScreen> {
                   const SizedBox(width: 4),
                   Text(_timing(p), style: TextStyle(color: bookable ? _lime : Colors.white38, fontSize: 10.5, fontWeight: FontWeight.w800)),
                   const Spacer(),
-                  Text('${p.availableSeats} seats', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                  Text('${p.availableSeats} seats', style: const TextStyle(color: AppText.disabled, fontSize: 10)),
                 ]),
               ]),
             ),
@@ -927,7 +928,7 @@ class _ToursScreenState extends State<ToursScreen> {
                 onPressed: bookable ? () => _book(p, whole: true) : null,
                 style: FilledButton.styleFrom(
                     backgroundColor: _lime,
-                    foregroundColor: Colors.black,
+                    foregroundColor: AppText.onBrand,
                     minimumSize: const Size.fromHeight(42),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                 child: Text('Full • PKR ${p.wholeVehiclePrice.round()}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
@@ -1061,7 +1062,7 @@ class _PrivateVehiclesScreenState extends State<PrivateVehiclesScreen> {
             onChanged: (v) => setState(() => _query = v),
             style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
             decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.white70),
+              prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppText.secondary),
               hintText: 'Search vehicle type (car, SUV, coaster, bike)',
               hintStyle: const TextStyle(color: _muted, fontSize: 12.5),
               isDense: true,
@@ -1075,7 +1076,7 @@ class _PrivateVehiclesScreenState extends State<PrivateVehiclesScreen> {
           child: _loading
               ? const Center(child: CircularProgressIndicator(color: _lime))
               : items.isEmpty
-                  ? const Center(child: Text('No vehicle matches your search.', style: TextStyle(color: Colors.white54)))
+                  ? const Center(child: Text('No vehicle matches your search.', style: TextStyle(color: AppText.disabled)))
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 26),
                       itemCount: items.length,
@@ -1141,7 +1142,7 @@ class _PrivateVehiclesScreenState extends State<PrivateVehiclesScreen> {
                   onPressed: () => _openBooking(v),
                   style: FilledButton.styleFrom(
                       backgroundColor: _lime,
-                      foregroundColor: Colors.black,
+                      foregroundColor: AppText.onBrand,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13))),
                   child: const Text('Book this vehicle', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
                 ),
@@ -1285,7 +1286,7 @@ class _PrivateBookingSheetState extends State<_PrivateBookingSheet> {
           ),
           const SizedBox(height: 14),
           Row(children: [
-            const Text('Days', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
+            const Text('Days', style: TextStyle(color: AppText.secondary, fontSize: 12, fontWeight: FontWeight.w700)),
             const Spacer(),
             _round(Icons.remove, _days > 1 ? () => setState(() => _days--) : null),
             Padding(
@@ -1298,7 +1299,7 @@ class _PrivateBookingSheetState extends State<_PrivateBookingSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(14)),
             child: Row(children: [
-              const Text('Estimated total', style: TextStyle(color: Colors.white70, fontSize: 12.5, fontWeight: FontWeight.w700)),
+              const Text('Estimated total', style: TextStyle(color: AppText.secondary, fontSize: 12.5, fontWeight: FontWeight.w700)),
               const Spacer(),
               Text(_total > 0 ? 'PKR ${_total.round()}' : '—',
                   style: const TextStyle(color: _lime, fontSize: 17, fontWeight: FontWeight.w900)),
@@ -1312,10 +1313,10 @@ class _PrivateBookingSheetState extends State<_PrivateBookingSheet> {
               onPressed: _submitting ? null : _confirm,
               style: FilledButton.styleFrom(
                   backgroundColor: _lime,
-                  foregroundColor: Colors.black,
+                  foregroundColor: AppText.onBrand,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
               child: _submitting
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black))
+                  ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: AppText.onBrand))
                   : const Text('Request this vehicle', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
             ),
           ),
@@ -1332,7 +1333,7 @@ class _PrivateBookingSheetState extends State<_PrivateBookingSheet> {
           padding: const EdgeInsets.symmetric(vertical: 10),
           alignment: Alignment.center,
           decoration: BoxDecoration(color: selected ? _lime : Colors.transparent, borderRadius: BorderRadius.circular(10)),
-          child: Text(label, style: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 12, fontWeight: FontWeight.w900)),
+          child: Text(label, style: TextStyle(color: selected ? AppText.onBrand : AppText.secondary, fontSize: 12, fontWeight: FontWeight.w900)),
         ),
       );
 

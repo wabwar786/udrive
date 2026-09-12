@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/theme/app_tokens.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
@@ -50,7 +51,7 @@ class _LivePackagesScreenState extends State<LivePackagesScreen> {
                 const SizedBox(height: 6),
                 Text(
                   _t(context, 'Reserve seats for 10 minutes, book the complete vehicle, or send your own offer.', 'نشستیں 10 منٹ کے لیے محفوظ کریں، پوری گاڑی بک کریں یا اپنی آفر بھیجیں۔'),
-                  style: const TextStyle(color: Colors.white70, height: 1.4),
+                  style: const TextStyle(color: AppText.secondary, height: 1.4),
                 ),
               ],
             ),

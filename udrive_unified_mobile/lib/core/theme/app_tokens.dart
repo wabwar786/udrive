@@ -15,31 +15,35 @@ class AppTint {
   /// Selected service tile and active bottom-nav pill — a low-opacity wash of
   /// the amber action colour rather than a pale tint, so it reads on the dark
   /// teal surfaces.
+  /// The light green behind a selected tile or a badge.
+  ///
+  /// This is where the logo's own light green lives. It cannot carry text, so
+  /// it carries nothing but colour.
   static Color get brand => AccentStore.instance.accent.wash;
 
   /// Secondary surface — inset rows such as the tour-booking toggle strip.
   static const surface = AppColors.surfaceAlt;
 
-  static const success = Color(0xFF0F2E26);
-  static const successText = Color(0xFF6FE0B4);
+  static const success = Color(0xFFE3F5EC);
+  static const successText = Color(0xFF0E6B41);
 
-  static const danger = Color(0xFF3A1B1C);
+  static const danger = Color(0xFFFBEAEA);
 
-  static const warning = Color(0xFF382C13);
-  static const warningText = Color(0xFFF0C071);
+  static const warning = Color(0xFFFCF0DF);
+  static const warningText = Color(0xFF8A5600);
 
   /// Behind the map while tiles are still loading.
-  static const mapBackdrop = Color(0xFF142624);
+  static const mapBackdrop = Color(0xFFEDF1EE);
 }
 
 class AppText {
   const AppText._();
 
-  static const primary = Color(0xFFF2F7F5);
-  static const secondary = Color(0xFF9BB3AE);
+  static const primary = Color(0xFF0F1512);
+  static const secondary = Color(0xFF5E6B65);
 
   /// Disabled labels and unselected icons.
-  static const disabled = Color(0xFF5F7A75);
+  static const disabled = Color(0xFF93A099);
 
   /// Text placed ON the amber action colour.
   ///
@@ -61,26 +65,30 @@ class AppText {
 class AppProduct {
   const AppProduct._();
 
-  // Ride — teal. Deliberately not the action colour: a product tile and the
-  // button that acts on it should not be the same hue, or the tile starts
-  // reading as something already pressed.
-  static const rideSurface = Color(0xFF14403E);
-  static const rideAccent = Color(0xFF4FD1C5);
-  static const rideTitle = Color(0xFFD8F5F1);
-  static const rideSub = Color(0xFF8FBDB7);
-  static const rideInk = Color(0xFF06201F);
+  // Product tiles on the home screen: a pale wash and a dark ink for each.
+  //
+  // Washes rather than saturated blocks. Four fully-coloured tiles side by side
+  // on a white page compete with the one button the customer is meant to press,
+  // and with each other.
 
-  // Tour — amber.
-  static const tourSurface = Color(0xFF3A2A12);
-  static const tourAccent = Color(0xFFF5A524);
-  static const tourTitle = Color(0xFFFAD9A0);
-  static const tourSub = Color(0xFFC59A57);
+  // Ride — the brand family.
+  static const rideSurface = Color(0xFFE3F5EC);
+  static const rideAccent = Color(0xFF178B55);
+  static const rideTitle = Color(0xFF0F1512);
+  static const rideSub = Color(0xFF5E6B65);
+  static const rideInk = Color(0xFFFFFFFF);
+
+  // Tour — warm.
+  static const tourSurface = Color(0xFFFCF0DF);
+  static const tourAccent = Color(0xFFA76A00);
+  static const tourTitle = Color(0xFF0F1512);
+  static const tourSub = Color(0xFF5E6B65);
 
   // Hotel — blue.
-  static const hotelSurface = Color(0xFF122A3D);
-  static const hotelAccent = Color(0xFF4C9AFF);
-  static const hotelTitle = Color(0xFFB8DCFF);
-  static const hotelSub = Color(0xFF6FA3CE);
+  static const hotelSurface = Color(0xFFE7F0FA);
+  static const hotelAccent = Color(0xFF1B5FA8);
+  static const hotelTitle = Color(0xFF0F1512);
+  static const hotelSub = Color(0xFF5E6B65);
 
   // Seats — violet. Used by the per-seat control rather than a card.
   static const seatsAccent = Color(0xFF8B5CF6);

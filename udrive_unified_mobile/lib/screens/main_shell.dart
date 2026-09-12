@@ -544,7 +544,7 @@ class _PremiumDrawer extends StatelessWidget {
                               const SizedBox(width: 4),
                               Text(
                                 driver ? 'Driver account' : 'Customer account',
-                                style: const TextStyle(color: Colors.white60, fontSize: 12),
+                                style: const TextStyle(color: AppText.secondary, fontSize: 12),
                               ),
                             ],
                           ),
@@ -568,7 +568,7 @@ class _PremiumDrawer extends StatelessWidget {
                         minLeadingWidth: 28,
                         selected: current == entry.$1,
                         selectedTileColor: Colors.white24,
-                        iconColor: Colors.white54,
+                        iconColor: AppText.disabled,
                         textColor: Colors.white,
                         selectedColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
@@ -619,8 +619,8 @@ class _PremiumDrawer extends StatelessWidget {
                       Navigator.pop(context);
                       await controller.logout();
                     },
-                    icon: const Icon(Icons.logout_rounded, color: Colors.white60, size: 19),
-                    label: const Text('Logout', style: TextStyle(color: Colors.white60)),
+                    icon: const Icon(Icons.logout_rounded, color: AppText.secondary, size: 19),
+                    label: const Text('Logout', style: TextStyle(color: AppText.secondary)),
                   ),
                 ],
               ),

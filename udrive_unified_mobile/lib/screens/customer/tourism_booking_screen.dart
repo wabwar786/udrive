@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/auth_models.dart';
@@ -1314,7 +1315,7 @@ class _ReviewLine extends StatelessWidget {
   final String label;
   final String value;
   @override
-  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(top: 9), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 105, child: Text(label, style: const TextStyle(color: Colors.white60, fontSize: 12))), Expanded(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)))]));
+  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(top: 9), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 105, child: Text(label, style: const TextStyle(color: AppText.secondary, fontSize: 12))), Expanded(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)))]));
 }
 
 class _PriceLine extends StatelessWidget {

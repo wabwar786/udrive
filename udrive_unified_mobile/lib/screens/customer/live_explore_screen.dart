@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/theme/app_tokens.dart';
 import '../../core/auth/session_store.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_config.dart';
@@ -258,7 +259,7 @@ class _Hero extends StatelessWidget {
             children: [
               Text(title, style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900)),
               const SizedBox(height: 5),
-              Text(subtitle, style: const TextStyle(color: Colors.white70, height: 1.35, fontSize: 12)),
+              Text(subtitle, style: const TextStyle(color: AppText.secondary, height: 1.35, fontSize: 12)),
             ],
           ),
         ),
@@ -355,8 +356,8 @@ class _DestinationCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(23)),
                 child: item['coverImageUrl'] == null
-                    ? const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF08151C), Color(0xFF10212B)])), child: Center(child: Icon(Icons.landscape_rounded, color: Colors.white70, size: 62)))
-                    : Image.network(ApiConfig.absoluteUrl(item['coverImageUrl']?.toString()), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF08151C), Color(0xFF10212B)])), child: Center(child: Icon(Icons.landscape_rounded, color: Colors.white70, size: 62)))),
+                    ? const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF08151C), Color(0xFF10212B)])), child: Center(child: Icon(Icons.landscape_rounded, color: AppText.secondary, size: 62)))
+                    : Image.network(ApiConfig.absoluteUrl(item['coverImageUrl']?.toString()), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF08151C), Color(0xFF10212B)])), child: Center(child: Icon(Icons.landscape_rounded, color: AppText.secondary, size: 62)))),
               ),
               const DecoratedBox(decoration: BoxDecoration(borderRadius: BorderRadius.vertical(top: Radius.circular(23)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black54]))),
               Positioned(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_tokens.dart';
 import '../../core/localization/app_language.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/udrive_logo.dart';
@@ -168,6 +169,6 @@ class _ServiceGrid extends StatelessWidget {
       ('Private Vehicle','Car • Coaster • Bike',Icons.directions_car_filled_rounded),
       ('Hotels & Stays','Rooms • Transport • Packages',Icons.hotel_rounded),
     ];
-    return GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:2,mainAxisSpacing:9,crossAxisSpacing:9,childAspectRatio:1.42),itemCount:services.length,itemBuilder:(context,i){final x=services[i];return InkWell(borderRadius:BorderRadius.circular(16),onTap:()=>onSelected(x.$1),child:Container(padding:const EdgeInsets.all(11),decoration:BoxDecoration(color:const Color(0xFF1D292F),borderRadius:BorderRadius.circular(16)),child:Stack(children:[Positioned(right:-12,bottom:-18,child:Container(width:78,height:78,decoration:const BoxDecoration(color:Color(0xFF9BE43A),shape:BoxShape.circle))),Positioned(right:8,bottom:7,child:Icon(x.$3,size:40,color:const Color(0xFF17242B))),Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(x.$3,size:17,color:const Color(0xFF9BE43A)),const Spacer(),Text(x.$1,maxLines:2,style:const TextStyle(color:Colors.white,fontSize:12,fontWeight:FontWeight.w900,height:1.05)),const SizedBox(height:3),Padding(padding:const EdgeInsets.only(right:48),child:Text(x.$2,maxLines:2,style:const TextStyle(color:Colors.white60,fontSize:8.5,height:1.15)))])])));});
+    return GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:2,mainAxisSpacing:9,crossAxisSpacing:9,childAspectRatio:1.42),itemCount:services.length,itemBuilder:(context,i){final x=services[i];return InkWell(borderRadius:BorderRadius.circular(16),onTap:()=>onSelected(x.$1),child:Container(padding:const EdgeInsets.all(11),decoration:BoxDecoration(color:const Color(0xFF1D292F),borderRadius:BorderRadius.circular(16)),child:Stack(children:[Positioned(right:-12,bottom:-18,child:Container(width:78,height:78,decoration:const BoxDecoration(color:Color(0xFF9BE43A),shape:BoxShape.circle))),Positioned(right:8,bottom:7,child:Icon(x.$3,size:40,color:const Color(0xFF17242B))),Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(x.$3,size:17,color:const Color(0xFF9BE43A)),const Spacer(),Text(x.$1,maxLines:2,style:const TextStyle(color:Colors.white,fontSize:12,fontWeight:FontWeight.w900,height:1.05)),const SizedBox(height:3),Padding(padding:const EdgeInsets.only(right:48),child:Text(x.$2,maxLines:2,style:const TextStyle(color:AppText.secondary,fontSize:8.5,height:1.15)))])])));});
   }
 }

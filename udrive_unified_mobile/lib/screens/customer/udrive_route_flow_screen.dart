@@ -543,7 +543,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                                           },
                                           icon: const Icon(
                                             Icons.cancel_rounded,
-                                            color: Colors.white54,
+                                            color: AppText.disabled,
                                           ),
                                         ),
                                 ),
@@ -602,7 +602,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                                               'Type a city, district, hotel or Kashmir destination.',
                                           textAlign: TextAlign.center,
                                           style: const TextStyle(
-                                            color: Colors.white70,
+                                            color: AppText.secondary,
                                             fontSize: 12.5,
                                             height: 1.4,
                                           ),
@@ -645,7 +645,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                                         typed
                                             ? Icons.location_on_outlined
                                             : Icons.place_rounded,
-                                        color: typed ? Colors.white54 : _lime,
+                                        color: typed ? AppText.disabled : _lime,
                                         size: 27,
                                       ),
                                       title: Text(
@@ -1341,7 +1341,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               Expanded(
                 child: Text(
                   'Loading approved vehicles from the UDrive server…',
-                  style: TextStyle(color: Colors.white70, fontSize: 11.5),
+                  style: TextStyle(color: AppText.secondary, fontSize: 11.5),
                 ),
               ),
             ],
@@ -1376,7 +1376,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               const SizedBox(height: 8),
               Text(
                 _vehicleLoadError ?? 'Add demo data from Admin → Data Management, then retry.',
-                style: const TextStyle(color: Colors.white60, fontSize: 10.5, height: 1.35),
+                style: const TextStyle(color: AppText.secondary, fontSize: 10.5, height: 1.35),
               ),
               const SizedBox(height: 10),
               SizedBox(
@@ -1468,7 +1468,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                           '${vehicle.driverName} • ★ ${vehicle.driverRating.toStringAsFixed(1)} • ${vehicle.completedTrips} trips',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white70, fontSize: 10),
+                          style: const TextStyle(color: AppText.secondary, fontSize: 10),
                         ),
                         const SizedBox(height: 4),
                         Wrap(
@@ -2181,7 +2181,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               const SizedBox(height: 14),
               const Text('This booking screen could not finish rendering.', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
-              Text('${widget.pickupLabel} → ${widget.destination.title}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              Text('${widget.pickupLabel} → ${widget.destination.title}', style: const TextStyle(color: AppText.secondary, fontSize: 12)),
               const SizedBox(height: 18),
               SizedBox(
                 width: double.infinity,
@@ -2303,12 +2303,12 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   else
                     Text(
                       _bookingModeNotice ?? '',
-                      style: const TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w600),
+                      style: const TextStyle(color: AppText.secondary, fontSize: 11.5, fontWeight: FontWeight.w600),
                     ),
                   if (_bookingMode == _FareBookingMode.perSeat) ...[
                     const SizedBox(height: 8),
                     Row(children: [
-                      const Text('Seats', style: TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      const Text('Seats', style: TextStyle(color: AppText.secondary, fontSize: 11.5, fontWeight: FontWeight.w700)),
                       const Spacer(),
                       _RoundMiniButton(icon: Icons.remove, onTap: _seats > 1 ? () => setState(() => _seats--) : null),
                       Padding(padding: const EdgeInsets.symmetric(horizontal: 13), child: Text('$_seats', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900))),
@@ -2323,7 +2323,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                       child: const Row(children: [
                         Icon(Icons.directions_bus_filled_rounded, color: _lime),
                         SizedBox(width: 10),
-                        Expanded(child: Text('No fixed tour package is scheduled for this destination in the next 30 days. Choose an approved tour-capable vehicle below and submit your offer.', style: TextStyle(color: Colors.white70, fontSize: 11.5, height: 1.35))),
+                        Expanded(child: Text('No fixed tour package is scheduled for this destination in the next 30 days. Choose an approved tour-capable vehicle below and submit your offer.', style: TextStyle(color: AppText.secondary, fontSize: 11.5, height: 1.35))),
                       ]),
                     ),
                     const SizedBox(height: 8),
@@ -2413,7 +2413,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                       child: Row(children: [
                         const Icon(Icons.verified_rounded, color: _lime, size: 20),
                         const SizedBox(width: 9),
-                        Expanded(child: Text('Published by ${selectedPackage.driverName} • ${selectedPackage.availableSeats} seats available', style: const TextStyle(color: Colors.white70, fontSize: 10.5))),
+                        Expanded(child: Text('Published by ${selectedPackage.driverName} • ${selectedPackage.availableSeats} seats available', style: const TextStyle(color: AppText.secondary, fontSize: 10.5))),
                       ]),
                     ),
                   const SizedBox(height: 8),
@@ -2421,13 +2421,13 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(color: const Color(0xFF202321), borderRadius: BorderRadius.circular(14)),
                     child: Row(children: [
-                      const Icon(Icons.info_outline_rounded, color: Colors.white54, size: 18),
+                      const Icon(Icons.info_outline_rounded, color: AppText.disabled, size: 18),
                       const SizedBox(width: 8),
                       Expanded(child: Text(
                         selectedPackage == null
                             ? 'Fare is calculated from the database per-km rate and estimated route distance. You can keep this fare or adjust your offer before booking.'
                             : 'Per-seat and whole-vehicle prices come directly from the selected tour package.',
-                        style: const TextStyle(color: Colors.white60, fontSize: 10.5, height: 1.35),
+                        style: const TextStyle(color: AppText.secondary, fontSize: 10.5, height: 1.35),
                       )),
                     ]),
                   ),
@@ -2437,7 +2437,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     value: _autoAccept,
                     activeThumbColor: _lime,
                     onChanged: (value) => setState(() => _autoAccept = value),
-                    secondary: const Icon(Icons.send_rounded, color: Colors.white70, size: 19),
+                    secondary: const Icon(Icons.send_rounded, color: AppText.secondary, size: 19),
                     title: Text('Auto-accept offers up to ${_money(_bookingMode == _FareBookingMode.perSeat ? (selectedPackage == null ? perSeatAmount : perSeatAmount * _seats) : wholeAmount)}', style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700)),
                   ),
                   SizedBox(
@@ -2510,7 +2510,7 @@ class _ModeButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(color: selected ? _lime : Colors.transparent, borderRadius: BorderRadius.circular(11)),
           alignment: Alignment.center,
-          child: Text(label, style: TextStyle(color: selected ? Colors.black : Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w900)),
+          child: Text(label, style: TextStyle(color: selected ? Colors.black : AppText.secondary, fontSize: 11.5, fontWeight: FontWeight.w900)),
         ),
       );
 }
@@ -2535,7 +2535,7 @@ class _RatePill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
         decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
-        child: Text('$label: $value', style: const TextStyle(color: Colors.white70, fontSize: 9.5, fontWeight: FontWeight.w700)),
+        child: Text('$label: $value', style: const TextStyle(color: AppText.secondary, fontSize: 9.5, fontWeight: FontWeight.w700)),
       );
 }
 
@@ -2729,7 +2729,7 @@ class _RouteModeChoice extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: selected ? Colors.black : Colors.white70,
+              color: selected ? Colors.black : AppText.secondary,
               fontSize: 11,
               fontWeight: FontWeight.w900,
             ),

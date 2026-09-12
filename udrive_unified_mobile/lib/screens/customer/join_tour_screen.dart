@@ -59,7 +59,7 @@ class _JoinTourScreenState extends State<JoinTourScreen> with SingleTickerProvid
               children: [
                 Container(width: 54, height: 54, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(17)), child: const Icon(Icons.groups_rounded, color: Colors.white)),
                 const SizedBox(width: 13),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('joinTourHeadline'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)), const SizedBox(height: 4), Text(context.tr('joinTourSubtitle'), style: const TextStyle(color: Colors.white70, height: 1.35, fontSize: 12))])),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('joinTourHeadline'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)), const SizedBox(height: 4), Text(context.tr('joinTourSubtitle'), style: const TextStyle(color: AppText.secondary, height: 1.35, fontSize: 12))])),
               ],
             ),
           ),

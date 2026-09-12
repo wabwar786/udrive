@@ -20,7 +20,6 @@ import '../../core/config/app_config.dart';
 import '../../core/places/recent_places_store.dart';
 import '../../core/services/place_search_service.dart';
 import '../../core/state/app_controller.dart';
-import '../../core/theme/accent_store.dart';
 import '../../core/widgets/steering_wheel_icon.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
@@ -1158,21 +1157,32 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       const SizedBox(height: 10),
                     ],
 
-                    // Three swatches, at the top of the card.
-                    //
-                    // Here rather than buried in Settings because it is a
-                    // personalisation, not a configuration — someone changes it
-                    // once, on the screen they look at most, and then forgets
-                    // it exists.
-                    const _AccentPicker(),
-                    const SizedBox(height: 10),
 
                     // What you are booking.
                     _SheetPanel(
-                      child: _ServiceCards(
-                        selected: _service,
-                        onSelect: _selectService,
-                        nearbyCount: _visibleVehicles.length,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _ServiceCards(
+                            selected: _service,
+                            onSelect: _selectService,
+                            nearbyCount: _visibleVehicles.length,
+                          ),
+                          const SizedBox(height: 11),
+                          // The second rank: things people reach for less
+                          // often, as icons rather than cards.
+                          //
+                          // A card carries a title, a subtitle and a picture,
+                          // and four of them side by side is four things
+                          // competing. An icon and one word is enough for a
+                          // destination you already know you want.
+                          _QuickRow(
+                            selected: _service,
+                            onSelect: _selectService,
+                            onExplore: _openExplore,
+                            onCarRental: _carRentalNotReady,
+                          ),
+                        ],
                       ),
                     ),
 
@@ -1330,6 +1340,31 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (_destinationPoint != null && _service != HomeService.hotel) {
       await _openVehicleSelection();
     }
+  }
+
+  /// Car rental is on the home screen before it exists.
+  ///
+  /// Shown with a badge and a plain answer rather than hidden, because the
+  /// question "can I rent a car myself" is one customers ask and the app
+  /// currently gives no answer to at all — not even "no". A tile that says
+  /// "not yet" is more use than an absence they have to guess at.
+  ///
+  /// It does nothing else on purpose. A form that collects interest and posts
+  /// it nowhere would be worse than this.
+  void _carRentalNotReady() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Self-drive car rental is not open yet. It is being worked on.',
+        ),
+      ),
+    );
+  }
+
+  void _openExplore() {
+    // Explore lives in the drawer today, so this points at the nearest thing
+    // that exists rather than at a screen that does not.
+    _selectService(HomeService.tour);
   }
 
   Widget _buildVehiclePanel() {
@@ -1625,99 +1660,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 /// does the same, because a bar that looks draggable and is not reads as a
 /// broken control. The label states which way the next press goes rather than
 /// showing a bare chevron nobody has to guess about.
-/// Lets the customer choose the app's accent colour.
-///
-/// Three swatches, not a colour wheel. A free picker lets someone land on a
-/// colour that fails contrast against the dark surfaces, or one that collides
-/// with the red used for danger and the green used for success — and then every
-/// warning in the app quietly stops reading as a warning.
-class _AccentPicker extends StatelessWidget {
-  const _AccentPicker();
-
-  @override
-  Widget build(BuildContext context) {
-    // Listens to the store rather than reading it once.
-    //
-    // Without this the swatches appeared and selecting one did nothing
-    // visible: the store notified, but nothing in this subtree was subscribed,
-    // so the ring never moved to the colour just chosen.
-    return AnimatedBuilder(
-      animation: AccentStore.instance,
-      builder: (context, _) => _swatches(),
-    );
-  }
-
-  Widget _swatches() {
-    final current = AccentStore.instance.accent;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.panel),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Text(
-              'App colour',
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: AppText.secondary,
-              ),
-            ),
-          ),
-          for (final accent in AppAccent.values)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Semantics(
-                button: true,
-                selected: accent == current,
-                label: accent.label,
-                child: GestureDetector(
-                  onTap: () => AccentStore.instance.select(accent),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: accent.seed,
-                      shape: BoxShape.circle,
-                      // A ring rather than a tick inside the swatch: the tick
-                      // needs a colour of its own, and on three different
-                      // backgrounds one of them always reads badly.
-                      border: Border.all(
-                        color: accent == current
-                            ? AppText.primary
-                            : Colors.transparent,
-                        width: 2.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A rounded block on the page.
-///
-/// The sheet is two of these — what you are booking, then where you are going.
-/// Grouping them this way is what makes the screen readable at a glance: one
-/// long column of controls all on the same surface gave the eye nowhere to
-/// stop.
-/// What tour drivers around here charge per day.
-///
-/// Shown instead of a recommended fare, because there is no recommendation to
-/// make: tourism is priced by each driver for their own vehicle, and the
-/// platform quoting a figure would be inventing a price nobody set.
-///
-/// The range is the honest shape of that. A single average would read as an
-/// official rate and hide that a Coster and a car are different propositions.
 class _TourRateGuideCard extends StatelessWidget {
   const _TourRateGuideCard({required this.guide, required this.days});
 
@@ -2721,9 +2663,12 @@ class _ServiceCards extends StatelessWidget {
           Expanded(
             flex: 27,
             child: _ProductCard(
-              title: 'Ride now',
+              title: 'City rides',
+              // The driver count when there is one, because "3 nearby" is the
+              // single most useful thing this tile can say — and the vehicle
+              // list is on the next screen anyway.
               subtitle: nearbyCount > 0
-                  ? 'Car · Bike · Coster · Hiace  ·  $nearbyCount nearby'
+                  ? '$nearbyCount nearby now'
                   : 'Car · Bike · Coster · Hiace',
               icon: Icons.directions_car_rounded,
               surface: AppProduct.rideSurface,
@@ -2757,23 +2702,172 @@ class _ServiceCards extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Expanded(
+                  // Hotels moved down to the icon row, so this slot carries
+                  // the other kind of ride: out of the city rather than across
+                  // it. Both are cards because both start a booking.
                   child: _ProductCard(
-                    title: 'Hotel',
-                    subtitle: 'Stays',
-                    icon: Icons.apartment_rounded,
+                    title: 'City to city',
+                    subtitle: 'Longer trips',
+                    icon: Icons.alt_route_rounded,
                     surface: AppProduct.hotelSurface,
                     accent: AppProduct.hotelAccent,
                     titleInk: AppProduct.hotelTitle,
                     subInk: AppProduct.hotelSub,
-                    selected: selected == HomeService.hotel,
+                    selected: false,
                     large: false,
-                    onTap: () => onSelect(HomeService.hotel),
+                    onTap: () => onSelect(HomeService.car),
                   ),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The second rank of services, as icons.
+class _QuickRow extends StatelessWidget {
+  const _QuickRow({
+    required this.selected,
+    required this.onSelect,
+    required this.onExplore,
+    required this.onCarRental,
+  });
+
+  final HomeService selected;
+  final ValueChanged<HomeService> onSelect;
+  final VoidCallback onExplore;
+  final VoidCallback onCarRental;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _QuickTile(
+            icon: Icons.apartment_rounded,
+            label: 'Hotels',
+            selected: selected == HomeService.hotel,
+            onTap: () => onSelect(HomeService.hotel),
+          ),
+        ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: _QuickTile(
+            icon: Icons.vpn_key_rounded,
+            label: 'Car rental',
+            // Badged rather than hidden: the customer learns the answer is
+            // "not yet" instead of assuming it is "never".
+            badge: 'SOON',
+            selected: false,
+            onTap: onCarRental,
+          ),
+        ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: _QuickTile(
+            icon: Icons.airport_shuttle_rounded,
+            label: 'Coster',
+            selected: selected == HomeService.bus,
+            onTap: () => onSelect(HomeService.bus),
+          ),
+        ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: _QuickTile(
+            icon: Icons.explore_rounded,
+            label: 'Explore',
+            selected: false,
+            onTap: onExplore,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickTile extends StatelessWidget {
+  const _QuickTile({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final String? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: badge == null ? label : '$label, $badge',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Column(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  height: 46,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: selected ? AppTint.brand : AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 21,
+                    color: selected ? AppColors.secondary : AppText.secondary,
+                  ),
+                ),
+                if (badge != null)
+                  Positioned(
+                    top: -4,
+                    right: -2,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: AppColors.secondary,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(
+                        badge!,
+                        style: TextStyle(
+                          fontSize: 7.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .3,
+                          color: AppText.onBrand,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? AppText.primary : AppText.secondary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

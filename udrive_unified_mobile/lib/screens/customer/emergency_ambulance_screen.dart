@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/theme/app_tokens.dart';
 import '../../core/network/api_config.dart';
 import '../../core/state/app_controller.dart';
 
@@ -163,7 +164,7 @@ class _EmergencyAmbulanceScreenState extends State<EmergencyAmbulanceScreen> {
                         children: [
                           Text('Choose your city', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
                           SizedBox(height: 4),
-                          Text('Only ambulances saved in the Udrive database are shown here.', style: TextStyle(color: Colors.white60, fontSize: 10.5, height: 1.35)),
+                          Text('Only ambulances saved in the Udrive database are shown here.', style: TextStyle(color: AppText.secondary, fontSize: 10.5, height: 1.35)),
                         ],
                       ),
                     ),
@@ -268,7 +269,7 @@ class _EmergencyAmbulanceScreenState extends State<EmergencyAmbulanceScreen> {
                 children: [
                   Text(ambulance.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 4),
-                  Text(ambulance.city, style: const TextStyle(color: Colors.white54, fontSize: 10.5)),
+                  Text(ambulance.city, style: const TextStyle(color: AppText.disabled, fontSize: 10.5)),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 6,
@@ -302,7 +303,7 @@ class _EmergencyAmbulanceScreenState extends State<EmergencyAmbulanceScreen> {
           children: [
             Icon(icon, color: _lime, size: 12),
             const SizedBox(width: 4),
-            Text(text, style: const TextStyle(color: Colors.white70, fontSize: 9.5, fontWeight: FontWeight.w700)),
+            Text(text, style: const TextStyle(color: AppText.secondary, fontSize: 9.5, fontWeight: FontWeight.w700)),
           ],
         ),
       );
@@ -314,7 +315,7 @@ class _EmergencyAmbulanceScreenState extends State<EmergencyAmbulanceScreen> {
           children: [
             const Icon(Icons.info_outline_rounded, color: _lime),
             const SizedBox(width: 10),
-            Expanded(child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 11.5, height: 1.4))),
+            Expanded(child: Text(text, style: const TextStyle(color: AppText.secondary, fontSize: 11.5, height: 1.4))),
           ],
         ),
       );

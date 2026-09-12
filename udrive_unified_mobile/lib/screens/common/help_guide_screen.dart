@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_tokens.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -74,7 +75,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     ? 'ہر اہم کام آسان مراحل میں سمجھایا گیا ہے۔ جس سیکشن کی ضرورت ہو اسے کھولیں۔'
                     : 'Every important task is explained in simple steps. Open the section you need.',
                 textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
-                style: const TextStyle(color: Colors.white70, height: 1.5),
+                style: const TextStyle(color: AppText.secondary, height: 1.5),
               ),
             ],
           ),

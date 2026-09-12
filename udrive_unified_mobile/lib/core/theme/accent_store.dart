@@ -9,28 +9,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// the app quietly stops reading as a warning. These three were each checked
 /// against those, and against the ink placed on top of them.
 enum AppAccent {
-  /// The default. Warm, and far enough from both danger red and success green.
+  /// The default, and the logo's own family.
+  ///
+  /// A deep green, not a light one. Light green is what the brand looks like,
+  /// but white text on `#A6E22E` fails contrast at button sizes and is unusable
+  /// in daylight — so the light green lives in [wash] and this carries the
+  /// actions.
+  green(
+    label: 'Green',
+    seed: Color(0xFF178B55),
+    ink: Color(0xFFFFFFFF),
+    wash: Color(0xFFE3F5EC),
+  ),
+
+  /// Cooler, for anyone who finds green too much of it.
+  blue(
+    label: 'Blue',
+    seed: Color(0xFF1B5FA8),
+    ink: Color(0xFFFFFFFF),
+    wash: Color(0xFFE7F0FA),
+  ),
+
+  /// Warm, and far from both the red used for danger and the green for success.
   amber(
     label: 'Amber',
-    seed: Color(0xFFF5A524),
-    ink: Color(0xFF1A1200),
-    wash: Color(0xFF3A2A0E),
-  ),
-
-  /// Cooler, for anyone who finds amber loud.
-  sky(
-    label: 'Sky',
-    seed: Color(0xFF4CA6FF),
-    ink: Color(0xFF04131F),
-    wash: Color(0xFF0E2C42),
-  ),
-
-  /// Closest to the original lime, kept for people who liked it.
-  lime(
-    label: 'Lime',
-    seed: Color(0xFFA6E22E),
-    ink: Color(0xFF11190A),
-    wash: Color(0xFF22320F),
+    seed: Color(0xFFB56A00),
+    ink: Color(0xFFFFFFFF),
+    wash: Color(0xFFFCF0DF),
   );
 
   const AppAccent({
@@ -47,8 +52,9 @@ enum AppAccent {
 
   /// Text and icons placed on top of [seed].
   ///
-  /// Stored rather than computed, because all three of these are light colours
-  /// and white on them fails contrast at button sizes.
+  /// Stored rather than computed. All three seeds are dark enough to carry
+  /// white, which is only true because each was chosen that way — a lighter
+  /// version of any of them would need near-black here instead.
   final Color ink;
 
   /// A low-saturation version for selected tiles and quiet backgrounds.
@@ -69,7 +75,7 @@ class AccentStore extends ChangeNotifier {
 
   static const _key = 'udrive.accent';
 
-  AppAccent _accent = AppAccent.amber;
+  AppAccent _accent = AppAccent.green;
   AppAccent get accent => _accent;
 
   /// Restores the saved choice. Called once, before the app paints.

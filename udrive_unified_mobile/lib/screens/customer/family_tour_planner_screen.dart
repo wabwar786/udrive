@@ -52,7 +52,7 @@ class _FamilyTourPlannerScreenState extends State<FamilyTourPlannerScreen> {
               children: [
                 Container(width: 56, height: 56, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(18)), child: const Icon(Icons.family_restroom_rounded, color: Colors.white, size: 29)),
                 const SizedBox(width: 13),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('planSafeFamilyTour'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)), const SizedBox(height: 4), Text(context.tr('familyPlannerSubtitle'), style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.35))])),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('planSafeFamilyTour'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)), const SizedBox(height: 4), Text(context.tr('familyPlannerSubtitle'), style: const TextStyle(color: AppText.secondary, fontSize: 12, height: 1.35))])),
               ],
             ),
           ),
@@ -122,7 +122,7 @@ class _FamilyTourPlannerScreenState extends State<FamilyTourPlannerScreen> {
               const SizedBox(height: 14),
               Text('${plan.startLocation} → ${plan.destination}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20)),
               const SizedBox(height: 6),
-              Text('${plan.days} days · ${plan.adults + plan.children + plan.infants + plan.elderly} travellers · ${plan.vehicle}', style: const TextStyle(color: Colors.white70)),
+              Text('${plan.days} days · ${plan.adults + plan.children + plan.infants + plan.elderly} travellers · ${plan.vehicle}', style: const TextStyle(color: AppText.secondary)),
             ]),
           ),
           const SizedBox(height: 14),

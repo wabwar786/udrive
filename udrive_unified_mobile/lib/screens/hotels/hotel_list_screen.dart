@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/theme/app_tokens.dart';
 import '../../core/hotels/hotel_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/hotel_models.dart';
@@ -207,7 +208,7 @@ class _HotelListScreenState extends State<HotelListScreen> {
                   _loadError ?? 'Hotels could not be loaded.',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white70, fontSize: 10.5, height: 1.3),
+                  style: const TextStyle(color: AppText.secondary, fontSize: 10.5, height: 1.3),
                 ),
               ),
               TextButton(onPressed: _load, child: const Text('Retry')),
@@ -240,11 +241,11 @@ class _HotelListScreenState extends State<HotelListScreen> {
                       children: [
                         Text('Own a hotel or guest house?', style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w900)),
                         SizedBox(height: 2),
-                        Text('Add it for admin approval and publish it on UDrive.', style: TextStyle(color: Colors.white60, fontSize: 9.5)),
+                        Text('Add it for admin approval and publish it on UDrive.', style: TextStyle(color: AppText.secondary, fontSize: 9.5)),
                       ],
                     ),
                   ),
-                  Icon(Icons.chevron_right_rounded, color: Colors.white70),
+                  Icon(Icons.chevron_right_rounded, color: AppText.secondary),
                 ],
               ),
             ),
@@ -261,7 +262,7 @@ class _HotelListScreenState extends State<HotelListScreen> {
               onSubmitted: (_) => _load(),
               style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.white70),
+                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppText.secondary),
                 hintText: 'Destination or hotel',
                 hintStyle: const TextStyle(color: _muted, fontSize: 12.5),
                 isDense: true,
@@ -467,7 +468,7 @@ class _HotelCard extends StatelessWidget {
                         ),
                         const Spacer(),
                         Text('${hotel.availableRooms} rooms',
-                            style: const TextStyle(color: Colors.white54, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                            style: const TextStyle(color: AppText.disabled, fontSize: 10.5, fontWeight: FontWeight.w700)),
                       ],
                     ),
                     const SizedBox(height: 11),
@@ -535,7 +536,7 @@ class _EmptyHotels extends StatelessWidget {
                     ? 'Hotels are temporarily unavailable. Use Retry after the updated API is deployed.'
                     : 'No approved hotels match this search. Clear the destination and search again.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white54, fontSize: 12.5, height: 1.35),
+                style: const TextStyle(color: AppText.disabled, fontSize: 12.5, height: 1.35),
               ),
             ],
           ),
