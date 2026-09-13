@@ -91,8 +91,23 @@ class _DriverLiveNavigationScreenState
         Timer.periodic(const Duration(seconds: 10), (_) => _pollMessages());
   }
 
+  /// Starts the live screen.
+  ///
+  /// The order matters, and it used to be the wrong way round. Three calls ran
+  /// one after another before anything was drawn — a status change, a location
+  /// service start that itself fetches the ping interval, then a full refresh —
+  /// so a Driver pressing "Open live ride" watched a blank screen through all
+  /// of them. On a mobile connection that is several seconds of nothing.
+  ///
+  /// The refresh goes first now, because it is the only one that puts anything
+  /// on screen. The status change and the location service follow, and neither
+  /// is something the Driver is waiting to see.
   Future<void> _begin() async {
     try {
+      await _refresh();
+      _ready();
+      _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
+
       if (_currentStatus == 'DriverAccepted') {
         await widget.repository.driverStatus(
           widget.trip.bookingId,
@@ -102,13 +117,20 @@ class _DriverLiveNavigationScreenState
         _currentStatus = 'DriverEnRoute';
       }
       await _locationService.start(widget.trip.bookingId, _currentStatus);
-      await _refresh();
-      _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _starting = false);
     }
+  }
+
+  /// Clears the blocking overlay as soon as there is a map to look at.
+  ///
+  /// `_starting` draws a full-screen spinner, and it used to stay up until all
+  /// three start-up calls had finished. The map underneath was ready long
+  /// before that — the Driver was being shown a spinner over a working screen.
+  void _ready() {
+    if (mounted && _starting) setState(() => _starting = false);
   }
 
   Future<void> _refresh() async {

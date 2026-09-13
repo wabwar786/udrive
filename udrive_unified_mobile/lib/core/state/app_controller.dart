@@ -354,11 +354,31 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  /// Loads everything the signed-in app needs.
+  ///
+  /// Rewritten because this is what a person waits through after entering their
+  /// code, and it used to be the slowest possible arrangement: `me()`, then the
+  /// driver profile, then the vehicles, then seven more calls — with nothing on
+  /// screen until the last one returned.
+  ///
+  /// Now it paints as soon as it can and fills in behind. `me()` is the only
+  /// call the shell genuinely needs to choose a screen, so the moment it lands
+  /// the app is drawn; the rest arrives into a screen the person is already
+  /// looking at.
   Future<void> refreshAccount() async {
     if (!_loggedIn) return;
+
     _currentUser = await _authRepository.me();
-    await _loadDriverState();
-    await _loadPhase9State();
+    notifyListeners();
+
+    // The two groups are independent — driver profile and customer bookings
+    // have nothing to say to each other — so they run together rather than one
+    // waiting on the other.
+    await Future.wait([
+      _loadDriverState(),
+      _loadPhase9State(),
+    ]);
+
     notifyListeners();
   }
 
@@ -430,8 +450,36 @@ class AppController extends ChangeNotifier {
   /// it has.
   Future<String?> accessTokenForMedia() => _sessionStore.readAccessToken();
 
+  /// Reloads the driver profile **and** the user record behind it.
+  ///
+  /// `driverApproved` reads `_currentUser.driverModeAvailable`, not the
+  /// profile — so refreshing the profile alone left that flag stale and the
+  /// dashboard never appeared. A driver could be approved, press refresh as
+  /// often as they liked, and still have to kill the app and reopen it, which
+  /// is the one action that reloads `me()`.
+  ///
+  /// The two calls run together rather than one after the other: they are
+  /// independent, and someone waiting on a decision should not wait twice.
   Future<DriverProfileLive?> refreshDriverProfile() async {
-    _driverProfile = await _authRepository.getDriverProfile();
+    // Typed separately rather than through a shared `Future.wait` list, which
+    // would erase both to Object and need casting back.
+    final profileCall = _authRepository.getDriverProfile();
+    final userCall = _authRepository.me();
+
+    _driverProfile = await profileCall;
+    _currentUser = await userCall;
+
+    // Approval unlocks the marketplace, and the dashboard is empty without it.
+    // Loading it here means the first screen a newly approved driver sees has
+    // something on it.
+    if (driverApproved) {
+      try {
+        await loadDriverMarketplace(notify: false);
+      } catch (_) {
+        // A dashboard with no requests yet is still a dashboard.
+      }
+    }
+
     notifyListeners();
     return _driverProfile;
   }
@@ -484,8 +532,15 @@ class AppController extends ChangeNotifier {
 
   Future<void> _loadDriverState() async {
     try {
-      _driverProfile = await _authRepository.getDriverProfile();
-      _liveVehicles = _driverProfile == null ? const [] : await _authRepository.getVehicles();
+      // Both at once. The vehicles call was waiting on the profile only to
+      // check whether a profile exists — and the server answers an empty list
+      // for somebody who has none, which is the same information for one round
+      // trip less.
+      final profileCall = _authRepository.getDriverProfile();
+      final vehiclesCall = _authRepository.getVehicles();
+
+      _driverProfile = await profileCall;
+      _liveVehicles = await vehiclesCall;
     } catch (_) {
       _driverProfile = null;
       _liveVehicles = const [];

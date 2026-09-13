@@ -179,3 +179,12 @@ first ride, which is the intended arrangement.
   four-step flow adds: `DRIVING_LICENCE_BACK` (carries the categories) and
   `SELFIE_WITH_CNIC` (ties the person to the card).
 - `vehicles.colour` already existed and is untouched.
+
+## 047_backfill_welcome_credit (rev 118)
+
+Credits the welcome bonus to drivers approved **before** the code that pays it
+shipped. They have an approved profile, a wallet, and nothing in it — which
+looks exactly like the feature not working.
+
+Idempotent through the same `welcome:<driver_profile_id>` key the runtime code
+uses, so nobody is credited twice and re-running changes nothing.

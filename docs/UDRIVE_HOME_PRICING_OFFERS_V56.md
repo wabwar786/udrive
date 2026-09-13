@@ -2941,6 +2941,60 @@ It would have failed every build on a healthy repository. That is how a check
 gets switched off, and then stops catching the thing it was written for. Removed,
 with the reasoning left in the file.
 
+## 97. Approval did not unlock anything until a restart
+
+`refreshDriverProfile()` reloaded the profile. But `driverApproved` reads
+`_currentUser.driverModeAvailable` — **the user record, not the profile** — so
+the flag stayed stale no matter how often the driver pressed refresh. Killing
+the app and reopening it was the only action that reloaded `me()`, which is why
+that was the only thing that worked.
+
+It reloads both now, and loads the driver marketplace when the answer is yes, so
+the first dashboard a newly approved driver sees has something on it rather than
+being empty for another round trip.
+
+### The welcome credit
+
+Paid inside the approval transaction — but that code shipped after some drivers
+were already approved. Migration 047 credits anyone approved without it, keyed
+the same way the runtime code is, so nobody is paid twice.
+
+## 98. Speed
+
+### After the code screen
+
+`refreshAccount()` was the slowest possible arrangement: `me()`, then the driver
+profile, then the vehicles, then seven more calls — **with nothing on screen
+until the last one returned.** Ten calls, the first three strictly sequential.
+
+`me()` is the only call the shell needs to choose a screen, so the app is drawn
+the moment it lands and the rest arrives into a screen the person is already
+looking at. The two groups behind it run together; and the vehicles call no
+longer waits on the profile, which it was doing only to check whether a profile
+exists — the server answers an empty list for somebody who has none, which is
+the same information for one round trip less.
+
+### Open live ride
+
+Three calls ran one after another before anything was drawn: a status change, a
+location service start that itself fetches the ping interval, then a refresh. A
+driver pressing the button watched a blank screen through all of them.
+
+The refresh goes first, because it is the only one that puts anything on screen,
+and the spinner clears the moment it returns. The status change and the location
+service follow — neither is something the driver is waiting to see.
+
+## 99. The code screen
+
+White, like the rest of the app. It was still painting a dark green gradient —
+the first screen anyone sees, and the only one still wearing the old palette.
+
+Left-aligned and much larger (32pt over two lines). Centred type reads as a
+splash screen; this is a form, and a form's question belongs at the left margin
+where the eye returns on every line. That matters more here than anywhere,
+because the next thing the person does is copy four digits across from a text
+message.
+
 ---
 
 ## Not done

@@ -98,42 +98,57 @@ class _OtpScreenState extends State<OtpScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Center(child: UDriveMark(size: 66)),
-                        const SizedBox(height: 24),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: UDriveMark(size: 54),
+                        ),
+                        const SizedBox(height: 26),
+
+                        // Left-aligned, and large.
+                        //
+                        // Centred type reads as a splash screen. This is a
+                        // form, and a form's question belongs at the left
+                        // margin where the eye returns on every line — which
+                        // matters more here than anywhere, because the next
+                        // thing the person does is copy four digits across
+                        // from a text message.
                         Text(
                           urdu
                               ? 'تصدیقی کوڈ درج کریں'
-                              : 'Enter your verification code',
-                          textAlign: TextAlign.center,
+                              : 'Enter your\nverification code',
                           style: const TextStyle(
-                            fontSize: 25,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -.5,
+                            fontSize: 32,
+                            height: 1.2,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -.8,
                             color: AppText.primary,
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                         Text(
                           urdu
                               ? 'کوڈ اس نمبر پر بھیجا گیا ہے'
                               : 'We sent a code to',
-                          textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 13,
+                            fontSize: 15,
                             color: AppText.secondary,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 3),
                         Text(
                           widget.phone,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.secondary,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppText.primary,
                           ),
                         ),
-                        const SizedBox(height: 30),
+
+                        // Pushes the code boxes and the button to the bottom
+                        // of the screen, under the thumb rather than under the
+                        // eye. On a tall phone they sat in the middle with
+                        // dead space beneath.
+                        const SizedBox(height: 44),
                         _CodeBoxes(
                           value: _otp.text,
                           length: _length,
@@ -369,39 +384,15 @@ class _CodeBoxes extends StatelessWidget {
   }
 }
 
+/// Plain white behind the sign-in screens.
+///
+/// This used to paint a dark green gradient, which was right when the app was
+/// dark and is a stain on it now — the first screen anyone sees, and the only
+/// one still wearing the old palette.
 class _Backdrop extends StatelessWidget {
   const _Backdrop();
 
   @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF14301F), AppColors.background],
-            ),
-          ),
-        ),
-        Positioned(
-          top: -size.width * .35,
-          left: -size.width * .25,
-          child: IgnorePointer(
-            child: Container(
-              width: size.width * .9,
-              height: size.width * .9,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.secondary.withValues(alpha: .09),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) =>
+      const ColoredBox(color: AppColors.background, child: SizedBox.expand());
 }
