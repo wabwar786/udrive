@@ -47,6 +47,24 @@ public sealed class TripChatController(TripChatService service) : ControllerBase
             : PhysicalFile(file.File.Path, file.File.ContentType, file.File.DownloadName);
     }
 
+    /// <summary>The photograph of a Driver who has offered on your request.</summary>
+    [HttpGet("/api/v1/offers/{offerId:guid}/driver-photo")]
+    public async Task<IActionResult> OfferDriverPhoto(
+        Guid offerId,
+        [FromServices] VerificationFileLookupService fileLookup,
+        [FromServices] TripChatService chat,
+        CancellationToken ct)
+    {
+        var documentId = await chat.OfferDriverPhotoDocumentIdAsync(
+            User.GetRequiredUserId(), offerId, ct);
+        if (documentId is null) return NotFound();
+
+        var file = await fileLookup.FindDriverDocumentAsync(documentId.Value, ct);
+        return file.File is null
+            ? NotFound()
+            : PhysicalFile(file.File.Path, file.File.ContentType, file.File.DownloadName);
+    }
+
     /// <summary>Documents the Driver has been asked to send again.</summary>
     [HttpGet("/api/v1/driver/pending-documents")]
     public async Task<IActionResult> PendingDocuments(CancellationToken ct) =>

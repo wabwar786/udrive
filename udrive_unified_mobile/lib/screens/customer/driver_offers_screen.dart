@@ -7,7 +7,10 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/network/api_config.dart';
+import '../../core/services/offer_card_fields.dart';
 import '../../core/services/service_availability_repository.dart';
+import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/booking/booking_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/config/app_config.dart';
@@ -67,6 +70,16 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   final Set<String> _declinedOfferIds = <String>{};
   final Set<String> _declineInFlight = <String>{};
 
+  /// Bearer token for the driver photographs.
+  ///
+  /// That route is authenticated and `Image.network` cannot go through the API
+  /// client, so each image attaches the header itself. Read once here rather
+  /// than per card.
+  String? _mediaToken;
+
+  /// Category pictures, for vehicles whose driver did not upload one.
+  Map<String, String> _vehicleImages = const {};
+
   /// Offers that have already announced themselves.
   ///
   /// Kept so the alert fires once per offer. The screen polls every few
@@ -122,6 +135,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refresh();
       _frameRoute();
+      _loadCardMedia();
     });
     unawaited(_loadNearby());
     _poller = Timer.periodic(const Duration(seconds: 2), (_) => _refresh(silent: true));
@@ -432,6 +446,43 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     for (final offerId in expired) {
       _declineOffer(offerId, automatic: true);
     }
+  }
+
+  /// Loads the token and the category pictures the cards may need.
+  ///
+  /// Both are only needed if an offer arrives, and offers take a few seconds —
+  /// so this runs alongside the first refresh rather than blocking it.
+  Future<void> _loadCardMedia() async {
+    final controller = AppControllerScope.of(context);
+    try {
+      final token = await controller.accessTokenForMedia();
+      final images =
+          await VehicleImageRepository(controller.apiClient).cached();
+      if (!mounted) return;
+      setState(() {
+        _mediaToken = token;
+        _vehicleImages = images;
+      });
+    } catch (_) {
+      // The cards fall back to initials and icons.
+    }
+  }
+
+  /// The picture to show for this offer's vehicle.
+  ///
+  /// The driver's own first — a customer at a kerb is looking for a particular
+  /// car. The category picture second, which at least shows the right kind of
+  /// vehicle. Null last, and the card draws an icon.
+  String? _vehicleImageFor(LiveDriverOffer offer) {
+    final own = offer.vehicleImageUrl;
+    if (own != null && own.trim().isNotEmpty) {
+      return own.startsWith('http') ? own : '${ApiConfig.baseUrl}$own';
+    }
+
+    final key = VehicleImageRepository.settingKeyFor(offer.vehicleCategory);
+    final url = key == null ? null : _vehicleImages[key];
+    if (url == null || url.isEmpty) return null;
+    return url.startsWith('http') ? url : '${ApiConfig.baseUrl}$url';
   }
 
   int _secondsLeft(LiveDriverOffer offer) {
@@ -885,145 +936,182 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     );
   }
 
+  /// One driver's offer.
+  ///
+  /// Vehicle on the left, the driver's face top right, the fare large in the
+  /// middle. The fare is what the customer is choosing between, so it is the
+  /// biggest thing on the card; the two photographs are how they recognise the
+  /// car and the person at the kerb.
+  ///
+  /// Rating and ride count are shown only when an admin has turned them on. On
+  /// a new platform they are 0.00 and 0 for everybody, and a zero beside a name
+  /// reads as *a bad driver* rather than a new one.
   Widget _offerCard(LiveDriverOffer offer) {
     final seconds = _secondsLeft(offer);
     final busy = _approvingOfferId == offer.id;
     final blocked = busy || seconds <= 0;
+    final fields = OfferCardFields.current;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.background,
         borderRadius: AppRadii.all(AppRadii.panel),
         border: Border.all(color: AppColors.border),
         boxShadow: AppShadows.card,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Fare and arrival on one line, the fare carrying the weight. It is
-          // the number the customer is comparing between cards.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                'PKR ${NumberFormat('#,###').format(offer.finalAmount)}',
-                style: const TextStyle(
-                  fontSize: 32,
-                  height: 1.1,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -1,
-                  color: AppText.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                '${offer.estimatedArrivalMinutes} min',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -.4,
-                  color: AppText.secondary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _DriverAvatar(name: offer.driverName),
-              const SizedBox(width: 11),
+              if (fields.vehiclePhoto)
+                _OfferVehiclePhoto(
+                  offer: offer,
+                  imageUrl: _vehicleImageFor(offer),
+                  showPlate: fields.plate,
+                ),
+              if (fields.vehiclePhoto) const SizedBox(width: 12),
+
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Flexible(
-                          child: Text(
-                            offer.driverName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 15.5,
-                              fontWeight: FontWeight.w800,
-                              color: AppText.primary,
-                            ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                NumberFormat('#,###')
+                                    .format(offer.finalAmount.round()),
+                                style: const TextStyle(
+                                  fontSize: 30,
+                                  height: 1.05,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -1,
+                                  color: AppText.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 1),
+                              Text(
+                                'PKR  ·  arrives in '
+                                '${offer.estimatedArrivalMinutes} min',
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: AppText.secondary,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.star_rounded,
-                            size: 16, color: AppText.primary),
-                        const SizedBox(width: 2),
-                        Text(
-                          offer.driverRating.toStringAsFixed(2),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: AppText.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 7),
-                        Text(
-                          '${offer.completedTrips} '
-                          '${_t('rides', 'سفر')}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: AppText.secondary,
-                          ),
-                        ),
+                        if (fields.driverPhoto)
+                          _OfferDriverPhoto(offer: offer, token: _mediaToken),
                       ],
                     ),
-                    const SizedBox(height: 2),
+
+                    const SizedBox(height: 9),
                     Text(
-                      offer.vehicle.trim().isEmpty
-                          ? offer.vehicleCategory
-                          : offer.vehicle,
+                      offer.driverName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 14.5,
+                        fontSize: 13.5,
                         fontWeight: FontWeight.w700,
                         color: AppText.primary,
                       ),
                     ),
-                    if (offer.registrationNumber.trim().isNotEmpty)
-                      Text(
-                        offer.registrationNumber,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          color: AppText.disabled,
-                        ),
+                    Text(
+                      offer.vehicle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: AppText.secondary,
                       ),
+                    ),
+
+                    // Only when they mean something.
+                    if (fields.rating || fields.rides) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (fields.rating) ...[
+                            Icon(Icons.star_rounded,
+                                size: 14, color: AppColors.secondary),
+                            const SizedBox(width: 3),
+                            Text(
+                              offer.driverRating.toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppText.secondary,
+                              ),
+                            ),
+                            const SizedBox(width: 9),
+                          ],
+                          if (fields.rides)
+                            Text(
+                              '${offer.completedTrips} rides',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: AppText.secondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+
+          if (offer.message != null && offer.message!.trim().isNotEmpty) ...[
+            const SizedBox(height: 11),
+            Text(
+              offer.message!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                color: AppText.secondary,
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: _DeclineButton(
-                  label: _t('Decline', 'مسترد کریں'),
-                  onTap: blocked ? null : () => _declineOffer(offer.id),
+                child: OutlinedButton(
+                  onPressed: blocked ? null : () => _declineOffer(offer.id),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46),
+                  ),
+                  child: const Text('Decline'),
                 ),
               ),
-              const SizedBox(width: 11),
+              const SizedBox(width: 9),
               Expanded(
-                child: _AcceptButton(
-                  label: _t('Accept', 'قبول کریں'),
-                  busy: busy,
-                  // The fill drains with the decision window, so the pressure
-                  // the customer is under is visible on the control itself
-                  // rather than only in a number beside it.
-                  remaining: seconds / _decisionSeconds,
-                  onTap: blocked || _approvingOfferId != null
-                      ? null
-                      : () => _approveOffer(offer),
+                flex: 16,
+                child: FilledButton(
+                  onPressed: blocked ? null : () => _approveOffer(offer),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46),
+                  ),
+                  child: busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(seconds > 0 ? 'Accept' : 'Expired'),
                 ),
               ),
             ],
@@ -1389,4 +1477,133 @@ class _ResultLine extends StatelessWidget {
           ],
         ),
       );
+}
+
+/// The vehicle on an offer card.
+///
+/// The driver's own photograph when they gave one, the category picture when
+/// they did not, and an icon when neither exists. A customer at a kerb is
+/// looking for a particular car — a stock photograph of a different car in the
+/// same class helps them less than it appears to, but it still beats a grey box.
+class _OfferVehiclePhoto extends StatelessWidget {
+  const _OfferVehiclePhoto({
+    required this.offer,
+    required this.imageUrl,
+    required this.showPlate,
+  });
+
+  final LiveDriverOffer offer;
+  final String? imageUrl;
+  final bool showPlate;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 104,
+      height: 104,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: imageUrl == null
+                  ? const Icon(Icons.directions_car_rounded,
+                      size: 42, color: AppText.disabled)
+                  : Image.network(
+                      imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.directions_car_rounded,
+                        size: 42,
+                        color: AppText.disabled,
+                      ),
+                    ),
+            ),
+          ),
+
+          // The plate, over the picture rather than under it.
+          //
+          // It is the one thing the customer reads off the car itself, and
+          // putting it on the photograph keeps the two together.
+          if (showPlate && offer.registrationNumber.trim().isNotEmpty)
+            Positioned(
+              left: 6,
+              bottom: 6,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Text(
+                  offer.registrationNumber,
+                  style: const TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppText.primary,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The driver's face, top right of the offer card.
+///
+/// Their approved selfie, fetched through a route scoped to this offer — the
+/// customer may see the face of somebody who has offered to drive *them*, and
+/// nobody else. Initials when there is no photograph: a broken-image glyph
+/// where a face should be is worse than a letter.
+class _OfferDriverPhoto extends StatelessWidget {
+  const _OfferDriverPhoto({required this.offer, required this.token});
+
+  final LiveDriverOffer offer;
+  final String? token;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = offer.driverName.trim().isEmpty
+        ? 'D'
+        : offer.driverName.trim().characters.first.toUpperCase();
+
+    final fallback = Text(
+      initial,
+      style: TextStyle(
+        fontSize: 19,
+        fontWeight: FontWeight.w800,
+        color: AppColors.secondary,
+      ),
+    );
+
+    return Container(
+      width: 46,
+      height: 46,
+      alignment: Alignment.center,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppTint.brand,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.border),
+      ),
+      child: offer.driverHasPhoto
+          ? Image.network(
+              '${ApiConfig.baseUrl}/api/v1/offers/${offer.id}/driver-photo',
+              fit: BoxFit.cover,
+              width: 46,
+              height: 46,
+              headers: token == null ? null : {'Authorization': 'Bearer $token'},
+              errorBuilder: (_, __, ___) => fallback,
+            )
+          : fallback,
+    );
+  }
 }

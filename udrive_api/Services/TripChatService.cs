@@ -76,6 +76,43 @@ public sealed class TripChatService(string connectionString)
         return value is Guid id ? id : null;
     }
 
+    /// <summary>
+    /// The photograph of a Driver who has offered on this Customer's request.
+    /// </summary>
+    /// <remarks>
+    /// A second route, because the booking-scoped one cannot help here: at
+    /// offer time there is no booking yet. The scope is the offer instead — a
+    /// Customer may see the face of somebody who has offered to drive *them*,
+    /// and nobody else.
+    /// </remarks>
+    public async Task<Guid?> OfferDriverPhotoDocumentIdAsync(
+        Guid userId,
+        Guid offerId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT d.id
+            FROM udrive.driver_offers o
+            JOIN udrive.ride_requests rr ON rr.id = o.ride_request_id
+            JOIN udrive.driver_profiles dp ON dp.id = o.driver_profile_id
+            JOIN udrive.driver_documents d ON d.driver_profile_id = dp.id
+            WHERE o.id = @offer
+              AND rr.customer_user_id = @user
+              AND d.document_type = 'SELFIE'
+              AND COALESCE(d.status, 'PendingReview') <> 'Rejected'
+            ORDER BY d.created_at DESC
+            LIMIT 1;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("offer", offerId);
+        command.Parameters.AddWithValue("user", userId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is Guid id ? id : null;
+    }
+
     /// <summary>Messages on a booking, oldest first.</summary>
     /// <param name="after">
     /// Only messages created after this instant. The app passes the timestamp

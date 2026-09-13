@@ -47,6 +47,7 @@ public sealed class PublicServiceAvailabilityController(
             nearbyRadiusKm = await service.NearbyRadiusKmAsync(ct),
             commissionPercentage = await service.CommissionPercentageAsync(ct),
             welcomeBonus = await service.WelcomeBonusAsync(ct),
+            offerCard = await service.OfferCardFieldsAsync(ct),
         }));
 }
 
@@ -125,6 +126,17 @@ public sealed class AdminServiceAvailabilityController(
             easypaisaNumber = number,
             accountName = name,
         }));
+    }
+
+    /// <summary>Sets what the driver offer card shows.</summary>
+    [HttpPut("/api/v1/admin/settings/offer-card")]
+    public async Task<IActionResult> SetOfferCard(
+        Dictionary<string, bool> fields,
+        CancellationToken ct)
+    {
+        await service.SetOfferCardFieldsAsync(
+            User.GetRequiredUserId(), fields, ct);
+        return Ok(ApiResponse<bool>.Ok(true));
     }
 
     [HttpPut("{serviceKey}")]

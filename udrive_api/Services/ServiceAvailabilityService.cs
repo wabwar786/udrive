@@ -228,6 +228,70 @@ public sealed class ServiceAvailabilityService(string connectionString)
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>What the offer card shows a customer.</summary>
+    /// <remarks>
+    /// Ratings and ride counts are off to begin with, and that is the point of
+    /// making them settable. A new platform has no ratings — so "★ 0.00" and
+    /// "0 rides" appear beside every driver, and they read as *a bad driver*
+    /// rather than a new one. Worse than showing nothing at all.
+    ///
+    /// They go on when the numbers start meaning something, without a release.
+    /// </remarks>
+    public async Task<Dictionary<string, bool>> OfferCardFieldsAsync(
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT key, value_json #>> '{}'
+            FROM udrive.system_settings
+            WHERE key LIKE 'offer.card.%';
+            """;
+
+        // Defaults live here rather than in the database, so a fresh install
+        // behaves correctly before anybody opens the portal.
+        var fields = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["vehiclePhoto"] = true,
+            ["driverPhoto"] = true,
+            ["rating"] = false,
+            ["rides"] = false,
+            ["plate"] = true,
+        };
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var name = reader.GetString(0)["offer.card.".Length..];
+            if (fields.ContainsKey(name))
+            {
+                fields[name] = reader.IsDBNull(1)
+                    || reader.GetString(1).Equals("true", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return fields;
+    }
+
+    public async Task SetOfferCardFieldsAsync(
+        Guid admin,
+        IReadOnlyDictionary<string, bool> fields,
+        CancellationToken cancellationToken)
+    {
+        foreach (var (name, value) in fields)
+        {
+            await WriteTextAsync(
+                admin,
+                $"offer.card.{name}",
+                "Whether this appears on the driver offer card.",
+                value ? "true" : "false",
+                cancellationToken,
+                isPublic: true);
+        }
+    }
+
     /// <summary>Points a vehicle category at an uploaded photograph.</summary>
     /// <remarks>
     /// Public, because the customer app reads these before anyone signs in —

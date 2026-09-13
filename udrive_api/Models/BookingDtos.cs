@@ -42,6 +42,15 @@ public sealed record RideRequestDto(
     int LuggageCount,
     decimal CustomerOffer,
     string VehicleCategory,
+    /// <summary>The driver's own photograph of this vehicle, if they gave one.</summary>
+    /// <remarks>
+    /// Their picture rather than the category's. A customer waiting at a kerb
+    /// is looking for a particular car, and a stock photograph of a different
+    /// one in the same class helps them less than it appears to.
+    /// </remarks>
+    string? VehicleImageUrl,
+    /// <summary>Whether an approved photograph of the driver exists.</summary>
+    bool DriverHasPhoto,
     string PartyType,
     bool FamilyOnly,
     bool WomenOnly,

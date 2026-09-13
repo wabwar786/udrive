@@ -186,6 +186,8 @@ class LiveDriverOffer {
     required this.expiresAt,
     this.counterAmount,
     this.message,
+    this.vehicleImageUrl,
+    this.driverHasPhoto = false,
   });
 
   final String id;
@@ -198,6 +200,17 @@ class LiveDriverOffer {
   final String vehicle;
   final String registrationNumber;
   final String vehicleCategory;
+
+  /// The driver's own photograph of this vehicle, if they gave one.
+  ///
+  /// Their picture rather than the category's. A customer waiting at a kerb is
+  /// looking for a particular car, and a stock photograph of a different one in
+  /// the same class helps them less than it appears to.
+  final String? vehicleImageUrl;
+
+  /// Whether an approved photograph of the driver exists to fetch.
+  final bool driverHasPhoto;
+
   final double pickupDistanceKm;
   final double amount;
   final double? counterAmount;
@@ -212,6 +225,8 @@ class LiveDriverOffer {
         id: json['id'].toString(),
         rideRequestId: json['rideRequestId'].toString(),
         vehicleId: json['vehicleId'].toString(),
+        vehicleImageUrl: json['vehicleImageUrl']?.toString(),
+        driverHasPhoto: json['driverHasPhoto'] == true,
         driverName: json['driverName']?.toString() ?? 'Verified Driver',
         driverRating: _double(json['driverRating']),
         completedTrips: _int(json['completedTrips']),

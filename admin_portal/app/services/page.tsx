@@ -77,6 +77,21 @@ export default function Page() {
   const [bonus, setBonus] = useState(1000);
   const [easypaisa, setEasypaisa] = useState('');
   const [accountName, setAccountName] = useState('');
+
+  /**
+   * What the driver offer card shows a customer.
+   *
+   * Ratings and ride counts start off. A new platform has no ratings, so
+   * "0.00" and "0 rides" sit beside every driver — and a zero next to a name
+   * reads as a bad driver rather than a new one.
+   */
+  const [card, setCard] = useState<Record<string, boolean>>({
+    vehiclePhoto: true,
+    driverPhoto: true,
+    rating: false,
+    rides: false,
+    plate: true,
+  });
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -92,11 +107,13 @@ export default function Page() {
         requestRadiusKm: number;
         nearbyRadiusKm: number;
         commissionPercentage: number;
+        offerCard: Record<string, boolean>;
       }>('/api/v1/settings/operations');
       setPing(ops.pingSeconds);
       setRequestKm(ops.requestRadiusKm);
       setNearbyKm(ops.nearbyRadiusKm);
       setCommission(ops.commissionPercentage);
+      if (ops.offerCard) setCard(ops.offerCard);
 
       const wallet = await apiFetch<{
         welcomeBonus: number;
@@ -215,11 +232,70 @@ export default function Page() {
     }
   }
 
+  async function saveCard(next: Record<string, boolean>) {
+    setCard(next);
+    setError('');
+    setSaved('');
+    try {
+      await apiFetch('/api/v1/admin/settings/offer-card', {
+        method: 'PUT',
+        body: JSON.stringify(next),
+      });
+      setSaved('Offer card updated.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save that.');
+    }
+  }
+
   return (
     <AdminFrame
       title="Services"
       subtitle="Turn a service off for customers without hiding it from drivers."
     >
+      <section className="panel">
+        <header className="panelHeader">
+          <div>
+            <h2>Driver offer card</h2>
+            <p>
+              What a customer sees on each offer. Ratings and ride counts are
+              off to begin with — on a new platform they are 0.00 and 0 for
+              everybody, and a zero beside a name reads as a bad driver rather
+              than a new one. Turn them on when the numbers start meaning
+              something.
+            </p>
+          </div>
+        </header>
+
+        <div style={{ padding: '4px 18px 18px' }}>
+          {[
+            ['vehiclePhoto', 'Vehicle photograph', "The driver's own, or the category picture"],
+            ['driverPhoto', 'Driver photograph', 'From their approved selfie'],
+            ['plate', 'Number plate', 'What the customer looks for at the kerb'],
+            ['rating', 'Star rating', 'Hide until drivers have been rated'],
+            ['rides', 'Rides completed', 'Hide until the numbers help'],
+          ].map(([key, label, hint]) => (
+            <div key={key} className="serviceRow" style={{ marginBottom: 8 }}>
+              <div className="serviceRowHead">
+                <div>
+                  <strong>{label}</strong>
+                  <small>{hint}</small>
+                </div>
+                <label className="serviceToggle">
+                  <input
+                    type="checkbox"
+                    checked={card[key] ?? false}
+                    onChange={(e) =>
+                      void saveCard({ ...card, [key]: e.target.checked })
+                    }
+                  />
+                  <span>{card[key] ? 'Shown' : 'Hidden'}</span>
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="panel">
         <header className="panelHeader">
           <div>

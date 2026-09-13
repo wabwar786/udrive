@@ -3206,6 +3206,45 @@ point.
 
 `shortPlaceName` is now shared, and the home screen's copy calls it.
 
+## 110. The offer card, rebuilt
+
+Layout A, as chosen: vehicle 104x104 on the left, the driver's face top right,
+the fare large in the middle.
+
+The fare is the biggest thing on the card because it is what the customer is
+choosing between. The two photographs are how they recognise the car and the
+person at the kerb — and the number plate sits **on** the vehicle photograph
+rather than under it, because it is the one thing read off the car itself.
+
+### Ratings and ride counts are off
+
+You were right, and it is worth stating why plainly: **"★ 0.00" and "0 rides"
+are worse than showing nothing.** They do not read as "we have no data yet",
+they read as *a bad driver* — and on a new platform every driver carries them.
+
+Five admin toggles: vehicle photograph, driver photograph, number plate, star
+rating, rides completed. The last two start off and go on when the numbers mean
+something, without a release.
+
+They default to false even when the setting is missing, unlike the other three.
+A missing answer should leave a rating hidden rather than show a zero nobody
+asked for.
+
+### Two photographs, two sources
+
+**The vehicle** is the driver's own picture first, the category picture second,
+an icon last. A customer at a kerb is looking for a particular car; a stock
+photograph of a different car in the same class helps less than it appears to,
+but it still beats a grey box.
+
+**The driver** needed a new route. The one built earlier is scoped to a booking,
+and at offer time there is no booking — so `GET /api/v1/offers/{id}/driver-photo`
+is scoped to the offer instead: a customer may see the face of somebody who has
+offered to drive *them*, and nobody else.
+
+Initials when there is no photograph. A broken-image glyph where a face should
+be is worse than a letter.
+
 ---
 
 ## Not done

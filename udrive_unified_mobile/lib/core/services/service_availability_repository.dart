@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../network/api_client.dart';
+import 'offer_card_fields.dart';
 
 /// Whether one service is open to customers, and what to say when it is not.
 class ServiceAvailability {
@@ -99,6 +100,13 @@ class ServiceAvailabilityRepository {
       // rather than costing a second round trip for two numbers.
       final radius = (data['nearbyRadiusKm'] as num?)?.toDouble();
       if (radius != null) _nearbyRadiusKm = radius.clamp(0.2, 25);
+
+      // The offer card's fields ride along on the same call.
+      final card = data['offerCard'];
+      if (card is Map) {
+        OfferCardFields.current =
+            OfferCardFields.fromJson(Map<String, dynamic>.from(card));
+      }
 
       final seconds = (data['pingSeconds'] as num?)?.toInt();
       if (seconds == null) return defaultPingSeconds;

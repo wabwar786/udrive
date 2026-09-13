@@ -358,3 +358,18 @@ and nothing could read it.
 
 Deliberately narrow — one folder, `vehicle-images`, and nothing else. Driver
 documents stay behind the authenticated route.
+
+## Offer card — rev 124
+
+- `GET /api/v1/offers/{offerId}/driver-photo` — the approved selfie of a driver
+  who has offered on **your** ride request. A second route because the
+  booking-scoped one cannot help: at offer time there is no booking yet.
+- `offerCard` is returned by `GET /api/v1/settings/operations`.
+- `PUT /api/v1/admin/settings/offer-card` `{ vehiclePhoto, driverPhoto, rating, rides, plate }`
+
+`DriverOfferDto` gains `vehicleImageUrl` (the driver's own photograph of that
+vehicle) and `driverHasPhoto`.
+
+Rating and rides default to **false**, including when the setting is absent.
+A missing answer should leave a rating hidden rather than show a zero nobody
+asked for.
