@@ -135,6 +135,43 @@ function describeArea(rule: Rule) {
   return `${name} · ${rule.areaRadiusKm} km`;
 }
 
+/**
+ * What a trip of this length would cost under these numbers.
+ *
+ * Mirrors the client's formula exactly — distance x rate, plus 2 PKR a minute,
+ * floored at the minimum. Showing the result is the only way an admin can tell
+ * which of the two fields is binding, and a minimum that swallows every short
+ * trip is otherwise invisible until a customer complains.
+ */
+function FareExample({
+  km,
+  minutes,
+  perKm,
+  minimum,
+}: {
+  km: number;
+  minutes: number;
+  perKm: number;
+  minimum: number;
+}) {
+  const metered = perKm * km + minutes * 2;
+  const charged = Math.max(metered, minimum);
+  const minimumWins = minimum > metered;
+
+  return (
+    <div style={{ lineHeight: 1.45 }}>
+      <strong style={{ fontSize: 15 }}>
+        {Math.round(charged).toLocaleString()}
+      </strong>
+      <div style={{ fontSize: 11.5, color: minimumWins ? '#a0522d' : '#6f817a' }}>
+        {minimumWins
+          ? `minimum applies (metered ${Math.round(metered).toLocaleString()})`
+          : `${km} km x ${perKm} + ${minutes} min`}
+      </div>
+    </div>
+  );
+}
+
 export default function Page() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [form, setForm] = useState<Rule | null>(null);
@@ -447,6 +484,18 @@ export default function Page() {
                   <th>Vehicle</th>
                   <th>Rate per km (PKR)</th>
                   <th>Minimum fare (PKR)</th>
+                  {/*
+                    What the numbers actually produce.
+
+                    The two fields alone do not explain a fare, and the way they
+                    combine surprises people: a 6 km trip at 30/km comes to
+                    about 210, so a 1,600 minimum means every short trip is
+                    1,600 and the per-km rate does nothing at all. That is a
+                    reasonable choice — but it should be a choice, not something
+                    discovered after a customer complains.
+                  */}
+                  <th>A 6 km trip</th>
+                  <th>A 25 km trip</th>
                 </tr>
               </thead>
               <tbody>
@@ -489,6 +538,18 @@ export default function Page() {
                         }
                       />
                     </td>
+                    <td><FareExample
+                      km={6}
+                      minutes={15}
+                      perKm={baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate}
+                      minimum={baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare}
+                    /></td>
+                    <td><FareExample
+                      km={25}
+                      minutes={45}
+                      perKm={baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate}
+                      minimum={baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare}
+                    /></td>
                   </tr>
                 ))}
               </tbody>
@@ -497,6 +558,14 @@ export default function Page() {
         )}
 
         <p style={{ margin: '14px 4px 0', opacity: 0.72, fontSize: 13, lineHeight: 1.6 }}>
+          <strong>How a fare is worked out.</strong> Distance times the per-km
+          rate, plus 2 PKR for every minute the route is expected to take — and
+          then, if that total is below the minimum fare, the minimum is charged
+          instead. The two example columns update as you type, so you can see
+          which of the two numbers is actually deciding the price.
+        </p>
+
+        <p style={{ margin: '10px 4px 0', opacity: 0.72, fontSize: 13, lineHeight: 1.6 }}>
           <strong>Tourism is not priced here.</strong> A multi-day trip is not a
           metered ride, so each driver publishes their own asking price for their
           own vehicle, in the Driver app under Tour rate. Nothing on this page

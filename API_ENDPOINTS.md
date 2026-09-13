@@ -345,3 +345,16 @@ A pasted URL puts the picture on somebody else's server, and those links rot —
 host changes a path, a search thumbnail expires, a site blocks hotlinking — and
 the app quietly shows nothing. The admin preview still looks fine, because the
 browser fetches it and the phone does not.
+
+## Public vehicle pictures — rev 122
+
+`GET /api/v1/vehicle-images/{owner}/{file}` — anonymous.
+
+The upload endpoint returned a path under
+`/api/v1/admin/verification/files/...`, which is **admin-only**. An `img` tag
+cannot send a bearer token, so the portal's own preview could not load it and
+the customer app certainly could not: the upload worked, the file was on disk,
+and nothing could read it.
+
+Deliberately narrow — one folder, `vehicle-images`, and nothing else. Driver
+documents stay behind the authenticated route.

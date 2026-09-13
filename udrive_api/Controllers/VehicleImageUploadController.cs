@@ -68,12 +68,19 @@ public sealed class VehicleImageUploadController(
         var stored = await fileStorage.SaveAsync(
             file, "vehicle-images", Guid.Empty, cancellationToken);
 
-        // Stored as a path, not a full URL.
+        // Rewritten onto the public route.
         //
-        // The API's own host changes between environments and can change again;
-        // a path resolves against whatever base the app is talking to, and the
-        // mobile client already handles that for vehicle pictures.
-        var url = stored.RelativeUrl;
+        // `SaveAsync` returns a path under the admin verification files
+        // endpoint, which is right for a CNIC and wrong for this: the portal's
+        // own preview could not load it — an `img` tag cannot send a bearer
+        // token — and the customer app certainly could not. The upload worked
+        // and the file was on disk; nothing could read it.
+        //
+        // A path rather than a full URL: the API's host differs between
+        // environments, and a path resolves against whatever base the client is
+        // already talking to.
+        var stem = stored.RelativeUrl.Split('/');
+        var url = $"/api/v1/vehicle-images/{stem[^2]}/{stem[^1]}";
 
         await settings.SetVehicleImageAsync(
             User.GetRequiredUserId(),

@@ -3125,6 +3125,47 @@ to download and re-upload it.
 The preview resolves stored paths against the API, so what the admin sees is
 fetched the same way the phone fetches it.
 
+## 106. The upload worked; nothing could read it
+
+`SaveAsync` returns a path under `/api/v1/admin/verification/files/...`, which
+is right for a CNIC and wrong for this. An `img` tag cannot send a bearer token,
+so **the portal's own preview could not load the file it had just uploaded** —
+and the customer app, which is not an admin at all, had no chance.
+
+The file was on disk the whole time.
+
+A public route now serves exactly one folder, `vehicle-images`. Driver documents
+stay where they are; nothing here opens them.
+
+## 107. Why 6 km cost 1,600
+
+The pricing is not broken. The **minimum fare** is.
+
+A fare is `distance x rate + 2 PKR a minute`, floored at the minimum. At 30/km,
+6 km comes to about 210 — so a minimum of 1,600 means every short trip is 1,600
+and **the per-km rate does nothing at all**. Which is a reasonable choice for a
+platform that will not send a car across town for 210 rupees, but it should be a
+choice, not something discovered from a customer.
+
+The admin page could not show it. Two number fields and no sense of what they
+produce.
+
+There are now two worked-example columns beside them — a 6 km trip and a 25 km
+trip — recalculating as you type, each showing the fare and which of the two
+numbers decided it. When the minimum is binding it says so, in amber, with the
+metered figure beside it so the gap is visible.
+
+The per-minute component is stated in the copy too. It was 2 PKR a minute,
+hard-coded, appearing in no field and no explanation — so a fare could not be
+reconciled with the settings even by someone doing the arithmetic.
+
+### Not done, and worth saying
+
+The per-minute rate is still hard-coded rather than a field. Making it settable
+is a small change, but it belongs with a decision about whether it should vary
+by vehicle — a Coster idling in traffic costs its driver more per minute than a
+bike does — and that is a pricing question rather than a code one.
+
 ---
 
 ## Not done
