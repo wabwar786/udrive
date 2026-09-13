@@ -332,3 +332,16 @@ driver profile, so re-approving after a suspension pays nothing further.
 The EasyPaisa number is a setting rather than app text: accounts get closed and
 ownership moves, and a number baked into a release means money sent somewhere
 nobody is watching until the next deploy.
+
+## Vehicle picture upload — rev 121
+
+`POST /api/v1/admin/vehicle-images/{category}` (multipart, `file`) —
+categories: `bike`, `car`, `ac_car`, `hiace`, `coaster`.
+
+Stores the file on the platform's volume and points the
+`vehicle.image.<category>` setting at it. Pasting a URL still works.
+
+A pasted URL puts the picture on somebody else's server, and those links rot — a
+host changes a path, a search thumbnail expires, a site blocks hotlinking — and
+the app quietly shows nothing. The admin preview still looks fine, because the
+browser fetches it and the phone does not.

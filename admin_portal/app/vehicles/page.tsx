@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AdminFrame } from '../components/admin-frame';
 import { ErrorBox, Loading } from '../components/ui';
-import { apiFetch } from '../lib/admin-api';
+import { API_BASE, apiFetch, apiUpload } from '../lib/admin-api';
 
 type Setting = { key: string; valueJson: string };
 
@@ -33,6 +33,7 @@ function unwrap(valueJson: string | undefined): string {
 
 export default function Page() {
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -134,14 +135,66 @@ export default function Page() {
                   </div>
                 </div>
 
-                <input
-                  value={urls[vehicle.key] ?? ''}
-                  placeholder="https://…  (empty = built-in illustration)"
-                  onChange={(e) =>
-                    setUrls({ ...urls, [vehicle.key]: e.target.value })
-                  }
-                  style={{ flex: 1 }}
-                />
+                <div style={{ flex: 1, display: 'grid', gap: 8 }}>
+                  <input
+                    value={urls[vehicle.key] ?? ''}
+                    placeholder="https://…  (empty = built-in illustration)"
+                    onChange={(e) =>
+                      setUrls({ ...urls, [vehicle.key]: e.target.value })
+                    }
+                  />
+
+                  {/*
+                    Uploading, as well as pasting a link.
+
+                    A pasted URL puts the picture on somebody else's server, and
+                    those links rot — a host changes a path, a search thumbnail
+                    expires, a site blocks hotlinking — and the app quietly
+                    shows nothing. The preview here would still look fine,
+                    because the browser fetches it and the phone does not.
+
+                    An upload is stored on the platform's own volume, so the
+                    picture chosen here is the picture a customer sees.
+                  */}
+                  <label className="uploadRow">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploading(vehicle.key);
+                        setError('');
+                        try {
+                          const category = vehicle.key.replace(
+                            'vehicle.image.',
+                            '',
+                          );
+                          const result = await apiUpload<{ url: string }>(
+                            `/api/v1/admin/vehicle-images/${category}`,
+                            file,
+                          );
+                          setUrls({ ...urls, [vehicle.key]: result.url });
+                        } catch (uploadError) {
+                          setError(
+                            uploadError instanceof Error
+                              ? uploadError.message
+                              : 'Upload failed.',
+                          );
+                        } finally {
+                          setUploading(null);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <span>
+                      {uploading === vehicle.key
+                        ? 'Uploading…'
+                        : 'Upload a picture instead'}
+                    </span>
+                  </label>
+                </div>
 
                 <div
                   style={{
@@ -156,10 +209,17 @@ export default function Page() {
                     overflow: 'hidden',
                   }}
                 >
-                  {(urls[vehicle.key] ?? '').trim().startsWith('http') ? (
+                  {(urls[vehicle.key] ?? '').trim() !== '' ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={urls[vehicle.key]}
+                      // A stored upload is a path, not a full URL, so it has
+                      // to be resolved against the API rather than against the
+                      // portal's own origin.
+                      src={
+                        urls[vehicle.key].startsWith('http')
+                          ? urls[vehicle.key]
+                          : new URL(urls[vehicle.key], API_BASE).toString()
+                      }
                       alt={`${vehicle.label} preview`}
                       style={{
                         maxWidth: '100%',

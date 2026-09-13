@@ -3086,6 +3086,45 @@ behind it.
 The page has existed since rev 102. If it is not in the sidebar, the admin
 portal has not been deployed since then — that is the thing to check first.
 
+## 104. The pin was pointing at the wrong place
+
+You spotted the right thing: the blue dot was correct and the pin was not. So
+the location was never the problem — the drawing was.
+
+Two faults, both mine.
+
+**The pin was anchored on its middle.** It is a label, a head, a stem and then a
+dot, and the dot is the point being chosen. Centring the whole column put its
+*middle* on the map centre, leaving the dot roughly half a pin below where the
+map said it was. `FractionalTranslation(-0.5)` lifts it by half its own height
+so the bottom lands on the centre — fractional because the label's height
+changes with the address in it, and a fixed offset would only be right for one
+of them.
+
+**And I had pushed it further down.** In rev 104 I offset the pin below the
+header so its label would not ride under the logo. That moved it off the centre
+it represents — clearing the header is the header's problem, not the pin's.
+
+Between them, that is a pin drawn most of a street away from the point it marks.
+
+## 105. Uploading vehicle pictures
+
+The portal only accepted a URL. That puts the picture on somebody else's
+server, and those links rot: a host changes a path, a search thumbnail expires,
+a site blocks hotlinking. The app then shows nothing — and the admin preview
+still looks fine, because **the browser fetches it and the phone does not.**
+Which is exactly the "the picture I set is not the picture I see" you described.
+
+There is an upload button on each row now. The file goes to the platform's own
+volume and the setting points at a path rather than an external URL, so the
+picture chosen is the picture shown.
+
+Pasting a URL still works — somebody with a good permanent link should not have
+to download and re-upload it.
+
+The preview resolves stored paths against the API, so what the admin sees is
+fetched the same way the phone fetches it.
+
 ---
 
 ## Not done

@@ -996,10 +996,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
                 if (_pinActive)
                   Positioned.fill(
-                    // Below the header, not behind it. The pin centres in the
-                    // stack, and the stack now starts at the top of the screen
-                    // — so without this the pickup label rode up under the logo.
-                    top: MediaQuery.paddingOf(context).top + 52,
+                    // No offset. The pin marks the map's centre, and the map's
+                    // centre is the pickup point — so the pin has to sit
+                    // exactly there or it is pointing at somewhere else.
+                    //
+                    // An earlier fix pushed it down to clear the header, which
+                    // moved it off the centre it represents. That is why the
+                    // pin appeared on Street 20 while the blue dot — the real
+                    // position — sat on Street 19: the dot was right, the pin
+                    // was drawn a header's height away from what it meant.
+                    //
+                    // Clearing the header is the header's problem, not the
+                    // pin's. The label sits below the pin now instead of above.
                     child: IgnorePointer(
                       child: Center(
                         child: _CentrePin(
@@ -2594,6 +2602,29 @@ class _CentrePin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Anchored on the dot, not on the middle of the column.
+    //
+    // This is a label, a head, a stem and then a dot — and the dot is the
+    // point being chosen. Centring the whole column put its *middle* on the
+    // map centre, which left the dot roughly half a pin below where the map
+    // said it was. That is the gap between the blue location dot on one street
+    // and the pin on the next.
+    //
+    // `FractionalTranslation(-0.5)` lifts the column by half its own height, so
+    // its bottom edge lands on the centre; the 5px back down puts the dot's
+    // middle exactly there. Fractional because the label's height changes with
+    // the address in it, and a fixed offset would only be right for one of
+    // them.
+    return FractionalTranslation(
+      translation: const Offset(0, -.5),
+      child: Transform.translate(
+        offset: const Offset(0, 5),
+        child: _pin(),
+      ),
+    );
+  }
+
+  Widget _pin() {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [

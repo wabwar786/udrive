@@ -191,21 +191,28 @@ public sealed class ServiceAvailabilityService(string connectionString)
             "The name on the EasyPaisa account.", name, cancellationToken);
     }
 
+    /// <param name="isPublic">
+    /// Whether unauthenticated clients may read it. The EasyPaisa account is
+    /// not public; a vehicle photograph is, because the customer app shows it
+    /// before anyone signs in.
+    /// </param>
     private async Task WriteTextAsync(
         Guid adminUserId,
         string key,
         string description,
         string value,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isPublic = false)
     {
         const string sql = """
             INSERT INTO udrive.system_settings
                 (key, value_json, description, is_public,
                  updated_by_user_id, created_at, updated_at)
-            VALUES (@key, to_jsonb(@value::text), @description, false,
+            VALUES (@key, to_jsonb(@value::text), @description, @isPublic,
                     @admin, now(), now())
             ON CONFLICT (key) DO UPDATE
             SET value_json = EXCLUDED.value_json,
+                is_public = EXCLUDED.is_public,
                 updated_by_user_id = EXCLUDED.updated_by_user_id,
                 updated_at = now();
             """;
@@ -217,8 +224,20 @@ public sealed class ServiceAvailabilityService(string connectionString)
         command.Parameters.AddWithValue("value", value.Trim());
         command.Parameters.AddWithValue("description", description);
         command.Parameters.AddWithValue("admin", adminUserId);
+        command.Parameters.AddWithValue("isPublic", isPublic);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    /// <summary>Points a vehicle category at an uploaded photograph.</summary>
+    /// <remarks>
+    /// Public, because the customer app reads these before anyone signs in —
+    /// the picture is the thing on screen while somebody chooses a vehicle.
+    /// </remarks>
+    public Task SetVehicleImageAsync(
+            Guid admin, string category, string url, CancellationToken ct) =>
+        WriteTextAsync(admin, $"vehicle.image.{category}",
+            "Photograph shown for this vehicle category.", url, ct,
+            isPublic: true);
 
     /// <summary>How far from a pickup a Driver may be and still be offered it.</summary>
     /// <remarks>

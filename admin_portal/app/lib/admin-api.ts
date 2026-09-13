@@ -308,3 +308,31 @@ export function when(value: unknown) {
     timeStyle: 'short',
   }).format(new Date(String(value)));
 }
+
+
+/**
+ * Sends a file to the API with the session's bearer token.
+ *
+ * `apiFetch` sets a JSON content type, which is wrong for multipart — the
+ * browser has to set it itself so it can add the boundary. This is the same
+ * request otherwise, refresh-on-401 included.
+ */
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  field = 'file',
+): Promise<T> {
+  const body = new FormData();
+  body.append(field, file);
+
+  const response = await runAuthorized(path, { method: 'POST', body });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      friendlyApiError(response.status, payload as Record<string, unknown>),
+    );
+  }
+
+  return (payload as Envelope<T>).data;
+}
