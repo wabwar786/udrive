@@ -33,6 +33,7 @@ import '../core/widgets/steering_wheel_icon.dart';
 import 'settings/cache_reset_screen.dart';
 import 'driver/driver_documents_screen.dart';
 import 'driver/onboarding/driver_vehicle_type_screen.dart';
+import 'driver/onboarding/driver_verification_status_screen.dart';
 import 'driver/driver_wallet_screen.dart';
 import 'driver/live_vehicle_list_screen.dart';
 import 'driver/onboarding/driver_verification_screen.dart';
@@ -59,9 +60,27 @@ class _MainShellState extends State<MainShell> {
     }
     final driver = controller.mode == UserMode.driver;
     final driverNeedsVerification = driver && !controller.driverApproved;
+
+    // A driver who has already sent their registration sees where it stands,
+    // not the list they started from.
+    //
+    // This was the bug behind "no status shows until I reopen the app": an
+    // unapproved driver was sent to the chooser every time, whether they had
+    // submitted an hour ago or never started. Submitting changed nothing on
+    // screen, so there was nothing to come back to.
+    final registrationSent = const {
+      'Submitted',
+      'PendingReview',
+      'UnderReview',
+      'ChangesRequired',
+      'Rejected',
+    }.contains(controller.driverVerificationStatus);
+
     final pageKey = driverNeedsVerification ? 'driverVerification' : (driver ? _driverPage : _customerPage);
     final page = driverNeedsVerification
-        ? const DriverVehicleTypeScreen()
+        ? (registrationSent
+            ? const DriverVerificationStatusScreen()
+            : const DriverVehicleTypeScreen())
         : (driver ? _driverContent(pageKey) : _customerBody(pageKey));
     final title = driverNeedsVerification
         ? (controller.locale.languageCode == 'ur' ? 'ڈرائیور کی تصدیق' : 'Driver verification')
@@ -498,7 +517,13 @@ class _PremiumDrawer extends StatelessWidget {
     }
     final driver = mode == UserMode.driver;
     final entries = driver ? _driverEntries(context) : _customerEntries(context);
-    const drawerColor = AppColors.surface;
+    // White, like every other surface now.
+    //
+    // This was `AppColors.surface`, which used to be a dark teal panel — and
+    // when the palette flipped, the surface went white while every ink inside
+    // the drawer stayed the white it had been chosen to be. White on white:
+    // the menu was there and unreadable.
+    const drawerColor = AppColors.background;
     final lime = AppColors.secondary;
 
     return Drawer(
@@ -519,11 +544,11 @@ class _PremiumDrawer extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 28,
-                      backgroundColor: Colors.white12,
+                      backgroundColor: AppTint.brand,
                       child: Text(
                         _initials(controller.currentUserName),
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: AppText.primary,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -538,7 +563,7 @@ class _PremiumDrawer extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: AppText.primary,
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
                             ),
@@ -557,12 +582,12 @@ class _PremiumDrawer extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const Icon(Icons.chevron_right_rounded, color: Colors.white),
+                    const Icon(Icons.chevron_right_rounded, color: AppText.secondary),
                   ],
                 ),
               ),
             ),
-            const Divider(height: 1, color: Colors.white12),
+            Divider(height: 1, color: AppColors.border),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
@@ -573,10 +598,11 @@ class _PremiumDrawer extends StatelessWidget {
                       child: ListTile(
                         minLeadingWidth: 28,
                         selected: current == entry.$1,
-                        selectedTileColor: Colors.white24,
-                        iconColor: AppText.disabled,
-                        textColor: Colors.white,
-                        selectedColor: Colors.white,
+                        selectedTileColor: AppTint.brand,
+                        iconColor: AppText.secondary,
+                        // Near-black on white, and the accent when selected.
+                        textColor: AppText.primary,
+                        selectedColor: AppColors.secondary,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
                         leading: Icon(entry.$2, size: 24),
                         title: Text(

@@ -249,6 +249,37 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
 
       await controller.submitDriverProfile();
       if (!mounted) return;
+
+      // Say what happens next, and how long it takes.
+      //
+      // It used to close the screen and return to a menu, which looks
+      // identical to the screen having crashed — there was nothing to tell a
+      // driver whether an hour of photographing documents had worked. People
+      // were closing and reopening the app to find out.
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          icon: Icon(Icons.check_circle_rounded,
+              size: 44, color: AppColors.secondary),
+          title: const Text('Sent for review'),
+          content: const Text(
+            'Our team checks new registrations within 24 hours. You will see '
+            'the result here, and we will tell you if anything needs to be '
+            'sent again.\n\n'
+            'You can close the app — nothing is lost.',
+            style: TextStyle(height: 1.5),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+
+      if (!mounted) return;
       Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;
@@ -564,6 +595,7 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
   int get _defaultSeats => switch (widget.vehicleCategory) {
         'Motorcycle' => 1,
         'Rickshaw' => 3,
+        'Coster' => 22,
         _ => 4,
       };
 
@@ -677,39 +709,47 @@ class _Field extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
+      // The whole box is the field, not a strip inside it.
+      //
+      // The label and the input were stacked in a Column with the input's
+      // padding zeroed, so the tappable area was one line of text near the
+      // bottom of a 60px box — you could see where to type and not reach it.
+      //
+      // `TextField` draws its own filled background and carries the label,
+      // which makes the entire control the target.
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        keyboardType: keyboard,
+        inputFormatters: formatters,
+        textCapitalization: capitals
+            ? TextCapitalization.characters
+            : TextCapitalization.words,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: AppText.primary,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12.5, color: AppText.secondary),
-            ),
-            TextField(
-              controller: controller,
-              onChanged: onChanged,
-              keyboardType: keyboard,
-              inputFormatters: formatters,
-              textCapitalization: capitals
-                  ? TextCapitalization.characters
-                  : TextCapitalization.words,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppText.primary,
-              ),
-              decoration: const InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          ],
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(fontSize: 14, color: AppText.secondary),
+          floatingLabelStyle:
+              const TextStyle(fontSize: 12.5, color: AppText.secondary),
+          filled: true,
+          fillColor: AppColors.surface,
+          contentPadding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: AppColors.secondary, width: 1.6),
+          ),
         ),
       ),
     );
@@ -736,7 +776,7 @@ class _DateField extends StatelessWidget {
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
           decoration: BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(14),

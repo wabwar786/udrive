@@ -2755,6 +2755,58 @@ sorts to the end rather than vanishing** — a type this page has not been taugh
 is still something the driver uploaded, and hiding it would mean approving
 someone without seeing it.
 
+## 92. Coster, Hotel, and the four things that were wrong
+
+### The list is no longer only vehicles
+
+**Coster** and **Hotel** added. A hotel is not a vehicle, and the screen said
+"Choose your vehicle" — putting a hotel on that list would have been a small
+lie, so the question widened to **"How do you want to earn?"** Everything on it
+is a way to earn, and the form that follows depends on which is picked.
+
+Hotel goes to the hotel owner shell rather than the driver steps. It has no
+licence, no number plate and no selfie-with-CNIC; four screens of questions with
+nothing to answer is not a form.
+
+Coster takes the same four steps with 22 seats rather than 4.
+
+### The text fields could be seen and not reached
+
+The label and the input were stacked in a `Column` with the input's padding
+zeroed, so the tappable area was one line near the bottom of a 60px box. The
+`TextField` draws its own background and carries the label now, which makes the
+whole control the target.
+
+### The drawer was white on white
+
+Every ink in it — the name, the menu rows, the dividers — was `Colors.white`,
+chosen when the drawer was a dark teal panel. When the palette flipped, the
+surface went white and the text stayed white. The menu was there and invisible.
+
+### Nothing happened when you submitted
+
+The screen closed and returned to a menu, which looks identical to having
+crashed. There was nothing to tell a driver whether an hour of photographing
+documents had worked.
+
+A confirmation now says what happens next and **how long it takes** — "our team
+checks new registrations within 24 hours" — and that the app can be closed.
+
+### And nothing showed afterwards
+
+This is the one you were right to press on. An unapproved driver was sent to the
+chooser **every time**, whether they had submitted an hour ago or never started.
+Submitting changed nothing on screen, so there was nothing to come back to and
+people reopened the app to find out.
+
+`DriverVerificationStatusScreen` covers four states, and each says what to do
+next rather than only what has happened: with our team, something needs sending
+again (with the reviewer's own note, when there is one), approved, or not
+finished yet. Pull to refresh, and a **Check for an update** button — someone
+waiting on a decision looks more often than any polling interval worth running,
+and a button they pressed is more reassuring than a screen that might be
+updating.
+
 ---
 
 ## Not done
