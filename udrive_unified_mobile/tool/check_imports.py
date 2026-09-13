@@ -388,3 +388,30 @@ for path, source in sorted(files.items()):
               'in this file declares it')
         missing_widget_fields += 1
 print('MISSING WIDGET FIELDS:', missing_widget_fields)
+
+
+# ------------------------------------------------------- known wrong API forms
+#
+# An eighth check, for mistakes this codebase has already made and will make
+# again. Each entry earned its place by breaking a build.
+#
+# A comment in one file saying "use the static form" only helps somebody who
+# opens that file. This fails the check wherever the wrong form appears.
+
+WRONG_FORMS = [
+    (
+        r'\bFilePicker\.platform\b',
+        'FilePicker.platform — this project exposes the static form; '
+        'use FilePicker.pickFiles(...) (broke the build in rev 73 and 112)',
+    ),
+]
+
+wrong_forms = 0
+for path, source in sorted(files.items()):
+    body = strip(source)
+    for pattern, message in WRONG_FORMS:
+        for match in re.finditer(pattern, body):
+            line = body[:match.start()].count('\n') + 1
+            print(f'{path}:{line}: {message}')
+            wrong_forms += 1
+print('WRONG API FORMS:', wrong_forms)

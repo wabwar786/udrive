@@ -2690,6 +2690,29 @@ photograph, and no longer requires rear and interior shots — the new flow neve
 asks for them, and requiring them would block every driver who signs up through
 it.
 
+## 90. `FilePicker.platform`, again
+
+The build failed on `FilePicker.platform.pickFiles`. This project's file_picker
+exposes the **static** form.
+
+It broke the build the same way in rev 73. After that I wrote a comment in
+`driver_documents_screen.dart` explaining it — and then wrote a new screen
+without reading my own note, because a comment in one file only helps somebody
+who opens that file.
+
+### A check instead of a comment
+
+`check_imports.py` now carries a list of wrong API forms this codebase has
+already used, and fails on any of them wherever they appear. One entry so far.
+Each has to earn its place by breaking a build, which this one has done twice.
+
+Verified by putting `FilePicker.platform` back and confirming the check fails.
+
+That is the useful shape for this class of mistake: not a note asking the next
+person to remember, but a check that does the remembering. The same reasoning
+covers the const-colour check and the widget-field check — three of the last
+five failures were repeats of an earlier one.
+
 ---
 
 ## Not done

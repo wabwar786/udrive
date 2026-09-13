@@ -114,7 +114,13 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
       };
 
   Future<void> _pick(String type) async {
-    final picked = await FilePicker.platform.pickFiles(
+    // `FilePicker.pickFiles`, not `FilePicker.platform.pickFiles`.
+    //
+    // This project's file_picker exposes the static form. The instance form
+    // has now broken the build twice — once in rev 73 and again here — so
+    // `tool/check_imports.py` fails on it rather than leaving the note to be
+    // read by whoever happens to open the right file.
+    final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
       withData: true,
