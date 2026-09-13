@@ -3040,6 +3040,52 @@ grey unselected state; with every tile coloured, one ink reads on both.
 Still short of full-strength brand colour. Four saturated blocks side by side
 compete with each other and with the one button on the screen.
 
+## 102. Why the pickup lands on the wrong street
+
+Several causes, and one of them was a bug I left in.
+
+**A stale fix was being accepted silently.** When the live reading timed out,
+the code fell back to `getLastKnownPosition()` — wherever the phone was when it
+last looked, which may be an hour ago and a street away. Nothing in that answer
+says how old it is, so the customer saw a confident pickup on the wrong road.
+It is only accepted now when it is under two minutes old; otherwise they are
+asked to try again, which is honest about not knowing.
+
+**A vague fix was being presented as a precise address.** `accuracy` is the
+radius the phone believes it is within, and above about 60 metres that circle
+covers more than one street — exactly the "it says Street 20 and I am on Street
+19" case. The pickup row now reads **"Check this"** in amber rather than
+"Change", because one is an option and the other is a request.
+
+### The causes I cannot fix in code
+
+**On the web build, geolocation is the browser's, not the phone's.** In a phone
+browser that is usually GPS, but often a cached reading; on a laptop it is WiFi
+and IP triangulation, which is accurate to a block at best. The installed
+Android app gets a genuinely better fix than the Railway web app, for the same
+person standing in the same place.
+
+**Reverse geocoding snaps to the nearest named road.** Google is given a point
+and returns a street; between two parallel streets 20 metres apart it picks one.
+Nothing about the fix is wrong — the naming is a guess, and the pin is the truth.
+
+**GPS between buildings is 20–50 metres.** Narrow streets with walls on both
+sides are the worst case for it, and no setting changes that.
+
+Which is why the draggable pin matters more than any accuracy setting: the
+customer standing there knows where they are, and moving the pin is the one
+correction that is always right.
+
+## 103. Finding the coming-soon switches
+
+They are on **Admin → Control Centre → Services**, which is where I put them and
+not where anybody would look. Renamed to **"Services & coming soon"**, because a
+page should be named for what somebody is trying to do rather than for the table
+behind it.
+
+The page has existed since rev 102. If it is not in the sidebar, the admin
+portal has not been deployed since then — that is the thing to check first.
+
 ---
 
 ## Not done

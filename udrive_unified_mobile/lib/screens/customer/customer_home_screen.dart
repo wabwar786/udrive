@@ -515,13 +515,37 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ),
         );
       } catch (_) {
-        position = await Geolocator.getLastKnownPosition();
+        // A stale fix is worse than no fix here.
+        //
+        // `getLastKnownPosition` returns wherever the phone was when it last
+        // looked, which may be an hour ago and a street away — and there is
+        // nothing in the answer to say so. The customer sees a confident
+        // pickup on the wrong road and sends a driver there.
+        //
+        // Only accepted when it is recent. Beyond two minutes they are asked
+        // to try again instead, which is honest about not knowing.
+        final last = await Geolocator.getLastKnownPosition();
+        final age = last?.timestamp == null
+            ? null
+            : DateTime.now().difference(last!.timestamp);
+        if (last != null && age != null && age.inMinutes < 2) {
+          position = last;
+        }
       }
 
       if (position == null) {
         _setPickupFailure('Could not read your location. Try again, or set a pickup manually.');
         return;
       }
+
+      // A fix the phone itself calls vague is not a pickup point.
+      //
+      // `accuracy` is the radius the device believes it is within. Above about
+      // 60 metres that circle covers more than one street, which is exactly
+      // the "it says Street 20 and I am on Street 19" case — so the pin is
+      // shown where it is, and the customer is told to check it rather than
+      // being handed a precise-looking address that is not.
+      _pickupUncertain = position.accuracy > 60;
 
       final point = LatLng(position.latitude, position.longitude);
       final address =
@@ -1282,6 +1306,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                             ),
                             const SizedBox(height: 10),
                             _PickupRow(
+                              uncertain: _pickupUncertain,
                               label: _pickup.text,
                               busy: _locating || _resolvingPin,
                               onTap: () => _openSearch(RouteFieldKind.pickup),
@@ -1418,6 +1443,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   ///
   /// It does nothing else on purpose. A form that collects interest and posts
   /// it nowhere would be worse than this.
+  /// True when the fix was too vague to name a street with.
+  ///
+  /// Drives a prompt to check the pin. It is not an error — a vague fix in a
+  /// narrow street is normal — but presenting it as a confident address is how
+  /// a driver ends up one road over.
+  bool _pickupUncertain = false;
+
   /// The first meaningful part of an address.
   ///
   /// Google returns "MV62+682 Unity Plaza, Margalla View Block B D-17,
@@ -1973,11 +2005,16 @@ class _PickupRow extends StatelessWidget {
   const _PickupRow({
     required this.label,
     required this.busy,
+    required this.uncertain,
     required this.onTap,
   });
 
   final String label;
   final bool busy;
+
+  /// The phone reported a fix too vague to name a street with.
+  final bool uncertain;
+
   final VoidCallback onTap;
 
   @override
@@ -2021,11 +2058,14 @@ class _PickupRow extends StatelessWidget {
               )
             else
               Text(
-                'Change',
+                // Louder when the fix was vague. "Change" is an option; "Check
+                // this" is a request, and the difference matters when the
+                // address on screen may be a street out.
+                uncertain ? 'Check this' : 'Change',
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.secondary,
+                  color: uncertain ? AppColors.warning : AppColors.secondary,
                 ),
               ),
           ],

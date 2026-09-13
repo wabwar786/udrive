@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   BadgeCheck,
+  ToggleLeft,
   BookOpenCheck,
   Car,
   ChevronLeft,
@@ -78,7 +79,11 @@ const groups = [
     items: [
       ['/safety', 'Safety incidents', ShieldAlert],
       ['/disputes', 'Complaints & disputes', MessageSquareWarning],
-      ['/services', 'Services', CircleDollarSign],
+      // Named for what an admin is looking for, not for what the table is
+      // called. "Services" under Control Centre is where you land only if you
+      // already know it is there — and the thing people come here to do is
+      // mark something coming soon.
+      ['/services', 'Services & coming soon', ToggleLeft],
       ['/pricing', 'Pricing & fares', CircleDollarSign],
       ['/wallet-topups', 'Driver top-ups', CircleDollarSign],
       ['/finance', 'Finance & settlements', CircleDollarSign],
