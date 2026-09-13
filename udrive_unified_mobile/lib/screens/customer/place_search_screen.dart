@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/services/place_search_service.dart';
+import '../../core/places/place_name.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 
@@ -359,7 +360,14 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                         _endRow(
                           caption: 'From',
                           editable: _editingPickup,
-                          staticValue: widget.pickupLabel,
+                          // The place name, not the postal address.
+                          //
+                          // This showed "MV62+76W, Rd B, Margalla View Block B
+                          // D-17, Islama…" — a Plus Code, three qualifiers and
+                          // an ellipsis, in a row whose whole job is to confirm
+                          // where the customer is standing. The home screen
+                          // already shortened it; this screen did not.
+                          staticValue: shortPlaceName(widget.pickupLabel),
                           hint: 'Search a pickup point',
                           onSwitch: () => _switchTo(true),
                         ),

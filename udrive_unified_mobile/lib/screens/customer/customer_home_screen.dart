@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/maps/ud_map.dart';
+import '../../core/places/place_name.dart';
 import '../../core/routing/route_repository.dart';
 import '../../core/services/service_availability_repository.dart';
 import '../../core/vehicles/nearby_repository.dart';
@@ -1458,33 +1459,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// a driver ends up one road over.
   bool _pickupUncertain = false;
 
-  /// The first meaningful part of an address.
+  /// The place name, from the shared helper.
   ///
-  /// Google returns "MV62+682 Unity Plaza, Margalla View Block B D-17,
-  /// Islamabad" and the pill showed all of it, truncated — so what a customer
-  /// read was a Plus Code and an ellipsis. The name is the part they recognise.
-  ///
-  /// Leading Plus Codes are dropped: they are precise, machine-readable, and
-  /// mean nothing to the person standing there.
-  static String _shortPlace(String address) {
-    final parts = address
-        .split(',')
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return address.trim();
-
-    var first = parts.first;
-
-    // A Plus Code looks like "MV62+682" — strip it and keep what follows.
-    final code = RegExp(r'^[A-Z0-9]{4,8}\+[A-Z0-9]{2,4}\s*');
-    if (code.hasMatch(first)) {
-      first = first.replaceFirst(code, '').trim();
-      if (first.isEmpty) first = parts.length > 1 ? parts[1] : parts.first;
-    }
-
-    return first;
-  }
+  /// This used to be a private copy here. The destination screen needed the
+  /// same thing and did not have it, which is how one screen ended up showing
+  /// "Unity Plaza" and the other a Plus Code for the same point.
+  static String _shortPlace(String address) => shortPlaceName(address);
 
   /// Loads the service switches: cache first, then the server.
   Future<void> _loadAvailability(AppController controller) async {

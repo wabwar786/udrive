@@ -3166,6 +3166,46 @@ is a small change, but it belongs with a decision about whether it should vary
 by vehicle — a Coster idling in traffic costs its driver more per minute than a
 bike does — and that is a pricing question rather than a code one.
 
+## 108. Why the admin's rates never reached the app
+
+Your screenshots settled it. The app showed Car 1,600, Bike 250, Coster 7,500,
+Hiace 4,500 — **exactly the built-in fallback figures**, for every vehicle. So
+the rates were not being applied wrongly; they were not arriving at all.
+
+`GetServiceRatesAsync` seeds its list from `service_vehicle_rates` and then
+**overlays** the admin's pricing rules onto it. A category with no row in that
+seeded table was dropped before any rule could touch it — so a rate set in the
+portal reached nothing, and the client fell back to its own numbers.
+
+A pricing rule is a statement that this vehicle is priced. That is enough to
+include it, and the seeded table is no longer a gate on the portal: categories
+with a rule and no base row are added from the rule itself.
+
+Per-seat is left at zero for those rather than invented, so the client's own
+share-out applies — the same thing it does for every other vehicle without a
+seat price. Putting a number in front of a customer that no admin chose would be
+worse than having none.
+
+### A correction
+
+Last round I said the per-minute rate was hard-coded. That is true of the
+*client*, but `pricing_rules.per_minute_rate` exists and defaults to 2 — so it
+is settable per rule in the database and simply not surfaced in the portal or
+read by the app. The fix is smaller than I implied, and still not done.
+
+## 109. The pickup address, again
+
+The destination screen showed "MV62+76W, Rd B, Margalla View Block B D-17,
+Islama…" — a Plus Code, three qualifiers and an ellipsis, in a row whose only
+job is to confirm where the customer is standing.
+
+The home screen already shortened it. The destination screen did not, because
+the shortening was a private method on the home screen rather than a shared one.
+One screen said "Unity Plaza" and the other said a Plus Code, for the same
+point.
+
+`shortPlaceName` is now shared, and the home screen's copy calls it.
+
 ---
 
 ## Not done

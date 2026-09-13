@@ -77,7 +77,72 @@ public sealed class MarketplacePricingService(string connectionString)
             };
         }
 
+        // Categories that have a rule but no base row.
+        //
+        // This is why admin rates appeared to do nothing. The list above is
+        // seeded from `service_vehicle_rates`, and the rules only *overlay*
+        // what is already in it — so a category with no row there was dropped
+        // before any rule could touch it, and the app fell back to its built-in
+        // figures. A rate set in the portal simply never arrived.
+        //
+        // A rule is a statement that this vehicle is priced, which is enough to
+        // include it. The seeded table stops being a gate on the portal.
+        var known = list
+            .Select(entry => entry.VehicleCategory)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var category in await RuledCategoriesAsync(
+                     connection, serviceType, cancellationToken))
+        {
+            if (known.Contains(category)) continue;
+
+            var rule = await PricingRulesService.ResolveAsync(
+                connection, serviceType, category,
+                latitude, longitude, cancellationToken);
+            if (rule is null) continue;
+
+            list.Add(new ServiceVehicleRateDto(
+                serviceType,
+                category,
+                // Per-seat is not something a pricing rule carries, and
+                // inventing one would put a number in front of a customer that
+                // no admin chose. Zero leaves the client's own share-out to
+                // apply, which is what it does for every other vehicle without
+                // a seat price.
+                0,
+                rule.MinimumFare,
+                rule.PerKmRate,
+                "PKR"));
+        }
+
         return list;
+    }
+
+    /// <summary>Vehicle categories that have an active pricing rule.</summary>
+    private static async Task<IReadOnlyList<string>> RuledCategoriesAsync(
+        NpgsqlConnection connection,
+        string serviceType,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT DISTINCT vehicle_category
+            FROM udrive.pricing_rules
+            WHERE is_active = true
+              AND lower(service_type) = lower(@service)
+            ORDER BY vehicle_category;
+            """;
+
+        var categories = new List<string>();
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("service", serviceType);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            categories.Add(reader.GetString(0));
+        }
+
+        await reader.CloseAsync();
+        return categories;
     }
 
     public async Task<IReadOnlyList<PublicVehicleDto>> GetAvailableVehiclesAsync(
