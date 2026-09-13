@@ -1623,6 +1623,10 @@ public sealed class BookingService(
                            WHERE dd.driver_profile_id = o.driver_profile_id
                              AND dd.document_type = 'SELFIE'
                              AND COALESCE(dd.status, 'PendingReview') <> 'Rejected'),
+                   EXISTS(SELECT 1 FROM udrive.vehicle_documents vdoc
+                           WHERE vdoc.vehicle_id = o.vehicle_id
+                             AND vdoc.document_type = 'VEHICLE_FRONT'
+                             AND COALESCE(vdoc.status, 'PendingReview') <> 'Rejected'),
                    COALESCE(ST_Distance(dpl.location, rr.pickup_location) / 1000.0, 0)::double precision AS pickup_distance_km,
                    o.amount, o.counter_amount,
                    o.estimated_arrival_minutes, o.message, o.status,
@@ -1673,6 +1677,10 @@ public sealed class BookingService(
                            WHERE dd.driver_profile_id = o.driver_profile_id
                              AND dd.document_type = 'SELFIE'
                              AND COALESCE(dd.status, 'PendingReview') <> 'Rejected'),
+                   EXISTS(SELECT 1 FROM udrive.vehicle_documents vdoc
+                           WHERE vdoc.vehicle_id = o.vehicle_id
+                             AND vdoc.document_type = 'VEHICLE_FRONT'
+                             AND COALESCE(vdoc.status, 'PendingReview') <> 'Rejected'),
                    COALESCE(ST_Distance(dpl.location, rr.pickup_location) / 1000.0, 0)::double precision AS pickup_distance_km,
                    o.amount, o.counter_amount,
                    o.estimated_arrival_minutes, o.message, o.status,
@@ -1977,14 +1985,15 @@ public sealed class BookingService(
         reader.GetString(10),
         reader.IsDBNull(11) ? null : reader.GetString(11),
         reader.GetBoolean(12),
-        reader.GetDouble(13),
-        reader.GetDecimal(14),
-        reader.IsDBNull(15) ? null : reader.GetDecimal(15),
-        reader.GetInt32(16),
-        reader.IsDBNull(17) ? null : reader.GetString(17),
-        reader.GetString(18),
-        reader.GetFieldValue<DateTimeOffset>(19),
-        reader.GetFieldValue<DateTimeOffset>(20));
+        reader.GetBoolean(13),
+        reader.GetDouble(14),
+        reader.GetDecimal(15),
+        reader.IsDBNull(16) ? null : reader.GetDecimal(16),
+        reader.GetInt32(17),
+        reader.IsDBNull(18) ? null : reader.GetString(18),
+        reader.GetString(19),
+        reader.GetFieldValue<DateTimeOffset>(20),
+        reader.GetFieldValue<DateTimeOffset>(21));
 
     private static BookingDto ReadBooking(NpgsqlDataReader reader, string? tripOtp) => new(
         reader.GetGuid(0),

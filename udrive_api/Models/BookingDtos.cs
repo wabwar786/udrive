@@ -112,6 +112,14 @@ public sealed record DriverOfferDto(
     string? VehicleImageUrl,
     /// <summary>Whether an approved photograph of the driver exists.</summary>
     bool DriverHasPhoto,
+    /// <summary>Whether an approved photograph of the vehicle exists.</summary>
+    /// <remarks>
+    /// From the `VEHICLE_FRONT` document. `VehicleImageUrl` above covers the
+    /// `vehicles.image_url` column, which only the demo seed ever sets — a
+    /// driver registering through the app uploads a document instead, and that
+    /// is what this flag is about.
+    /// </remarks>
+    bool VehicleHasPhoto,
     double PickupDistanceKm,
     decimal Amount,
     decimal? CounterAmount,

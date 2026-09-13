@@ -188,6 +188,7 @@ class LiveDriverOffer {
     this.message,
     this.vehicleImageUrl,
     this.driverHasPhoto = false,
+    this.vehicleHasPhoto = false,
   });
 
   final String id;
@@ -211,6 +212,15 @@ class LiveDriverOffer {
   /// Whether an approved photograph of the driver exists to fetch.
   final bool driverHasPhoto;
 
+  /// Whether an approved photograph of the vehicle exists to fetch.
+  ///
+  /// From the `VEHICLE_FRONT` document. [vehicleImageUrl] covers the
+  /// `vehicles.image_url` column, which only the demo seed sets — a driver
+  /// registering through the app uploads a document instead, which is why the
+  /// card was falling through to an icon with the picture sitting in the admin
+  /// portal.
+  final bool vehicleHasPhoto;
+
   final double pickupDistanceKm;
   final double amount;
   final double? counterAmount;
@@ -227,6 +237,7 @@ class LiveDriverOffer {
         vehicleId: json['vehicleId'].toString(),
         vehicleImageUrl: json['vehicleImageUrl']?.toString(),
         driverHasPhoto: json['driverHasPhoto'] == true,
+        vehicleHasPhoto: json['vehicleHasPhoto'] == true,
         driverName: json['driverName']?.toString() ?? 'Verified Driver',
         driverRating: _double(json['driverRating']),
         completedTrips: _int(json['completedTrips']),

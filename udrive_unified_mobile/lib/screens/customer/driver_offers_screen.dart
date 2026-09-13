@@ -474,6 +474,15 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   /// car. The category picture second, which at least shows the right kind of
   /// vehicle. Null last, and the card draws an icon.
   String? _vehicleImageFor(LiveDriverOffer offer) {
+    // The photograph the driver actually uploaded, first.
+    //
+    // It is a `VEHICLE_FRONT` document rather than a column, which is why this
+    // used to fall straight through to a stock picture while the driver's own
+    // car sat approved in the admin portal.
+    if (offer.vehicleHasPhoto) {
+      return '${ApiConfig.baseUrl}/api/v1/offers/${offer.id}/vehicle-photo';
+    }
+
     final own = offer.vehicleImageUrl;
     if (own != null && own.trim().isNotEmpty) {
       return own.startsWith('http') ? own : '${ApiConfig.baseUrl}$own';
@@ -972,6 +981,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                   offer: offer,
                   imageUrl: _vehicleImageFor(offer),
                   showPlate: fields.plate,
+                  token: _mediaToken,
                 ),
               if (fields.vehiclePhoto) const SizedBox(width: 12),
 
@@ -1088,7 +1098,14 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
+              // Both flexes stated.
+              //
+              // Decline had none, so it took the default of 1 against Accept's
+              // 16 — a seventeenth of the row, which is how "Decline" ended up
+              // printed one letter per line. A ratio needs both numbers; giving
+              // one and leaving the other implicit is not a ratio.
               Expanded(
+                flex: 10,
                 child: OutlinedButton(
                   onPressed: blocked ? null : () => _declineOffer(offer.id),
                   style: OutlinedButton.styleFrom(
@@ -1099,7 +1116,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
               ),
               const SizedBox(width: 9),
               Expanded(
-                flex: 16,
+                flex: 14,
                 child: FilledButton(
                   onPressed: blocked ? null : () => _approveOffer(offer),
                   style: FilledButton.styleFrom(
@@ -1490,11 +1507,15 @@ class _OfferVehiclePhoto extends StatelessWidget {
     required this.offer,
     required this.imageUrl,
     required this.showPlate,
+    required this.token,
   });
 
   final LiveDriverOffer offer;
   final String? imageUrl;
   final bool showPlate;
+
+  /// Bearer token, for when [imageUrl] is the authenticated document route.
+  final String? token;
 
   @override
   Widget build(BuildContext context) {
@@ -1516,6 +1537,13 @@ class _OfferVehiclePhoto extends StatelessWidget {
                   : Image.network(
                       imageUrl!,
                       fit: BoxFit.cover,
+                      // The document route is authenticated; the category
+                      // picture is not. Sending the header either way is
+                      // harmless and saves branching on which kind of URL
+                      // this is.
+                      headers: token == null
+                          ? null
+                          : {'Authorization': 'Bearer $token'},
                       errorBuilder: (_, __, ___) => const Icon(
                         Icons.directions_car_rounded,
                         size: 42,

@@ -3274,6 +3274,35 @@ references, and two extra parameters on a record are perfectly good grammar.
 in about a minute.** If it has not been pushed yet, that is the thing worth
 doing before the next deploy: it is the same compiler Railway runs, just earlier.
 
+## 112. Decline, one letter per line
+
+`Expanded(flex: 16)` on Accept, and nothing on Decline — which takes the default
+of **1**. So Decline got a seventeenth of the row and its label wrapped
+vertically.
+
+I meant a 1 : 1.6 ratio and wrote one half of it. A ratio needs both numbers;
+giving one and leaving the other implicit is not a ratio. It is 10 : 14 now,
+both stated.
+
+## 113. The vehicle photograph was in the wrong place all along
+
+The card read `vehicles.image_url`. **Nothing but the demo seed ever writes to
+that column.** A driver registering through the app uploads their vehicle
+photograph as a `VEHICLE_FRONT` *document* — which is exactly what your admin
+screenshot shows, approved and sitting there.
+
+So the picture existed, was verified, and the card was looking somewhere else
+entirely.
+
+`GET /api/v1/offers/{id}/vehicle-photo` serves that document, scoped to the
+offer like the driver's face: a customer may see the car that has offered to
+collect *them*.
+
+The order is now the driver's own photograph, then `image_url` for seeded
+vehicles, then the category picture, then an icon. The token is sent either way
+— the document route needs it, the category route ignores it, and branching on
+which kind of URL it is would buy nothing.
+
 ---
 
 ## Not done

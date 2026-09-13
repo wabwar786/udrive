@@ -373,3 +373,15 @@ vehicle) and `driverHasPhoto`.
 Rating and rides default to **false**, including when the setting is absent.
 A missing answer should leave a rating hidden rather than show a zero nobody
 asked for.
+
+## Offer vehicle photograph — rev 126
+
+`GET /api/v1/offers/{offerId}/vehicle-photo` — the `VEHICLE_FRONT` document for
+the vehicle offered on **your** ride request.
+
+`vehicles.image_url` is only ever set by the demo seed. A driver registering
+through the app uploads their vehicle photograph as a *document*, which is why
+the offer card fell through to a stock picture while the real one sat approved
+in the admin portal.
+
+`DriverOfferDto` gains `VehicleHasPhoto` alongside `DriverHasPhoto`.

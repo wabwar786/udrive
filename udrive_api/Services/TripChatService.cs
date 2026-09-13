@@ -113,6 +113,47 @@ public sealed class TripChatService(string connectionString)
         return value is Guid id ? id : null;
     }
 
+    /// <summary>
+    /// The photograph of the vehicle offered on this Customer's request.
+    /// </summary>
+    /// <remarks>
+    /// From the `VEHICLE_FRONT` **document**, not `vehicles.image_url`.
+    ///
+    /// That column is only ever set by the demo seed. A driver registering
+    /// through the app uploads their vehicle photograph as a document, which is
+    /// why the offer card fell through to an icon while the picture sat in the
+    /// admin portal being approved.
+    ///
+    /// Scoped to the offer, like the driver's face: a Customer may see the car
+    /// that has offered to collect *them*.
+    /// </remarks>
+    public async Task<Guid?> OfferVehiclePhotoDocumentIdAsync(
+        Guid userId,
+        Guid offerId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT vd.id
+            FROM udrive.driver_offers o
+            JOIN udrive.ride_requests rr ON rr.id = o.ride_request_id
+            JOIN udrive.vehicle_documents vd ON vd.vehicle_id = o.vehicle_id
+            WHERE o.id = @offer
+              AND rr.customer_user_id = @user
+              AND vd.document_type = 'VEHICLE_FRONT'
+              AND COALESCE(vd.status, 'PendingReview') <> 'Rejected'
+            ORDER BY vd.created_at DESC
+            LIMIT 1;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("offer", offerId);
+        command.Parameters.AddWithValue("user", userId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is Guid id ? id : null;
+    }
+
     /// <summary>Messages on a booking, oldest first.</summary>
     /// <param name="after">
     /// Only messages created after this instant. The app passes the timestamp
