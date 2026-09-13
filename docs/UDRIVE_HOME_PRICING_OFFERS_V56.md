@@ -3245,6 +3245,35 @@ offered to drive *them*, and nobody else.
 Initials when there is no photograph. A broken-image glyph where a face should
 be is worse than a letter.
 
+## 111. The two fields landed on the wrong record
+
+`VehicleImageUrl` and `DriverHasPhoto` were meant for `DriverOfferDto` and went
+onto `RideRequestDto`.
+
+The anchor I edited against was the line `string VehicleCategory,` — which
+appears in **both** records. The edit took the first match, and the first match
+was the wrong one. Three errors followed from that single mistake:
+`RideRequestDto` gained two parameters nothing supplied, and `DriverOfferDto`
+was handed 21 arguments for a 19-parameter constructor.
+
+Moved, by partitioning the file at the record declaration first and editing only
+inside it, rather than matching a line two records share.
+
+### This is the second time
+
+The same thing happened in Dart a few rounds ago: an edit anchored on a line
+that appeared more than once, applied to the first occurrence, and the result
+compiled nowhere near where the mistake was. A unique-looking anchor is not the
+same as a unique anchor, and in a file of similar records almost no single line
+is unique.
+
+`tool/check_syntax.sh` cannot see any of this — it parses grammar without
+references, and two extra parameters on a record are perfectly good grammar.
+
+**`.github/workflows/build-api.yml`, added in v123, would have caught all three
+in about a minute.** If it has not been pushed yet, that is the thing worth
+doing before the next deploy: it is the same compiler Railway runs, just earlier.
+
 ---
 
 ## Not done
