@@ -165,3 +165,17 @@ first ride, which is the intended arrangement.
   the badge shown when closed, and the sentence the customer is told on tapping.
 - Seeded with every service open except `carRental`, which has no screen yet.
 - The key set is fixed. The portal offers on/off and wording, not new services.
+
+## 046_driver_signup_fields (rev 112)
+
+- `driver_profiles`: `date_of_birth` was already there; adds
+  `driving_licence_number`, `driving_licence_expiry` and `cnic_number`
+  unmasked alongside the masked copies. The masked ones are for display; a
+  reviewer comparing a licence photograph against a typed number needs the
+  number.
+- `driving_licence_expiry` matters on its own: a driver whose licence has
+  expired should stop receiving work, and nothing could tell before this.
+- New `document_type_catalogue` recording the set, including the two the
+  four-step flow adds: `DRIVING_LICENCE_BACK` (carries the categories) and
+  `SELFIE_WITH_CNIC` (ties the person to the card).
+- `vehicles.colour` already existed and is untouched.

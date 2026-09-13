@@ -6,6 +6,12 @@ public sealed record DriverOnboardingRequest(
     [Required, StringLength(160)] string FullName,
     [Required, StringLength(32)] string CnicNumber,
     [Required, StringLength(64)] string DrivingLicenceNumber,
+    /// <summary>When the licence runs out.</summary>
+    /// <remarks>
+    /// Collected because a driver whose licence has expired should stop
+    /// receiving work, and until this was stored nothing could tell.
+    /// </remarks>
+    DateOnly? DrivingLicenceExpiry,
     DateOnly? DateOfBirth,
     [Required, StringLength(600)] string Address,
     [Required, StringLength(120)] string EmergencyContactName,

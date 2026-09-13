@@ -257,7 +257,7 @@ public sealed class AdminVerificationService(
             await using var readinessCommand = new NpgsqlCommand("""
                 SELECT
                     (SELECT string_agg(missing.document_type, ', ' ORDER BY missing.document_type)
-                     FROM (SELECT unnest(ARRAY['CNIC_FRONT','CNIC_BACK','DRIVING_LICENCE','SELFIE']) AS document_type) missing
+                     FROM (SELECT unnest(ARRAY['CNIC_FRONT','CNIC_BACK','SELFIE_WITH_CNIC','DRIVING_LICENCE','DRIVING_LICENCE_BACK','SELFIE']) AS document_type) missing
                      WHERE NOT EXISTS (
                         SELECT 1 FROM udrive.driver_documents d
                         WHERE d.driver_profile_id = @driverProfileId
@@ -653,7 +653,7 @@ public sealed class AdminVerificationService(
             // Names the missing photographs, for the same reason.
             await using var readinessCommand = new NpgsqlCommand("""
                 SELECT string_agg(missing.document_type, ', ' ORDER BY missing.document_type)
-                FROM (SELECT unnest(ARRAY['REGISTRATION_BOOK','VEHICLE_FRONT','VEHICLE_REAR','VEHICLE_INTERIOR']) AS document_type) missing
+                FROM (SELECT unnest(ARRAY['REGISTRATION_BOOK','REGISTRATION_BOOK_BACK','VEHICLE_FRONT']) AS document_type) missing
                 WHERE NOT EXISTS (
                     SELECT 1 FROM udrive.vehicle_documents vd
                     WHERE vd.vehicle_id = @vehicleId

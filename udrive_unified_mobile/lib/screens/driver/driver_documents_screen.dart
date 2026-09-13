@@ -78,6 +78,21 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
       label: 'Your photograph',
       why: 'Customers see this before they get in.',
     ),
+    // Added with the four-step sign-up.
+    //
+    // The licence back carries the categories — which classes of vehicle the
+    // person may actually drive — and a selfie held beside the CNIC is what
+    // ties the person to the card. Reviewers had been asking for both by hand.
+    _Required(
+      type: 'DRIVING_LICENCE_BACK',
+      label: 'Driving licence — back',
+      why: 'Shows which vehicles you may drive.',
+    ),
+    _Required(
+      type: 'SELFIE_WITH_CNIC',
+      label: 'Selfie holding your CNIC',
+      why: 'Shows the card is yours.',
+    ),
   ];
 
   List<Map<String, dynamic>> _documents = const [];

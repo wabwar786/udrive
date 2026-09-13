@@ -2638,6 +2638,58 @@ stop working should not be reachable by a typo.
 The app reads them on the same call as the ping interval, so three settings cost
 one round trip.
 
+## 89. Driver sign-up, in four steps
+
+The old flow was two long screens: every document on one, every vehicle field on
+another. A form showing twenty questions at once reads as an hour of work
+whether it is or not, and there is no way to tell how far through you are.
+
+Same work, four subjects, a progress bar. **Choose your vehicle** first — on its
+own, because it is the one decision somebody can make without looking anything
+up, and it changes what the rest asks for. Then:
+
+1. **Personal information** — photograph, first name, last name, date of birth
+2. **Driver licence** — front, back, number, expiry
+3. **CNIC** — front, back, selfie holding it, number
+4. **Vehicle** — photograph, registration front and back, brand, model, colour,
+   plate, year
+
+### Decisions inside it
+
+**Nothing is sent until the last step.** Photographs are held in memory and
+uploaded together. Somebody who abandons at step three should not leave three
+orphaned files and a half-made profile in the reviewers' queue.
+
+**Next is disabled until the step is complete**, rather than allowing it and
+complaining afterwards — what is missing is on the screen in front of them.
+
+**The date pickers are bounded.** Date of birth opens twenty-five years ago and
+will not accept anyone under eighteen; licence expiry will not accept a date in
+the past, because an expired licence is not a date to record, it is a reason the
+person cannot drive yet.
+
+**Two vehicle fields are inferred rather than asked.** Seats follow the category
+— 1 for a motorcycle, 3 for a rickshaw, 4 for a car — and luggage is left at
+zero. Asking a motorcycle rider how many suitcases it takes is a question with
+no useful answer, and five more fields is how a four-step form becomes six.
+
+**Address and emergency contact are sent empty, not invented.** The endpoint
+requires them and these four steps do not ask. A made-up address in a
+verification record is worse than a blank one, because a reviewer would believe
+it.
+
+### Two new documents
+
+`DRIVING_LICENCE_BACK` and `SELFIE_WITH_CNIC`. The licence back carries the
+categories — which classes of vehicle the person may actually drive — and a
+selfie held beside the card is what ties the person to it. Both were being asked
+for by hand.
+
+Vehicle approval now requires the registration front **and** back plus a vehicle
+photograph, and no longer requires rear and interior shots — the new flow never
+asks for them, and requiring them would block every driver who signs up through
+it.
+
 ---
 
 ## Not done

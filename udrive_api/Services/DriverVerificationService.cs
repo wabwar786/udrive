@@ -10,9 +10,21 @@ public sealed class DriverVerificationService(
     AuthOptions authOptions,
     LocalFileStorageService fileStorage)
 {
+    /// <summary>
+    /// Document types the Driver sign-up accepts.
+    /// </summary>
+    /// <remarks>
+    /// `DRIVING_LICENCE_BACK` and `SELFIE_WITH_CNIC` were added with the
+    /// four-step flow. The licence back carries the categories — which classes
+    /// of vehicle the person may actually drive — and a selfie held beside the
+    /// CNIC is what ties the person to the card. Reviewers had been asking for
+    /// both by hand.
+    /// </remarks>
     private static readonly HashSet<string> RequiredDriverDocuments =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            "DRIVING_LICENCE_BACK",
+            "SELFIE_WITH_CNIC",
             "CNIC_FRONT",
             "CNIC_BACK",
             "DRIVING_LICENCE",
@@ -22,6 +34,7 @@ public sealed class DriverVerificationService(
     private static readonly HashSet<string> RequiredVehicleDocuments =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            "REGISTRATION_BOOK_BACK",
             "REGISTRATION_BOOK",
             "VEHICLE_FRONT",
             "VEHICLE_REAR",
@@ -93,12 +106,14 @@ public sealed class DriverVerificationService(
                 (id, user_id, cnic_number_masked, driving_licence_number_masked,
                  cnic_number_hash, driving_licence_number_hash, verification_status,
                  average_rating, completed_trips, safety_score, languages, service_areas,
-                 is_online, date_of_birth, residential_address,
+                 is_online, date_of_birth, driving_licence_expiry,
+                 driving_licence_number, cnic_number, residential_address,
                  emergency_contact_name, emergency_contact_phone, bank_account_title,
                  payout_method, payout_account_masked, created_at, updated_at)
             VALUES
                 (@id, @userId, @cnicMasked, @licenceMasked, @cnicHash, @licenceHash,
-                 'Draft', 0, 0, 80, @languages, @serviceAreas, false, @dob, @address,
+                 'Draft', 0, 0, 80, @languages, @serviceAreas, false, @dob,
+                 @licenceExpiry, @licence, @cnicPlain, @address,
                  @emergencyName, @emergencyPhone, @bankTitle, @payoutMethod,
                  @payoutMasked, now(), now())
             ON CONFLICT (user_id) DO UPDATE SET
@@ -107,6 +122,9 @@ public sealed class DriverVerificationService(
                 cnic_number_hash = EXCLUDED.cnic_number_hash,
                 driving_licence_number_hash = EXCLUDED.driving_licence_number_hash,
                 date_of_birth = EXCLUDED.date_of_birth,
+                driving_licence_expiry = EXCLUDED.driving_licence_expiry,
+                driving_licence_number = EXCLUDED.driving_licence_number,
+                cnic_number = EXCLUDED.cnic_number,
                 residential_address = EXCLUDED.residential_address,
                 emergency_contact_name = EXCLUDED.emergency_contact_name,
                 emergency_contact_phone = EXCLUDED.emergency_contact_phone,
@@ -139,6 +157,16 @@ public sealed class DriverVerificationService(
             command.Parameters.AddWithValue("languages", languages);
             command.Parameters.AddWithValue("serviceAreas", serviceAreas);
             command.Parameters.AddWithValue("dob", (object?)request.DateOfBirth ?? DBNull.Value);
+            command.Parameters.AddWithValue(
+                "licenceExpiry",
+                (object?)request.DrivingLicenceExpiry ?? DBNull.Value);
+            // Stored unmasked alongside the masked copies.
+            //
+            // The masked ones are for display; a reviewer comparing a licence
+            // photograph against a typed number needs the number itself. Only
+            // admins and the driver can read these.
+            command.Parameters.AddWithValue("licence", licence);
+            command.Parameters.AddWithValue("cnicPlain", normalizedCnic);
             command.Parameters.AddWithValue("address", request.Address.Trim());
             command.Parameters.AddWithValue("emergencyName", request.EmergencyContactName.Trim());
             command.Parameters.AddWithValue("emergencyPhone", emergencyPhone);

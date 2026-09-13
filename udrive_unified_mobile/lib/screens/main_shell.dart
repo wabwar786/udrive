@@ -32,6 +32,7 @@ import 'driver/vehicle_registration_screen.dart';
 import '../core/widgets/steering_wheel_icon.dart';
 import 'settings/cache_reset_screen.dart';
 import 'driver/driver_documents_screen.dart';
+import 'driver/onboarding/driver_vehicle_type_screen.dart';
 import 'driver/driver_wallet_screen.dart';
 import 'driver/live_vehicle_list_screen.dart';
 import 'driver/onboarding/driver_verification_screen.dart';
@@ -60,7 +61,7 @@ class _MainShellState extends State<MainShell> {
     final driverNeedsVerification = driver && !controller.driverApproved;
     final pageKey = driverNeedsVerification ? 'driverVerification' : (driver ? _driverPage : _customerPage);
     final page = driverNeedsVerification
-        ? const DriverVerificationScreen()
+        ? const DriverVehicleTypeScreen()
         : (driver ? _driverContent(pageKey) : _customerBody(pageKey));
     final title = driverNeedsVerification
         ? (controller.locale.languageCode == 'ur' ? 'ڈرائیور کی تصدیق' : 'Driver verification')
@@ -457,7 +458,12 @@ class _MainShellState extends State<MainShell> {
         'refresh' => const CacheResetScreen(),
         'driverDocuments' => const DriverDocumentsScreen(),
         'driverWallet' => const DriverWalletScreen(),
-        'documents' => const DriverVerificationScreen(),
+        // The four-step sign-up replaces the old single-page form.
+        //
+        // That one asked for four photographs and nothing else on one screen,
+        // and people abandoned it. Same work, split into four subjects with a
+        // progress bar, so it looks finishable.
+        'documents' => const DriverVehicleTypeScreen(),
         'availability' => const DriverAvailabilityScreen(),
         'reviews' => const DriverReviewsScreen(),
         'help' => const HelpGuideScreen(driverMode: true),
