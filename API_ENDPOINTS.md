@@ -317,3 +317,18 @@ the vehicle and has read out the code.
 The rate on each ledger line is derived from what was actually taken against the
 fare, not read from settings at display time. A driver looking back at last
 month sees the rate they were charged, not today's.
+
+## Driver wallet settings — rev 117
+
+- `GET /api/v1/driver/wallet/topup-account` — the EasyPaisa number and account
+  name a driver should send to.
+- `GET|PUT /api/v1/admin/settings/wallet`
+  `{ welcomeBonus, easypaisaNumber, accountName }`
+- `welcomeBonus` also appears on `GET /api/v1/settings/operations`.
+
+The welcome credit is paid inside the approval transaction and keyed on the
+driver profile, so re-approving after a suspension pays nothing further.
+
+The EasyPaisa number is a setting rather than app text: accounts get closed and
+ownership moves, and a number baked into a release means money sent somewhere
+nobody is watching until the next deploy.

@@ -393,6 +393,20 @@ public sealed class AdminVerificationService(
             request.Notes,
             ipAddress,
             cancellationToken);
+        // A newly approved Driver is credited their opening balance.
+        //
+        // Inside the same transaction as the approval, so a Driver cannot end
+        // up approved without it or credited without being approved.
+        //
+        // Keyed on the driver profile, so re-approving somebody — after a
+        // suspension, or an Admin clicking twice — credits nothing further.
+        // The bonus is a welcome, not a monthly payment.
+        if (string.Equals(request.Decision, "Approved", StringComparison.OrdinalIgnoreCase))
+        {
+            await DriverWalletService.CreditWelcomeBonusAsync(
+                connection, transaction, driverProfileId, cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         var deletedFiles = deleteAttachments
             ? fileStorage.DeleteProtectedFiles(attachmentUrls)

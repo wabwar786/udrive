@@ -65,6 +65,18 @@ export default function Page() {
    * paid for.
    */
   const [commission, setCommission] = useState(10);
+
+  /**
+   * The welcome credit, and where drivers send top-ups.
+   *
+   * The credit is a number that expires in usefulness: early on it buys a
+   * fleet, because a driver who must top up before their first fare has been
+   * asked to pay to find out whether the platform works. Once there are
+   * drivers, that reason is gone and it comes down.
+   */
+  const [bonus, setBonus] = useState(1000);
+  const [easypaisa, setEasypaisa] = useState('');
+  const [accountName, setAccountName] = useState('');
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -85,6 +97,15 @@ export default function Page() {
       setRequestKm(ops.requestRadiusKm);
       setNearbyKm(ops.nearbyRadiusKm);
       setCommission(ops.commissionPercentage);
+
+      const wallet = await apiFetch<{
+        welcomeBonus: number;
+        easypaisaNumber: string;
+        accountName: string;
+      }>('/api/v1/admin/settings/wallet');
+      setBonus(wallet.welcomeBonus);
+      setEasypaisa(wallet.easypaisaNumber ?? '');
+      setAccountName(wallet.accountName ?? '');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load services.');
     } finally {
@@ -176,11 +197,79 @@ export default function Page() {
     }
   }
 
+  async function saveWallet() {
+    setError('');
+    setSaved('');
+    try {
+      await apiFetch('/api/v1/admin/settings/wallet', {
+        method: 'PUT',
+        body: JSON.stringify({
+          welcomeBonus: bonus,
+          easypaisaNumber: easypaisa,
+          accountName,
+        }),
+      });
+      setSaved('Wallet settings updated.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save that.');
+    }
+  }
+
   return (
     <AdminFrame
       title="Services"
       subtitle="Turn a service off for customers without hiding it from drivers."
     >
+      <section className="panel">
+        <header className="panelHeader">
+          <div>
+            <h2>Driver wallet</h2>
+            <p>
+              What a newly approved driver is credited, and where drivers send
+              top-ups. The credit is paid once, on approval — re-approving
+              somebody after a suspension does not pay it again.
+            </p>
+          </div>
+        </header>
+
+        <div style={{ padding: '4px 18px 18px', display: 'grid', gap: '12px' }}>
+          <Field label="Welcome credit on approval (PKR)">
+            <input
+              type="number"
+              min={0}
+              max={20000}
+              value={bonus}
+              onChange={(e) => setBonus(Number(e.target.value))}
+            />
+          </Field>
+          <Field label="EasyPaisa number drivers send to">
+            <input
+              value={easypaisa}
+              maxLength={24}
+              placeholder="03xx xxxxxxx"
+              onChange={(e) => setEasypaisa(e.target.value)}
+            />
+          </Field>
+          <Field label="Name on that account">
+            <input
+              value={accountName}
+              maxLength={120}
+              onChange={(e) => setAccountName(e.target.value)}
+            />
+          </Field>
+          <p className="pingNote" style={{ margin: 0 }}>
+            Drivers see this number in Add funds, with a copy button. Changing
+            it takes effect immediately — nothing is baked into the app.
+          </p>
+          <div>
+            <button className="primaryButton" onClick={() => void saveWallet()}>
+              <Save size={15} />
+              Save wallet settings
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section className="panel">
         <header className="panelHeader">
           <div>

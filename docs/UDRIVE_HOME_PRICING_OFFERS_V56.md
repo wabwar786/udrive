@@ -2859,6 +2859,88 @@ ones. They are the headings of the screen and were reading as captions.
 Hiace, and a single car made it look like the car option rather than the
 category containing it.
 
+## 95. Welcome credit, and where the money goes
+
+### The credit is a setting because its usefulness expires
+
+Early on it buys a fleet: a driver who has to top up before their first fare has
+been asked to pay to find out whether the platform works. Once there are
+drivers, that reason is gone and the figure comes down — which is exactly what
+you said, and why it is a field rather than a constant.
+
+Default 1,000, clamped 0–20,000. Zero turns it off, which is where it ends up.
+
+Paid **inside the approval transaction**, so a driver cannot end up approved
+without it or credited without being approved. Keyed on the driver profile, so
+re-approving after a suspension — or an admin clicking twice — credits nothing
+further. It is a welcome, not a monthly payment.
+
+### The EasyPaisa number was nowhere
+
+The Add funds sheet explained the process and asked for a transaction ID
+**without ever saying which account to pay**. The number lived in a WhatsApp
+message and every driver had to ask.
+
+It is an admin setting now, shown at the top of Add funds with the account name
+and a copy button — above the instructions, because "where do I send it" comes
+before "how do I record it".
+
+A setting rather than app text on purpose: accounts get closed and ownership
+moves, and a number baked into a release means money sent somewhere nobody is
+watching until the next deploy. If the call fails the block is not drawn at all
+— no account on screen is better than a wrong one.
+
+### Confirming payments
+
+**Admin → Driver top-ups** already exists and is already in the nav: it lists
+what drivers have submitted with their screenshot and transaction ID, and
+confirming one credits the wallet. Nothing is credited on submission, because a
+screenshot is a claim and not a receipt.
+
+## 96. `decimal` into a `double`, and why Railway found it
+
+`CommissionEntryDto.Percentage` was `double`, and the value handed to it comes
+from `charged / fare * 100` — a `decimal` division. C# does not convert one to
+the other implicitly, and it is right not to: mixing them for money is how a
+percentage ends up as 9.999999999999998.
+
+It is `decimal` now, like the money it is derived from.
+
+### Why my checks did not see it
+
+`check_syntax.sh` runs Roslyn **without references**, because NuGet is
+unreachable from here. It parses the grammar and finds a missing brace; it
+cannot know that `decimal` and `double` are different types, because it does not
+know what `decimal` is.
+
+I have said this before. What I had not done is the obvious thing about it.
+
+### The API had no CI at all
+
+The mobile repo has run `flutter analyze` on every push for months. The API had
+nothing — so **every C# compile error was found by Railway, on a deploy that
+then failed.**
+
+`.github/workflows/build-api.yml` runs `dotnet restore` and
+`dotnet build -c Release` on any push touching `udrive_api/`. It is the same
+compiler Railway runs, pinned to the same major version as the Dockerfile, so
+there is no class of error it can see that this cannot. About a minute, before
+anything deploys.
+
+Release rather than Debug, because the two differ on enough analysers that a
+Debug-only check gives false confidence.
+
+### A check I wrote and then deleted
+
+I added a step failing the build on duplicate migration numbers. Then I ran it:
+`024_hotels_and_stays.sql` and `024_offline_pmtiles_manifest.sql` share a
+number, and **both run** — the runner orders by full resource name and records
+each by name, so a shared prefix is untidy rather than broken.
+
+It would have failed every build on a healthy repository. That is how a check
+gets switched off, and then stops catching the thing it was written for. Removed,
+with the reasoning left in the file.
+
 ---
 
 ## Not done

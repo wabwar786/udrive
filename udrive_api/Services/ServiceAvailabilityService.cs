@@ -129,6 +129,97 @@ public sealed class ServiceAvailabilityService(string connectionString)
             "The platform's cut of each fare, taken when a trip starts.",
             Math.Clamp(percentage, 0, 40), ct);
 
+    /// <summary>What a newly approved Driver is credited, in rupees.</summary>
+    /// <remarks>
+    /// A settable number rather than a constant, because its purpose expires.
+    /// Early on it buys a fleet: a driver who has to top up before their first
+    /// fare has been asked to pay to find out whether the platform works. Once
+    /// there are drivers, that reason is gone and the figure comes down.
+    ///
+    /// Clamped 0–20,000. Zero turns it off, which is where it ends up.
+    /// </remarks>
+    public Task<double> WelcomeBonusAsync(CancellationToken ct) =>
+        ReadNumberAsync("driver.welcome.bonus", 1000, 0, 20000, ct);
+
+    public Task SetWelcomeBonusAsync(Guid admin, double amount, CancellationToken ct) =>
+        WriteNumberAsync(admin, "driver.welcome.bonus",
+            "Credited once to a driver's wallet when they are approved.",
+            Math.Clamp(amount, 0, 20000), ct);
+
+    /// <summary>The EasyPaisa account Drivers top up to.</summary>
+    /// <remarks>
+    /// Held here rather than printed in the app, because the number changes —
+    /// accounts get closed, ownership moves — and a number baked into a release
+    /// means money sent to somewhere nobody is watching until the next deploy.
+    /// </remarks>
+    public async Task<(string Number, string Name)> TopupAccountAsync(
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT key, value_json #>> '{}'
+            FROM udrive.system_settings
+            WHERE key IN ('payments.easypaisa.number', 'payments.easypaisa.name');
+            """;
+
+        var number = string.Empty;
+        var name = string.Empty;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var value = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+            if (reader.GetString(0).EndsWith("number")) number = value;
+            else name = value;
+        }
+
+        return (number, name);
+    }
+
+    public async Task SetTopupAccountAsync(
+        Guid admin,
+        string number,
+        string name,
+        CancellationToken cancellationToken)
+    {
+        await WriteTextAsync(admin, "payments.easypaisa.number",
+            "The EasyPaisa account drivers top up to.", number, cancellationToken);
+        await WriteTextAsync(admin, "payments.easypaisa.name",
+            "The name on the EasyPaisa account.", name, cancellationToken);
+    }
+
+    private async Task WriteTextAsync(
+        Guid adminUserId,
+        string key,
+        string description,
+        string value,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO udrive.system_settings
+                (key, value_json, description, is_public,
+                 updated_by_user_id, created_at, updated_at)
+            VALUES (@key, to_jsonb(@value::text), @description, false,
+                    @admin, now(), now())
+            ON CONFLICT (key) DO UPDATE
+            SET value_json = EXCLUDED.value_json,
+                updated_by_user_id = EXCLUDED.updated_by_user_id,
+                updated_at = now();
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("key", key);
+        command.Parameters.AddWithValue("value", value.Trim());
+        command.Parameters.AddWithValue("description", description);
+        command.Parameters.AddWithValue("admin", adminUserId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     /// <summary>How far from a pickup a Driver may be and still be offered it.</summary>
     /// <remarks>
     /// Five kilometres in a dense town is a lot of drivers and a lot of wasted

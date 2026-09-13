@@ -500,6 +500,62 @@ public sealed class DriverWalletService(
         return ServiceResult<IReadOnlyList<CommissionEntryDto>>.Ok(list);
     }
 
+    /// <summary>Credits a newly approved Driver their opening balance.</summary>
+    /// <remarks>
+    /// The amount is an admin setting, because its purpose expires. Early on it
+    /// buys a fleet: a driver who has to top up before their first fare has
+    /// been asked to pay to find out whether the platform works. Once there are
+    /// drivers, that reason is gone.
+    ///
+    /// Keyed on the driver profile. Re-approving somebody after a suspension,
+    /// or an Admin clicking twice, credits nothing further — this is a welcome,
+    /// not a monthly payment.
+    /// </remarks>
+    internal static async Task<bool> CreditWelcomeBonusAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid driverProfileId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            WITH amount AS (
+                SELECT COALESCE((SELECT (value_json #>> '{}')::numeric
+                                   FROM udrive.system_settings
+                                  WHERE key = 'driver.welcome.bonus'), 1000) AS value
+            ), wallet AS (
+                INSERT INTO udrive.driver_wallets
+                    (id, driver_profile_id, created_at, updated_at)
+                VALUES (gen_random_uuid(), @driver, now(), now())
+                ON CONFLICT (driver_profile_id) DO UPDATE SET updated_at = now()
+                RETURNING id
+            ), credited AS (
+                UPDATE udrive.driver_wallets w
+                SET commission_balance = w.commission_balance + amount.value,
+                    version = w.version + 1,
+                    updated_at = now()
+                FROM wallet, amount
+                WHERE w.id = wallet.id AND amount.value > 0
+                RETURNING w.id AS wallet_id, amount.value AS credited
+            )
+            INSERT INTO udrive.driver_wallet_entries
+                (id, wallet_id, entry_type, amount, balance_bucket,
+                 description, idempotency_key, created_at)
+            SELECT gen_random_uuid(), credited.wallet_id, 'CommissionTopup',
+                   credited.credited, 'Commission',
+                   'Welcome credit on approval',
+                   'welcome:' || @driver, now()
+            FROM credited
+            ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
+            DO NOTHING
+            RETURNING id;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("driver", driverProfileId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is not null and not DBNull;
+    }
+
     internal static async Task<bool> ChargeCancellationAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,

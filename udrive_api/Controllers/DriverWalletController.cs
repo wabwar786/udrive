@@ -19,6 +19,25 @@ public sealed class DriverWalletController(DriverWalletService service) : Contro
     public async Task<IActionResult> Summary(CancellationToken ct) =>
         Result(await service.SummaryAsync(User.GetRequiredUserId(), ct));
 
+    /// <summary>Where to send a top-up.</summary>
+    /// <remarks>
+    /// From settings rather than printed in the app. The number changes —
+    /// accounts get closed, ownership moves — and one baked into a release
+    /// means money sent somewhere nobody is watching until the next deploy.
+    /// </remarks>
+    [HttpGet("topup-account")]
+    public async Task<IActionResult> TopupAccount(
+        [FromServices] ServiceAvailabilityService settings,
+        CancellationToken ct)
+    {
+        var (number, name) = await settings.TopupAccountAsync(ct);
+        return Ok(ApiResponse<object>.Ok(new
+        {
+            easypaisaNumber = number,
+            accountName = name,
+        }));
+    }
+
     /// <summary>Every commission charge, newest first.</summary>
     /// <remarks>
     /// A balance alone invites the question a Driver cannot answer: where did

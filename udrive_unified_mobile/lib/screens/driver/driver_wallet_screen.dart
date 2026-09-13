@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/state/app_controller.dart';
@@ -23,6 +24,14 @@ class DriverWalletScreen extends StatefulWidget {
 
 class _DriverWalletScreenState extends State<DriverWalletScreen> {
   Map<String, dynamic>? _wallet;
+
+  /// Where a top-up should be sent, from settings.
+  ///
+  /// Null until the call returns; the block is simply not drawn until then,
+  /// rather than showing an empty box shaped like an answer.
+  String? _topupNumber;
+  String? _topupName;
+
   bool _loading = true;
   bool _sending = false;
   String? _error;
@@ -30,7 +39,10 @@ class _DriverWalletScreenState extends State<DriverWalletScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load();
+      _loadTopupAccount();
+    });
   }
 
   static String _money(num value) =>
@@ -90,11 +102,80 @@ class _DriverWalletScreenState extends State<DriverWalletScreen> {
                     color: AppText.primary,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 14),
+
+                // Where to send it, before how to record it.
+                //
+                // The sheet used to explain the process and then ask for a
+                // transaction ID — without ever saying which account to pay.
+                // The number lived in a WhatsApp message somewhere, and every
+                // driver had to ask for it.
+                //
+                // It comes from settings rather than the app, because accounts
+                // get closed and ownership moves; a number baked into a release
+                // means money sent somewhere nobody is watching.
+                if (_topupNumber != null && _topupNumber!.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppTint.brand,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.account_balance_wallet_rounded,
+                            size: 26, color: AppColors.secondary),
+                        const SizedBox(width: 13),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Send EasyPaisa to',
+                                style: TextStyle(
+                                    fontSize: 11.5, color: AppText.secondary),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _topupNumber!,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: .5,
+                                  color: AppText.primary,
+                                ),
+                              ),
+                              if ((_topupName ?? '').isNotEmpty)
+                                Text(
+                                  _topupName!,
+                                  style: const TextStyle(
+                                      fontSize: 12.5,
+                                      color: AppText.secondary),
+                                ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Copy number',
+                          onPressed: () {
+                            Clipboard.setData(
+                                ClipboardData(text: _topupNumber!));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Number copied.')),
+                            );
+                          },
+                          icon: const Icon(Icons.copy_rounded, size: 20),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
                 const Text(
-                  'Send the amount by EasyPaisa, then enter it here with the '
-                  'transaction ID and a screenshot. Your balance is credited '
-                  'once the office confirms the money arrived.',
+                  'Send the amount to that number, then enter it here with '
+                  'the transaction ID and a screenshot. Your balance is '
+                  'credited once the office confirms the money arrived.',
                   style: TextStyle(
                     fontSize: 12.5,
                     height: 1.5,
@@ -202,6 +283,24 @@ class _DriverWalletScreenState extends State<DriverWalletScreen> {
       );
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  /// Reads the EasyPaisa account drivers pay into.
+  Future<void> _loadTopupAccount() async {
+    try {
+      final controller = AppControllerScope.of(context);
+      final response = await controller.apiClient
+          .getJson('/api/v1/driver/wallet/topup-account');
+      final data = response['data'];
+      if (!mounted || data is! Map) return;
+      setState(() {
+        _topupNumber = '${data['easypaisaNumber'] ?? ''}'.trim();
+        _topupName = '${data['accountName'] ?? ''}'.trim();
+      });
+    } catch (_) {
+      // No account on screen is better than a wrong one. The driver can still
+      // record a payment they made to a number they already had.
     }
   }
 

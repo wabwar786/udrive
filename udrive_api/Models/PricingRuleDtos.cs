@@ -309,7 +309,19 @@ public sealed record CommissionEntryDto(
     decimal Amount,
     string? BookingReference,
     decimal Fare,
-    double Percentage,
+    /// <remarks>
+    /// `decimal`, like the money it is derived from. It was `double`, which
+    /// does not implicitly convert from the `decimal` division that produces
+    /// it — and mixing the two for money is how a percentage ends up as
+    /// 9.999999999999998.
+    /// </remarks>
+    decimal Percentage,
     string? Pickup,
     string? Destination,
     bool IsCancellationCharge);
+
+/// <summary>The welcome credit and where drivers send top-ups.</summary>
+public sealed record SetWalletSettingsRequest(
+    [Range(0, 20000)] double WelcomeBonus,
+    [StringLength(24)] string? EasypaisaNumber,
+    [StringLength(120)] string? AccountName);

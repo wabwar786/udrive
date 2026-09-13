@@ -46,6 +46,7 @@ public sealed class PublicServiceAvailabilityController(
             requestRadiusKm = await service.RequestRadiusKmAsync(ct),
             nearbyRadiusKm = await service.NearbyRadiusKmAsync(ct),
             commissionPercentage = await service.CommissionPercentageAsync(ct),
+            welcomeBonus = await service.WelcomeBonusAsync(ct),
         }));
 }
 
@@ -95,6 +96,35 @@ public sealed class AdminServiceAvailabilityController(
         await service.SetCommissionPercentageAsync(
             User.GetRequiredUserId(), request.Percentage, ct);
         return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    /// <summary>Sets the welcome credit and the top-up account.</summary>
+    [HttpPut("/api/v1/admin/settings/wallet")]
+    public async Task<IActionResult> SetWallet(
+        SetWalletSettingsRequest request,
+        CancellationToken ct)
+    {
+        var admin = User.GetRequiredUserId();
+        await service.SetWelcomeBonusAsync(admin, request.WelcomeBonus, ct);
+        await service.SetTopupAccountAsync(
+            admin,
+            request.EasypaisaNumber ?? string.Empty,
+            request.AccountName ?? string.Empty,
+            ct);
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    /// <summary>The top-up account, for the admin form.</summary>
+    [HttpGet("/api/v1/admin/settings/wallet")]
+    public async Task<IActionResult> Wallet(CancellationToken ct)
+    {
+        var (number, name) = await service.TopupAccountAsync(ct);
+        return Ok(ApiResponse<object>.Ok(new
+        {
+            welcomeBonus = await service.WelcomeBonusAsync(ct),
+            easypaisaNumber = number,
+            accountName = name,
+        }));
     }
 
     [HttpPut("{serviceKey}")]
