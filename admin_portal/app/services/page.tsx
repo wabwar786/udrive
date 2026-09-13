@@ -55,6 +55,16 @@ export default function Page() {
    */
   const [requestKm, setRequestKm] = useState(5);
   const [nearbyKm, setNearbyKm] = useState(1);
+
+  /**
+   * The platform's cut of each fare.
+   *
+   * Taken from the driver's prepaid balance the moment a trip starts — not
+   * when it ends, because a driver who loses signal after dropping someone off
+   * never sends the completion, and the platform was carrying rides it was not
+   * paid for.
+   */
+  const [commission, setCommission] = useState(10);
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -69,10 +79,12 @@ export default function Page() {
         pingSeconds: number;
         requestRadiusKm: number;
         nearbyRadiusKm: number;
+        commissionPercentage: number;
       }>('/api/v1/settings/operations');
       setPing(ops.pingSeconds);
       setRequestKm(ops.requestRadiusKm);
       setNearbyKm(ops.nearbyRadiusKm);
+      setCommission(ops.commissionPercentage);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load services.');
     } finally {
@@ -149,11 +161,58 @@ export default function Page() {
     }
   }
 
+  async function saveCommission(percentage: number) {
+    setCommission(percentage);
+    setError('');
+    setSaved('');
+    try {
+      await apiFetch('/api/v1/admin/settings/commission', {
+        method: 'PUT',
+        body: JSON.stringify({ percentage }),
+      });
+      setSaved(`Commission is now ${percentage}% of each fare.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save that.');
+    }
+  }
+
   return (
     <AdminFrame
       title="Services"
       subtitle="Turn a service off for customers without hiding it from drivers."
     >
+      <section className="panel">
+        <header className="panelHeader">
+          <div>
+            <h2>Commission</h2>
+            <p>
+              The platform&apos;s cut of each fare, taken from the
+              driver&apos;s prepaid balance the moment a trip starts — when the
+              passenger is in the vehicle and has read out the code. Not at the
+              end: a driver who loses signal after a drop-off never sends the
+              completion, and that ride would go uncharged.
+            </p>
+          </div>
+        </header>
+        <div className="pingRow">
+          {[0, 5, 8, 10, 12, 15, 20, 25].map((pct) => (
+            <button
+              key={pct}
+              type="button"
+              className={pct === commission ? 'pingOn' : 'pingOff'}
+              onClick={() => void saveCommission(pct)}
+            >
+              {pct}%
+            </button>
+          ))}
+        </div>
+        <p className="pingNote">
+          Currently {commission}% of each fare. Drivers see every charge in
+          their wallet, with the ride it came from — changing this does not
+          alter what was already taken.
+        </p>
+      </section>
+
       <section className="panel">
         <header className="panelHeader">
           <div>

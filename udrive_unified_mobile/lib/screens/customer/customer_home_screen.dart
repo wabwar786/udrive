@@ -980,7 +980,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       child: Center(
                         child: _CentrePin(
                           lifted: _draggingMap,
-                          label: _pickup.text.trim(),
+                          label: _shortPlace(_pickup.text),
                           resolving: _resolvingPin,
                         ),
                       ),
@@ -1050,21 +1050,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
                         // The nearby count and the locate button share one row,
                         // so neither can drift under the other.
+                        // No nearby-count banner on the map.
+                        //
+                        // "No cars nearby right now" was a wide white bar
+                        // across the map saying something the City rides tile
+                        // already says, in a place where the only thing worth
+                        // showing is the map. When there are cars, the markers
+                        // say so; when there are none, an empty map says so.
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            if (_service.isVehicle && _pinActive)
-                              Expanded(
-                                child: _NearbyCountChip(
-                                  service: _service,
-                                  count: _visibleVehicles.length,
-                                  loading: _nearbyLoading,
-                                  offline: _offline,
-                                ),
-                              )
-                            else
-                              const Spacer(),
-                            const SizedBox(width: 10),
+                            const Spacer(),
                             _LocateButton(
                               busy: _locating,
                               onTap: _loadLocation,
@@ -1422,6 +1418,34 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   ///
   /// It does nothing else on purpose. A form that collects interest and posts
   /// it nowhere would be worse than this.
+  /// The first meaningful part of an address.
+  ///
+  /// Google returns "MV62+682 Unity Plaza, Margalla View Block B D-17,
+  /// Islamabad" and the pill showed all of it, truncated — so what a customer
+  /// read was a Plus Code and an ellipsis. The name is the part they recognise.
+  ///
+  /// Leading Plus Codes are dropped: they are precise, machine-readable, and
+  /// mean nothing to the person standing there.
+  static String _shortPlace(String address) {
+    final parts = address
+        .split(',')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return address.trim();
+
+    var first = parts.first;
+
+    // A Plus Code looks like "MV62+682" — strip it and keep what follows.
+    final code = RegExp(r'^[A-Z0-9]{4,8}\+[A-Z0-9]{2,4}\s*');
+    if (code.hasMatch(first)) {
+      first = first.replaceFirst(code, '').trim();
+      if (first.isEmpty) first = parts.length > 1 ? parts[1] : parts.first;
+    }
+
+    return first;
+  }
+
   /// Loads the service switches: cache first, then the server.
   Future<void> _loadAvailability(AppController controller) async {
     final cached = await ServiceAvailabilityRepository.readCache();
@@ -2688,6 +2712,7 @@ class _ServiceCards extends StatelessWidget {
               subInk: AppProduct.rideSub,
               selected: _rideSelected,
               large: true,
+              secondaryIcon: Icons.two_wheeler_rounded,
               service: cityRides,
               onClosed: onClosed,
               onTap: () => onSelect(HomeService.car),
@@ -2934,6 +2959,7 @@ class _ProductCard extends StatelessWidget {
     required this.subInk,
     required this.selected,
     required this.large,
+    this.secondaryIcon,
     required this.service,
     required this.onTap,
     required this.onClosed,
@@ -2948,6 +2974,12 @@ class _ProductCard extends StatelessWidget {
   final Color subInk;
   final bool selected;
   final bool large;
+
+  /// A second vehicle drawn beside [icon] on the large tile.
+  ///
+  /// Only used by City rides, where one car misrepresented a category that also
+  /// covers bikes, Costers and Hiaces.
+  final IconData? secondaryIcon;
 
   /// The admin's switch for this service.
   final ServiceAvailability service;
@@ -3013,11 +3045,36 @@ class _ProductCard extends StatelessWidget {
               Positioned(
                 right: large ? 10 : 6,
                 bottom: large ? 8 : 5,
-                child: Icon(
-                  icon,
-                  size: large ? 46 : 28,
-                  color: accent.withValues(alpha: selected ? .40 : .22),
-                ),
+                child: large && secondaryIcon != null
+                    // Two vehicles on the large tile, overlapped.
+                    //
+                    // "City rides" covers car, bike, Coster and Hiace, and a
+                    // single car said only "car" — the tile looked like the
+                    // car option rather than the category containing it.
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Icon(
+                            secondaryIcon,
+                            size: 34,
+                            color: accent.withValues(
+                                alpha: selected ? .32 : .18),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            icon,
+                            size: 48,
+                            color: accent.withValues(
+                                alpha: selected ? .42 : .24),
+                          ),
+                        ],
+                      )
+                    : Icon(
+                        icon,
+                        size: large ? 46 : 28,
+                        color: accent.withValues(alpha: selected ? .40 : .22),
+                      ),
               ),
               // Text reserves the left side and stops short of the artwork.
               //
@@ -3040,7 +3097,9 @@ class _ProductCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: large ? 17 : 13.5,
+                        // Bigger and heavier. These are the headings of the
+                        // screen and were reading as captions.
+                        fontSize: large ? 21 : 15.5,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -.3,
                         color: selected ? titleInk : AppText.primary,
@@ -3052,7 +3111,7 @@ class _ProductCard extends StatelessWidget {
                       maxLines: large ? 2 : 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: large ? 11.5 : 10.5,
+                        fontSize: large ? 13 : 11.5,
                         height: 1.35,
                         fontWeight: FontWeight.w600,
                         color: selected ? subInk : AppText.secondary,

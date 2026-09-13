@@ -19,6 +19,23 @@ public sealed class DriverWalletController(DriverWalletService service) : Contro
     public async Task<IActionResult> Summary(CancellationToken ct) =>
         Result(await service.SummaryAsync(User.GetRequiredUserId(), ct));
 
+    /// <summary>Every commission charge, newest first.</summary>
+    /// <remarks>
+    /// A balance alone invites the question a Driver cannot answer: where did
+    /// it go? This is the ledger behind it — one line per ride, with the fare,
+    /// the rate applied and the amount taken.
+    ///
+    /// The rate is stored per entry rather than read from settings at display
+    /// time, so a Driver looking back at last month sees what they were
+    /// actually charged, not what the rate happens to be today.
+    /// </remarks>
+    [HttpGet("commission")]
+    public async Task<IActionResult> Commission(
+        [FromQuery] int take = 50,
+        CancellationToken ct = default) =>
+        Result(await service.CommissionHistoryAsync(
+            User.GetRequiredUserId(), Math.Clamp(take, 1, 200), ct));
+
     /// <summary>Records a payment the Driver says they have sent.</summary>
     /// <remarks>
     /// Nothing is credited here. A screenshot is a claim, not a receipt, and

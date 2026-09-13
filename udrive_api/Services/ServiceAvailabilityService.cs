@@ -113,6 +113,22 @@ public sealed class ServiceAvailabilityService(string connectionString)
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>The platform's cut of each fare, as a percentage.</summary>
+    /// <remarks>
+    /// Taken from the Driver's prepaid balance the moment a trip starts.
+    /// Clamped 0–40: zero is a legitimate choice while building a fleet, and
+    /// anything above forty is a number no driver would keep working under —
+    /// a typo that empties their balance in three rides is not a setting.
+    /// </remarks>
+    public Task<double> CommissionPercentageAsync(CancellationToken ct) =>
+        ReadNumberAsync("driver.commission.percentage", 10, 0, 40, ct);
+
+    public Task SetCommissionPercentageAsync(
+            Guid admin, double percentage, CancellationToken ct) =>
+        WriteNumberAsync(admin, "driver.commission.percentage",
+            "The platform's cut of each fare, taken when a trip starts.",
+            Math.Clamp(percentage, 0, 40), ct);
+
     /// <summary>How far from a pickup a Driver may be and still be offered it.</summary>
     /// <remarks>
     /// Five kilometres in a dense town is a lot of drivers and a lot of wasted

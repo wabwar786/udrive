@@ -295,3 +295,21 @@ public sealed record SetTrackingIntervalRequest([Range(1, 60)] int PingSeconds);
 public sealed record SetRadiusRequest(
     [Range(0.5, 50)] double RequestRadiusKm,
     [Range(0.2, 25)] double NearbyRadiusKm);
+
+/// <summary>The platform's cut of each fare, as a percentage.</summary>
+public sealed record SetCommissionRequest([Range(0, 40)] double Percentage);
+
+/// <summary>One commission or cancellation charge, as the driver sees it.</summary>
+/// <param name="Percentage">
+/// Derived from the amount taken against the fare, so a driver looking back
+/// sees the rate they were actually charged rather than today's setting.
+/// </param>
+public sealed record CommissionEntryDto(
+    DateTimeOffset ChargedAt,
+    decimal Amount,
+    string? BookingReference,
+    decimal Fare,
+    double Percentage,
+    string? Pickup,
+    string? Destination,
+    bool IsCancellationCharge);

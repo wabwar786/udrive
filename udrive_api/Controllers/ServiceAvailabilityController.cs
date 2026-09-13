@@ -45,6 +45,7 @@ public sealed class PublicServiceAvailabilityController(
             pingSeconds = await service.TrackingIntervalSecondsAsync(ct),
             requestRadiusKm = await service.RequestRadiusKmAsync(ct),
             nearbyRadiusKm = await service.NearbyRadiusKmAsync(ct),
+            commissionPercentage = await service.CommissionPercentageAsync(ct),
         }));
 }
 
@@ -82,6 +83,17 @@ public sealed class AdminServiceAvailabilityController(
         var admin = User.GetRequiredUserId();
         await service.SetRequestRadiusAsync(admin, request.RequestRadiusKm, ct);
         await service.SetNearbyRadiusAsync(admin, request.NearbyRadiusKm, ct);
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    /// <summary>Sets the platform's cut of each fare.</summary>
+    [HttpPut("/api/v1/admin/settings/commission")]
+    public async Task<IActionResult> SetCommission(
+        SetCommissionRequest request,
+        CancellationToken ct)
+    {
+        await service.SetCommissionPercentageAsync(
+            User.GetRequiredUserId(), request.Percentage, ct);
         return Ok(ApiResponse<bool>.Ok(true));
     }
 

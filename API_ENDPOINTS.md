@@ -300,3 +300,20 @@ wait for.
 
 Clamped 0.5–50 and 0.2–25. A value that makes the platform stop working should
 not be reachable by a typo in a text field.
+
+## Commission — rev 116
+
+- `GET /api/v1/driver/wallet/commission?take=50` — the driver's own ledger: one
+  line per ride with the fare, the rate applied and the amount taken.
+- `PUT /api/v1/admin/settings/commission` `{ percentage }` (0–40)
+- `commissionPercentage` is returned by `GET /api/v1/settings/operations`.
+
+**Charged at trip start, not completion.** A driver who finishes a ride and then
+loses signal, closes the app or runs out of battery never sends the completion —
+so the commission was never taken and the platform carried rides it was not paid
+for. The trip start is the moment both sides have agreed: the passenger is in
+the vehicle and has read out the code.
+
+The rate on each ledger line is derived from what was actually taken against the
+fare, not read from settings at display time. A driver looking back at last
+month sees the rate they were charged, not today's.

@@ -127,7 +127,16 @@ from udrive.bookings b join udrive.trip_operations o on o.booking_id=b.id cross 
         // Driver anything. Inside this transaction, so the charge and the
         // completion commit together or neither does, and keyed on the booking
         // so a retried completion cannot charge twice.
-        if(request.Status=="TripCompleted"){await DriverWalletService.ChargeCommissionAsync(cn,tx,bookingId,ct);}
+        // Charged when the trip starts, not when it ends.
+        //
+        // A Driver who finishes a ride and then loses signal, closes the app or
+        // runs out of battery never sends the completion — so the commission
+        // was never taken, and the platform carried rides it was not paid for.
+        // The trip start is the moment both sides have agreed the ride is
+        // happening: the passenger is in the vehicle and has read out the code.
+        //
+        // Keyed on the booking, so a status set twice cannot charge twice.
+        if(request.Status=="TripStarted"){await DriverWalletService.ChargeCommissionAsync(cn,tx,bookingId,ct);}
         // Abandoning a ride already accepted costs the Driver 2% of the fare —
         // but only before the trip starts. Once the Customer is in the vehicle
         // a cancellation is a different and more serious event, and belongs

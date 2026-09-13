@@ -446,6 +446,60 @@ public sealed class DriverWalletService(
     /// the vehicle and a cancellation is a different, more serious event that
     /// belongs with the disputes process, not an automatic fee.
     /// </remarks>
+    /// <summary>Every commission charge for this Driver, newest first.</summary>
+    public async Task<ServiceResult<IReadOnlyList<CommissionEntryDto>>> CommissionHistoryAsync(
+        Guid userId,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT e.created_at,
+                   abs(e.amount),
+                   b.booking_reference,
+                   b.total_amount,
+                   b.pickup_address,
+                   b.destination_address,
+                   e.entry_type
+            FROM udrive.driver_wallet_entries e
+            JOIN udrive.driver_wallets w ON w.id = e.wallet_id
+            JOIN udrive.driver_profiles dp ON dp.id = w.driver_profile_id
+            LEFT JOIN udrive.bookings b ON b.id = e.booking_id
+            WHERE dp.user_id = @user
+              AND e.entry_type IN ('CommissionCharge', 'CancellationCharge')
+            ORDER BY e.created_at DESC
+            LIMIT @take;
+            """;
+
+        var list = new List<CommissionEntryDto>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("user", userId);
+        command.Parameters.AddWithValue("take", take);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var charged = reader.GetDecimal(1);
+            var fare = reader.IsDBNull(3) ? 0m : reader.GetDecimal(3);
+
+            list.Add(new CommissionEntryDto(
+                reader.GetFieldValue<DateTimeOffset>(0),
+                charged,
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                fare,
+                // Derived from what was actually taken, not from today's
+                // setting. A driver looking at last month should see the rate
+                // they were charged, not the one in force now.
+                fare <= 0 ? 0 : Math.Round(charged / fare * 100, 1),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.GetString(6) == "CancellationCharge"));
+        }
+
+        return ServiceResult<IReadOnlyList<CommissionEntryDto>>.Ok(list);
+    }
+
     internal static async Task<bool> ChargeCancellationAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,

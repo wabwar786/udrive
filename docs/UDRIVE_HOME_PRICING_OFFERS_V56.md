@@ -2807,6 +2807,58 @@ waiting on a decision looks more often than any polling interval worth running,
 and a button they pressed is more reassuring than a screen that might be
 updating.
 
+## 93. Commission: when it is taken, who decides, and what the driver sees
+
+### It was charged at the wrong moment
+
+`ChargeCommissionAsync` ran on `TripCompleted`. A driver who drops someone off
+and then loses signal, closes the app or runs out of battery **never sends the
+completion** — so the charge never happened and the platform carried rides it
+was not paid for. That is most likely exactly what you were seeing.
+
+It runs on `TripStarted` now: the moment the passenger is in the vehicle and has
+read out the code, which is when both sides have agreed the ride is happening.
+Still keyed on the booking, so a status set twice cannot charge twice.
+
+### The rate is an admin setting
+
+0, 5, 8, 10, 12, 15, 20 or 25 per cent, on the admin Services page. Clamped 0–40
+on the server: zero is a legitimate choice while building a fleet, and a typo
+that empties a driver's balance in three rides is not a setting.
+
+### The driver sees the whole ledger
+
+`GET /api/v1/driver/wallet/commission` returns one line per ride: when, which
+booking, the fare, the rate and the amount taken — cancellation charges
+included, marked as such.
+
+A balance on its own invites the question a driver cannot answer: *where did it
+go?*
+
+The rate on each line is **derived from what was actually taken** against that
+fare rather than read from settings when the screen draws. Someone looking back
+at last month should see what they were charged, not what the rate happens to be
+today.
+
+## 94. Home screen
+
+**The pickup pill said "MV62+682 Unity Plaza, Margalla View Block B D-17,
+Islama…"** — a Plus Code and an ellipsis. It shows the first meaningful part of
+the address now, with any leading Plus Code stripped: precise, machine-readable
+and meaningless to the person standing there.
+
+**"No cars nearby right now" is off the map.** A wide white bar saying something
+the City rides tile already says, in the one place where the only thing worth
+showing is the map. When there are cars the markers say so; when there are none,
+an empty map says so.
+
+**Titles are bigger and heavier** — 21pt on the large tile, 15.5 on the small
+ones. They are the headings of the screen and were reading as captions.
+
+**City rides shows a bike and a car.** The tile covers car, bike, Coster and
+Hiace, and a single car made it look like the car option rather than the
+category containing it.
+
 ---
 
 ## Not done

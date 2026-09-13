@@ -14,7 +14,7 @@ class AppConfig {
   /// Exists so "is this build actually deployed?" is a question with an answer.
   /// Several hours were lost to fixes that looked ineffective because the build
   /// carrying them had not reached the server. Visible under Notifications.
-  static const String buildLabel = 'rev 115 · 2026-09-13';
+  static const String buildLabel = 'rev 116 · 2026-09-13';
 
   /// How long each side has to answer the other.
   ///
