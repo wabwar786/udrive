@@ -13,9 +13,20 @@ public sealed record DriverOnboardingRequest(
     /// </remarks>
     DateOnly? DrivingLicenceExpiry,
     DateOnly? DateOfBirth,
-    [Required, StringLength(600)] string Address,
-    [Required, StringLength(120)] string EmergencyContactName,
-    [Required, StringLength(24)] string EmergencyContactPhone,
+    /// <summary>Home address, and who to call if something happens.</summary>
+    /// <remarks>
+    /// Optional, and that is a change. They were `[Required]`, which meant the
+    /// four-step sign-up — which does not ask for them — could not submit at
+    /// all: sending empty strings fails `[Required]` just as null does.
+    ///
+    /// Making them optional is the honest fix rather than inventing values to
+    /// satisfy the attribute. The columns were always nullable; only the
+    /// request insisted. They are collected in profile settings, and a driver
+    /// cannot be approved without a reviewer seeing the profile anyway.
+    /// </remarks>
+    [StringLength(600)] string? Address,
+    [StringLength(120)] string? EmergencyContactName,
+    [StringLength(24)] string? EmergencyContactPhone,
     [StringLength(120)] string? BankAccountTitle,
     [StringLength(40)] string? PayoutMethod,
     [StringLength(80)] string? PayoutAccount,

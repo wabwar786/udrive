@@ -2713,6 +2713,48 @@ person to remember, but a check that does the remembering. The same reasoning
 covers the const-colour check and the widget-field check — three of the last
 five failures were repeats of an earlier one.
 
+## 91. Why submit failed, and what the admin needed
+
+### The submission
+
+`DriverOnboardingRequest` had `Address`, `EmergencyContactName` and
+`EmergencyContactPhone` as `[Required]`. The four-step sign-up does not ask for
+any of them, so I sent empty strings — and **`[Required]` rejects `""` exactly
+as it rejects null**. Every submission failed.
+
+They are optional now, which is the honest fix rather than inventing values to
+satisfy an attribute. The columns were always nullable; only the request
+insisted. The client omits them entirely, and the service stores null rather
+than an empty string — a blank column reads as "not collected yet", an empty
+string reads as "collected, and empty", and those are different things to a
+reviewer.
+
+The emergency phone is validated **only when one is given**. An empty field is
+not a wrong phone number, and refusing a submission over a question that was
+never asked leaves someone rereading a form for a mistake that is not there.
+
+### The admin side, which you were right to ask about
+
+Three things were out of step:
+
+**Document labels.** The portal ran the type through a prettifier, so
+`SELFIE_WITH_CNIC` showed as "Selfie With Cnic" and `SELFIE` as "Selfie" when
+what the driver was asked for was a personal picture. Proper names now, with the
+prettifier as the fallback for anything not yet named.
+
+**The counter said `/4`.** With six driver documents it would have read as
+complete while two were missing.
+
+**The approval blockers list was a separate copy** of the required types, and it
+had not been updated — so the portal would have said a driver was ready and the
+API would have refused to approve them. It reads from the same list as the
+ordering now.
+
+Reviewers see them in the order the driver sent them, and **an unknown type
+sorts to the end rather than vanishing** — a type this page has not been taught
+is still something the driver uploaded, and hiding it would mean approving
+someone without seeing it.
+
 ---
 
 ## Not done

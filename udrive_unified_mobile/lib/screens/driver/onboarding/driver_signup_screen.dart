@@ -198,14 +198,13 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
         'drivingLicenceNumber': _licenceNumber.text.trim(),
         'drivingLicenceExpiry': _iso(_licenceExpiry),
         'dateOfBirth': _iso(_dateOfBirth),
-        // Required by the endpoint and not asked for in these four steps.
+        // Address and emergency contact are not sent at all.
         //
-        // Left empty rather than invented: a made-up address in a verification
-        // record is worse than a blank one, because a reviewer would believe
-        // it. The profile screen collects them properly afterwards.
-        'address': '',
-        'emergencyContactName': '',
-        'emergencyContactPhone': '',
+        // They are not asked for in these four steps, and empty strings were
+        // worse than omitting them: the endpoint had them as `[Required]`,
+        // which rejects "" exactly as it rejects null, so every submission
+        // failed. They are optional server-side now and collected in profile
+        // settings.
       });
 
       for (final entry in _files.entries) {

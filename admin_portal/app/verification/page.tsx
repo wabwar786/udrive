@@ -99,28 +99,63 @@ type Selection =
   | { type: 'driver'; id: string }
   | { type: 'vehicle'; id: string };
 
+/**
+ * The order a reviewer reads them in, which is the order the driver sent them.
+ *
+ * Documents not listed here sort to the end rather than disappearing — an
+ * unknown type is a type this page has not been taught yet, and hiding it would
+ * mean a reviewer approving someone without seeing something they uploaded.
+ */
 const driverDocumentOrder = [
   'SELFIE',
+  'DRIVING_LICENCE',
+  'DRIVING_LICENCE_BACK',
   'CNIC_FRONT',
   'CNIC_BACK',
-  'DRIVING_LICENCE',
+  'SELFIE_WITH_CNIC',
 ];
 
 const vehicleDocumentOrder = [
   'VEHICLE_FRONT',
+  'REGISTRATION_BOOK',
+  'REGISTRATION_BOOK_BACK',
   'VEHICLE_REAR',
   'VEHICLE_INTERIOR',
-  'REGISTRATION_BOOK',
   'INSURANCE',
   'FITNESS_CERTIFICATE',
 ];
 
+/**
+ * Names a reviewer would use, rather than the database's.
+ *
+ * `pretty()` turns `SELFIE_WITH_CNIC` into "Selfie With Cnic", which is both
+ * ugly and slightly wrong — and `SELFIE` into "Selfie" when what the driver was
+ * asked for was a personal picture. Anything not named here still falls back to
+ * `pretty()`.
+ */
+const documentLabels: Record<string, string> = {
+  SELFIE: 'Personal picture',
+  DRIVING_LICENCE: 'Driver licence (front)',
+  DRIVING_LICENCE_BACK: 'Driver licence (back)',
+  CNIC_FRONT: 'CNIC (front)',
+  CNIC_BACK: 'CNIC (back)',
+  SELFIE_WITH_CNIC: 'Selfie holding CNIC',
+  VEHICLE_FRONT: 'Vehicle photograph',
+  REGISTRATION_BOOK: 'Registration certificate (front)',
+  REGISTRATION_BOOK_BACK: 'Registration certificate (back)',
+  VEHICLE_REAR: 'Vehicle rear',
+  VEHICLE_INTERIOR: 'Vehicle interior',
+};
+
 function pretty(value: string) {
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+  return (
+    documentLabels[value] ??
+    value
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  );
 }
 
 function sortDocuments(
@@ -1084,7 +1119,9 @@ function VerificationDetail({
  * anyone presses the button.
  */
 function approvalBlockers(detail: DriverDetail): string[] {
-  const required = ['CNIC_FRONT', 'CNIC_BACK', 'DRIVING_LICENCE', 'SELFIE'];
+  // Mirrors the server's list. The two must match, or the portal will say a
+  // driver is ready and the API will refuse to approve them.
+  const required = driverDocumentOrder;
   const present = new Set(detail.documents.map((d) => d.documentType));
   const missing = required.filter((type) => !present.has(type));
 
@@ -1126,7 +1163,14 @@ function DriverHero({ detail }: { detail: DriverDetail }) {
       </div>
       <div className={styles.heroStats}>
         <div>
-          <strong>{detail.documents.length}/4</strong>
+          {/*
+            Six now, not four. The sign-up added the licence back and the
+            selfie-with-CNIC, and a counter that still said "/4" would read as
+            complete while two were missing.
+          */}
+          <strong>
+            {detail.documents.length}/{driverDocumentOrder.length}
+          </strong>
           <span>Driver documents</span>
         </div>
         <div>

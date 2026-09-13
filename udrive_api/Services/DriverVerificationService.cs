@@ -84,14 +84,26 @@ public sealed class DriverVerificationService(
                 "CNIC must contain exactly 13 digits.");
         }
 
-        if (!PhoneNumberNormalizer.TryNormalizePakistan(
-                request.EmergencyContactPhone,
-                out var emergencyPhone))
+        // Validated only when one was given.
+        //
+        // The emergency contact is optional now, and an empty field is not a
+        // wrong phone number — refusing the whole submission over a question
+        // that was never asked is the sort of error that leaves someone
+        // rereading a form for a mistake that is not there.
+        string? emergencyPhone = null;
+        if (!string.IsNullOrWhiteSpace(request.EmergencyContactPhone))
         {
-            return ServiceResult<DriverOnboardingDto>.Fail(
-                StatusCodes.Status400BadRequest,
-                "invalid_emergency_phone",
-                "Enter a valid emergency contact mobile number.");
+            if (!PhoneNumberNormalizer.TryNormalizePakistan(
+                    request.EmergencyContactPhone,
+                    out var parsed))
+            {
+                return ServiceResult<DriverOnboardingDto>.Fail(
+                    StatusCodes.Status400BadRequest,
+                    "invalid_emergency_phone",
+                    "Enter a valid emergency contact mobile number.");
+            }
+
+            emergencyPhone = parsed;
         }
 
         var licence = request.DrivingLicenceNumber.Trim().ToUpperInvariant();
@@ -167,9 +179,21 @@ public sealed class DriverVerificationService(
             // admins and the driver can read these.
             command.Parameters.AddWithValue("licence", licence);
             command.Parameters.AddWithValue("cnicPlain", normalizedCnic);
-            command.Parameters.AddWithValue("address", request.Address.Trim());
-            command.Parameters.AddWithValue("emergencyName", request.EmergencyContactName.Trim());
-            command.Parameters.AddWithValue("emergencyPhone", emergencyPhone);
+            // Null rather than empty strings. A blank column reads as "not
+            // collected yet"; an empty string reads as "collected, and empty",
+            // which is a different and misleading thing for a reviewer.
+            command.Parameters.AddWithValue(
+                "address",
+                string.IsNullOrWhiteSpace(request.Address)
+                    ? DBNull.Value
+                    : request.Address.Trim());
+            command.Parameters.AddWithValue(
+                "emergencyName",
+                string.IsNullOrWhiteSpace(request.EmergencyContactName)
+                    ? DBNull.Value
+                    : request.EmergencyContactName.Trim());
+            command.Parameters.AddWithValue(
+                "emergencyPhone", (object?)emergencyPhone ?? DBNull.Value);
             command.Parameters.AddWithValue("bankTitle", (object?)request.BankAccountTitle?.Trim() ?? DBNull.Value);
             command.Parameters.AddWithValue("payoutMethod", (object?)request.PayoutMethod?.Trim() ?? DBNull.Value);
             command.Parameters.AddWithValue("payoutMasked", string.IsNullOrWhiteSpace(payoutMasked) ? DBNull.Value : payoutMasked);
