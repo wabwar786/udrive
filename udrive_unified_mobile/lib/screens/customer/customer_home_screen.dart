@@ -2894,7 +2894,9 @@ class _QuickTile extends StatelessWidget {
                   height: 52,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: selected ? AppTint.brand : AppColors.surfaceAlt,
+                    // A touch deeper than the page, so the row reads as five
+                    // buttons rather than five labels.
+                    color: selected ? AppTint.brand : const Color(0xFFE7EDEA),
                     borderRadius: BorderRadius.circular(13),
                   ),
                   child: Icon(
@@ -2991,9 +2993,16 @@ class _ProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final closed = !service.isOpen;
 
-    // Unselected tiles drop to the neutral surface and muted ink, so the chosen
-    // product is unmistakable rather than one of three bright boxes.
-    final background = selected ? surface : AppColors.surfaceAlt;
+    // Unselected tiles keep their colour, only quieter.
+    //
+    // They used to drop to the flat grey surface, which is why the row looked
+    // like one coloured box and three empty ones — and why deepening the tints
+    // would have changed nothing: only the selected tile was ever using them.
+    //
+    // Selection now reads from depth rather than from colour-versus-no-colour.
+    final background = selected
+        ? surface
+        : Color.alphaBlend(surface.withValues(alpha: .45), AppColors.background);
 
     return Semantics(
       button: true,
@@ -3102,7 +3111,7 @@ class _ProductCard extends StatelessWidget {
                         fontSize: large ? 21 : 15.5,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -.3,
-                        color: selected ? titleInk : AppText.primary,
+                        color: titleInk,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -3114,7 +3123,7 @@ class _ProductCard extends StatelessWidget {
                         fontSize: large ? 13 : 11.5,
                         height: 1.35,
                         fontWeight: FontWeight.w600,
-                        color: selected ? subInk : AppText.secondary,
+                        color: subInk,
                       ),
                     ),
                   ],

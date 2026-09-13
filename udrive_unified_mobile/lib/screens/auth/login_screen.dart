@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/widgets/powered_by.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -48,15 +49,18 @@ class _LoginScreenState extends State<LoginScreen> {
           SafeArea(
             child: Column(
               children: [
-                // Only the language switch sits up here now. The wordmark moved
-                // to the middle of the screen, and two logos on one screen made
-                // neither of them read as the mark.
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 16, 0),
+                // The mark, small, top left. Nothing else up here.
+                //
+                // The language switch was the only thing in this row, and it is
+                // a setting somebody changes once — on the first screen of the
+                // app it was the most prominent control on a page whose whole
+                // job is to collect a name and a number.
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 14, 16, 0),
                   child: Row(
                     children: [
-                      const Spacer(),
-                      const _LanguageToggle(),
+                      UDriveMark(size: 44),
+                      Spacer(),
                     ],
                   ),
                 ),
@@ -66,26 +70,35 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Logo centred, form directly beneath it. One thing to
-                        // look at, then one thing to do.
-                        const SizedBox(height: 18),
-                        const Center(child: UDriveMark(size: 72)),
-                        const SizedBox(height: 12),
-                        const Center(child: UDriveWordmark(compact: true)),
-                        const SizedBox(height: 6),
+                        // Left-aligned, and no second logo.
+                        //
+                        // The mark was repeated here at 72px under the one in
+                        // the header — two logos on one screen, neither of
+                        // which then reads as the mark. This is a form, so it
+                        // opens with its question rather than with branding.
+                        const SizedBox(height: 26),
+                        Text(
+                          urdu ? 'خوش آمدید' : 'Welcome',
+                          style: const TextStyle(
+                            fontSize: 32,
+                            height: 1.15,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -.8,
+                            color: AppText.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         Text(
                           urdu
                               ? 'کشمیر کا محفوظ اور آسان سفر'
                               : 'Your safer way to explore Kashmir',
-                          textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 14,
+                            fontSize: 15,
                             height: 1.5,
-                            fontWeight: FontWeight.w600,
                             color: AppText.secondary,
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 26),
                         _FormSheet(
                           formKey: _formKey,
                           name: _name,
@@ -99,6 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           onContinue: _continue,
                           onDemo: _demoLogin,
                         ),
+                        const PoweredByWabwar(),
                       ],
                     ),
                   ),
@@ -160,53 +174,22 @@ class _LoginScreenState extends State<LoginScreen> {
 /// brand circles, all of it out at the edges. Shapes have no fixed proportions
 /// to protect, so nothing can be cropped through the middle no matter how tall
 /// the phone or how far the keyboard pushes the form up.
+/// Plain white behind the sign-in form.
+///
+/// This painted a dark green gradient with soft shapes over it — the app's old
+/// palette, on the first screen anyone sees. A person's first impression of the
+/// app was a colour scheme the rest of it no longer uses.
+///
+/// White, and nothing else. The green belongs on the button they are about to
+/// press, not behind the fields they are about to fill.
 class _BackdropArtwork extends StatelessWidget {
   const _BackdropArtwork();
 
   @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-
-    return IgnorePointer(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                stops: [0, .45, 1],
-                colors: [
-                  Color(0xFF16332A),
-                  Color(0xFF0C1A1B),
-                  AppColors.background,
-                ],
-              ),
-            ),
-          ),
-
-          // Top right, mostly off-screen.
-          Positioned(
-            top: -size.width * .42,
-            right: -size.width * .34,
-            child: _Glow(diameter: size.width * .96, opacity: .12),
-          ),
-
-          // Bottom left, smaller and fainter, so the eye travels down the
-          // screen towards the form rather than settling in a corner.
-          Positioned(
-            bottom: -size.width * .30,
-            left: -size.width * .28,
-            child: _Glow(diameter: size.width * .70, opacity: .07),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      const ColoredBox(color: AppColors.background, child: SizedBox.expand());
 }
 
-/// A soft circle of brand colour.
 class _Glow extends StatelessWidget {
   const _Glow({required this.diameter, required this.opacity});
 
@@ -417,50 +400,3 @@ class _FormSheet extends StatelessWidget {
 }
 
 /// EN / اردو switch, styled to match the pill used on Home.
-class _LanguageToggle extends StatelessWidget {
-  const _LanguageToggle();
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = AppControllerScope.of(context);
-    final english = controller.locale.languageCode != 'ur';
-
-    Widget chip(String label, bool active, String code) => GestureDetector(
-          onTap: () => controller.setLanguage(code),
-          behavior: HitTestBehavior.opaque,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              color: active ? AppColors.secondary : Colors.transparent,
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                color: active ? AppText.onBrand : AppText.secondary,
-              ),
-            ),
-          ),
-        );
-
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          chip('EN', english, 'en'),
-          const SizedBox(width: 3),
-          chip('اردو', !english, 'ur'),
-        ],
-      ),
-    );
-  }
-}

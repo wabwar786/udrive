@@ -65,30 +65,36 @@ class AppText {
 class AppProduct {
   const AppProduct._();
 
-  // Product tiles on the home screen: a pale wash and a dark ink for each.
+  // Product tiles on the home screen.
   //
-  // Washes rather than saturated blocks. Four fully-coloured tiles side by side
-  // on a white page compete with the one button the customer is meant to press,
-  // and with each other.
+  // Deeper than the near-white washes these started as. On a white page a 4%
+  // tint is not a colour, it is a smudge — the tiles read as empty space with
+  // words in it rather than as blocks you press. These are saturated enough to
+  // hold an edge without a border.
+  //
+  // Still not full-strength brand colour: four saturated blocks side by side
+  // compete with each other and with the one button on the screen. The ink
+  // stays near-black on all of them, which is what keeps them readable at this
+  // depth and is the reason the depth is safe.
 
   // Ride — the brand family.
-  static const rideSurface = Color(0xFFE3F5EC);
-  static const rideAccent = Color(0xFF178B55);
-  static const rideTitle = Color(0xFF0F1512);
-  static const rideSub = Color(0xFF5E6B65);
+  static const rideSurface = Color(0xFFBFE8D0);
+  static const rideAccent = Color(0xFF0E6B41);
+  static const rideTitle = Color(0xFF0A1F15);
+  static const rideSub = Color(0xFF2F5544);
   static const rideInk = Color(0xFFFFFFFF);
 
   // Tour — warm.
-  static const tourSurface = Color(0xFFFCF0DF);
-  static const tourAccent = Color(0xFFA76A00);
-  static const tourTitle = Color(0xFF0F1512);
-  static const tourSub = Color(0xFF5E6B65);
+  static const tourSurface = Color(0xFFF6DEB4);
+  static const tourAccent = Color(0xFF8A5600);
+  static const tourTitle = Color(0xFF241803);
+  static const tourSub = Color(0xFF5F4718);
 
   // Hotel — blue.
-  static const hotelSurface = Color(0xFFE7F0FA);
-  static const hotelAccent = Color(0xFF1B5FA8);
-  static const hotelTitle = Color(0xFF0F1512);
-  static const hotelSub = Color(0xFF5E6B65);
+  static const hotelSurface = Color(0xFFC9DDF2);
+  static const hotelAccent = Color(0xFF16497F);
+  static const hotelTitle = Color(0xFF0B1B2B);
+  static const hotelSub = Color(0xFF33536F);
 
   // Seats — violet. Used by the per-seat control rather than a card.
   static const seatsAccent = Color(0xFF8B5CF6);

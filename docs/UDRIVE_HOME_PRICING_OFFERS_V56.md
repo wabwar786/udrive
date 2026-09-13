@@ -2995,6 +2995,51 @@ where the eye returns on every line. That matters more here than anywhere,
 because the next thing the person does is copy four digits across from a text
 message.
 
+## 100. The sign-in screens
+
+**White.** Both were still painting the old dark green gradient — the first two
+screens anyone sees, and the last two wearing a palette the rest of the app no
+longer uses. The green belongs on the button someone is about to press, not
+behind the fields they are about to fill.
+
+**The mark is small, top left.** It was 72px in the centre of the login screen
+*and* in the header — two logos on one page, neither of which then reads as the
+mark. One, at 44, where a logo goes.
+
+**The language switch is gone.** It was the only thing in the header row, which
+made a setting somebody changes once the most prominent control on a page whose
+whole job is to collect a name and a number.
+
+**Left-aligned, and larger.** Both screens open with their question — "Welcome",
+"Enter your verification code" at 32pt — rather than with branding. Centred type
+reads as a splash screen; a form's question belongs at the left margin where the
+eye returns on every line.
+
+**"Powered by Wabwar"** at the foot of both, quiet: a maker's mark is not a call
+to action, and full contrast there would compete with the button directly above
+it. Only on these two screens — once somebody is using the app, who built it is
+not information they need on every page.
+
+## 101. The home tiles were washes, not blocks
+
+They were 4% tints. On a white page that is not a colour, it is a smudge — the
+tiles read as empty space with words in it rather than as blocks you press.
+
+Deepened to about 25%, with near-black ink on each, which is what makes that
+depth safe.
+
+**And the reason deepening alone would have changed nothing:** unselected tiles
+dropped to the flat grey surface, so only the selected one ever used its colour
+at all. That is why the row looked like one coloured box and three empty ones.
+Every tile keeps its colour now, at 45% strength when unselected — selection
+reads from depth rather than from colour-versus-no-colour.
+
+The ink no longer switches on selection either. That existed to cope with the
+grey unselected state; with every tile coloured, one ink reads on both.
+
+Still short of full-strength brand colour. Four saturated blocks side by side
+compete with each other and with the one button on the screen.
+
 ---
 
 ## Not done

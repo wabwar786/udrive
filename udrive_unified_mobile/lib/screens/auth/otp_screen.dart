@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/widgets/powered_by.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
@@ -274,6 +275,7 @@ class _OtpScreenState extends State<OtpScreen> {
                             ],
                           ),
                         ),
+                        const PoweredByWabwar(),
                       ],
                     ),
                   ),
