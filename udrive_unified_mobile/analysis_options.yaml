@@ -13,7 +13,6 @@ analyzer:
   # block with them - dead code that no longer compiles only rots further.
   exclude:
     - lib/core/localization/app_language.dart
-    - lib/core/offline_maps/offline_route_progress.dart
     - lib/core/widgets/driver_location_coordinator.dart
     - lib/core/widgets/hotel_vehicle_art.dart
     - lib/core/widgets/mode_switch_card.dart

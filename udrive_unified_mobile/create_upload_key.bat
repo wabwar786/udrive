@@ -16,14 +16,38 @@ cd /d "%~dp0"
 echo Working in: %CD%
 echo.
 
-where keytool >nul 2>&1
-if errorlevel 1 (
-  echo keytool was not found on PATH.
-  echo Install JDK 17 ^(Android Studio includes it^) and open a NEW terminal, or run
-  echo this script from the Android Studio Terminal, then try again.
+REM Find keytool. It ships with every JDK, and Android Studio bundles one, but
+REM neither puts it on PATH on a normal Windows install - which is why running
+REM this script used to stop here.
+set "KEYTOOL="
+for /f "delims=" %%K in ('where keytool 2^>nul') do if not defined KEYTOOL set "KEYTOOL=%%K"
+if not defined KEYTOOL if defined JAVA_HOME if exist "%JAVA_HOME%\bin\keytool.exe" set "KEYTOOL=%JAVA_HOME%\bin\keytool.exe"
+if not defined KEYTOOL for %%D in (
+  "%ProgramFiles%\Android\Android Studio\jbr\bin"
+  "%ProgramFiles%\Android\Android Studio\jre\bin"
+  "%LOCALAPPDATA%\Programs\Android Studio\jbr\bin"
+  "%LOCALAPPDATA%\Programs\Android Studio\jre\bin"
+  "%ProgramFiles%\Android\Android Studio1\jbr\bin"
+) do if not defined KEYTOOL if exist "%%~D\keytool.exe" set "KEYTOOL=%%~D\keytool.exe"
+if not defined KEYTOOL for /d %%J in ("%ProgramFiles%\Java\*" "%ProgramFiles%\Eclipse Adoptium\*" "%ProgramFiles%\Microsoft\jdk*") do (
+  if not defined KEYTOOL if exist "%%~J\bin\keytool.exe" set "KEYTOOL=%%~J\bin\keytool.exe"
+)
+
+if not defined KEYTOOL (
+  echo keytool was not found.
+  echo.
+  echo It comes with Java. Either:
+  echo   1^) Install Android Studio ^(it bundles one^), or
+  echo   2^) Install Temurin JDK 17 from https://adoptium.net
+  echo.
+  echo If Android Studio is already installed somewhere else, find keytool.exe
+  echo under its jbr\bin folder and run this script again from a terminal where
+  echo that folder is on PATH.
   pause
   exit /b 1
 )
+echo Using keytool: %KEYTOOL%
+echo.
 
 if not exist "android\app" (
   echo Could not find the android\app folder next to this script.
@@ -43,7 +67,7 @@ if exist "android\app\upload-keystore.jks" (
 
 set /p KSPASS=Choose a strong password (min 8 chars, letters and numbers only): 
 
-keytool -genkeypair -v -keystore "android\app\upload-keystore.jks" -storetype PKCS12 ^
+"%KEYTOOL%" -genkeypair -v -keystore "android\app\upload-keystore.jks" -storetype PKCS12 ^
   -keyalg RSA -keysize 2048 -validity 10000 -alias upload ^
   -storepass %KSPASS% -keypass %KSPASS% ^
   -dname "CN=UDrive, O=Tech Geni Ltd., L=Muzaffarabad, C=PK" || goto :error
@@ -63,7 +87,7 @@ echo   %CD%\android\key.properties
 echo Back both files up now, along with the password.
 echo ============================================================
 echo.
-keytool -list -v -keystore "android\app\upload-keystore.jks" -alias upload -storepass %KSPASS% | findstr "SHA1 SHA256"
+"%KEYTOOL%" -list -v -keystore "android\app\upload-keystore.jks" -alias upload -storepass %KSPASS% | findstr "SHA1 SHA256"
 echo.
 echo For the GitHub secret UDRIVE_KEYSTORE_BASE64, run this in PowerShell from
 echo this folder:
