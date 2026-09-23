@@ -3,7 +3,16 @@
         <item name="android:windowSplashScreenBackground">#087A55</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_icon</item>
         <item name="android:windowSplashScreenIconBackgroundColor">#17B978</item>
-        <item name="android:postSplashScreenTheme">@style/NormalTheme</item>
+        <!-- No android:postSplashScreenTheme here. That attribute does not
+             exist in the platform: it belongs to androidx.core:core-splashscreen
+             and is written without the android: prefix, on a theme whose parent
+             is Theme.SplashScreen. Declaring it against the platform namespace
+             fails resource linking with "attribute not found".
+
+             The handover to NormalTheme already happens without it: the Flutter
+             activity carries io.flutter.embedding.android.NormalTheme in
+             AndroidManifest.xml, and the engine applies that theme once the
+             first frame is ready. -->
         <item name="android:windowLightStatusBar">false</item>
     </style>
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
