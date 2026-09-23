@@ -93,8 +93,17 @@ android {
 
 // An app bundle exists only to be uploaded to Google Play, and Play rejects
 // debug-signed bundles. Stop early with a clear message instead.
+//
+// Match the task by its exact name. An earlier version tested
+// name.startsWith("bundle") && name.endsWith("Release"), which also matched
+// bundleLibCompileToJarRelease and bundleLibRuntimeToJarRelease - tasks AGP
+// creates for every library module, and every Flutter plugin is one. That made
+// plain `flutter build apk` fail with a message about app bundles.
+//
+// allTasks spans the whole build, not just :app, so only an app module's
+// bundleRelease can match this: library modules never produce that name.
 gradle.taskGraph.whenReady {
-    val buildingBundle = allTasks.any { it.name.startsWith("bundle") && it.name.endsWith("Release") }
+    val buildingBundle = allTasks.any { it.name == "bundleRelease" }
     if (buildingBundle && !hasUploadKey) {
         throw GradleException(
             "No upload key configured. Create android/key.properties (see " +
