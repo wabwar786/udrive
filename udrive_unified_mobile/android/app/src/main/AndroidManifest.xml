@@ -18,13 +18,14 @@
 
         <!-- Google Maps SDK key.
              This MUST be present at build time; Google does not allow the map
-             key to be supplied at runtime. Supply it without committing it:
+             key to be supplied at runtime. Supply it without committing it, by
+             passing the Gradle property maps_key to the build (see
+             PLAY_STORE_RELEASE.md for the exact command), or replace the
+             placeholder below for a local debug build.
 
-                 flutter build apk \
-                   --dart-define=MAPS_ANDROID_KEY=AIza... \
-                   -Pmaps_key=AIza...
-
-             or replace the placeholder below for a local debug build. -->
+             No command line is written out here: an XML comment may not
+             contain two consecutive hyphens, and a pasted flag such as the
+             dart-define one makes the whole manifest unparseable. -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
