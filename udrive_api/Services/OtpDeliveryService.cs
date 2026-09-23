@@ -24,17 +24,19 @@ public sealed record OtpSettingsDto(
     bool CurrentConfigTested);
 
 /// <summary>
-/// Admin update. Null <see cref="ApiKey"/> / <see cref="TestCode"/> keep the stored value;
-/// an empty string clears it.
+/// Admin update. Every field is optional: null keeps what is stored, so the
+/// portal can send the API key alone. The endpoint, path and message text are
+/// fixed for WA Engine and are not shown in the portal — they stay here only so
+/// they can be corrected without a deploy if WA Engine ever changes them.
 /// </summary>
 public sealed record UpdateOtpSettingsRequest(
-    string Provider,
-    string BaseUrl,
     string? ApiKey,
-    string SendPath,
-    string MessageTemplate,
-    string? TestPhone,
-    string? TestCode);
+    string? TestPhone = null,
+    string? TestCode = null,
+    string? Provider = null,
+    string? BaseUrl = null,
+    string? SendPath = null,
+    string? MessageTemplate = null);
 
 public sealed record OtpTestRequest(string PhoneNumber);
 
@@ -130,34 +132,31 @@ public sealed class OtpDeliveryService(
     public async Task<ServiceResult<OtpSettingsDto>> UpdateAsync(
         Guid adminUserId, UpdateOtpSettingsRequest request, CancellationToken ct)
     {
-        var provider = NormaliseProvider(request.Provider);
-        if (provider is null)
-            return Fail<OtpSettingsDto>(400, "invalid_provider", "Provider must be Development or WhatsApp.");
+        var current = await ReadAsync(ct);
 
-        var baseUrl = (request.BaseUrl ?? string.Empty).Trim().TrimEnd('/');
+        var baseUrl = (request.BaseUrl ?? current.BaseUrl).Trim().TrimEnd('/');
         if (baseUrl.Length == 0) baseUrl = DefaultBaseUrl;
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
             return Fail<OtpSettingsDto>(400, "invalid_base_url", "Base URL must be a full https:// address.");
 
-        var sendPath = (request.SendPath ?? string.Empty).Trim();
+        var sendPath = (request.SendPath ?? current.SendPath).Trim();
         if (sendPath.Length == 0) sendPath = DefaultSendPath;
         if (!sendPath.StartsWith('/')) sendPath = "/" + sendPath;
         if (sendPath.Length > 120 || sendPath.Contains("://", StringComparison.Ordinal))
             return Fail<OtpSettingsDto>(400, "invalid_send_path", "Send path must look like /api/send.");
 
-        var template = (request.MessageTemplate ?? string.Empty).Trim();
+        var template = (request.MessageTemplate ?? current.Template).Trim();
         if (template.Length == 0) template = DefaultTemplate;
         if (!template.Contains("{code}", StringComparison.Ordinal))
             return Fail<OtpSettingsDto>(400, "template_missing_code", "The message must contain {code}.");
         if (template.Length > 500)
             return Fail<OtpSettingsDto>(400, "template_too_long", "Keep the message under 500 characters.");
 
-        var current = await ReadAsync(ct);
         var apiKey = request.ApiKey is null ? current.ApiKey : request.ApiKey.Trim();
         if (apiKey.Length > 200)
             return Fail<OtpSettingsDto>(400, "invalid_api_key", "The API key is too long.");
 
-        var testPhone = (request.TestPhone ?? string.Empty).Trim();
+        var testPhone = (request.TestPhone ?? current.TestPhone).Trim();
         if (testPhone.Length > 0)
         {
             if (!PhoneNumberNormalizer.TryNormalizePakistan(testPhone, out var normalised))
@@ -173,18 +172,24 @@ public sealed class OtpDeliveryService(
 
         var next = current with
         {
-            Provider = provider, BaseUrl = baseUrl, ApiKey = apiKey, SendPath = sendPath,
+            BaseUrl = baseUrl, ApiKey = apiKey, SendPath = sendPath,
             Template = template, TestPhone = testPhone, TestCode = testCode
         };
 
-        if (provider == "WhatsApp")
+        // The provider is not a switch anybody has to think about. WhatsApp is
+        // used as soon as this exact key has delivered a test message; until
+        // then — and immediately again if the key is changed or cleared —
+        // delivery falls back to the fixed development code, so a wrong key can
+        // never leave the platform unable to sign anyone in.
+        var tested = current.LastTestOk.Split('|', 2)[0] == Fingerprint(next);
+        var provider = NormaliseProvider(request.Provider)
+            ?? (apiKey.Length > 0 && tested ? "WhatsApp" : "Development");
+        if (provider == "WhatsApp" && (apiKey.Length == 0 || !tested))
         {
-            if (apiKey.Length == 0)
-                return Fail<OtpSettingsDto>(400, "api_key_required", "Enter the WA Engine API key before switching on WhatsApp.");
-            if (current.LastTestOk.Split('|', 2)[0] != Fingerprint(next))
-                return Fail<OtpSettingsDto>(409, "test_required",
-                    "Save these settings with provider Development, send a test message, then switch on WhatsApp.");
+            return Fail<OtpSettingsDto>(409, "test_required",
+                "Save the API key first, then send a test message. WhatsApp switches on once the test arrives.");
         }
+        next = next with { Provider = provider };
 
         await using var cn = new NpgsqlConnection(connectionString);
         await cn.OpenAsync(ct);
@@ -233,10 +238,16 @@ public sealed class OtpDeliveryService(
             await cn.OpenAsync(ct);
             await WriteAsync(cn, null, adminUserId, KeyLastTestOk, Fingerprint(s) + "|" + DateTimeOffset.UtcNow.ToString("O"),
                 "Fingerprint of the last WA settings that delivered a test message.", ct);
+            // A delivered test is the only proof WhatsApp needs, so switch it on
+            // here rather than asking the admin to come back and flip a setting.
+            await WriteAsync(cn, null, adminUserId, KeyProvider, "WhatsApp",
+                "Login code delivery: Development or WhatsApp.", ct);
         }
 
         return ServiceResult<OtpTestResultDto>.Ok(result,
-            result.Delivered ? "Test message sent. Check WhatsApp on that number." : "WA Engine did not accept the message.");
+            result.Delivered
+                ? "Test message sent. WhatsApp login codes are now switched on."
+                : "WA Engine did not accept the message.");
     }
 
     /// <summary>

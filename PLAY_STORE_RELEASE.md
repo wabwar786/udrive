@@ -11,19 +11,20 @@ Privacy / Terms / About mein company ka naam: Tech Geni Ltd. (Railway: `PublicPa
 Pehle API `OTP_PROVIDER=Development` par thi — har number ka code `1234`, yani koi bhi kisi ka account
 khol sakta tha. Ab login code WhatsApp (WA Engine) se jata hai, aur sab kuch admin portal se set hota hai.
 
-Admin portal → **Services & coming soon → WhatsApp OTP**:
+Admin portal → **Services & coming soon → WhatsApp OTP**. Yahan sirf do cheezein bharni hoti hain:
 
-1. **Base URL**: `https://wa-engine-deploy-production.up.railway.app`
-2. **API key**: WA Engine super-admin panel se aap ki key (chat mein bheji hui). Yahan likhi nahi ja rahi —
-   yeh file Git mein jati hai, aur key sirf database mein rehni chahiye.
-3. **Send endpoint path**: `/api/send` (WA Engine ka send endpoint; alag ho to yahin badal dein)
-4. **Message**: `{code}` wahan likha ho jahan code aana hai
-5. **Save OTP settings** (provider abhi Development hi rehne dein)
-6. **Send test message** apne WhatsApp number par — message aa gaya to
-7. Provider **WhatsApp** chunein aur dobara **Save**
+1. **WA Engine API key** paste karein → **Save**
+2. **Send a test message** mein apna WhatsApp number daal kar test bhejein
 
-Server WhatsApp tab tak on nahi hone deta jab tak inhi settings se test message deliver na ho jaye —
-galat key ya path se poora login band nahi ho sakta.
+Test message pohanchte hi WhatsApp **khud on** ho jata hai — koi provider ya endpoint chunne ki zaroorat nahi.
+Base URL (`https://wa-engine-deploy-production.up.railway.app`), send path (`/api/send`) aur message ka text
+server par fixed hain.
+
+Key badalni ho to nayi key paste kar ke Save karein, phir ek test bhejein. Jab tak nayi key se test pass na ho,
+codes fixed development code par chale jate hain — yani galat key se login kabhi band nahi hota.
+
+**Check WA connection** button WA Engine ka `/api/status` call karta hai — bagair message bheje pata chal jata
+hai ke WhatsApp session connected hai ya nahi.
 
 **Agar phir bhi kabhi login band ho jaye:** Railway → udrive-api → Variables mein
 `OTP_PROVIDER_OVERRIDE=Development` daal dein. Yeh database se upar chalta hai, aur aap `1234` se

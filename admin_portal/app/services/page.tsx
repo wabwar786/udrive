@@ -589,11 +589,7 @@ type OtpTestResult = { delivered: boolean; statusCode: number | null; providerRe
  */
 function WhatsAppOtpPanel() {
   const [s, setS] = useState<OtpSettings | null>(null);
-  const [provider, setProvider] = useState('Development');
-  const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [sendPath, setSendPath] = useState('');
-  const [template, setTemplate] = useState('');
   const [testPhone, setTestPhone] = useState('');
   const [testCode, setTestCode] = useState('');
   const [probe, setProbe] = useState('');
@@ -603,10 +599,6 @@ function WhatsAppOtpPanel() {
 
   const apply = (x: OtpSettings) => {
     setS(x);
-    setProvider(x.provider);
-    setBaseUrl(x.baseUrl);
-    setSendPath(x.sendPath);
-    setTemplate(x.messageTemplate);
     setTestPhone(x.testPhone);
     setApiKey('');
     setTestCode('');
@@ -618,29 +610,28 @@ function WhatsAppOtpPanel() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load OTP settings.'));
   }, []);
 
+  // Only the API key and the reviewer number ever change. The endpoint, path
+  // and message text are fixed for WA Engine and stay on the server.
   async function save() {
     setBusy(true); setMsg(''); setError('');
     try {
       const saved = await apiFetch<OtpSettings>('/api/v1/admin/otp-settings', {
         method: 'PUT',
         body: JSON.stringify({
-          provider,
-          baseUrl,
           apiKey: apiKey.trim() ? apiKey.trim() : null,
-          sendPath,
-          messageTemplate: template,
           testPhone,
           testCode: testCode.trim() ? testCode.trim() : null,
         }),
       });
       apply(saved);
-      setMsg('OTP settings saved.');
+      setMsg(saved.effectiveProvider === 'WhatsApp'
+        ? 'Saved. Login codes are going out on WhatsApp.'
+        : 'Saved. Send a test message to switch WhatsApp on.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed.');
     } finally { setBusy(false); }
   }
 
-  // GET /api/status on WA Engine: is the WhatsApp session actually connected?
   async function status() {
     setBusy(true); setMsg(''); setError('');
     try {
@@ -660,7 +651,7 @@ function WhatsAppOtpPanel() {
         method: 'POST',
         body: JSON.stringify({ phoneNumber: probe.trim() }),
       });
-      if (r.delivered) setMsg('Test message sent. If it arrived, choose WhatsApp above and Save.');
+      if (r.delivered) setMsg('Test message sent. WhatsApp login codes are now switched on.');
       else setError(`WA Engine did not accept it (${r.statusCode ?? 'no response'}): ${r.providerResponse || 'empty reply'}`);
       apply(await apiFetch<OtpSettings>('/api/v1/admin/otp-settings'));
     } catch (e) {
@@ -668,15 +659,17 @@ function WhatsAppOtpPanel() {
     } finally { setBusy(false); }
   }
 
+  const live = s?.effectiveProvider === 'WhatsApp';
+
   return (
     <section className="panel">
       <header className="panelHeader">
         <div>
           <h2>WhatsApp OTP</h2>
           <p>
-            Login codes sent through WA Engine. Steps: enter the API key and Save,
-            send a test to your number, then choose <strong>WhatsApp</strong> and Save.
-            WhatsApp cannot be switched on until the current settings have delivered a test.
+            Login codes go out on WhatsApp through WA Engine. Only the API key ever
+            changes here: paste it, Save, then send yourself a test — WhatsApp switches
+            on the moment the test arrives.
           </p>
         </div>
       </header>
@@ -688,35 +681,17 @@ function WhatsAppOtpPanel() {
         {s && (
           <>
             <p className="pingNote" style={{ margin: 0 }}>
-              Live now: <strong>{s.effectiveProvider}</strong>
-              {s.providerOverriddenByEnvironment && ' (forced by OTP_PROVIDER_OVERRIDE on the server)'}
+              Login codes: <strong>{live ? 'WhatsApp — live' : 'Development code (WhatsApp off)'}</strong>
+              {s.providerOverriddenByEnvironment && ' · forced by OTP_PROVIDER_OVERRIDE on the server'}
               {' · '}API key: {s.apiKeySet ? s.apiKeyHint : 'not set'}
-              {' · '}Test: {s.currentConfigTested && s.lastTestOkAt
-                ? `passed ${new Date(s.lastTestOkAt).toLocaleString()}`
-                : 'not passed for current settings'}
+              {s.lastTestOkAt && s.currentConfigTested
+                ? ` · last test ${new Date(s.lastTestOkAt).toLocaleString()}`
+                : ''}
             </p>
 
-            <Field label="Provider">
-              <select value={provider} onChange={(e) => setProvider(e.target.value)}>
-                <option value="Development">Development (fixed test code, nothing sent)</option>
-                <option value="WhatsApp" disabled={!s.currentConfigTested}>
-                  WhatsApp (WA Engine){s.currentConfigTested ? '' : ' — send a test first'}
-                </option>
-              </select>
-            </Field>
-            <Field label="WA Engine base URL">
-              <input value={baseUrl} placeholder="https://wa-engine-deploy-production.up.railway.app"
-                onChange={(e) => setBaseUrl(e.target.value)} />
-            </Field>
-            <Field label={s.apiKeySet ? `API key (saved ${s.apiKeyHint} — leave empty to keep)` : 'API key'}>
+            <Field label={s.apiKeySet ? `WA Engine API key (saved ${s.apiKeyHint} — leave empty to keep)` : 'WA Engine API key'}>
               <input type="password" autoComplete="new-password" value={apiKey} placeholder="WA-XXXXXXXX…"
                 onChange={(e) => setApiKey(e.target.value)} />
-            </Field>
-            <Field label="Send endpoint path">
-              <input value={sendPath} placeholder="/api/send" onChange={(e) => setSendPath(e.target.value)} />
-            </Field>
-            <Field label="Message ({code} is replaced with the 4-digit code)">
-              <textarea rows={3} value={template} maxLength={500} onChange={(e) => setTemplate(e.target.value)} />
             </Field>
 
             <Field label="Google Play reviewer number (always accepts the reviewer code, nothing is sent)">
@@ -730,7 +705,7 @@ function WhatsAppOtpPanel() {
             <div>
               <button className="primaryButton" disabled={busy} onClick={() => void save()}>
                 <Save size={15} />
-                {busy ? 'Working…' : 'Save OTP settings'}
+                {busy ? 'Working…' : 'Save'}
               </button>
             </div>
 
