@@ -87,6 +87,8 @@ API deploy karne ke baad browser mein kholein:
 
 | Variable | Value |
 |---|---|
+| `DATABASE_URL` | Postgres service ka reference — value box mein `${{` type kar ke list se **DATABASE_URL** chunein (naam hath se likha aur match na hua to value khali reh jati hai aur API start nahi hoti) |
+| `UPLOAD_ROOT` | `/data/uploads` (volume par, warna documents deploy par mit jate hain) |
 | `JWT_SIGNING_KEY` | 48+ random characters (apni banayein) |
 | `OTP_HASH_SECRET` | 48+ random characters (alag) |
 | `IDENTITY_HASH_SECRET` | 48+ random characters (alag) — **shuru mein hi set karein**, baad mein badla to purane drivers ke CNIC/licence hash match karna chhor dein ge |

@@ -6,11 +6,24 @@ public static class ConnectionStringFactory
 {
     public static string Resolve(IConfiguration configuration)
     {
-        var value =
-            Environment.GetEnvironmentVariable("DATABASE_URL")
-            ?? configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException(
-                "DATABASE_URL or ConnectionStrings:DefaultConnection is required.");
+        // An empty DATABASE_URL is not the same as a missing one, and it is the
+        // likelier mistake: a Railway variable reference such as
+        // ${{Postgres.DATABASE_URL}} resolves to an empty string when the
+        // service name is wrong. Without this guard the app starts, hands "" to
+        // Npgsql and dies with "The ConnectionString property has not been
+        // initialized", which says nothing about where to look.
+        var value = FirstNonEmpty(
+            Environment.GetEnvironmentVariable("DATABASE_URL"),
+            configuration.GetConnectionString("DefaultConnection"));
+
+        if (value is null)
+        {
+            throw new InvalidOperationException(
+                "DATABASE_URL is missing or empty. In Railway open udrive-api -> Variables, set " +
+                "DATABASE_URL to a reference to the Postgres service (type ${{ and pick DATABASE_URL " +
+                "from the list; typing the service name by hand resolves to an empty value when it " +
+                "does not match), then redeploy.");
+        }
 
         // Railway may provide either an Npgsql-style connection string or
         // a PostgreSQL URI. Npgsql-style strings can be used directly.
@@ -53,4 +66,7 @@ public static class ConnectionStringFactory
 
         return builder.ConnectionString;
     }
+
+    private static string? FirstNonEmpty(params string?[] candidates) =>
+        candidates.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate))?.Trim();
 }
