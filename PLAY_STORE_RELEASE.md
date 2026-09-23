@@ -92,7 +92,7 @@ API deploy karne ke baad browser mein kholein:
 | `JWT_SIGNING_KEY` | 48+ random characters (apni banayein) |
 | `OTP_HASH_SECRET` | 48+ random characters (alag) |
 | `IDENTITY_HASH_SECRET` | 48+ random characters (alag) — **shuru mein hi set karein**, baad mein badla to purane drivers ke CNIC/licence hash match karna chhor dein ge |
-| `ALLOWED_ORIGINS` | admin portal ka URL, comma se alag agar ek se zyada |
+| `ALLOWED_ORIGINS` | **dono** web apps ke URL, comma se alag: admin portal **aur** mobile web. Misaal: `https://udrive-admin-production.up.railway.app,https://udrive-mobile-production.up.railway.app` — jo domain yahan na ho us se browser API call nahi kar sakta (app mein "network error" ya OTP na jana) |
 | `ENFORCE_PRODUCTION_SECURITY` | `true` — sab se aakhir mein lagayein |
 | `PublicPages__SupportEmail` | aap ka asal support email (default `support@udrive.pk`) |
 | `PublicPages__SupportPhone` | WhatsApp / phone (optional) |
