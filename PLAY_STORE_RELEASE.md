@@ -83,10 +83,25 @@ API deploy karne ke baad browser mein kholein:
 - Account deletion: `https://udrive-api-production.up.railway.app/account-deletion`
 - Terms: `https://udrive-api-production.up.railway.app/terms`
 
-Railway → udrive-api → Variables:
-- `PublicPages__SupportEmail` = aap ka asal support email (default `support@udrive.pk` — agar yeh inbox
-  nahi hai to lazmi badlein)
-- `PublicPages__SupportPhone` = WhatsApp / phone (optional)
+**Railway → udrive-api → Variables (production checklist):**
+
+| Variable | Value |
+|---|---|
+| `JWT_SIGNING_KEY` | 48+ random characters (apni banayein) |
+| `OTP_HASH_SECRET` | 48+ random characters (alag) |
+| `IDENTITY_HASH_SECRET` | 48+ random characters (alag) — **shuru mein hi set karein**, baad mein badla to purane drivers ke CNIC/licence hash match karna chhor dein ge |
+| `ALLOWED_ORIGINS` | admin portal ka URL, comma se alag agar ek se zyada |
+| `ENFORCE_PRODUCTION_SECURITY` | `true` — sab se aakhir mein lagayein |
+| `PublicPages__SupportEmail` | aap ka asal support email (default `support@udrive.pk`) |
+| `PublicPages__SupportPhone` | WhatsApp / phone (optional) |
+| `ADMIN_BOOTSTRAP_PHONE/USERNAME/PASSWORD` | pehla portal login — dekhein `ADMIN_LOGIN.md`, password kam az kam 10 characters |
+
+`OTP_PROVIDER` ko haath **na** lagayein. WhatsApp admin portal se on hota hai; env par sirf woh soorat mein
+`OTP_PROVIDER_OVERRIDE=Development` lagana hai jab WA Engine kharab ho aur login band ho jaye.
+
+`ENFORCE_PRODUCTION_SECURITY=true` in cheezon par API rok deta hai: teen secrets ka default hona,
+`EXPOSE_DEVELOPMENT_OTP=true`, ya `ALLOWED_ORIGINS` ka khali hona. WhatsApp abhi on na ho to sirf warning
+aati hai, API band nahi hoti.
 
 Email se deletion request aaye to: Admin portal → **System settings → Delete a user account**.
 

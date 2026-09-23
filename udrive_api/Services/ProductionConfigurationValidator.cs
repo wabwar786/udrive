@@ -10,7 +10,17 @@ public static class ProductionConfigurationValidator
         "Change-Me"
     ];
 
-    public static void Validate(IHostEnvironment environment, AuthOptions options, ILogger logger)
+    /// <param name="effectiveOtpProvider">
+    /// What login codes actually go out on right now. Since the admin portal
+    /// owns this setting, the OTP_PROVIDER environment variable is only a
+    /// fallback — blocking startup on it kept a correctly configured platform
+    /// from booting.
+    /// </param>
+    public static void Validate(
+        IHostEnvironment environment,
+        AuthOptions options,
+        string effectiveOtpProvider,
+        ILogger logger)
     {
         if (!environment.IsProduction())
         {
@@ -31,8 +41,15 @@ public static class ProductionConfigurationValidator
             problems.Add("IDENTITY_HASH_SECRET uses a development default.");
         if (options.ExposeDevelopmentOtp)
             problems.Add("EXPOSE_DEVELOPMENT_OTP must be false in production.");
-        if (string.Equals(options.OtpProvider, "Development", StringComparison.OrdinalIgnoreCase))
-            problems.Add("OTP_PROVIDER is still set to Development.");
+        if (string.Equals(effectiveOtpProvider, "Development", StringComparison.OrdinalIgnoreCase))
+        {
+            // Not blocking: a platform mid-setup, or one recovering from a WA
+            // Engine outage, must still be able to start so an admin can sign
+            // in and fix it. It is loud instead.
+            logger.LogWarning(
+                "Login codes are going out as the fixed development code. Set the WA Engine API key in " +
+                "Admin portal -> Services -> WhatsApp OTP and send a test message to switch WhatsApp on.");
+        }
 
         var origins = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS");
         if (string.IsNullOrWhiteSpace(origins))

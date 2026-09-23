@@ -265,6 +265,10 @@ public sealed class OtpDeliveryService(
         return (s.BaseUrl.TrimEnd('/'), s.ApiKey, s.SendPath, bulkPath);
     }
 
+    /// <summary>Which provider login codes go out on right now, database first.</summary>
+    public async Task<string> EffectiveProviderAsync(CancellationToken ct) =>
+        EffectiveProvider((await ReadAsync(ct)).Provider);
+
     /// <summary>Asks WA Engine whether its WhatsApp session is connected (GET /api/status).</summary>
     public async Task<ServiceResult<OtpTestResultDto>> StatusAsync(CancellationToken ct)
     {

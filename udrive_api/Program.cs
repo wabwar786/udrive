@@ -250,10 +250,28 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ProductionConfiguration");
+
+// What login codes actually go out on. Read from the database (the admin
+// portal owns it); if the database is not reachable yet, fall back to the
+// environment value rather than refusing to start.
+var effectiveOtpProvider = authOptions.OtpProvider;
+try
+{
+    effectiveOtpProvider = await app.Services
+        .GetRequiredService<OtpDeliveryService>()
+        .EffectiveProviderAsync(CancellationToken.None);
+}
+catch (Exception exception)
+{
+    startupLogger.LogWarning(exception, "Could not read the OTP provider from the database at startup.");
+}
+
 ProductionConfigurationValidator.Validate(
     app.Environment,
     authOptions,
-    app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ProductionConfiguration"));
+    effectiveOtpProvider,
+    startupLogger);
 
 app.UseExceptionHandler();
 app.UseMiddleware<RequestContextMiddleware>();
