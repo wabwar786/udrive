@@ -1,0 +1,184 @@
+name: Build UDrive
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "udrive_unified_mobile/**"
+      - ".github/workflows/build-android-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  # Runs first and fastest. If the code does not compile, this fails in about a
+  # minute instead of waiting on a full APK build to discover the same thing.
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: udrive_unified_mobile
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: udrive_unified_mobile
+        run: flutter analyze --no-fatal-infos
+
+  build-web:
+    name: Build web
+    runs-on: ubuntu-latest
+    needs: analyze
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: udrive_unified_mobile
+        run: flutter pub get
+
+      # The Maps JavaScript key lives in a repository secret, never in git.
+      # Settings -> Secrets and variables -> Actions -> New repository secret
+      #   Name:  MAPS_WEB_KEY
+      # If the secret is unset the placeholder stays and the map area is blank,
+      # but the rest of the app still builds and runs.
+      - name: Inject Maps web key
+        working-directory: udrive_unified_mobile
+        env:
+          MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
+        run: |
+          if [ -n "$MAPS_WEB_KEY" ]; then
+            sed -i "s|YOUR_WEB_MAPS_API_KEY|$MAPS_WEB_KEY|g" web/index.html
+            echo "Maps web key injected."
+          else
+            echo "MAPS_WEB_KEY secret not set - map will render blank."
+          fi
+
+      - name: Build web
+        working-directory: udrive_unified_mobile
+        run: flutter build web --release
+
+      - name: Upload web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: udrive-web
+          path: udrive_unified_mobile/build/web
+          if-no-files-found: error
+          retention-days: 30
+
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    needs: analyze
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android project files when missing
+        working-directory: udrive_unified_mobile
+        run: |
+          if [ ! -d "android" ]; then
+            flutter create . \
+              --platforms=android \
+              --project-name=udrive_mobile \
+              --org=com.wabwar
+          fi
+
+      - name: Install dependencies
+        working-directory: udrive_unified_mobile
+        run: flutter pub get
+
+      # Repository secret MAPS_ANDROID_KEY, read by the manifestPlaceholder in
+      # android/app/build.gradle.kts. Absent key still builds; map stays blank.
+      - name: Build release APK
+        working-directory: udrive_unified_mobile
+        env:
+          MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
+        run: |
+          flutter build apk --release \
+            --dart-define=DEFAULT_MODE=customer \
+            -Pmaps_key="$MAPS_ANDROID_KEY"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: udrive-mobile-apk
+          path: udrive_unified_mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  # Google Play upload bundle (.aab). Needs four repository secrets:
+  #   UDRIVE_KEYSTORE_BASE64   base64 of upload-keystore.jks
+  #   UDRIVE_KEYSTORE_PASSWORD
+  #   UDRIVE_KEY_ALIAS         (upload)
+  #   UDRIVE_KEY_PASSWORD
+  # Without them this job is skipped with a notice; Play rejects unsigned or
+  # debug-signed bundles, so there is no point building one.
+  build-aab:
+    name: Build Play Store bundle
+    runs-on: ubuntu-latest
+    needs: analyze
+    env:
+      HAS_KEY: ${{ secrets.UDRIVE_KEYSTORE_BASE64 != '' }}
+    steps:
+      - name: Skip when no upload key
+        if: env.HAS_KEY != 'true'
+        run: echo "::notice::UDRIVE_KEYSTORE_BASE64 secret not set - Play bundle skipped."
+
+      - uses: actions/checkout@v4
+        if: env.HAS_KEY == 'true'
+
+      - uses: subosito/flutter-action@v2
+        if: env.HAS_KEY == 'true'
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        if: env.HAS_KEY == 'true'
+        working-directory: udrive_unified_mobile
+        run: flutter pub get
+
+      - name: Build signed app bundle
+        if: env.HAS_KEY == 'true'
+        working-directory: udrive_unified_mobile
+        env:
+          UDRIVE_KEYSTORE_BASE64: ${{ secrets.UDRIVE_KEYSTORE_BASE64 }}
+          UDRIVE_KEYSTORE_PASSWORD: ${{ secrets.UDRIVE_KEYSTORE_PASSWORD }}
+          UDRIVE_KEY_ALIAS: ${{ secrets.UDRIVE_KEY_ALIAS }}
+          UDRIVE_KEY_PASSWORD: ${{ secrets.UDRIVE_KEY_PASSWORD }}
+          MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
+        run: |
+          echo "$UDRIVE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload-keystore.jks"
+          export UDRIVE_KEYSTORE_PATH="$RUNNER_TEMP/upload-keystore.jks"
+          flutter build appbundle --release \
+            --dart-define=DEFAULT_MODE=customer \
+            --dart-define=API_BASE_URL=https://udrive-api-production.up.railway.app \
+            -Pmaps_key="$MAPS_ANDROID_KEY"
+          rm -f "$UDRIVE_KEYSTORE_PATH"
+
+      - name: Upload bundle
+        if: env.HAS_KEY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: udrive-play-bundle
+          path: udrive_unified_mobile/build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30

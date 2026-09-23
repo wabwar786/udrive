@@ -1,0 +1,190 @@
+# Database Changes
+
+Migration `009_phase13_finance_wallets.sql` is additive.
+
+New tables:
+- `commission_rules`
+- `driver_wallets`
+- `driver_earnings`
+- `driver_wallet_entries`
+- `driver_payout_requests`
+- `refund_requests`
+- `financial_adjustments`
+
+Added safe columns/indexes on `payments` for idempotency, refund totals, and finance review metadata.
+
+A PostgreSQL trigger calls `udrive.ensure_driver_earning(booking_id)` when a booking first changes to `Completed`. The booking remains the source of truth for gross fare. The selected commission rule is resolved server-side, and only one earning can exist per booking.
+
+## 033_travel_vehicle_rates (rev 51)
+
+- Adds `Hiace` rows to `udrive.service_vehicle_rates` for `City` and
+  `PrivateVehicle`. It had no row at all, so its fare came from the app's
+  built-in fallback and the admin could not change it.
+- Deactivates `Rickshaw` for those two service types. It is not one of the four
+  travel options the customer app offers. Set `is_active = true` to bring it
+  back — the rows are not deleted.
+- Adds column comments recording what the three rate columns actually mean:
+  `per_km_rate` scales with distance; `whole_vehicle_rate` and `per_seat_rate`
+  are flat **minimums**, not per-kilometre figures. The mobile app had been
+  multiplying `whole_vehicle_rate` by the trip distance.
+
+## 034_driver_presence_heading (rev 53)
+
+- Adds a nullable `heading` column to `udrive.driver_presence_locations`, so the
+  customer's map can rotate each vehicle to the direction its driver is facing.
+- Nullable on purpose: a stationary phone reports no heading and an older Driver
+  build sends none. Those vehicles are drawn unrotated rather than pointed
+  somewhere invented. The upsert keeps the last known heading when a new reading
+  has none.
+
+## 035_pricing_rules (rev 56)
+
+- New table `udrive.pricing_rules`: a per-km rate, a minimum fare and a
+  per-minute rate, optionally narrowed to particular ISO days (`days_of_week`,
+  1 = Monday) and to a circular area (`area_latitude`, `area_longitude`,
+  `area_radius_km`). Empty scopes mean everywhere and every day.
+- A `CHECK` requires an area to have all three parts or none. A half-set circle
+  would match nothing and look like a rule that simply does not work.
+- Seeds one global rule per active row in `service_vehicle_rates`, so the day
+  this ships nothing changes and the admin opens a filled table rather than an
+  empty one.
+- Resolution picks exactly one rule — highest `priority`, then area over
+  everywhere, then smaller area, then named days over every day. Blending
+  several would make a fare impossible to trace back to anything typed.
+- The day is read as `EXTRACT(ISODOW FROM now() AT TIME ZONE 'Asia/Karachi')`
+  inside the query, so the answer does not depend on the server's clock.
+
+## 036_vehicle_tour_rates (rev 57)
+
+- Adds `tour_per_day_rate`, `tour_per_km_rate`, `tour_minimum_fare` and
+  `tour_notes` to `udrive.vehicles`. Tourism is priced by the driver, not by the
+  admin's per-kilometre rules: a multi-day mountain trip is not a metered ride,
+  and what it is worth is a judgement only the person driving can make.
+- All nullable. Null means the driver has not published a price, which is not
+  the same as offering to tour for free — the service treats zero as unset for
+  the same reason.
+- Partial index on tour-ready vehicles that have actually named a price, since
+  that is the only set ever read.
+
+## 037_seat_fares (rev 58)
+
+- New table `udrive.seat_fares`: a fixed fare per passenger for a named route,
+  with both ends stored as a labelled circle (centre plus radius) because
+  passengers board somewhere in a town rather than at one coordinate.
+- `applies_both_ways` defaults true, so an admin enters Muzaffarabad →
+  Rawalakot once instead of twice and the two halves cannot drift apart.
+- Only affects per-seat trips. Hiring a whole Coster is still priced per
+  kilometre and still negotiable.
+
+## 038_trip_messages (rev 64)
+
+- New table `udrive.trip_messages`, scoped to a booking. `sender_role` is
+  denormalised so the app can lay a message left or right without a join.
+- `read_at` drives the unread badge and nothing else is inferred from it.
+- Passenger standing is computed from the existing `udrive.trip_ratings`, which
+  has recorded ratings in both directions since phase 14 — nobody was reading
+  the Customer half. No new rating capture was added.
+
+## 039_driver_decision_accepted (rev 65)
+
+- Widens `ck_driver_request_decision` to allow `'Accepted'`.
+- Migration 012 constrained `driver_ride_request_decisions.decision` to
+  `('Rejected','Offered')`, but `SelectDriverOfferAsync` has always written
+  `'Accepted'` at the end of a successful selection. Every accept therefore
+  raised 23514 and rolled back the entire transaction — the booking, the trip
+  operation, the assignment and the notification were all written correctly and
+  then discarded a few statements later.
+
+## 040_driver_commission_wallet (rev 76)
+
+- Adds `driver_wallets.commission_balance` — credit the Driver has paid the
+  platform in advance. Deliberately **not** `available_balance`, which means
+  money owed *to* the Driver. The two move in opposite directions and sharing
+  one column would make every reconciliation ambiguous.
+- New table `udrive.driver_wallet_topups`: amount, method, the Driver's own
+  EasyPaisa transaction id, a screenshot, and the review outcome.
+- Two settings rows: `driver.commission.percentage` (10) and
+  `driver.commission.minimum_balance` (0).
+- Commission is charged on trip completion inside the completion transaction,
+  with `idempotency_key = 'commission:{bookingId}'`, so a retried completion
+  cannot charge a Driver twice.
+
+## 041_opening_commission_balance (rev 78)
+
+Repairs the damage 040 did. That migration added `commission_balance` defaulting
+to 0 and a rule that a Driver only sees requests while their balance is *above*
+the minimum — which also defaults to 0. `0 > 0` is false, so **every existing
+Driver silently stopped receiving requests**. No error, no notice.
+
+Every currently-approved Driver is credited an opening balance of 1,000, with a
+ledger entry explaining where it came from. `GREATEST` is used so a Driver who
+had already paid keeps what they paid rather than being reset.
+
+Drivers registering after this still start at zero and must top up before their
+first ride, which is the intended arrangement.
+
+## 042_free_deleted_registration (rev 92)
+
+- `vehicles.registration_number` had a plain `UNIQUE` constraint covering every
+  row, including soft-deleted ones. Deleting a vehicle from the admin portal
+  sets `status = 'Deleted'` and keeps the row — so bookings, earnings and audit
+  history that reference it do not break — but the constraint did not know that,
+  and the plate stayed permanently taken by a record neither the admin nor the
+  driver could see.
+- Replaced with a partial unique index that ignores deleted rows, and made
+  case-insensitive: "ADL-955" and "adl-955" are the same plate, and allowing
+  both would defeat the constraint.
+- Two live vehicles still cannot share a registration number.
+
+## 043_fare_updated_at (rev 94)
+
+- Adds `ride_requests.fare_updated_at`, set only when the Customer raises their
+  offer. Driver decisions older than it are ignored, so a raised fare is offered
+  again to everyone — including Drivers who had already declined or quoted,
+  whose earlier answer was to a different price.
+- `updated_at` could not be used: it moves whenever anything about the request
+  changes, including the status flipping to ReceivingOffers when the first offer
+  lands, so every offer would have cleared every decision and re-alerted the
+  whole area.
+
+## 044_booking_trip_otp (rev 99)
+
+- Adds `bookings.trip_otp` in plaintext beside `trip_otp_hash`.
+- The hash is right for verification and wrong for display: the Customer has to
+  **read** the code aloud to the Driver, and a hash cannot be read back. So the
+  code existed only in the single response that created the booking — close the
+  app, return through "Track ride", and the OTP panel vanished and the trip
+  could not be started at all.
+- Returned only to the Customer whose booking it is. Never to the Driver, never
+  to an admin, never on a public share link. Verification still compares against
+  the hash.
+
+## 045_service_availability (rev 102)
+
+- New table `udrive.service_availability`: one row per service, with `is_open`,
+  the badge shown when closed, and the sentence the customer is told on tapping.
+- Seeded with every service open except `carRental`, which has no screen yet.
+- The key set is fixed. The portal offers on/off and wording, not new services.
+
+## 046_driver_signup_fields (rev 112)
+
+- `driver_profiles`: `date_of_birth` was already there; adds
+  `driving_licence_number`, `driving_licence_expiry` and `cnic_number`
+  unmasked alongside the masked copies. The masked ones are for display; a
+  reviewer comparing a licence photograph against a typed number needs the
+  number.
+- `driving_licence_expiry` matters on its own: a driver whose licence has
+  expired should stop receiving work, and nothing could tell before this.
+- New `document_type_catalogue` recording the set, including the two the
+  four-step flow adds: `DRIVING_LICENCE_BACK` (carries the categories) and
+  `SELFIE_WITH_CNIC` (ties the person to the card).
+- `vehicles.colour` already existed and is untouched.
+
+## 047_backfill_welcome_credit (rev 118)
+
+Credits the welcome bonus to drivers approved **before** the code that pays it
+shipped. They have an approved profile, a wallet, and nothing in it — which
+looks exactly like the feature not working.
+
+Idempotent through the same `welcome:<driver_profile_id>` key the runtime code
+uses, so nobody is credited twice and re-running changes nothing.

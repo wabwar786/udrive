@@ -1,0 +1,150 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace UDrive.Api.Models;
+
+public sealed record DriverOnboardingRequest(
+    [Required, StringLength(160)] string FullName,
+    [Required, StringLength(32)] string CnicNumber,
+    [Required, StringLength(64)] string DrivingLicenceNumber,
+    /// <summary>When the licence runs out.</summary>
+    /// <remarks>
+    /// Collected because a driver whose licence has expired should stop
+    /// receiving work, and until this was stored nothing could tell.
+    /// </remarks>
+    DateOnly? DrivingLicenceExpiry,
+    DateOnly? DateOfBirth,
+    /// <summary>Home address, and who to call if something happens.</summary>
+    /// <remarks>
+    /// Optional, and that is a change. They were `[Required]`, which meant the
+    /// four-step sign-up — which does not ask for them — could not submit at
+    /// all: sending empty strings fails `[Required]` just as null does.
+    ///
+    /// Making them optional is the honest fix rather than inventing values to
+    /// satisfy the attribute. The columns were always nullable; only the
+    /// request insisted. They are collected in profile settings, and a driver
+    /// cannot be approved without a reviewer seeing the profile anyway.
+    /// </remarks>
+    [StringLength(600)] string? Address,
+    [StringLength(120)] string? EmergencyContactName,
+    [StringLength(24)] string? EmergencyContactPhone,
+    [StringLength(120)] string? BankAccountTitle,
+    [StringLength(40)] string? PayoutMethod,
+    [StringLength(80)] string? PayoutAccount,
+    string[]? Languages,
+    string[]? ServiceAreas);
+
+public sealed record DriverOnboardingDto(
+    Guid DriverProfileId,
+    string VerificationStatus,
+    string? CnicMasked,
+    string? DrivingLicenceMasked,
+    DateOnly? DateOfBirth,
+    string? Address,
+    string? EmergencyContactName,
+    string? EmergencyContactPhone,
+    string? BankAccountTitle,
+    string? PayoutMethod,
+    string? PayoutAccountMasked,
+    IReadOnlyList<string> Languages,
+    IReadOnlyList<string> ServiceAreas,
+    DateTimeOffset? SubmittedAt,
+    DateTimeOffset? ReviewedAt,
+    string? ReviewNotes);
+
+public sealed record DriverDocumentDto(
+    Guid Id,
+    string DocumentType,
+    string FileUrl,
+    DateOnly? ExpiryDate,
+    string Status,
+    string? ReviewNotes);
+
+public sealed record VehicleUpsertRequest(
+    [Required, StringLength(48)] string Category,
+    [Required, StringLength(64)] string Make,
+    [Required, StringLength(64)] string Model,
+    [Range(1980, 2100)] int Year,
+    [Required, StringLength(40)] string RegistrationNumber,
+    [Required, StringLength(40)] string Colour,
+    [Range(1, 60)] int PassengerCapacity,
+    [Range(0, 100)] int LuggageCapacity,
+    bool HasAirConditioning,
+    bool HasHeating,
+    bool IsFourByFour,
+    bool HasFirstAidKit,
+    bool HasFireExtinguisher,
+    bool HasSpareTyre,
+    bool HasSnowChains,
+    bool HasChildSeat);
+
+public sealed record VehicleDto(
+    Guid Id,
+    string Category,
+    string Make,
+    string Model,
+    int Year,
+    string RegistrationNumber,
+    string Colour,
+    int PassengerCapacity,
+    int LuggageCapacity,
+    bool HasAirConditioning,
+    bool HasHeating,
+    bool IsFourByFour,
+    bool HasFirstAidKit,
+    bool HasFireExtinguisher,
+    bool HasSpareTyre,
+    bool HasSnowChains,
+    bool HasChildSeat,
+    int MountainReadinessScore,
+    string Status,
+    string? ImageUrl,
+    IReadOnlyList<VehicleDocumentDto> Documents);
+
+public sealed record VehicleDocumentDto(
+    Guid Id,
+    string DocumentType,
+    string FileUrl,
+    DateOnly? ExpiryDate,
+    string Status,
+    string? ReviewNotes);
+
+public sealed record VerificationReviewRequest(
+    [Required, StringLength(32)] string Decision,
+    [StringLength(1000)] string? Notes,
+    bool DeleteAttachments = false);
+
+public sealed record DeleteVerificationEntityRequest(
+    [Required, StringLength(1000, MinimumLength = 3)] string Reason);
+
+public sealed record DriverReviewListItemDto(
+    Guid DriverProfileId,
+    Guid UserId,
+    string FullName,
+    string PhoneNumber,
+    string VerificationStatus,
+    string? CnicMasked,
+    string? DrivingLicenceMasked,
+    DateTimeOffset? SubmittedAt,
+    int DocumentCount,
+    int VehicleCount);
+
+public sealed record VehicleReviewListItemDto(
+    Guid VehicleId,
+    Guid DriverProfileId,
+    string DriverName,
+    string RegistrationNumber,
+    string Vehicle,
+    string Status,
+    int MountainReadinessScore,
+    int DocumentCount);
+
+public sealed record DriverReviewDetailDto(
+    DriverReviewListItemDto Driver,
+    DriverOnboardingDto Profile,
+    IReadOnlyList<DriverDocumentDto> Documents,
+    IReadOnlyList<VehicleReviewListItemDto> Vehicles);
+
+public sealed record VehicleReviewDetailDto(
+    VehicleReviewListItemDto Vehicle,
+    IReadOnlyList<VehicleDocumentDto> Documents);
+

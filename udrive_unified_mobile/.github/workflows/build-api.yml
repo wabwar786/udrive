@@ -1,0 +1,54 @@
+name: Build API
+
+# Why this exists.
+#
+# The mobile repo has had `flutter analyze` on every push for months. The API
+# had nothing — so every compile error in C# was found by Railway, on a deploy
+# that then failed, minutes after the push. A `decimal` handed to a `double`
+# parameter took a whole deployment to discover.
+#
+# `dotnet build` says the same thing in about a minute, before anything is
+# deployed. It is the same compiler Railway runs, so there is no class of error
+# it can see that this cannot.
+
+on:
+  push:
+    paths:
+      - 'udrive_api/**'
+      - '.github/workflows/build-api.yml'
+  pull_request:
+    paths:
+      - 'udrive_api/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # Matches the Dockerfile. Building against a different major version
+          # would pass here and fail there, which is worse than not checking.
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        working-directory: udrive_api
+        run: dotnet restore UDrive.Api.csproj
+
+      - name: Build
+        working-directory: udrive_api
+        # Release, like the deploy. Debug and Release differ on enough
+        # analysers that a Debug-only check gives false confidence.
+        run: dotnet build UDrive.Api.csproj -c Release --no-restore
+
+      # A duplicate-migration-number check was written here and then removed.
+      #
+      # `024_hotels_and_stays.sql` and `024_offline_pmtiles_manifest.sql` share
+      # a number, and both run: the runner orders by full resource name and
+      # records each by name, so a shared prefix is untidy rather than broken.
+      # The check would have failed every build on a healthy repository, which
+      # is how a check gets switched off and stops catching the thing it was
+      # written for.

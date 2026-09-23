@@ -1,0 +1,12 @@
+udrive_api/Models/Phase19AdminDtos.cs
+udrive_api/Services/Phase19AdminService.cs
+udrive_api/Controllers/AdminExecutiveController.cs
+udrive_api/Infrastructure/Persistence/Migrations/020_phase19_admin_reporting.sql
+udrive_api/Program.cs
+admin_portal/app/page.tsx
+admin_portal/app/bookings/page.tsx
+admin_portal/app/executive-operations/page.tsx
+admin_portal/app/reports/page.tsx
+admin_portal/app/diagnostics/page.tsx
+admin_portal/app/components/admin-frame.tsx
+PHASE_19_IMPLEMENTATION.md

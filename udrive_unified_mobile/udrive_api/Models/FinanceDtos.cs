@@ -1,0 +1,17 @@
+using System.ComponentModel.DataAnnotations;
+namespace UDrive.Api.Models;
+public sealed record FinanceDashboardDto(decimal GrossPayments,decimal Refunded,decimal PlatformCommission,decimal DriverPayable,int PendingPayouts,int PendingRefunds);
+public sealed record FinanceTransactionDto(Guid Id,string Reference,string Type,string Party,string? BookingReference,decimal Amount,string Currency,string Status,DateTimeOffset CreatedAt);
+public sealed record DriverWalletDto(Guid DriverProfileId,string DriverName,decimal PendingBalance,decimal AvailableBalance,decimal PaidBalance,string Currency,int Version);
+public sealed record DriverEarningDto(Guid Id,Guid BookingId,string BookingReference,string DriverName,decimal GrossAmount,decimal CommissionPercentage,decimal CommissionAmount,decimal NetAmount,string Status,DateTimeOffset CreatedAt);
+public sealed record DriverPayoutDto(Guid Id,Guid DriverProfileId,string DriverName,decimal Amount,string Currency,string Status,string PayoutMethod,string? DestinationMasked,string? ProviderReference,string? DriverNotes,string? ReviewNotes,int Version,DateTimeOffset RequestedAt);
+public sealed record RefundRequestDto(Guid Id,Guid BookingId,string BookingReference,string CustomerName,decimal Amount,decimal CancellationFee,string Reason,string Status,string? ReviewNotes,int Version,DateTimeOffset CreatedAt);
+public sealed record CommissionRuleDto(Guid Id,string Name,decimal Percentage,string? BookingType,string? City,Guid? DriverProfileId,bool IsActive,DateTimeOffset EffectiveFrom,DateTimeOffset? EffectiveTo);
+public sealed record WalletEntryDto(Guid Id,string EntryType,decimal Amount,string BalanceBucket,string Description,string? Reference,DateTimeOffset CreatedAt);
+public sealed record DriverFinanceSummaryDto(DriverWalletDto Wallet,IReadOnlyList<DriverEarningDto> Earnings,IReadOnlyList<WalletEntryDto> Entries,IReadOnlyList<DriverPayoutDto> Payouts);
+public sealed record CreatePayoutRequest([Range(1,100000000)] decimal Amount,[Required,StringLength(40)] string PayoutMethod,[StringLength(160)] string? DestinationMasked,[StringLength(1000)] string? Notes,int ExpectedWalletVersion);
+public sealed record ReviewPayoutRequest([Required,StringLength(32)] string Status,[StringLength(160)] string? ProviderReference,[StringLength(1000)] string? ReviewNotes,int ExpectedVersion);
+public sealed record CreateRefundRequest(Guid BookingId,Guid? PaymentId,[Range(1,100000000)] decimal Amount,[Range(0,100000000)] decimal CancellationFee,[Required,StringLength(1000)] string Reason);
+public sealed record ReviewRefundRequest([Required,StringLength(32)] string Status,[StringLength(160)] string? ProviderReference,[StringLength(1000)] string? ReviewNotes,int ExpectedVersion);
+public sealed record CreateCommissionRuleRequest([Required,StringLength(160)] string Name,[Range(0,100)] decimal Percentage,[StringLength(40)] string? BookingType,[StringLength(120)] string? City,Guid? DriverProfileId,DateTimeOffset EffectiveFrom,DateTimeOffset? EffectiveTo);
+public sealed record CreateFinancialAdjustmentRequest(Guid DriverProfileId,Guid? BookingId,[Required,StringLength(32)] string AdjustmentType,[Range(typeof(decimal),"-100000000","100000000")] decimal Amount,[Required,StringLength(1000)] string Reason);

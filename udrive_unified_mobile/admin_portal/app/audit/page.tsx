@@ -1,0 +1,3 @@
+'use client';
+import {AdminFrame} from '../components/admin-frame';import {ResourceTable} from '../components/resource-table';import {money,when} from '../lib/admin-api';
+export default function Page(){return <AdminFrame title="Audit log" subtitle="Immutable record of sensitive Admin and marketplace actions."><ResourceTable endpoint="/api/v1/admin/operations/audit-logs" title="Audit log" searchKeys={["actorName", "action", "entityId"]} columns={[{key:'createdAt',label:'Time',render:r=>when(r.createdAt)},{key:'actorName',label:'Actor'},{key:'action',label:'Action'},{key:'entityType',label:'Entity'},{key:'entityId',label:'Entity ID'},{key:'ipAddress',label:'IP'}]}/></AdminFrame>}

@@ -1,0 +1,2 @@
+import 'package:flutter/material.dart';
+class ServiceClipArt extends StatelessWidget {const ServiceClipArt({required this.icon,super.key});final IconData icon;@override Widget build(BuildContext context)=>Stack(alignment:Alignment.center,children:[Container(width:72,height:72,decoration:const BoxDecoration(color:Color(0xFF9BE43A),shape:BoxShape.circle)),Icon(icon,size:48,color:const Color(0xFF17242B)),Positioned(bottom:7,child:Container(width:54,height:5,decoration:BoxDecoration(color:Colors.black.withValues(alpha:.18),borderRadius:BorderRadius.circular(9))))]);}

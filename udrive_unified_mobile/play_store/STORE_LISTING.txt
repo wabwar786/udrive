@@ -1,0 +1,70 @@
+UDRIVE — GOOGLE PLAY STORE LISTING (copy–paste)
+Developer account: Tech Geni Ltd.   Package: com.wabwar.udrive
+================================================================
+
+APP NAME (max 30 characters)
+UDrive – Rides & Tours
+
+ALTERNATIVE NAMES (if the first is taken)
+UDrive Kashmir
+UDrive Rides & Tours
+
+SHORT DESCRIPTION (max 80 characters)
+Book rides, tours and hotels across Azad Kashmir with verified local drivers.
+
+FULL DESCRIPTION (max 4000 characters)
+----------------------------------------------------------------
+UDrive is the local ride and travel app for Azad Jammu & Kashmir. Book a car,
+motorcycle, rickshaw or coaster in minutes, agree the fare before the trip
+starts, and travel with drivers whose documents have been checked.
+
+BOOK A RIDE
+• City rides, city-to-city trips and multi-day tours in one app
+• See the recommended fare first, or offer your own price
+• Compare offers from nearby drivers and accept the one you like
+• Pay the driver directly — no card needed
+
+TRAVEL SAFELY
+• Every driver and vehicle is verified with CNIC, licence and registration papers
+• A trip OTP makes sure you get into the right vehicle
+• Live trip tracking, in-app chat and a direct call button
+• SOS button and trusted contacts for emergencies
+
+EXPLORE KASHMIR
+• Tours to Neelum, Arang Kel, Leepa, Rawalakot, Banjosa and Pir Chinasi
+• Whole-vehicle or per-seat booking for groups and families
+• Hotel bookings with local partners
+• Offline maps for valleys with weak signal
+
+DRIVE WITH UDRIVE
+• Register your vehicle, upload your documents and get approved
+• Receive ride requests near you and send your own fare offer
+• Track earnings, commission and wallet balance in the app
+
+UDrive is built in Azad Kashmir, for Azad Kashmir. Available in English and Urdu.
+----------------------------------------------------------------
+
+CATEGORY
+App category: Maps & Navigation   (alternative: Travel & Local)
+Tags: Taxi, Travel, Tourism
+
+CONTACT DETAILS
+Email:   (your support inbox — must match PublicPages__SupportEmail on the API)
+Phone:   (optional)
+Website: https://udrive-api-production.up.railway.app/privacy   (or your own site)
+
+PRIVACY POLICY URL
+https://udrive-api-production.up.railway.app/privacy
+
+ACCOUNT DELETION URL (Data safety section)
+https://udrive-api-production.up.railway.app/account-deletion
+
+GRAPHICS IN THIS FOLDER (graphics/)
+01_app_icon_512.png                 App icon, 512×512
+02_feature_graphic_1024x500.png     Feature graphic, 1024×500
+03_phone_screenshot_1..5_1080x1920  Phone screenshots (upload 4–8)
+
+WHAT'S NEW (release notes, max 500 characters)
+First release of UDrive: book city rides, city-to-city trips and tours across
+Azad Kashmir, compare driver offers, track your trip live, and use the SOS
+button if you need help.

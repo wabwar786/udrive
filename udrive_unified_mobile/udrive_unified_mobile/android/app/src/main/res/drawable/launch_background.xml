@@ -1,0 +1,6 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/udrive_primary_dark" />
+    <item>
+        <bitmap android:gravity="center" android:src="@drawable/launch_icon" />
+    </item>
+</layer-list>

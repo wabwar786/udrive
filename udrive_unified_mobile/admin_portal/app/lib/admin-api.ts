@@ -1,0 +1,339 @@
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  'https://udrive-api-production.up.railway.app';
+
+export type AdminUser = {
+  id?: string;
+  fullName: string;
+  phoneNumber?: string;
+  roles: string[];
+};
+
+export type AdminSession = {
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAt?: string;
+  user: AdminUser;
+};
+
+type Envelope<T> = {
+  success: boolean;
+  data: T;
+  message?: string;
+};
+
+
+function friendlyApiError(status: number, body: Record<string, unknown>): string {
+  if (status === 401) return 'Your session has expired. Please sign in again.';
+  if (status === 403) return 'You do not have permission to open this section.';
+  if (status === 404) {
+    // Show the API's own message when it has one.
+    //
+    // Verification attachments return two different 404s — the record is
+    // missing, or the record exists and its file has gone from storage — and
+    // the fixes are completely different. Collapsing both into "not available"
+    // cost a long hunt for a code bug that turned out to be an unmounted
+    // volume.
+    const message = typeof body.message === 'string' ? body.message : '';
+    return message && !/traceid|request could not be completed/i.test(message)
+      ? message
+      : 'This section or record is not available.';
+  }
+  if (status === 409) return 'This record was updated elsewhere. Refresh and try again.';
+  if (status === 422 || status === 400) {
+    const message = typeof body.message === 'string' ? body.message : '';
+    return message && !/traceid|request could not be completed/i.test(message)
+      ? message
+      : 'Some information is invalid. Please review the form and try again.';
+  }
+  if (status >= 500) return 'This section is temporarily unavailable. Please refresh after a moment.';
+  const message = typeof body.message === 'string' ? body.message : '';
+  return message && !/traceid|request could not be completed/i.test(message)
+    ? message
+    : 'This action is temporarily unavailable. Please try again.';
+}
+
+const KEY = 'udrive-admin-session-v10';
+export const ADMIN_PORTAL_BUILD = 'verification-list-v2';
+
+export const PORTAL_ROLES = ['SuperAdmin', 'Admin', 'Manager'] as const;
+export type PortalRole = (typeof PORTAL_ROLES)[number];
+
+export function hasRole(role: string) {
+  return readSession()?.user.roles.includes(role) ?? false;
+}
+
+export function isSuperAdmin() {
+  return hasRole('SuperAdmin');
+}
+
+function resolveApiUrl(path: string) {
+  if (/^https?:\/\//i.test(path)) return path;
+  return new URL(path.startsWith('/') ? path : `/${path}`, API_BASE).toString();
+}
+
+export function readSession(): AdminSession | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    return JSON.parse(localStorage.getItem(KEY) ?? 'null');
+  } catch {
+    return null;
+  }
+}
+
+export function saveSession(value: AdminSession | null) {
+  if (typeof window === 'undefined') return;
+
+  if (value) {
+    localStorage.setItem(KEY, JSON.stringify(value));
+  } else {
+    localStorage.removeItem(KEY);
+  }
+}
+
+async function refresh(session: AdminSession) {
+  const response = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      refreshToken: session.refreshToken,
+      deviceId: 'udrive-admin-v10',
+      deviceName: 'Udrive Operations Portal',
+    }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok || !body.data) {
+    saveSession(null);
+    throw new Error(body.message ?? body.detail ?? 'Session expired.');
+  }
+
+  saveSession(body.data);
+  return body.data as AdminSession;
+}
+
+async function runAuthorized(
+  path: string,
+  init: RequestInit = {},
+  accept = 'application/json',
+) {
+  let session = readSession();
+
+  const targetUrl = resolveApiUrl(path);
+  const targetOrigin = new URL(targetUrl).origin;
+  const apiOrigin = new URL(API_BASE).origin;
+  const isApiRequest = targetOrigin === apiOrigin;
+
+  const run = (token?: string) =>
+    fetch(targetUrl, {
+      ...init,
+      cache: 'no-store',
+      headers: {
+        Accept: accept,
+        ...(init.body && !(init.body instanceof FormData)
+          ? { 'Content-Type': 'application/json' }
+          : {}),
+        ...(token && isApiRequest
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
+        ...init.headers,
+      },
+    });
+
+  let response = await run(session?.accessToken);
+
+  if (isApiRequest && response.status === 401) {
+    // A 401 is always an authentication problem, so it always ends in one of
+    // two places: a refreshed token, or the sign-in page.
+    //
+    // It used to end in neither. The retry only ran when a refresh token
+    // happened to be present, and a session saved without one — or one whose
+    // refresh had itself expired — left every screen showing "The session has
+    // expired. Sign in again." with no way to act on it. The person is already
+    // signed in as far as the portal is concerned, so there is nothing to
+    // click.
+    if (session?.refreshToken) {
+      try {
+        session = await refresh(session);
+        response = await run(session.accessToken);
+      } catch {
+        signOutAndReturn();
+      }
+    } else {
+      signOutAndReturn();
+    }
+  }
+
+  return response;
+}
+
+/**
+ * Clears the dead session and sends the person to sign in again.
+ *
+ * The current path is remembered so they come back to the screen they were on
+ * rather than the dashboard.
+ */
+function signOutAndReturn() {
+  if (typeof window === 'undefined') return;
+  saveSession(null);
+  const here = window.location.pathname + window.location.search;
+  if (window.location.pathname !== '/login') {
+    window.location.replace(`/login?next=${encodeURIComponent(here)}`);
+  }
+}
+
+export async function apiFetch<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const response = await runAuthorized(path, init);
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(friendlyApiError(response.status, body as Record<string, unknown>));
+  }
+
+  return (body as Envelope<T>).data;
+}
+
+export async function apiProtectedFile(
+  path: string,
+): Promise<{ objectUrl: string; contentType: string }> {
+  const response = await runAuthorized(
+    path,
+    {},
+    'image/avif,image/webp,image/png,image/jpeg,application/pdf,*/*',
+  );
+
+  if (!response.ok) {
+    const body = await response.clone().json().catch(() => ({}));
+    throw new Error(friendlyApiError(response.status, body as Record<string, unknown>));
+  }
+
+  const responseType = response.headers.get('content-type') ?? '';
+  if (responseType.includes('application/json')) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(
+      body.message ?? body.detail ?? 'The attachment response was invalid.',
+    );
+  }
+
+  const blob = await response.blob();
+  if (blob.size === 0) {
+    throw new Error('The attachment file is empty or missing from storage.');
+  }
+
+  return {
+    objectUrl: URL.createObjectURL(blob),
+    contentType:
+      blob.type || responseType || 'application/octet-stream',
+  };
+}
+
+export async function login(username: string, password: string) {
+  // Username + password, not OTP: the WhatsApp settings that send OTPs are
+  // configured inside this portal, so an OTP-only sign-in locks itself out
+  // whenever WA Engine is misconfigured.
+  const response = await fetch(`${API_BASE}/api/v1/auth/admin/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username,
+      password,
+      deviceId: 'udrive-admin-v10',
+      deviceName: 'Udrive Operations Portal',
+    }),
+  });
+
+  const body = await response.json();
+
+  if (!response.ok) {
+    throw new Error(body.message ?? 'Login failed.');
+  }
+
+  const session = body.data as AdminSession;
+
+  if (
+    !session.user.roles.some((role) =>
+      [
+        'SuperAdmin',
+        'Admin',
+        'Manager',
+        'Operations',
+        'VerificationOfficer',
+        'SupportAgent',
+        'FinanceOfficer',
+        'SafetyOfficer',
+        'TourismManager',
+      ].includes(role),
+    )
+  ) {
+    throw new Error('This account has no Admin permission.');
+  }
+
+  saveSession(session);
+  return session;
+}
+
+export async function requestOtp(phoneNumber: string) {
+  const response = await fetch(`${API_BASE}/api/v1/auth/otp/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phoneNumber, purpose: 'login' }),
+  });
+
+  const body = await response.json();
+
+  if (!response.ok) {
+    throw new Error(body.message ?? 'OTP request failed.');
+  }
+
+  return body.data;
+}
+
+export function money(value: unknown) {
+  return new Intl.NumberFormat('en-PK', {
+    style: 'currency',
+    currency: 'PKR',
+    maximumFractionDigits: 0,
+  }).format(Number(value ?? 0));
+}
+
+export function when(value: unknown) {
+  if (!value) return '—';
+
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(String(value)));
+}
+
+
+/**
+ * Sends a file to the API with the session's bearer token.
+ *
+ * `apiFetch` sets a JSON content type, which is wrong for multipart — the
+ * browser has to set it itself so it can add the boundary. This is the same
+ * request otherwise, refresh-on-401 included.
+ */
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  field = 'file',
+): Promise<T> {
+  const body = new FormData();
+  body.append(field, file);
+
+  const response = await runAuthorized(path, { method: 'POST', body });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      friendlyApiError(response.status, payload as Record<string, unknown>),
+    );
+  }
+
+  return (payload as Envelope<T>).data;
+}

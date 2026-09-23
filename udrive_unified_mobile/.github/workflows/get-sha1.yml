@@ -1,0 +1,53 @@
+name: Print SHA-1 fingerprint
+
+# Run this by hand from the Actions tab when you need the SHA-1 for a Google
+# Maps Android API key restriction. It builds nothing and publishes nothing —
+# it only prints the signing fingerprint of the key the APK is signed with.
+#
+# The release build currently uses the DEBUG signing key
+# (android/app/build.gradle.kts), so the debug SHA-1 below is the one Google
+# needs. When you move to a private upload keystore for Play Store, come back
+# and register that keystore's SHA-1 as well.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sha1:
+    name: Show package name and SHA-1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: udrive_unified_mobile
+        run: flutter pub get
+
+      - name: Package name
+        working-directory: udrive_unified_mobile
+        run: |
+          echo "=============================================="
+          echo "PACKAGE NAME (applicationId):"
+          grep -R "applicationId" android/app/build.gradle.kts || true
+          echo "=============================================="
+
+      - name: SHA-1 fingerprint
+        working-directory: udrive_unified_mobile/android
+        run: |
+          chmod +x ./gradlew || true
+          ./gradlew signingReport --no-daemon | tee report.txt
+          echo ""
+          echo "=============================================="
+          echo "COPY THE SHA1 LINE UNDER 'Variant: debug':"
+          echo "=============================================="
+          grep -A 6 "Variant: debug" report.txt | grep "SHA1" || \
+            grep "SHA1" report.txt || \
+            echo "No SHA1 found - paste the full log to Claude."

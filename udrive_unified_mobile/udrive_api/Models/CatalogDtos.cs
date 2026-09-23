@@ -1,0 +1,95 @@
+namespace UDrive.Api.Models;
+
+public sealed record DestinationDto(
+    Guid Id,
+    string Slug,
+    string Name,
+    string Summary,
+    double Latitude,
+    double Longitude,
+    string District,
+    string BestSeason,
+    string RecommendedVehicle,
+    string NetworkStatus,
+    int FamilySuitabilityScore,
+    int RouteSafetyScore,
+    string? CoverImageUrl);
+
+public sealed record RouteDto(
+    Guid Id,
+    string Name,
+    decimal DistanceKm,
+    int EstimatedMinutes,
+    string RecommendedVehicle,
+    bool FourByFourRequired,
+    bool DaylightOnly,
+    int SafetyScore);
+
+public sealed record PackageDto(
+    Guid Id,
+    string Title,
+    string StartingCity,
+    string Destination,
+    DateTimeOffset DepartureAt,
+    int AvailableSeats,
+    decimal PricePerSeat,
+    decimal WholeVehiclePrice,
+    bool FamilyOnly,
+    bool WomenOnly,
+    string Status,
+    string? CoverImageUrl);
+
+public sealed record PublicVehicleDto(
+    Guid Id,
+    Guid DriverProfileId,
+    string DriverName,
+    decimal DriverRating,
+    int CompletedTrips,
+    int SafetyScore,
+    bool IsOnline,
+    string Category,
+    string Make,
+    string Model,
+    int Year,
+    string RegistrationNumber,
+    string Colour,
+    int PassengerCapacity,
+    int LuggageCapacity,
+    bool HasAirConditioning,
+    bool HasHeating,
+    bool IsFourByFour,
+    int MountainReadinessScore,
+    string? ImageUrl,
+    IReadOnlyList<string> ServiceAreas,
+    bool IsDemo,
+    // How this vehicle may be booked: WholeVehicle, PerSeat or Both.
+    // The customer app offers only the modes the driver enabled.
+    string BookingMode,
+    // Whether the driver opted this vehicle into multi-day tours.
+    bool AvailableForTour);
+
+/// <summary>
+/// A vehicle currently online near the customer, for the home-screen map.
+/// </summary>
+/// <remarks>
+/// Deliberately carries no driver identity — no name, phone, plate or driver id.
+/// Anyone can call this endpoint, so exposing who is where would let a stranger
+/// track an individual driver in a small town. Identity is released only once a
+/// booking is confirmed, through the existing booking endpoints.
+///
+/// <see cref="Latitude"/> and <see cref="Longitude"/> are rounded to roughly
+/// 100 m for the same reason: enough for "there are cars around here", not
+/// enough to follow one vehicle down a street.
+/// </remarks>
+public sealed record NearbyVehicleDto(
+    string Id,
+    string Category,
+    double Latitude,
+    double Longitude,
+    double DistanceKm,
+    int EtaMinutes,
+    string BookingMode,
+    decimal Rating,
+    int PassengerCapacity,
+    bool AvailableForTour,
+    double? Heading);
