@@ -239,6 +239,54 @@ public sealed class OtpDeliveryService(
             result.Delivered ? "Test message sent. Check WhatsApp on that number." : "WA Engine did not accept the message.");
     }
 
+    /// <summary>
+    /// The WA Engine connection every other WhatsApp feature should use (SOS
+    /// location share, emergency broadcast), so the whole platform follows the
+    /// one place an admin configures.
+    /// </summary>
+    public async Task<(string BaseUrl, string ApiKey, string SendPath, string BulkPath)> EndpointAsync(
+        CancellationToken ct)
+    {
+        var s = await ReadAsync(ct);
+        var bulkPath = s.SendPath.EndsWith("/send", StringComparison.OrdinalIgnoreCase)
+            ? s.SendPath + "-bulk"
+            : "/api/send-bulk";
+        return (s.BaseUrl.TrimEnd('/'), s.ApiKey, s.SendPath, bulkPath);
+    }
+
+    /// <summary>Asks WA Engine whether its WhatsApp session is connected (GET /api/status).</summary>
+    public async Task<ServiceResult<OtpTestResultDto>> StatusAsync(CancellationToken ct)
+    {
+        var s = await ReadAsync(ct);
+        if (s.ApiKey.Length == 0)
+        {
+            return ServiceResult<OtpTestResultDto>.Fail(
+                400, "api_key_required", "Save the WA Engine API key first.");
+        }
+
+        var url = s.BaseUrl.TrimEnd('/') + "/api/status";
+        try
+        {
+            var client = httpClientFactory.CreateClient(HttpClientName);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.TryAddWithoutValidation("x-api-key", s.ApiKey);
+            using var response = await client.SendAsync(request, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var snippet = body.Length > 300 ? body[..300] : body;
+            var ok = response.IsSuccessStatusCode && !ReportsFailure(body);
+            return ServiceResult<OtpTestResultDto>.Ok(
+                new OtpTestResultDto(ok, (int)response.StatusCode, snippet),
+                ok ? "WA Engine answered." : "WA Engine is reachable but reported a problem.");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogError(ex, "WA Engine status check to {Url} failed.", url);
+            return ServiceResult<OtpTestResultDto>.Ok(
+                new OtpTestResultDto(false, null, ex is TaskCanceledException ? "Timed out." : ex.Message),
+                "WA Engine could not be reached.");
+        }
+    }
+
     // ------------------------------------------------------------------ internals
 
     private async Task<OtpTestResultDto> SendAsync(Stored s, string phoneNumber, string message, CancellationToken ct)

@@ -79,6 +79,43 @@ public sealed class AuthController(AuthService authService, AccountDeletionServi
     }
 
     /// <summary>
+    /// Admin portal sign-in with username and password.
+    ///
+    /// Deliberately not OTP: the WhatsApp settings that send OTPs live behind
+    /// this login, so an OTP-only portal cannot be repaired when WA Engine is
+    /// misconfigured. Customers and drivers still use /auth/otp/*.
+    /// </summary>
+    [AllowAnonymous]
+    [EnableRateLimiting("otp")]
+    [HttpPost("admin/login")]
+    public async Task<IActionResult> AdminLogin(
+        AdminLoginRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await authService.AdminLoginAsync(
+            request,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers["User-Agent"].ToString(),
+            cancellationToken);
+        return ToActionResult(result);
+    }
+
+    /// <summary>A portal user changing their own password.</summary>
+    [Authorize]
+    [EnableRateLimiting("otp")]
+    [HttpPost("admin/password")]
+    public async Task<IActionResult> ChangePassword(
+        ChangePasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await authService.ChangePasswordAsync(
+            User.GetRequiredUserId(),
+            request,
+            cancellationToken);
+        return ToActionResult(result);
+    }
+
+    /// <summary>
     /// Permanently deletes the signed-in user's account (Google Play policy).
     /// The client must send { "confirmation": "DELETE" } so a stray call cannot
     /// wipe an account.

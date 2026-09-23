@@ -5,11 +5,21 @@ using UDrive.Api.Models;
 
 namespace UDrive.Api.Services;
 
-public sealed class WhatsAppService(HttpClient client, IConfiguration configuration, ILogger<WhatsAppService> logger)
+/// <summary>
+/// WhatsApp messages for safety features (SOS location share, emergency
+/// broadcast).
+///
+/// The connection — base URL, API key and send paths — comes from the same
+/// admin settings that deliver login codes (<see cref="OtpDeliveryService"/>),
+/// so WA Engine is configured in one place for the whole platform. The old
+/// WA_ENGINE_* environment variables still work as a fallback.
+/// </summary>
+public sealed class WhatsAppService(
+    HttpClient client,
+    OtpDeliveryService otpDelivery,
+    IConfiguration configuration,
+    ILogger<WhatsAppService> logger)
 {
-    private readonly string _apiKey = configuration["WA_ENGINE_API_KEY"]
-        ?? Environment.GetEnvironmentVariable("WA_ENGINE_API_KEY")
-        ?? string.Empty;
     private readonly string _safetyNumber = configuration["UDRIVE_SAFETY_WHATSAPP_NUMBER"]
         ?? Environment.GetEnvironmentVariable("UDRIVE_SAFETY_WHATSAPP_NUMBER")
         ?? string.Empty;
@@ -29,7 +39,8 @@ public sealed class WhatsAppService(HttpClient client, IConfiguration configurat
             return ServiceResult<WhatsAppSendResultDto>.Fail(400, "invalid_location", "The supplied location is invalid.");
         }
 
-        if (!Configured())
+        var endpoint = await otpDelivery.EndpointAsync(cancellationToken);
+        if (!Configured(endpoint.ApiKey))
         {
             return ServiceResult<WhatsAppSendResultDto>.Fail(503, "whatsapp_not_configured", "WhatsApp sharing is temporarily unavailable.");
         }
@@ -44,8 +55,8 @@ public sealed class WhatsAppService(HttpClient client, IConfiguration configurat
             $"Shared at: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC\n\n" +
             "Please contact the traveller immediately. If this is an emergency, contact local emergency services.";
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/send");
-        httpRequest.Headers.TryAddWithoutValidation("x-api-key", _apiKey);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint.BaseUrl + endpoint.SendPath);
+        httpRequest.Headers.TryAddWithoutValidation("x-api-key", endpoint.ApiKey);
         httpRequest.Content = JsonContent.Create(new { to = number, message });
 
         try
@@ -95,7 +106,8 @@ public sealed class WhatsAppService(HttpClient client, IConfiguration configurat
             return ServiceResult<WhatsAppBulkSendResultDto>.Fail(400, "no_emergency_contacts", "Add at least one valid trusted WhatsApp contact first.");
         }
 
-        if (!Configured())
+        var endpoint = await otpDelivery.EndpointAsync(cancellationToken);
+        if (!Configured(endpoint.ApiKey))
         {
             return ServiceResult<WhatsAppBulkSendResultDto>.Fail(503, "whatsapp_not_configured", "WhatsApp emergency alerts are temporarily unavailable.");
         }
@@ -111,8 +123,8 @@ public sealed class WhatsAppService(HttpClient client, IConfiguration configurat
             $"Alert time: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC\n\n" +
             "Please call the traveller immediately and contact Rescue 1122 or Police 15 when required.";
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/send-bulk");
-        httpRequest.Headers.TryAddWithoutValidation("x-api-key", _apiKey);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint.BaseUrl + endpoint.BulkPath);
+        httpRequest.Headers.TryAddWithoutValidation("x-api-key", endpoint.ApiKey);
         httpRequest.Content = JsonContent.Create(new { numbers, message });
 
         try
@@ -140,10 +152,10 @@ public sealed class WhatsAppService(HttpClient client, IConfiguration configurat
         }
     }
 
-    private bool Configured()
+    private bool Configured(string apiKey)
     {
-        if (!string.IsNullOrWhiteSpace(_apiKey)) return true;
-        logger.LogError("WA_ENGINE_API_KEY is not configured.");
+        if (!string.IsNullOrWhiteSpace(apiKey)) return true;
+        logger.LogError("No WA Engine API key: set it in Admin portal -> Services -> WhatsApp OTP.");
         return false;
     }
 

@@ -197,6 +197,153 @@ public sealed class AuthService(
         return result;
     }
 
+    // ----------------------------------------------------------- portal login
+    //
+    // The admin portal signs in with a username and password, not an OTP: the
+    // WhatsApp settings that deliver OTPs are configured inside the portal, so
+    // an OTP-only portal locks its own door when WA Engine misbehaves.
+
+    private static readonly string[] PortalRoles =
+    [
+        "SuperAdmin", "Admin", "Manager", "Operations", "VerificationOfficer",
+        "SupportAgent", "FinanceOfficer", "SafetyOfficer", "TourismManager"
+    ];
+
+    public async Task<ServiceResult<AuthTokensDto>> AdminLoginAsync(
+        AdminLoginRequest request,
+        string? ipAddress,
+        string? userAgent,
+        CancellationToken cancellationToken)
+    {
+        // One message for every failure: a different answer for "no such user"
+        // tells an attacker which usernames exist.
+        const string wrong = "The username or password is incorrect.";
+
+        var login = await store.GetPortalLoginAsync(request.Username.Trim(), cancellationToken);
+        if (login is null || login.PasswordHash is null)
+        {
+            return ServiceResult<AuthTokensDto>.Fail(
+                StatusCodes.Status401Unauthorized, "invalid_credentials", wrong);
+        }
+
+        if (login.LockedUntil is { } lockedUntil && lockedUntil > DateTimeOffset.UtcNow)
+        {
+            var minutes = Math.Max(1, Math.Ceiling((lockedUntil - DateTimeOffset.UtcNow).TotalMinutes));
+            return ServiceResult<AuthTokensDto>.Fail(
+                StatusCodes.Status423Locked,
+                "account_locked",
+                $"Too many failed attempts. Try again in {minutes} minute(s).");
+        }
+
+        if (!PasswordHasher.Verify(request.Password, login.PasswordHash))
+        {
+            await store.RecordFailedPortalLoginAsync(login.UserId, cancellationToken);
+            logger.LogWarning("Failed portal sign-in for {Username} from {Ip}.", request.Username, ipAddress);
+            return ServiceResult<AuthTokensDto>.Fail(
+                StatusCodes.Status401Unauthorized, "invalid_credentials", wrong);
+        }
+
+        var user = await store.GetUserByIdAsync(login.UserId, cancellationToken);
+        if (user is null || user.AccountStatus is "Suspended" or "Rejected" or "Deleted")
+        {
+            return ServiceResult<AuthTokensDto>.Fail(
+                StatusCodes.Status401Unauthorized, "account_unavailable", "This account is not available.");
+        }
+
+        var roles = await store.GetRolesAsync(user.Id, cancellationToken);
+        if (!roles.Any(role => PortalRoles.Contains(role, StringComparer.Ordinal)))
+        {
+            return ServiceResult<AuthTokensDto>.Fail(
+                StatusCodes.Status403Forbidden,
+                "not_a_portal_user",
+                "This account does not have admin portal access.");
+        }
+
+        await store.ClearFailedPortalLoginAsync(login.UserId, cancellationToken);
+        // The token version moved when the password was set, so reload the user
+        // before minting a token with it.
+        var fresh = await store.GetUserByIdAsync(login.UserId, cancellationToken) ?? user;
+        return await IssueTokensAsync(
+            fresh, roles, request.DeviceId, request.DeviceName, ipAddress, userAgent, cancellationToken);
+    }
+
+    /// <summary>A portal user changing their own password. Ends every other session.</summary>
+    public async Task<ServiceResult<bool>> ChangePasswordAsync(
+        Guid userId,
+        ChangePasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var currentHash = await store.GetPasswordHashAsync(userId, cancellationToken);
+        if (currentHash is null)
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status400BadRequest,
+                "no_password_set",
+                "This account has no portal password. Ask a SuperAdmin to set one.");
+        }
+
+        if (!PasswordHasher.Verify(request.CurrentPassword, currentHash))
+        {
+            await store.RecordFailedPortalLoginAsync(userId, cancellationToken);
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status401Unauthorized, "invalid_credentials", "The current password is incorrect.");
+        }
+
+        if (PasswordHasher.Validate(request.NewPassword, null) is { } problem)
+        {
+            return ServiceResult<bool>.Fail(StatusCodes.Status400BadRequest, "weak_password", problem);
+        }
+
+        await store.SetPortalCredentialsAsync(
+            userId, null, PasswordHasher.Hash(request.NewPassword), cancellationToken);
+        return ServiceResult<bool>.Ok(true, "Password changed. Sign in again with the new password.");
+    }
+
+    /// <summary>SuperAdmin giving (or resetting) a portal user's username and password.</summary>
+    public async Task<ServiceResult<bool>> SetPortalCredentialsAsync(
+        SetPortalCredentialsRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (PasswordHasher.ValidateUsername(request.Username) is { } usernameProblem)
+        {
+            return ServiceResult<bool>.Fail(StatusCodes.Status400BadRequest, "invalid_username", usernameProblem);
+        }
+
+        if (PasswordHasher.Validate(request.Password, request.Username) is { } passwordProblem)
+        {
+            return ServiceResult<bool>.Fail(StatusCodes.Status400BadRequest, "weak_password", passwordProblem);
+        }
+
+        if (!PhoneNumberNormalizer.TryNormalizePakistan(request.PhoneNumber, out var phoneNumber))
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status400BadRequest, "invalid_phone_number",
+                "Enter a valid Pakistani mobile number, for example 03001234567.");
+        }
+
+        var user = await store.GetUserByPhoneAsync(phoneNumber, cancellationToken);
+        if (user is null)
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status404NotFound, "user_not_found", "No account uses this mobile number.");
+        }
+
+        var roles = await store.GetRolesAsync(user.Id, cancellationToken);
+        if (!roles.Any(role => PortalRoles.Contains(role, StringComparer.Ordinal)))
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status400BadRequest,
+                "not_a_portal_user",
+                "Give this account a portal role first, then set its password.");
+        }
+
+        var saved = await store.SetPortalCredentialsAsync(
+            user.Id, request.Username.Trim(), PasswordHasher.Hash(request.Password), cancellationToken);
+        return saved
+            ? ServiceResult<bool>.Ok(true, $"{request.Username.Trim()} can now sign in with this password.")
+            : ServiceResult<bool>.Fail(StatusCodes.Status404NotFound, "user_not_found", "The account could not be updated.");
+    }
+
     public async Task<ServiceResult<CurrentUserDto>> GetCurrentUserAsync(
         Guid userId,
         CancellationToken cancellationToken)

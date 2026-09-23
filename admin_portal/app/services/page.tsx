@@ -640,6 +640,18 @@ function WhatsAppOtpPanel() {
     } finally { setBusy(false); }
   }
 
+  // GET /api/status on WA Engine: is the WhatsApp session actually connected?
+  async function status() {
+    setBusy(true); setMsg(''); setError('');
+    try {
+      const r = await apiFetch<OtpTestResult>('/api/v1/admin/otp-settings/status');
+      if (r.delivered) setMsg(`WA Engine is connected. Reply: ${r.providerResponse || 'OK'}`);
+      else setError(`WA Engine reported a problem (${r.statusCode ?? 'no response'}): ${r.providerResponse || 'empty reply'}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Status check failed.');
+    } finally { setBusy(false); }
+  }
+
   async function test() {
     if (!probe.trim()) { setError('Enter a WhatsApp number to send the test to.'); return; }
     setBusy(true); setMsg(''); setError('');
@@ -725,9 +737,12 @@ function WhatsAppOtpPanel() {
             <Field label="Send a test message to (your WhatsApp number)">
               <input value={probe} placeholder="03xx xxxxxxx" onChange={(e) => setProbe(e.target.value)} />
             </Field>
-            <div>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button className="primaryButton" disabled={busy || !s.apiKeySet} onClick={() => void test()}>
                 Send test message
+              </button>
+              <button className="primaryButton" disabled={busy || !s.apiKeySet} onClick={() => void status()}>
+                Check WA connection
               </button>
             </div>
           </>

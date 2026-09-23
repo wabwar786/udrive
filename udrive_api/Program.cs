@@ -9,6 +9,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using UDrive.Api.Infrastructure.Persistence;
 using UDrive.Api.Middleware;
+using UDrive.Api.Models;
+using UDrive.Api.Security;
 using UDrive.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -278,6 +280,78 @@ if (autoMigrate)
     await using var scope = app.Services.CreateAsyncScope();
     var runner = scope.ServiceProvider.GetRequiredService<SqlMigrationRunner>();
     await runner.ApplyPendingAsync();
+}
+
+// First portal password, set from Railway variables.
+//
+// The portal needs a password before anyone can sign in to set one — this is
+// the way in. ADMIN_BOOTSTRAP_PHONE names an existing portal user;
+// ADMIN_BOOTSTRAP_USERNAME and ADMIN_BOOTSTRAP_PASSWORD are what they will
+// type. It only writes when the account has no password yet, unless
+// ADMIN_BOOTSTRAP_FORCE=true, so leaving the variables in place does not keep
+// resetting a password the admin later changed.
+{
+    var bootstrapPhone = Environment.GetEnvironmentVariable("ADMIN_BOOTSTRAP_PHONE");
+    var bootstrapUsername = Environment.GetEnvironmentVariable("ADMIN_BOOTSTRAP_USERNAME");
+    var bootstrapPassword = Environment.GetEnvironmentVariable("ADMIN_BOOTSTRAP_PASSWORD");
+    if (!string.IsNullOrWhiteSpace(bootstrapPhone) &&
+        !string.IsNullOrWhiteSpace(bootstrapUsername) &&
+        !string.IsNullOrWhiteSpace(bootstrapPassword))
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("AdminBootstrap");
+        var store = scope.ServiceProvider.GetRequiredService<AuthSqlStore>();
+        var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
+        try
+        {
+            if (!PhoneNumberNormalizer.TryNormalizePakistan(bootstrapPhone, out var normalisedPhone))
+            {
+                logger.LogError("ADMIN_BOOTSTRAP_PHONE is not a valid Pakistani mobile number.");
+            }
+            else
+            {
+                var existing = await store.GetUserByPhoneAsync(normalisedPhone, CancellationToken.None);
+                var force = string.Equals(
+                    Environment.GetEnvironmentVariable("ADMIN_BOOTSTRAP_FORCE"),
+                    "true",
+                    StringComparison.OrdinalIgnoreCase);
+                var alreadySet = existing is not null &&
+                    await store.GetPasswordHashAsync(existing.Id, CancellationToken.None) is not null;
+
+                if (existing is null)
+                {
+                    logger.LogError(
+                        "ADMIN_BOOTSTRAP_PHONE {Phone} has no account yet. Sign in once with OTP, give it a portal role, then redeploy.",
+                        normalisedPhone);
+                }
+                else if (alreadySet && !force)
+                {
+                    logger.LogInformation("Portal password already set for {Phone}; bootstrap skipped.", normalisedPhone);
+                }
+                else
+                {
+                    var result = await authService.SetPortalCredentialsAsync(
+                        new SetPortalCredentialsRequest(normalisedPhone, bootstrapUsername!, bootstrapPassword!),
+                        CancellationToken.None);
+                    if (result.Success)
+                    {
+                        logger.LogWarning(
+                            "Portal credentials bootstrapped for {Username}. Remove ADMIN_BOOTSTRAP_PASSWORD from the environment now.",
+                            bootstrapUsername);
+                    }
+                    else
+                    {
+                        logger.LogError("Portal bootstrap failed: {Message}", result.Message);
+                    }
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            // A broken bootstrap must never stop the API from serving rides.
+            logger.LogError(exception, "Portal credential bootstrap failed.");
+        }
+    }
 }
 
 app.MapControllers();

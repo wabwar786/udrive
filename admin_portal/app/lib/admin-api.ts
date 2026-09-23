@@ -232,15 +232,16 @@ export async function apiProtectedFile(
   };
 }
 
-export async function login(phoneNumber: string, code: string) {
-  const response = await fetch(`${API_BASE}/api/v1/auth/otp/verify`, {
+export async function login(username: string, password: string) {
+  // Username + password, not OTP: the WhatsApp settings that send OTPs are
+  // configured inside this portal, so an OTP-only sign-in locks itself out
+  // whenever WA Engine is misconfigured.
+  const response = await fetch(`${API_BASE}/api/v1/auth/admin/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      phoneNumber,
-      code,
-      fullName: 'Udrive Admin',
-      language: 'en',
+      username,
+      password,
       deviceId: 'udrive-admin-v10',
       deviceName: 'Udrive Operations Portal',
     }),

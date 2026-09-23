@@ -23,6 +23,10 @@ public sealed class AdminOtpSettingsController(OtpDeliveryService service) : Con
     public async Task<IActionResult> Update(UpdateOtpSettingsRequest request, CancellationToken ct) =>
         Result(await service.UpdateAsync(User.GetRequiredUserId(), request, ct));
 
+    /// <summary>WA Engine session check (GET /api/status on the configured base URL).</summary>
+    [HttpGet("status")]
+    public async Task<IActionResult> Status(CancellationToken ct) => Result(await service.StatusAsync(ct));
+
     [HttpPost("test")]
     public async Task<IActionResult> Test(OtpTestRequest request, CancellationToken ct) =>
         Result(await service.TestAsync(User.GetRequiredUserId(), request.PhoneNumber, ct));

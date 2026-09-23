@@ -13,6 +13,7 @@ namespace UDrive.Api.Controllers;
 public sealed class AdminUsersController(
     AdminUserManagementService service,
     AccountDeletionService accountDeletion,
+    AuthService authService,
     AuthSqlStore authStore) : ControllerBase
 {
     [HttpPost]
@@ -36,6 +37,16 @@ public sealed class AdminUsersController(
             request,
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             cancellationToken));
+
+    /// <summary>
+    /// Gives a portal user their sign-in username and password (SuperAdmin only).
+    /// Setting a password ends that user's existing sessions.
+    /// </summary>
+    [HttpPost("credentials")]
+    public async Task<IActionResult> SetCredentials(
+        SetPortalCredentialsRequest request,
+        CancellationToken cancellationToken) =>
+        Result(await authService.SetPortalCredentialsAsync(request, cancellationToken));
 
     /// <summary>
     /// Deletes an account on a person's emailed request (the public

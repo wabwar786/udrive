@@ -36,6 +36,23 @@ public sealed record AdminDeleteAccountRequest(
     [Required, StringLength(24)] string PhoneNumber,
     [StringLength(500)] string? Reason = null);
 
+/// <summary>Admin portal sign-in. Customers and drivers keep OTP.</summary>
+public sealed record AdminLoginRequest(
+    [Required, StringLength(64)] string Username,
+    [Required, StringLength(128)] string Password,
+    [StringLength(120)] string? DeviceId = null,
+    [StringLength(160)] string? DeviceName = null);
+
+public sealed record ChangePasswordRequest(
+    [Required, StringLength(128)] string CurrentPassword,
+    [Required, StringLength(128)] string NewPassword);
+
+/// <summary>SuperAdmin giving a portal user their username and password.</summary>
+public sealed record SetPortalCredentialsRequest(
+    [Required, StringLength(24)] string PhoneNumber,
+    [Required, StringLength(64)] string Username,
+    [Required, StringLength(128)] string Password);
+
 public sealed record LogoutRequest(
     string? RefreshToken,
     bool RevokeAllDevices = false);

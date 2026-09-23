@@ -13,6 +13,13 @@ public sealed record AuthUserRecord(
     Guid? DriverProfileId,
     string? DriverVerificationStatus);
 
+/// <summary>What the password check needs, without loading the whole user.</summary>
+public sealed record PortalLoginRecord(
+    Guid UserId,
+    string? PasswordHash,
+    int FailedAttempts,
+    DateTimeOffset? LockedUntil);
+
 public sealed record OtpChallengeRecord(
     Guid Id,
     string CodeHash,
@@ -324,6 +331,133 @@ public sealed class AuthSqlStore(string connectionString)
             WHERE user_id = @userId;
             """;
         await ExecuteAsync(sql, cancellationToken, ("userId", userId));
+    }
+
+    // ---------------------------------------------------------- portal login
+    //
+    // Username + password, for the admin portal only. The customer and driver
+    // apps never touch these columns.
+
+    public async Task<PortalLoginRecord?> GetPortalLoginAsync(
+        string username,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT u.id, u.password_hash, u.failed_login_attempts, u.locked_until
+            FROM udrive.users u
+            WHERE u.username IS NOT NULL AND lower(u.username) = lower(@username)
+            LIMIT 1;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("username", username);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new PortalLoginRecord(
+            reader.GetGuid(0),
+            reader.IsDBNull(1) ? null : reader.GetString(1),
+            reader.GetInt32(2),
+            reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3));
+    }
+
+    public async Task<string?> GetPasswordHashAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT password_hash FROM udrive.users WHERE id = @id;", connection);
+        command.Parameters.AddWithValue("id", userId);
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
+    /// <summary>Five wrong passwords in a row lock the account for 15 minutes.</summary>
+    public async Task RecordFailedPortalLoginAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE udrive.users
+               SET failed_login_attempts = failed_login_attempts + 1,
+                   locked_until = CASE WHEN failed_login_attempts + 1 >= 5
+                                       THEN now() + interval '15 minutes'
+                                       ELSE locked_until END,
+                   updated_at = now()
+             WHERE id = @id;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("id", userId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task ClearFailedPortalLoginAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE udrive.users
+               SET failed_login_attempts = 0, locked_until = NULL, last_login_at = now(), updated_at = now()
+             WHERE id = @id;
+            """;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("id", userId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Sets (or clears) portal credentials. Every existing session of that user
+    /// ends: the token version moves and refresh tokens are revoked, so a
+    /// stolen session cannot outlive a password change.
+    /// </summary>
+    public async Task<bool> SetPortalCredentialsAsync(
+        Guid userId,
+        string? username,
+        string? passwordHash,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var command = new NpgsqlCommand("""
+            UPDATE udrive.users
+               SET username = COALESCE(@username, username),
+                   password_hash = COALESCE(@hash, password_hash),
+                   password_updated_at = CASE WHEN @hash IS NULL THEN password_updated_at ELSE now() END,
+                   failed_login_attempts = 0,
+                   locked_until = NULL,
+                   token_version = token_version + 1,
+                   updated_at = now()
+             WHERE id = @id;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", userId);
+            command.Parameters.AddWithValue("username", (object?)username ?? DBNull.Value);
+            command.Parameters.AddWithValue("hash", (object?)passwordHash ?? DBNull.Value);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return false;
+            }
+        }
+
+        await using (var revoke = new NpgsqlCommand(
+            "UPDATE udrive.refresh_tokens SET revoked_at = now() WHERE user_id = @id AND revoked_at IS NULL;",
+            connection, transaction))
+        {
+            revoke.Parameters.AddWithValue("id", userId);
+            await revoke.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     private async Task<AuthUserRecord?> GetUserAsync(

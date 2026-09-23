@@ -35,6 +35,9 @@ Us number par koi message nahi jata aur wohi code chalta hai — yehi Play Conso
 API key database mein rehti hai (`udrive.system_settings`), kabhi wapas nahi dikhayi jati (sirf aakhri 4
 hindse), aur general System settings page par is ki row aati hi nahi.
 
+**Admin portal ab username/password se khulta hai** (OTP se nahi), taake WA Engine kharab hone par bhi
+portal khul sake. Pehla admin banane ka tareeqa `ADMIN_LOGIN.md` mein hai.
+
 ## 1. Upload key banayein (sirf ek dafa)
 
 `udrive_unified_mobile` folder mein:
