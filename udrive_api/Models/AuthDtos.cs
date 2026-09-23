@@ -26,6 +26,16 @@ public sealed record RefreshTokenRequest(
     [StringLength(120)] string? DeviceId = null,
     [StringLength(160)] string? DeviceName = null);
 
+/// <summary>Body for POST /api/v1/auth/account/delete. Confirmation must be "DELETE".</summary>
+public sealed record DeleteAccountRequest(
+    [Required, StringLength(16)] string Confirmation,
+    [StringLength(500)] string? Reason = null);
+
+/// <summary>Admin handling an emailed deletion request (public /account-deletion page).</summary>
+public sealed record AdminDeleteAccountRequest(
+    [Required, StringLength(24)] string PhoneNumber,
+    [StringLength(500)] string? Reason = null);
+
 public sealed record LogoutRequest(
     string? RefreshToken,
     bool RevokeAllDevices = false);

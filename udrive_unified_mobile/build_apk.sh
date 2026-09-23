@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-  flutter create . --platforms=android,ios,web --project-name=udrive_mobile --org=com.udrive
+  flutter create . --platforms=android,ios,web --project-name=udrive_mobile --org=com.wabwar
 fi
 flutter pub get
 python3 tool/validate_project.py

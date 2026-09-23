@@ -1,0 +1,13 @@
+<!doctype html><html><head><link rel="stylesheet" href="base.css"><style>
+body{width:1080px;height:1920px;background:linear-gradient(180deg,#031428 0%,#0B2440 100%);position:relative}
+.cap{position:absolute;top:120px;left:80px;right:80px;text-align:center;color:#fff}
+.cap h1{font-size:76px;line-height:1.1;font-weight:800;letter-spacing:-1.5px}
+.cap h1 em{font-style:normal;color:var(--lime)}
+.cap p{margin-top:26px;font-size:36px;color:#B9C6D6;font-weight:500;line-height:1.35}
+.phone{width:820px;left:130px;top:520px;height:1560px}
+.glow{position:absolute;width:900px;height:900px;left:90px;top:700px;background:radial-gradient(circle,rgba(148,191,39,.22),rgba(148,191,39,0) 65%)}
+</style></head><body><div class="glow"></div>
+<div class="cap"><h1 id="t"></h1><p id="s"></p></div>
+<div class="phone"><div class="notch"></div><div class="scr"><img id="img"></div></div>
+<script>const q=new URLSearchParams(location.search);document.getElementById('t').innerHTML=q.get('t');document.getElementById('s').textContent=q.get('s');document.getElementById('img').src=q.get('i');</script>
+</body></html>

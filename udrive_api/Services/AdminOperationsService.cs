@@ -200,8 +200,10 @@ public sealed class AdminOperationsService(string connectionString, LocalFileSto
         "brand.",
     ];
 
-    public async Task<ServiceResult<IReadOnlyList<AdminSettingDto>>> SettingsAsync(CancellationToken ct){await using var cn=OpenConnection();await cn.OpenAsync(ct);var list=new List<AdminSettingDto>();await using var cmd=new NpgsqlCommand("select key,value_json::text,description,is_public,updated_at from udrive.system_settings order by key",cn);await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))list.Add(new(r.GetString(0),r.GetString(1),r.IsDBNull(2)?null:r.GetString(2),r.GetBoolean(3),r.GetFieldValue<DateTimeOffset>(4)));return ServiceResult<IReadOnlyList<AdminSettingDto>>.Ok(list);}
-    public async Task<ServiceResult<int>> UpdateSettingsAsync(Guid actor,UpdateSettingsRequest request,CancellationToken ct){await using var cn=OpenConnection();await cn.OpenAsync(ct);await using var tx=await cn.BeginTransactionAsync(ct);var count=0;foreach(var item in request.Values){// `is_public` is set here, not left to the column default.
+    public async Task<ServiceResult<IReadOnlyList<AdminSettingDto>>> SettingsAsync(CancellationToken ct){await using var cn=OpenConnection();await cn.OpenAsync(ct);var list=new List<AdminSettingDto>();await using var cmd=new NpgsqlCommand("select key,value_json::text,description,is_public,updated_at from udrive.system_settings where key not like 'otp.%' order by key",cn);await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))list.Add(new(r.GetString(0),r.GetString(1),r.IsDBNull(2)?null:r.GetString(2),r.GetBoolean(3),r.GetFieldValue<DateTimeOffset>(4)));return ServiceResult<IReadOnlyList<AdminSettingDto>>.Ok(list);}
+    public async Task<ServiceResult<int>> UpdateSettingsAsync(Guid actor,UpdateSettingsRequest request,CancellationToken ct){await using var cn=OpenConnection();await cn.OpenAsync(ct);await using var tx=await cn.BeginTransactionAsync(ct);var count=0;foreach(var item in request.Values){// OTP keys (incl. the WA Engine API key) are managed only through /api/v1/admin/otp-settings.
+            if(item.Key.StartsWith("otp.",StringComparison.OrdinalIgnoreCase))continue;
+            // `is_public` is set here, not left to the column default.
             //
             // The customer app reads vehicle photographs and hero artwork from
             // /settings/public, which returns only rows marked public. A key

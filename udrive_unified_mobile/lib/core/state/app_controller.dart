@@ -382,6 +382,14 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Deletes the account on the server, then clears everything local exactly
+  /// as a sign-out does. Throws [ApiException] (e.g. a live ride) untouched so
+  /// the screen can show the server's message.
+  Future<void> deleteAccount({String? reason}) async {
+    await _authRepository.deleteAccount(reason: reason);
+    await logout();
+  }
+
   Future<void> logout() async {
     try {
       await _authRepository.logout();

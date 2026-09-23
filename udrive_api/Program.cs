@@ -64,6 +64,16 @@ builder.Services.AddScoped<DriverWalletService>(serviceProvider =>
         serviceProvider.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddSingleton(new AccountDeletionService(connectionString));
+builder.Services.AddHttpClient(OtpDeliveryService.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddSingleton(sp => new OtpDeliveryService(
+    connectionString,
+    authOptions,
+    sp.GetRequiredService<IHttpClientFactory>(),
+    sp.GetRequiredService<ILogger<OtpDeliveryService>>()));
 builder.Services.AddScoped<DriverVerificationService>(serviceProvider =>
     new DriverVerificationService(
         connectionString,
@@ -147,7 +157,7 @@ builder.Services
                 var user = await store.GetUserByIdAsync(userId, context.HttpContext.RequestAborted);
                 if (user is null ||
                     user.TokenVersion != tokenVersion ||
-                    user.AccountStatus is "Suspended" or "Rejected")
+                    user.AccountStatus is "Suspended" or "Rejected" or "Deleted")
                 {
                     context.Fail("The account session is no longer valid.");
                 }

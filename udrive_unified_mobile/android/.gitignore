@@ -1,0 +1,11 @@
+# Signing secrets - never commit
+key.properties
+*.jks
+*.keystore
+
+# Local / generated
+local.properties
+.gradle/
+/captures/
+/build/
+**/GeneratedPluginRegistrant.java

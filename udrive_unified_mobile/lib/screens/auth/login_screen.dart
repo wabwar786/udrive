@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,6 +10,12 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/brand.dart';
 import '../../models/auth_models.dart';
 import 'otp_screen.dart';
+
+/// Whether the browser-testing helpers (demo account, fixed-code hint) show.
+///
+/// Debug builds and the web build keep them; a release Android build — the one
+/// that goes to Google Play — never does.
+const bool _showTestingHelpers = kIsWeb || kDebugMode;
 
 /// Sign-in.
 ///
@@ -362,13 +369,19 @@ class _FormSheet extends StatelessWidget {
                   : const Icon(Icons.sms_outlined),
               label: Text(urdu ? 'او ٹی پی بھیجیں' : 'Send verification code'),
             ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: busy ? null : onDemo,
-              icon: const Icon(Icons.verified_user_outlined),
-              label: Text(
-                  urdu ? 'منظور شدہ ڈرائیور ڈیمو' : 'Use approved driver demo'),
-            ),
+            // The demo account and the fixed testing code exist for our own
+            // browser testing. A published Android build must not offer either:
+            // a reviewer sees a "demo" door into the product, and the code is a
+            // way into somebody else's account while the old provider is on.
+            if (_showTestingHelpers) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: busy ? null : onDemo,
+                icon: const Icon(Icons.verified_user_outlined),
+                label: Text(
+                    urdu ? 'منظور شدہ ڈرائیور ڈیمو' : 'Use approved driver demo'),
+              ),
+            ],
             const SizedBox(height: 14),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -378,10 +391,13 @@ class _FormSheet extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    urdu
-                        ? 'ٹیسٹنگ او ٹی پی 1234 ہے۔'
-                        : 'Testing code is 1234. A live SMS provider replaces '
-                            'it before public launch.',
+                    _showTestingHelpers
+                        ? (urdu
+                            ? 'ٹیسٹنگ او ٹی پی 1234 ہے۔'
+                            : 'Testing code is 1234 on test builds.')
+                        : (urdu
+                            ? 'کوڈ آپ کے واٹس ایپ نمبر پر بھیجا جائے گا۔'
+                            : 'A 4-digit code is sent to this number on WhatsApp.'),
                     style: const TextStyle(
                       color: AppText.disabled,
                       fontSize: 11.5,

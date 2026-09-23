@@ -61,6 +61,17 @@ class AuthRepository {
     }
   }
 
+  /// Permanently deletes the signed-in account (Google Play requirement).
+  ///
+  /// The server ends every session as part of the deletion, so the caller
+  /// should sign out locally straight after.
+  Future<void> deleteAccount({String? reason}) async {
+    await client.postJson('/api/v1/auth/account/delete', {
+      'confirmation': 'DELETE',
+      if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+    });
+  }
+
   Future<DriverProfileLive?> getDriverProfile() async {
     try {
       final response = await client.getJson('/api/v1/driver/onboarding');

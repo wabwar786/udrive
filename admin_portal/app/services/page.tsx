@@ -556,6 +556,183 @@ export default function Page() {
           </div>
         )}
       </section>
+
+      <WhatsAppOtpPanel />
     </AdminFrame>
+  );
+}
+
+type OtpSettings = {
+  provider: string;
+  effectiveProvider: string;
+  providerOverriddenByEnvironment: boolean;
+  baseUrl: string;
+  apiKeySet: boolean;
+  apiKeyHint: string;
+  sendPath: string;
+  messageTemplate: string;
+  testPhone: string;
+  testCodeSet: boolean;
+  lastTestOkAt: string | null;
+  currentConfigTested: boolean;
+};
+
+type OtpTestResult = { delivered: boolean; statusCode: number | null; providerResponse: string };
+
+/**
+ * WhatsApp login codes through WA Engine.
+ *
+ * Order of use: paste the API key, Save (provider stays Development), send a
+ * test to your own number, then choose WhatsApp and Save again. The server
+ * refuses WhatsApp until the current key/URL/path has delivered a test, so a
+ * typo cannot lock every user — and every admin — out of signing in.
+ */
+function WhatsAppOtpPanel() {
+  const [s, setS] = useState<OtpSettings | null>(null);
+  const [provider, setProvider] = useState('Development');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [sendPath, setSendPath] = useState('');
+  const [template, setTemplate] = useState('');
+  const [testPhone, setTestPhone] = useState('');
+  const [testCode, setTestCode] = useState('');
+  const [probe, setProbe] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+
+  const apply = (x: OtpSettings) => {
+    setS(x);
+    setProvider(x.provider);
+    setBaseUrl(x.baseUrl);
+    setSendPath(x.sendPath);
+    setTemplate(x.messageTemplate);
+    setTestPhone(x.testPhone);
+    setApiKey('');
+    setTestCode('');
+  };
+
+  useEffect(() => {
+    apiFetch<OtpSettings>('/api/v1/admin/otp-settings')
+      .then(apply)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Could not load OTP settings.'));
+  }, []);
+
+  async function save() {
+    setBusy(true); setMsg(''); setError('');
+    try {
+      const saved = await apiFetch<OtpSettings>('/api/v1/admin/otp-settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          provider,
+          baseUrl,
+          apiKey: apiKey.trim() ? apiKey.trim() : null,
+          sendPath,
+          messageTemplate: template,
+          testPhone,
+          testCode: testCode.trim() ? testCode.trim() : null,
+        }),
+      });
+      apply(saved);
+      setMsg('OTP settings saved.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed.');
+    } finally { setBusy(false); }
+  }
+
+  async function test() {
+    if (!probe.trim()) { setError('Enter a WhatsApp number to send the test to.'); return; }
+    setBusy(true); setMsg(''); setError('');
+    try {
+      const r = await apiFetch<OtpTestResult>('/api/v1/admin/otp-settings/test', {
+        method: 'POST',
+        body: JSON.stringify({ phoneNumber: probe.trim() }),
+      });
+      if (r.delivered) setMsg('Test message sent. If it arrived, choose WhatsApp above and Save.');
+      else setError(`WA Engine did not accept it (${r.statusCode ?? 'no response'}): ${r.providerResponse || 'empty reply'}`);
+      apply(await apiFetch<OtpSettings>('/api/v1/admin/otp-settings'));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Test failed.');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <section className="panel">
+      <header className="panelHeader">
+        <div>
+          <h2>WhatsApp OTP</h2>
+          <p>
+            Login codes sent through WA Engine. Steps: enter the API key and Save,
+            send a test to your number, then choose <strong>WhatsApp</strong> and Save.
+            WhatsApp cannot be switched on until the current settings have delivered a test.
+          </p>
+        </div>
+      </header>
+
+      <div style={{ padding: '4px 18px 18px', display: 'grid', gap: '12px' }}>
+        {error && <div className="errorBox">{error}</div>}
+        {msg && <div className="successBox">{msg}</div>}
+        {!s && !error && <Loading />}
+        {s && (
+          <>
+            <p className="pingNote" style={{ margin: 0 }}>
+              Live now: <strong>{s.effectiveProvider}</strong>
+              {s.providerOverriddenByEnvironment && ' (forced by OTP_PROVIDER_OVERRIDE on the server)'}
+              {' · '}API key: {s.apiKeySet ? s.apiKeyHint : 'not set'}
+              {' · '}Test: {s.currentConfigTested && s.lastTestOkAt
+                ? `passed ${new Date(s.lastTestOkAt).toLocaleString()}`
+                : 'not passed for current settings'}
+            </p>
+
+            <Field label="Provider">
+              <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+                <option value="Development">Development (fixed test code, nothing sent)</option>
+                <option value="WhatsApp" disabled={!s.currentConfigTested}>
+                  WhatsApp (WA Engine){s.currentConfigTested ? '' : ' — send a test first'}
+                </option>
+              </select>
+            </Field>
+            <Field label="WA Engine base URL">
+              <input value={baseUrl} placeholder="https://wa-engine-deploy-production.up.railway.app"
+                onChange={(e) => setBaseUrl(e.target.value)} />
+            </Field>
+            <Field label={s.apiKeySet ? `API key (saved ${s.apiKeyHint} — leave empty to keep)` : 'API key'}>
+              <input type="password" autoComplete="new-password" value={apiKey} placeholder="WA-XXXXXXXX…"
+                onChange={(e) => setApiKey(e.target.value)} />
+            </Field>
+            <Field label="Send endpoint path">
+              <input value={sendPath} placeholder="/api/send" onChange={(e) => setSendPath(e.target.value)} />
+            </Field>
+            <Field label="Message ({code} is replaced with the 4-digit code)">
+              <textarea rows={3} value={template} maxLength={500} onChange={(e) => setTemplate(e.target.value)} />
+            </Field>
+
+            <Field label="Google Play reviewer number (always accepts the reviewer code, nothing is sent)">
+              <input value={testPhone} placeholder="03001234567" onChange={(e) => setTestPhone(e.target.value)} />
+            </Field>
+            <Field label={s.testCodeSet ? 'Reviewer code (saved — leave empty to keep)' : 'Reviewer code (4 digits)'}>
+              <input type="password" inputMode="numeric" maxLength={4} value={testCode}
+                onChange={(e) => setTestCode(e.target.value.replace(/\D/g, ''))} />
+            </Field>
+
+            <div>
+              <button className="primaryButton" disabled={busy} onClick={() => void save()}>
+                <Save size={15} />
+                {busy ? 'Working…' : 'Save OTP settings'}
+              </button>
+            </div>
+
+            <Field label="Send a test message to (your WhatsApp number)">
+              <input value={probe} placeholder="03xx xxxxxxx" onChange={(e) => setProbe(e.target.value)} />
+            </Field>
+            <div>
+              <button className="primaryButton" disabled={busy || !s.apiKeySet} onClick={() => void test()}>
+                Send test message
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   );
 }

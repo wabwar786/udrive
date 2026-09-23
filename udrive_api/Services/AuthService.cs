@@ -8,6 +8,7 @@ public sealed class AuthService(
     AuthOptions options,
     AuthSqlStore store,
     JwtTokenService jwtTokenService,
+    OtpDeliveryService otpDelivery,
     ILogger<AuthService> logger)
 {
     public async Task<ServiceResult<RequestOtpDto>> RequestOtpAsync(
@@ -39,17 +40,21 @@ public sealed class AuthService(
             }
         }
 
-        if (!string.Equals(options.OtpProvider, "Development", StringComparison.OrdinalIgnoreCase))
+        // Provider and code come from the admin OTP settings (Development, WhatsApp,
+        // or the Play reviewer number). The challenge is stored only after the
+        // code has actually been sent, so a failed send does not start the
+        // 45-second wait.
+        var plan = await otpDelivery.PlanAsync(phoneNumber, cancellationToken);
+        if (plan.Send && !await otpDelivery.SendLoginCodeAsync(phoneNumber, plan.Code, cancellationToken))
         {
             return ServiceResult<RequestOtpDto>.Fail(
                 StatusCodes.Status503ServiceUnavailable,
-                "otp_provider_not_configured",
-                "The live SMS provider is not configured yet.");
+                "otp_delivery_failed",
+                "We could not send the code on WhatsApp. Check the number has WhatsApp and try again in a minute.");
         }
 
-        var code = options.DevelopmentOtpCode;
         var expiresAt = DateTimeOffset.UtcNow.AddMinutes(5);
-        var hash = SecurityHashing.HashWithSecret($"{phoneNumber}:{purpose}:{code}", options.OtpHashSecret);
+        var hash = SecurityHashing.HashWithSecret($"{phoneNumber}:{purpose}:{plan.Code}", options.OtpHashSecret);
         var challengeId = await store.CreateOtpChallengeAsync(
             phoneNumber,
             purpose,
@@ -59,16 +64,17 @@ public sealed class AuthService(
             cancellationToken);
 
         logger.LogInformation(
-            "Development OTP created for {PhoneNumber}. Challenge {ChallengeId}.",
+            "OTP challenge {ChallengeId} created for {PhoneNumber} via {Provider}.",
+            challengeId,
             phoneNumber,
-            challengeId);
+            plan.Provider);
 
         return ServiceResult<RequestOtpDto>.Ok(new RequestOtpDto(
             challengeId,
             expiresAt,
             45,
-            "development",
-            options.ExposeDevelopmentOtp ? code : null));
+            plan.Provider switch { "WhatsApp" => "whatsapp", "Test" => "test", _ => "development" },
+            plan.DevelopmentCodeToExpose));
     }
 
     public async Task<ServiceResult<AuthTokensDto>> VerifyOtpAsync(
@@ -156,7 +162,7 @@ public sealed class AuthService(
         }
 
         var user = await store.GetUserByIdAsync(storedToken.UserId, cancellationToken);
-        if (user is null || user.AccountStatus is "Suspended" or "Rejected")
+        if (user is null || user.AccountStatus is "Suspended" or "Rejected" or "Deleted")
         {
             return ServiceResult<AuthTokensDto>.Fail(
                 StatusCodes.Status401Unauthorized,

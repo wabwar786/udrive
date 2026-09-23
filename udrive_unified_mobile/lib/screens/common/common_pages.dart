@@ -7,6 +7,10 @@ import '../../core/auth/session_store.dart';
 import '../../core/network/api_client.dart';
 import '../../core/communication/communication_repository.dart';
 import '../../models/communication_models.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../core/config/app_config.dart';
+import '../../core/network/api_config.dart';
+import 'delete_account_screen.dart';
 import 'offline_maps_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -56,6 +60,14 @@ class _SupportScreenState extends State<SupportScreen> {
   }
 }
 
+Future<void> _openPublicPage(BuildContext context, String path) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final opened = await launchUrl(ApiConfig.uri(path), mode: LaunchMode.externalApplication);
+  if (!opened) {
+    messenger.showSnackBar(const SnackBar(content: Text('Could not open the page. Check your internet.')));
+  }
+}
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
   @override
@@ -70,9 +82,69 @@ class SettingsScreen extends StatelessWidget {
       const SizedBox(height: 10),
       PremiumCard(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OfflineMapsScreen())), child: const Row(children: [Icon(Icons.map_outlined, color: AppColors.primaryDark), SizedBox(width: 13), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Offline Maps', style: TextStyle(fontWeight: FontWeight.w900)), SizedBox(height: 3), Text('Download, update and manage route maps', style: TextStyle(color: AppColors.muted, fontSize: 11))])), Icon(Icons.chevron_right_rounded)])),
       const SizedBox(height: 9),
-      for (final item in [(Icons.notifications_rounded, 'Notification preferences'), (Icons.lock_rounded, context.tr('privacy')), (Icons.description_rounded, context.tr('terms')), (Icons.info_rounded, context.tr('about'))]) Padding(padding: const EdgeInsets.only(bottom: 9), child: PremiumCard(onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${item.$2} opened with dummy content.'))), child: Row(children: [Icon(item.$1, color: AppColors.primaryDark), const SizedBox(width: 13), Expanded(child: Text(item.$2, style: const TextStyle(fontWeight: FontWeight.w900))), const Icon(Icons.chevron_right_rounded)]))),
-      const SizedBox(height: 8),
-      const Center(child: Text('Udrive Mobile 4.0.0 · Tourism demo frontend', style: TextStyle(color: AppColors.muted, fontSize: 11))),
+      // Privacy and Terms open the public pages served by the API. Google
+      // Play reviewers check that the in-app privacy link matches the one in
+      // the Play listing, so both point at the same URL.
+      for (final item in [
+        (Icons.lock_rounded, context.tr('privacy'), '/privacy'),
+        (Icons.description_rounded, context.tr('terms'), '/terms'),
+      ])
+        Padding(
+          padding: const EdgeInsets.only(bottom: 9),
+          child: PremiumCard(
+            onTap: () => _openPublicPage(context, item.$3),
+            child: Row(children: [
+              Icon(item.$1, color: AppColors.primaryDark),
+              const SizedBox(width: 13),
+              Expanded(child: Text(item.$2, style: const TextStyle(fontWeight: FontWeight.w900))),
+              const Icon(Icons.open_in_new_rounded, size: 18),
+            ]),
+          ),
+        ),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 9),
+        child: PremiumCard(
+          onTap: () => showAboutDialog(
+            context: context,
+            applicationName: AppConfig.appName,
+            applicationVersion: AppConfig.buildLabel,
+            applicationLegalese: '© Tech Geni Ltd.',
+          ),
+          child: Row(children: [
+            const Icon(Icons.info_rounded, color: AppColors.primaryDark),
+            const SizedBox(width: 13),
+            Expanded(child: Text(context.tr('about'), style: const TextStyle(fontWeight: FontWeight.w900))),
+            const Icon(Icons.chevron_right_rounded),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 18),
+      const SectionHeader(title: 'Account'),
+      const SizedBox(height: 10),
+      PremiumCard(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const DeleteAccountScreen()),
+        ),
+        child: const Row(children: [
+          Icon(Icons.delete_forever_rounded, color: AppColors.danger),
+          SizedBox(width: 13),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Delete account', style: TextStyle(fontWeight: FontWeight.w900, color: AppColors.danger)),
+              SizedBox(height: 3),
+              Text('Permanently remove your account and personal data',
+                  style: TextStyle(color: AppColors.muted, fontSize: 11)),
+            ]),
+          ),
+          Icon(Icons.chevron_right_rounded),
+        ]),
+      ),
+      const SizedBox(height: 14),
+      Center(
+        child: Text('${AppConfig.appName} · ${AppConfig.buildLabel}',
+            style: const TextStyle(color: AppColors.muted, fontSize: 11)),
+      ),
     ]);
   }
 }

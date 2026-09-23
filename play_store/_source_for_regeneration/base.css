@@ -1,0 +1,10 @@
+@font-face{font-family:PJ;font-weight:500;src:url(pj500.woff2)}
+@font-face{font-family:PJ;font-weight:700;src:url(pj700.woff2)}
+@font-face{font-family:PJ;font-weight:800;src:url(pj800.woff2)}
+:root{--navy:#031428;--navy2:#0B2440;--lime:#94BF28;--lime2:#B5DA4E;--ink:#E8EEF5}
+*{margin:0;box-sizing:border-box}
+body{font-family:PJ,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+.phone{position:absolute;background:#0A0F14;border-radius:64px;padding:18px;box-shadow:0 40px 80px rgba(0,0,0,.45),0 0 0 3px #26303A}
+.phone .scr{width:100%;height:100%;border-radius:48px;overflow:hidden;background:#fff;padding-top:64px}
+.phone .scr img{width:100%;display:block}
+.notch{position:absolute;top:30px;left:50%;transform:translateX(-50%);width:26px;height:26px;border-radius:50%;background:#0A0F14;z-index:2}
