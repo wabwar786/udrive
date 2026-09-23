@@ -11,7 +11,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/config/app_config.dart';
 import '../../core/network/api_config.dart';
 import 'delete_account_screen.dart';
-import 'offline_maps_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -80,7 +79,6 @@ class SettingsScreen extends StatelessWidget {
       const SizedBox(height: 18),
       SectionHeader(title: context.tr('settings')),
       const SizedBox(height: 10),
-      PremiumCard(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OfflineMapsScreen())), child: const Row(children: [Icon(Icons.map_outlined, color: AppColors.primaryDark), SizedBox(width: 13), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Offline Maps', style: TextStyle(fontWeight: FontWeight.w900)), SizedBox(height: 3), Text('Download, update and manage route maps', style: TextStyle(color: AppColors.muted, fontSize: 11))])), Icon(Icons.chevron_right_rounded)])),
       const SizedBox(height: 9),
       // Privacy and Terms open the public pages served by the API. Google
       // Play reviewers check that the in-app privacy link matches the one in

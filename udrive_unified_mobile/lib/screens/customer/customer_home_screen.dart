@@ -1124,8 +1124,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       myLocation: _pickupPoint,
       onCameraMoveStarted: _onMapDragStart,
       onCameraIdle: _onMapSettled,
-      routeOrigin: _pickupPoint,
-      routeDestination: _destinationPoint ?? _pickupPoint,
       circles: [
         // The search ring only makes sense while browsing. Once a trip is
         // plotted it just clutters the route.

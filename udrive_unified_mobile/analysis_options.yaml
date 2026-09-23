@@ -1,5 +1,56 @@
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  # Screens and helpers left over from the first prototype. Nothing reachable
+  # from lib/main.dart imports them, so `flutter build` never compiles them and
+  # they are absent from the shipped app - but `flutter analyze` still reads
+  # every file on disk, and these were written against an older model layer
+  # (UserMode, lib/models/models.dart, the old TourPackage), so they report
+  # hundreds of errors and fail CI before a single build starts.
+  #
+  # Excluded rather than deleted so nothing of yours is thrown away. When you
+  # are sure none of it is coming back, delete these files and delete this
+  # block with them - dead code that no longer compiles only rots further.
+  exclude:
+    - lib/core/localization/app_language.dart
+    - lib/core/offline_maps/offline_route_progress.dart
+    - lib/core/widgets/driver_location_coordinator.dart
+    - lib/core/widgets/hotel_vehicle_art.dart
+    - lib/core/widgets/mode_switch_card.dart
+    - lib/core/widgets/service_illustration.dart
+    - lib/core/widgets/udrive_logo.dart
+    - lib/data/driver_dummy_data.dart
+    - lib/models/driver_models.dart
+    - lib/models/models.dart
+    - lib/screens/customer/emergency_ambulance_screen.dart
+    - lib/screens/customer/ride_booking_screen.dart
+    - lib/screens/customer/service_flow_screens.dart
+    - lib/screens/driver/create_package_screen.dart
+    - lib/screens/driver/driver_packages_screen.dart
+    - lib/screens/driver/driver_profile_screen.dart
+    - lib/screens/driver/driver_requests_screen.dart
+    - lib/screens/explore/explore_screen.dart
+    - lib/screens/feedback/feedback_center_screen.dart
+    - lib/screens/home/home_screen.dart
+    - lib/screens/operations/customer_operations_screen.dart
+    - lib/screens/operations/driver_operations_hub_screen.dart
+    - lib/screens/operations/driver_operations_screen.dart
+    - lib/screens/packages/package_detail_screen.dart
+    - lib/screens/profile/profile_screen.dart
+    - lib/screens/ride/create_ride_screen.dart
+    - lib/screens/ride/driver_offers_screen.dart
+    # Older still: these are not in the current package at all. They only exist
+    # in checkouts that have been unzipped over since the early builds. Listed
+    # so CI stays green until they are deleted; harmless if already gone.
+    - lib/screens/app_mode_shell.dart
+    - lib/screens/customer_shell.dart
+    - lib/screens/driver/driver_shell.dart
+    - lib/screens/trips/trips_screen.dart
+    # A whole second copy of the project, created by unzipping a release inside
+    # udrive_unified_mobile instead of the repository root. Delete the folder;
+    # this line only stops it failing CI in the meantime.
+    - udrive_unified_mobile/**
+
 linter:
   rules:
     avoid_print: true

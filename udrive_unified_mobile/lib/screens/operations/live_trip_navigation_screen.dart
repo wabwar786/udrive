@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import 'package:flutter_map/flutter_map.dart';
-import '../../core/offline_maps/offline_aware_tile_layer.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:share_plus/share_plus.dart';
@@ -51,7 +50,6 @@ class _DriverLiveNavigationScreenState
   String? _error;
   bool _starting = true;
   bool _actionBusy = false;
-  String _mapSource = 'ONLINE_OSM';
   late String _currentStatus;
 
   /// The real road ahead, not a straight line.
@@ -655,10 +653,9 @@ class _DriverLiveNavigationScreenState
               },
             ),
             children: [
-              OfflineAwareTileLayer(
-                origin: current ?? pickup ?? center,
-                destination: destination ?? target ?? center,
-                onSourceChanged: (value) { if (mounted && value != _mapSource) setState(() => _mapSource = value); },
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.wabwar.udrive',
               ),
               if (routePoints.length > 1)
                 PolylineLayer(
@@ -774,7 +771,7 @@ class _DriverLiveNavigationScreenState
                             ),
                           ),
                           const SizedBox(width: 7),
-                          Text('LIVE · 10 sec · ${_mapSource == 'OFFLINE_MAP' ? 'Offline Map' : 'Online Map'}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                          const Text('LIVE · 10 sec', style: TextStyle(fontWeight: FontWeight.w800)),
                         ],
                       ),
                     ),
@@ -1111,7 +1108,6 @@ class _CustomerFullScreenTrackingScreenState
   Timer? _timer;
   TripTracking? _tracking;
   String? _error;
-  String _mapSource = 'ONLINE_OSM';
 
   /// The road the Driver is actually taking to reach the Customer.
   final _leg = LiveLeg();
@@ -1690,10 +1686,9 @@ class _CustomerFullScreenTrackingScreenState
               },
             ),
             children: [
-              OfflineAwareTileLayer(
-                origin: driver ?? pickup ?? center,
-                destination: destination ?? target ?? center,
-                onSourceChanged: (value) { if (mounted && value != _mapSource) setState(() => _mapSource = value); },
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.wabwar.udrive',
               ),
               if (_leg.points.isNotEmpty ||
                   [driver, target].whereType<LatLng>().length > 1)

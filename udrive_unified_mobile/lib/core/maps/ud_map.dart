@@ -9,7 +9,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as gmap;
 import 'package:latlong2/latlong.dart';
 
 import '../config/app_config.dart';
-import '../offline_maps/offline_aware_tile_layer.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
 import 'map_styles.dart';
@@ -20,8 +19,9 @@ enum UdMapSource {
   /// Google Maps SDK — the default whenever the device is online.
   google,
 
-  /// flutter_map backed by a downloaded PMTiles pack, or OSM tiles.
-  offline,
+  /// flutter_map drawing OpenStreetMap tiles. Used when the device is offline
+  /// or no Maps SDK key was supplied at build time.
+  osm,
 }
 
 /// A map marker expressed independently of the underlying renderer.
@@ -154,13 +154,12 @@ class UdMapController {
 /// Behaviour, as agreed with the product owner:
 ///
 /// * Online  → Google Maps (Maps SDK), the primary experience.
-/// * Offline → flutter_map with the existing PMTiles offline pack for the
-///   route, falling back to OSM tiles if no pack covers it.
+/// * Otherwise → flutter_map drawing OpenStreetMap tiles.
 ///
-/// Switching is automatic and driven by [Connectivity], so a customer driving
-/// into a valley with no signal keeps a usable map instead of a blank screen.
-/// The offline download manager under `lib/core/offline_maps/` is unchanged —
-/// this widget simply consumes it.
+/// Switching is automatic and driven by [Connectivity]. Both renderers need a
+/// network: UDrive carries no offline map data, so a customer in a valley with
+/// no signal sees whatever tiles the phone already cached and a badge telling
+/// them the connection is gone.
 class UdMap extends StatefulWidget {
   const UdMap({
     required this.initialCenter,
@@ -169,8 +168,6 @@ class UdMap extends StatefulWidget {
     this.markers = const [],
     this.polylines = const [],
     this.circles = const [],
-    this.routeOrigin,
-    this.routeDestination,
     this.showMyLocation = true,
     this.myLocation,
     this.minZoom,
@@ -190,16 +187,11 @@ class UdMap extends StatefulWidget {
   final List<UdPolyline> polylines;
   final List<UdCircle> circles;
 
-  /// Used to pick the right offline pack when connectivity drops. Defaults to
-  /// [initialCenter] for both ends when not supplied.
-  final LatLng? routeOrigin;
-  final LatLng? routeDestination;
-
   final bool showMyLocation;
 
-  /// Drawn as a blue dot with an accuracy halo when the offline renderer is
-  /// active. Google draws its own dot from [showMyLocation], so this is only
-  /// used by flutter_map — pass it anyway and both paths look the same.
+  /// Drawn as a blue dot with an accuracy halo when the OSM renderer is active.
+  /// Google draws its own dot from [showMyLocation], so this is only used by
+  /// flutter_map — pass it anyway and both paths look the same.
   final LatLng? myLocation;
 
   /// Floor for the camera. Home passes a street-level value so the map can
@@ -231,7 +223,7 @@ class _UdMapState extends State<UdMap> {
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
   final Completer<gmap.GoogleMapController> _googleController =
       Completer<gmap.GoogleMapController>();
-  final fmap.MapController _offlineController = fmap.MapController();
+  final fmap.MapController _osmController = fmap.MapController();
 
   bool _online = true;
 
@@ -264,7 +256,7 @@ class _UdMapState extends State<UdMap> {
   ({LatLng target, double zoom})? _pendingCamera;
 
   /// flutter_map only accepts camera commands after `onMapReady`.
-  bool _offlineReady = false;
+  bool _osmReady = false;
 
   /// Rasterised vehicle sprites for the Google renderer, by shape.
   ///
@@ -279,7 +271,7 @@ class _UdMapState extends State<UdMap> {
   late LatLng _center;
   late double _zoom;
 
-  UdMapSource get _source => _online ? UdMapSource.google : UdMapSource.offline;
+  UdMapSource get _source => _online ? UdMapSource.google : UdMapSource.osm;
 
   @override
   void initState() {
@@ -392,12 +384,12 @@ class _UdMapState extends State<UdMap> {
         ),
       );
     } else {
-      if (!_offlineReady) {
+      if (!_osmReady) {
         _pendingCamera = (target: target, zoom: nextZoom);
         return;
       }
       try {
-        _offlineController.move(target, nextZoom);
+        _osmController.move(target, nextZoom);
       } catch (_) {
         // The controller can still refuse if the map is mid-teardown. Holding
         // the request is better than losing it silently, which is how the map
@@ -494,7 +486,7 @@ class _UdMapState extends State<UdMap> {
     var zoom = _zoom;
     if (!_useGoogle) {
       try {
-        zoom = _offlineController.camera.zoom;
+        zoom = _osmController.camera.zoom;
       } catch (_) {
         // Controller not attached yet; the cached value is close enough.
       }
@@ -704,12 +696,9 @@ class _UdMapState extends State<UdMap> {
     );
   }
 
-  Widget _buildOffline() {
-    final origin = widget.routeOrigin ?? _center;
-    final destination = widget.routeDestination ?? _center;
-
+  Widget _buildOsm() {
     return fmap.FlutterMap(
-      mapController: _offlineController,
+      mapController: _osmController,
       options: fmap.MapOptions(
         initialCenter: _center,
         initialZoom: _zoom,
@@ -745,11 +734,11 @@ class _UdMapState extends State<UdMap> {
           }
         },
         onMapReady: () {
-          _offlineReady = true;
+          _osmReady = true;
           final pending = _pendingCamera;
           if (pending != null) {
             _pendingCamera = null;
-            _offlineController.move(pending.target, pending.zoom);
+            _osmController.move(pending.target, pending.zoom);
           }
         },
         onTap: widget.onTap == null
@@ -757,9 +746,10 @@ class _UdMapState extends State<UdMap> {
             : (_, point) => widget.onTap!(point),
       ),
       children: [
-        // Resolves to a downloaded PMTiles pack when one covers this route,
-        // otherwise to online OSM tiles.
-        OfflineAwareTileLayer(origin: origin, destination: destination),
+        fmap.TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.wabwar.udrive',
+        ),
         if (widget.circles.isNotEmpty)
           fmap.CircleLayer(
             circles: widget.circles
@@ -904,13 +894,13 @@ class _UdMapState extends State<UdMap> {
           // Painted under the platform view so a slow or failed map area reads
           // as part of the dark app rather than a white hole in it.
           const ColoredBox(color: AppTint.mapBackdrop),
-          if (_useGoogle) _buildGoogle() else _buildOffline(),
+          if (_useGoogle) _buildGoogle() else _buildOsm(),
           if (!_online)
             const Positioned(
               left: 12,
               right: 12,
               bottom: 12,
-              child: _OfflineMapBadge(),
+              child: _NoConnectionBadge(),
             ),
         ],
       ),
@@ -918,8 +908,13 @@ class _UdMapState extends State<UdMap> {
   }
 }
 
-class _OfflineMapBadge extends StatelessWidget {
-  const _OfflineMapBadge();
+/// Shown whenever [Connectivity] reports no network.
+///
+/// It used to read "Offline map", from when UDrive shipped downloadable map
+/// packs. It no longer does, so the honest message is that the map is stale,
+/// not that an offline map is in use.
+class _NoConnectionBadge extends StatelessWidget {
+  const _NoConnectionBadge();
 
   @override
   Widget build(BuildContext context) {
@@ -938,7 +933,7 @@ class _OfflineMapBadge extends StatelessWidget {
                 size: 14, color: AppTint.warningText),
             SizedBox(width: 6),
             Text(
-              'Offline map',
+              'No internet connection',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,

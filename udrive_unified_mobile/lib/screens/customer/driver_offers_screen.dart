@@ -815,8 +815,6 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       // starts on the map reaches the map and a drag on the list scrolls it.
       interactive: true,
       showMyLocation: false,
-      routeOrigin: widget.pickupPoint,
-      routeDestination: widget.destinationPoint,
       polylines: [
         UdPolyline(
           id: 'offer-route-casing',

@@ -148,8 +148,6 @@ class _TourMapScreenState extends State<TourMapScreen> {
             width: double.infinity,
             child: UdMap(
               initialCenter: widget.pickupPoint,
-              routeOrigin: widget.pickupPoint,
-              routeDestination: widget.destinationPoint,
               markers: [
                 UdMarker(
                   id: 'pickup',
