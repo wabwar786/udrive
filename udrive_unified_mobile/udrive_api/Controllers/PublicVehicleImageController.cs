@@ -32,8 +32,21 @@ public sealed class PublicVehicleImageController(
         var file = fileStorage.ResolveProtectedFile(
             "vehicle-images", owner, fileName);
 
-        return file is null
-            ? NotFound()
-            : PhysicalFile(file.Path, file.ContentType);
+        if (file is null) return NotFound();
+
+        // These pictures are meant to be embedded by other origins — the admin
+        // portal previews them with a plain <img> tag, and the portal is not
+        // served from the API's own site. SecurityHeadersMiddleware sets
+        // Cross-Origin-Resource-Policy: same-site for everything, which made
+        // the browser refuse them: the upload succeeded, the setting saved, and
+        // the preview box stayed empty. CORS does not help, because a no-cors
+        // <img> load is not a CORS request.
+        //
+        // Set here rather than relaxed globally: every other route, including
+        // driver documents, keeps same-site. The middleware uses TryAdd, so the
+        // value written here is the one that ships.
+        Response.Headers["Cross-Origin-Resource-Policy"] = "cross-origin";
+
+        return PhysicalFile(file.Path, file.ContentType);
     }
 }

@@ -12,6 +12,12 @@ type Setting = { key: string; valueJson: string };
  *
  * Kept in step with `VehicleOptionsRepository._catalogue` in the app. Adding a
  * vehicle there means adding a row here and a seed line in the migration.
+ *
+ * Keep this list to categories the app can actually resolve, or a picture
+ * uploaded here reaches nobody. 'ac_car' is reachable, but only through a
+ * driver whose vehicle category reads "AC Car" or "ac_car" — the customer's
+ * vehicle picker has no such option, so this slot shows up on offer and
+ * tracking cards only.
  */
 const VEHICLES = [
   { key: 'vehicle.image.bike', label: 'Bike', hint: 'One passenger' },
@@ -140,7 +146,15 @@ export default function Page() {
                     value={urls[vehicle.key] ?? ''}
                     placeholder="https://…  (empty = built-in illustration)"
                     onChange={(e) =>
-                      setUrls({ ...urls, [vehicle.key]: e.target.value })
+                      // Functional form. The object spread closed over `urls`
+                      // from the render that created this handler, so two
+                      // changes before a re-render merged the second into a
+                      // snapshot taken before the first — and Save then wrote
+                      // the whole stale set back over the server's rows.
+                      setUrls((prev) => ({
+                        ...prev,
+                        [vehicle.key]: e.target.value,
+                      }))
                     }
                   />
 
@@ -175,7 +189,10 @@ export default function Page() {
                             `/api/v1/admin/vehicle-images/${category}`,
                             file,
                           );
-                          setUrls({ ...urls, [vehicle.key]: result.url });
+                          setUrls((prev) => ({
+                            ...prev,
+                            [vehicle.key]: result.url,
+                          }));
                         } catch (uploadError) {
                           setError(
                             uploadError instanceof Error

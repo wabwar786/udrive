@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/booking/booking_options.dart';
+import '../../core/format/money.dart';
 import '../../core/routing/route_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -136,12 +136,26 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
 
   Timer? _nearbyTimer;
 
+  /// The admin's fixed fare for a vehicle, or null if the route has none.
+  ///
+  /// The map is keyed lower-case (see _loadSeatFares), and categories arrive
+  /// capitalised — 'Car', 'Coster'. One caller used to index it with the raw
+  /// category, which therefore never matched: the pill fell back to the metered
+  /// whole-vehicle price while the panel below showed the fixed per-seat fare,
+  /// and the two numbers disagreed on screen. Every lookup goes through here.
+  SeatFareQuote? _seatFareFor(VehicleOption option) =>
+      _seatFares[option.category.toLowerCase()];
+
   /// The fixed fare covering the vehicle currently shown, if there is one.
   SeatFareQuote? get _fixedSeatFare {
     final option = _selected;
     if (option == null || !_perSeat) return null;
-    return _seatFares[option.category.toLowerCase()];
+    return _seatFareFor(option);
   }
+
+  /// Bumped every time the fixed fares are reloaded, so an older in-flight
+  /// load can tell that it is no longer the current one.
+  int _seatFaresGeneration = 0;
 
   bool _loading = true;
   bool _submitting = false;
@@ -190,8 +204,27 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   /// Coster priced for two seats against a whole Car is not a comparison — it
   /// is two different questions with one number each.
   int _fareForOption(VehicleOption option) {
-    final fixed = _seatFares[option.category];
-    if (fixed != null) return fixed.perSeatFare;
+    // Priced on the basis the customer is currently buying on, so the number
+    // on a pill is the number they will see in the panel when they select it.
+    //
+    // It used to be whole-vehicle always, on the argument that comparing a
+    // Coster priced for two seats against a whole Car is not a comparison.
+    // True, but it produced the reported bug: in per-seat mode the panel
+    // showed the fixed per-seat fare and the pill showed the metered
+    // whole-vehicle price, and the two disagreed on the same screen. Making
+    // both pills answer the same question keeps the comparison honest AND
+    // keeps the card and the summary in step.
+    //
+    // (The lookup below also used the raw category against a lower-cased map,
+    // so it never matched at all — see _seatFareFor.)
+    if (_perSeat && option.allowsPerSeat) {
+      // The seats this vehicle can actually take, not the count chosen for
+      // whichever vehicle happens to be selected.
+      final seats = _seats > option.seats ? option.seats : _seats;
+      final fixed = _seatFareFor(option);
+      if (fixed != null) return fixed.perSeatFare * seats;
+      return option.fareFor(perSeat: true, seats: seats);
+    }
     return option.fareFor(perSeat: false, seats: option.seats);
   }
 
@@ -307,23 +340,38 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     ));
 
     // Open on the vehicle matching the service chosen on Home, so this screen
-    // continues that decision rather than restarting it.
+    // continues that decision rather than restarting it — but only the first
+    // time. _load also runs when the customer picks a different route, and
+    // re-deriving the choice from widget.service there silently threw away the
+    // vehicle they had just swiped to: prices appeared to change on their own
+    // because the vehicle underneath them had changed.
+    final keep = _selected?.category;
     final preferred = options.isEmpty
         ? null
         : options.firstWhere(
-            (option) => option.service == widget.service,
-            orElse: () => options.first,
+            (option) => keep != null
+                ? option.category == keep
+                : option.service == widget.service,
+            orElse: () => options.firstWhere(
+              (option) => option.service == widget.service,
+              orElse: () => options.first,
+            ),
           );
 
     // Open the pager on the same vehicle, without an animation the customer
     // never asked for.
+    //
+    // Unconditionally, including index 0. PageController keeps its page across
+    // a rebuild, so skipping the jump for the first vehicle left the pager
+    // showing whatever had been swiped to while the pills and the fare panel
+    // described a different one.
     if (preferred != null && options.isNotEmpty) {
       final index = options.indexOf(preferred);
-      if (index > 0) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _pages.hasClients) _pages.jumpToPage(index);
-        });
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _pages.hasClients && index >= 0) {
+          _pages.jumpToPage(index);
+        }
+      });
     }
 
     setState(() {
@@ -351,7 +399,18 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   ) async {
     final repository = SeatFaresRepository(controller.apiClient);
 
+    // Cleared first. The map outlived every reload, so a fixed fare the admin
+    // had deleted kept being applied for as long as the screen stayed open.
+    if (mounted) setState(_seatFares.clear);
+
+    // Clearing alone is not enough: this runs unawaited, one network call per
+    // category, so a loop started for the previous route is still alive and
+    // would write its stale quotes back in after the clear. Each run carries
+    // the generation it started in and stops as soon as a newer one begins.
+    final generation = ++_seatFaresGeneration;
+
     for (final option in options) {
+      if (generation != _seatFaresGeneration) return;
       final quote = await repository.quote(
         category: option.category,
         fromLatitude: widget.pickupPoint.latitude,
@@ -359,7 +418,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         toLatitude: widget.destinationPoint.latitude,
         toLongitude: widget.destinationPoint.longitude,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _seatFaresGeneration) return;
       if (quote == null) continue;
 
       setState(() {
@@ -1081,7 +1140,7 @@ class _VehiclePill extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '${option.label}, PKR $fare',
+      label: '${option.label}, ${Money.amount(fare)}',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
@@ -1107,7 +1166,7 @@ class _VehiclePill extends StatelessWidget {
               ),
               const SizedBox(height: 1),
               Text(
-                NumberFormat('#,###').format(fare),
+                Money.amount(fare),
                 maxLines: 1,
                 style: TextStyle(
                   fontSize: 13.5,
@@ -1289,8 +1348,12 @@ class _VehiclePhoto extends StatelessWidget {
               url,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => _bundled(),
+              // The outline, not the stock photograph, while the real one
+              // loads. Showing _bundled() here meant a slow connection
+              // displayed a generic car for a second and then swapped it —
+              // which reads as the app having shown the wrong vehicle.
               loadingBuilder: (context, child, progress) =>
-                  progress == null ? child : _bundled(),
+                  progress == null ? child : _placeholder(),
             ),
     );
   }
@@ -1570,16 +1633,6 @@ class _FarePanel extends StatelessWidget {
     return '${difference.abs()}% below · may take longer';
   }
 
-  static String grouped(int value) {
-    final digits = value.toString();
-    final buffer = StringBuffer();
-    for (var i = 0; i < digits.length; i++) {
-      if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
-      buffer.write(digits[i]);
-    }
-    return buffer.toString();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1640,7 +1693,7 @@ class _FarePanel extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'PKR ${grouped(fare)}',
+                          Money.amount(fare),
                           style: const TextStyle(
                             fontSize: 46,
                             fontWeight: FontWeight.w900,

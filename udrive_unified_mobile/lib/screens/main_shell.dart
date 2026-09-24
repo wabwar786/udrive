@@ -568,7 +568,10 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _customerContent(String key) => switch (key) {
-        'home' => CustomerHomeScreen(onNavigate: _customerNavigate),
+        'home' => CustomerHomeScreen(
+            onNavigate: _customerNavigate,
+            onOpenMenu: () => _scaffoldKey.currentState?.openDrawer(),
+          ),
         'bookRide' => const TourismBookingScreen(),
         'joinTour' => const LiveTourInterestScreen(),
         'familyPlanner' => const FamilyTourPlannerScreen(),
@@ -587,6 +590,10 @@ class _MainShellState extends State<MainShell> {
         'help' => const HelpGuideScreen(driverMode: false),
         'support' => const SupportScreen(),
         'settings' => const SettingsScreen(),
+        // The customer drawer has always offered "Clear cached data", but this
+        // switch had no case for it, so the entry dropped through to the
+        // default and quietly reopened Home. The driver side had the case.
+        'refresh' => const CacheResetScreen(),
         'profile' => ProfileScreen(onNavigate: _customerNavigate),
         _ => CustomerHomeScreen(onNavigate: _customerNavigate),
       };
@@ -779,8 +786,38 @@ class _PremiumDrawer extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   TextButton.icon(
+                    // Confirmed. Logout sits directly under the menu items, so
+                    // a mis-tap signed the customer straight out and they had
+                    // to wait for another code to get back in.
                     onPressed: () async {
-                      Navigator.pop(context);
+                      final navigator = Navigator.of(context);
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('Log out?'),
+                          content: const Text(
+                            'You will need to verify your phone number again '
+                            'to sign back in.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, false),
+                              child: const Text('Stay signed in'),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, true),
+                              child: const Text(
+                                'Log out',
+                                style: TextStyle(color: AppColors.danger),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true) return;
+                      navigator.pop();
                       await controller.logout();
                     },
                     icon: const Icon(Icons.logout_rounded, color: AppText.secondary, size: 19),
@@ -802,7 +839,18 @@ class _PremiumDrawer extends StatelessWidget {
   }
 
   List<(String, IconData, String)> _customerEntries(BuildContext context) => [
-        ('home', Icons.directions_car_outlined, 'Book a ride'),
+        // 'home' IS where a ride is booked, so the old label was not wrong —
+        // but it read as a separate screen. Named for the screen it opens.
+        //
+        // Deliberately not adding a "Book a ride" entry for 'bookRide': that
+        // key opens TourismBookingScreen, an advance tour form that defaults
+        // to per-seat three days out and picks its vehicle from a hardcoded
+        // demo list. Nor an "Active ride" entry for 'liveTracking', which
+        // renders AppController's demo LiveTripSession — a trip called
+        // "TR-2048" with a driver named Adeel Khan that no customer booked.
+        // A running ride is reachable from Home's banner and from Trips, both
+        // of which show the real one.
+        ('home', Icons.home_outlined, 'Home'),
         ('trips', Icons.history_rounded, 'Request history'),
         ('explore', Icons.landscape_outlined, 'Explore Kashmir'),
         ('packages', Icons.luggage_outlined, 'Tour packages'),

@@ -118,6 +118,13 @@ class VehicleOptionsRepository {
   /// not have, and nobody negotiates in single rupees.
   static int _round(double value) => (value / 5).round() * 5;
 
+  /// Rounds a floor to the nearest 5 rupees WITHOUT going below it.
+  ///
+  /// _round is nearest-5, which quietly lowers a limit: an admin floor of 1,602
+  /// became 1,600, and the app then accepted — and enforced — an offer below
+  /// what the operator set.
+  static int _roundFloor(double value) => (value / 5).ceil() * 5;
+
   /// Fetches the admin-configured rates and turns them into priced options.
   ///
   /// Falls back to built-in rates if the endpoint is unavailable, because a
@@ -186,25 +193,55 @@ class VehicleOptionsRepository {
 
           // Floors. The admin's figure wins; the built-in one is only a
           // fallback for a database that has not been migrated.
-          final wholeFloor =
-              (_toDouble(rate['wholeVehicleRate']) ?? entry.minimumFare.toDouble())
-                  .clamp(1.0, 500000.0);
-          final seatFloor = (_toDouble(rate['perSeatRate']) ??
-                  (entry.minimumFare / entry.seats * 1.35))
+          //
+          // Zero is missing here too, for the same reason it is above. This is
+          // not hypothetical: the API synthesises a rate row with a per-seat
+          // rate of 0 for any category that has a pricing rule but no base
+          // rate, and pricing_rules.minimum_fare defaults to 0 with no positive
+          // constraint. _toDouble(0) returns 0.0 rather than null, so `??`
+          // never fired and .clamp(1.0, ...) turned the floor into PKR 1.
+          final apiWhole = _toDouble(rate['wholeVehicleRate']);
+          final wholeFloor = ((apiWhole != null && apiWhole > 0)
+                  ? apiWhole
+                  : entry.minimumFare.toDouble())
               .clamp(1.0, 500000.0);
+          final apiSeat = _toDouble(rate['perSeatRate']);
+          final seatFloor = ((apiSeat != null && apiSeat > 0)
+                  ? apiSeat
+                  : (entry.minimumFare / entry.seats * 1.35))
+              .clamp(1.0, 500000.0);
+
+          // Per minute is the admin's own column (pricing_rules.per_minute_rate,
+          // default 2). It used to be hardcoded as 2.0 here and again in the
+          // admin portal's preview, so editing it in the portal changed neither
+          // the customer's price nor the portal's own estimate — only the
+          // server-rendered preview moved.
+          final apiPerMinute = _toDouble(rate['perMinuteRate']);
+          final perMinute =
+              (apiPerMinute != null && apiPerMinute > 0) ? apiPerMinute : 2.0;
 
           // Distance is the bulk of it; the time component keeps a short trip
           // through heavy traffic from being priced as though it were quick.
-          final metered = perKm * distanceKm + durationMinutes * 2.0;
+          final metered = perKm * distanceKm + durationMinutes * perMinute;
+
+          // Round the floors BEFORE clamping to them.
+          //
+          // The fare is rounded to the nearest 5 and the floor upward, so
+          // clamping first let the two disagree: an admin floor of 1,602 came
+          // out as a recommended fare of 1,600 against a stated minimum of
+          // 1,605 — the screen then posted an offer below the minimum it was
+          // simultaneously refusing to let the customer type.
+          final wholeFloorRounded = _roundFloor(wholeFloor).toDouble();
+          final seatFloorRounded = _roundFloor(seatFloor).toDouble();
 
           // Never below the floor, and never absurd.
-          final whole = metered.clamp(wholeFloor, 500000.0);
+          final whole = metered.clamp(wholeFloorRounded, 500000.0);
 
           // Per seat is the whole-vehicle price shared across the seats with a
           // small margin — what a driver needs to break even on a full load —
           // and never below the admin's own per-seat floor.
           final perSeatPrice =
-              (whole / entry.seats * 1.35).clamp(seatFloor, 500000.0);
+              (whole / entry.seats * 1.35).clamp(seatFloorRounded, 500000.0);
 
           return VehicleOption(
             category: entry.category,
@@ -215,8 +252,8 @@ class VehicleOptionsRepository {
             asset: entry.asset,
             wholeVehicleFare: _round(whole),
             perSeatFare: _round(perSeatPrice),
-            wholeVehicleMinimum: _round(wholeFloor),
-            perSeatMinimum: _round(seatFloor),
+            wholeVehicleMinimum: wholeFloorRounded.round(),
+            perSeatMinimum: seatFloorRounded.round(),
             perKmRate: perKm,
             service: entry.service,
           );

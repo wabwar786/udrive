@@ -138,23 +138,29 @@ function describeArea(rule: Rule) {
 /**
  * What a trip of this length would cost under these numbers.
  *
- * Mirrors the client's formula exactly — distance x rate, plus 2 PKR a minute,
- * floored at the minimum. Showing the result is the only way an admin can tell
- * which of the two fields is binding, and a minimum that swallows every short
- * trip is otherwise invisible until a customer complains.
+ * Mirrors the client's formula exactly — distance x rate, plus the per-minute
+ * rate, floored at the minimum. Showing the result is the only way an admin can
+ * tell which of the two fields is binding, and a minimum that swallows every
+ * short trip is otherwise invisible until a customer complains.
+ *
+ * perMinute used to be the literal 2 here and in the app, even though it is a
+ * column on the rule that this very page can edit. Editing it changed nothing
+ * either operators or customers could see.
  */
 function FareExample({
   km,
   minutes,
   perKm,
+  perMinute,
   minimum,
 }: {
   km: number;
   minutes: number;
   perKm: number;
+  perMinute: number;
   minimum: number;
 }) {
-  const metered = perKm * km + minutes * 2;
+  const metered = perKm * km + minutes * perMinute;
   const charged = Math.max(metered, minimum);
   const minimumWins = minimum > metered;
 
@@ -542,12 +548,14 @@ export default function Page() {
                       km={6}
                       minutes={15}
                       perKm={baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate}
+                      perMinute={rule.perMinuteRate}
                       minimum={baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare}
                     /></td>
                     <td><FareExample
                       km={25}
                       minutes={45}
                       perKm={baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate}
+                      perMinute={rule.perMinuteRate}
                       minimum={baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare}
                     /></td>
                   </tr>

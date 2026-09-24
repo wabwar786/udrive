@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/format/money.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
@@ -327,7 +328,7 @@ class _BookingCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'PKR ${NumberFormat('#,###').format(booking.remainingAmount)}',
+                      Money.amount(booking.remainingAmount),
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 17,

@@ -48,9 +48,22 @@ import 'udrive_route_flow_screen.dart';
 /// the existing repositories: non-tour bookings hand off to the current vehicle
 /// selection screen, tour bookings create a ride request and push [TourMapScreen].
 class CustomerHomeScreen extends StatefulWidget {
-  const CustomerHomeScreen({required this.onNavigate, super.key});
+  const CustomerHomeScreen({
+    required this.onNavigate,
+    this.onOpenMenu,
+    super.key,
+  });
 
   final ValueChanged<String> onNavigate;
+
+  /// Opens the shell's drawer.
+  ///
+  /// Home is the one customer screen with no AppBar, so Scaffold never inserts
+  /// the hamburger — and the map swallows the edge-drag that would otherwise
+  /// open the drawer. The result was a menu attached to the screen with no way
+  /// to reach it. Passed in the same way as onNavigate rather than reaching
+  /// for a Scaffold this widget sits below.
+  final VoidCallback? onOpenMenu;
 
   @override
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
@@ -1079,6 +1092,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 onTap: () => Navigator.of(context)
                                     .popUntil((route) => route.isFirst),
                               ),
+                              if (widget.onOpenMenu != null) ...[
+                                const SizedBox(width: 6),
+                                _MapIconButton(
+                                  semanticLabel: 'Open menu',
+                                  child: Icon(
+                                    Icons.menu_rounded,
+                                    size: 22,
+                                    color: AppColors.secondary,
+                                  ),
+                                  onTap: widget.onOpenMenu!,
+                                ),
+                              ],
                               const Spacer(),
                               _MapIconButton(
                                 semanticLabel: 'Switch to driver mode',

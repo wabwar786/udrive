@@ -71,6 +71,7 @@ public sealed class MarketplacePricingService(string connectionString)
             list[i] = rate with
             {
                 PerKmRate = rule.PerKmRate,
+                PerMinuteRate = rule.PerMinuteRate,
                 WholeVehicleRate = rule.MinimumFare > 0
                     ? rule.MinimumFare
                     : rate.WholeVehicleRate,
@@ -112,7 +113,8 @@ public sealed class MarketplacePricingService(string connectionString)
                 0,
                 rule.MinimumFare,
                 rule.PerKmRate,
-                "PKR"));
+                "PKR",
+                rule.PerMinuteRate));
         }
 
         return list;

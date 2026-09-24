@@ -196,7 +196,12 @@ class RouteRepository {
       final routes = (payload['routes'] as List? ?? const [])
           .whereType<Map>()
           .map((item) => TripRoute.fromJson(Map<String, dynamic>.from(item)))
-          .where((route) => route.points.isNotEmpty)
+          // A route with no distance is not a cheap route, it is a broken one.
+          // The directions proxy substitutes 0 when Google's payload has no
+          // distanceMeters, and such a route still carries a polyline — so it
+          // passed this filter, then won the shortest-distance sort on the
+          // vehicle screen, and every vehicle priced at its bare minimum fare.
+          .where((route) => route.points.isNotEmpty && route.distanceMetres > 0)
           .toList()
         ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
 

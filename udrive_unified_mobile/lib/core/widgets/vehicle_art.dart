@@ -22,28 +22,50 @@ enum VehicleArt {
 
   /// Best-effort classification from any combination of vehicle name /
   /// title / registration text.
+  ///
+  /// Matches whole words, not substrings. It used to use `String.contains`,
+  /// which made ordinary cars come out wrong in ways an operator would never
+  /// guess: 'auto' matched "Toyota Corolla **Auto**matic" and drew a rickshaw,
+  /// and 'kia' matched a Kia Picanto — a city hatchback — and drew a 4x4. Both
+  /// keywords are gone; a rickshaw described as an auto-rickshaw still matches
+  /// on the two-word key below.
   static VehicleArt from(String text) {
-    final t = text.toLowerCase();
+    // Split on anything that is not a letter or digit, so "Grand-Cabin",
+    // "4x4" and "hi-ace" all tokenise sensibly.
+    final words = text
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((word) => word.isNotEmpty)
+        .toList(growable: false);
+    final joined = words.join(' ');
 
-    bool has(List<String> keys) => keys.any(t.contains);
+    // A single word, matched exactly.
+    bool word(List<String> keys) => keys.any(words.contains);
 
-    if (has(['rickshaw', 'qingqi', 'qinqi', 'auto', 'three wheel', '3 wheel'])) {
+    // A phrase of two or more words, matched as a whole.
+    bool phrase(List<String> keys) => keys.any(joined.contains);
+
+    if (word(['rickshaw', 'qingqi', 'qinqi']) ||
+        phrase(['auto rickshaw', 'three wheel', '3 wheel'])) {
       return VehicleArt.rickshaw;
     }
-    if (has(['motorbike', 'motorcycle', 'motor bike', 'scooter', 'bike', 'two wheel', '2 wheel'])) {
+    if (word(['motorbike', 'motorcycle', 'scooter', 'bike']) ||
+        phrase(['motor bike', 'two wheel', '2 wheel'])) {
       return VehicleArt.bike;
     }
-    if (has(['coaster', 'minibus', 'mini bus', 'bus', 'hiace ', 'toyota hiace', 'grand cabin'])) {
+    if (word(['coaster', 'minibus', 'bus']) ||
+        phrase(['mini bus', 'grand cabin'])) {
       return VehicleArt.coaster;
     }
-    if (has(['hiace', 'van', 'carry', 'bolan', 'shuttle'])) {
+    if (word(['hiace', 'van', 'carry', 'bolan', 'shuttle'])) {
       return VehicleArt.van;
     }
-    if (has([
-      'jeep', 'suv', '4x4', '4wd', 'prado', 'land cruiser', 'landcruiser',
-      'fortuner', 'vigo', 'revo', 'surf', 'pajero', 'terrain', 'sportage',
-      'tucson', 'hilux', 'jimny', 'x-noh', 'kia', 'defender'
-    ])) {
+    if (word([
+          'jeep', 'suv', '4x4', '4wd', 'prado', 'landcruiser',
+          'fortuner', 'vigo', 'revo', 'surf', 'pajero', 'terrain', 'sportage',
+          'tucson', 'hilux', 'jimny', 'defender',
+        ]) ||
+        phrase(['land cruiser'])) {
       return VehicleArt.suv;
     }
     return VehicleArt.sedan;

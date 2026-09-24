@@ -26,39 +26,135 @@ class OtpScreen extends StatefulWidget {
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen> {
+class _OtpScreenState extends State<OtpScreen> with WidgetsBindingObserver {
   static const _length = 4;
   static const _resendSeconds = 30;
 
   final _otp = TextEditingController();
   final _focus = FocusNode();
   Timer? _resendTimer;
-  int _secondsLeft = _resendSeconds;
+
+  /// When the Resend button becomes available again.
+  ///
+  /// A deadline, not a countdown. The old code decremented a counter on a
+  /// one-second Timer.periodic, and both platforms suspend timers while the app
+  /// is in the background — which is exactly where the customer goes to fetch
+  /// the code. Ticks were lost, so a 30-second wait could still read "22s" a
+  /// minute later and the button stayed locked long past its promise.
+  DateTime _resendAt = DateTime.now();
+
   String? _error;
+
+  int get _secondsLeft {
+    final remaining = _resendAt.difference(DateTime.now()).inSeconds;
+    return remaining < 0 ? 0 : remaining;
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _otp.addListener(() => setState(() {}));
     _startResendCountdown();
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _focus.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusInput());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _resendTimer?.cancel();
     _otp.dispose();
     _focus.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The whole point of this screen is that the customer leaves it to read the
+    // code in WhatsApp. Coming back has to put the keyboard where it was.
+    if (state == AppLifecycleState.resumed && mounted) {
+      _focusInput(reacquire: true);
+      setState(() {}); // Redraw the resend countdown against the real clock.
+    }
+  }
+
+  /// Puts the cursor back in the hidden field and opens the keyboard.
+  ///
+  /// The unfocus first is the part that matters. Backgrounding the app tears
+  /// down the platform keyboard but leaves FocusNode.hasFocus true, so a plain
+  /// requestFocus() is a no-op: no focus change, no keyboard. That is why
+  /// tapping the boxes after returning from WhatsApp did nothing at all.
+  /// [reacquire] breaks the stale focus first. Only the resume path needs it;
+  /// doing it on an ordinary tap makes the keyboard visibly animate down and
+  /// back up for no reason.
+  void _focusInput({bool reacquire = false}) {
+    if (!mounted) return;
+    if (reacquire && _focus.hasFocus) _focus.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focus.requestFocus();
+      SystemChannels.textInput.invokeMethod('TextInput.show');
+    });
+  }
+
+  /// Reads the clipboard on an explicit tap and submits a complete code.
+  ///
+  /// User-initiated only. Reading the clipboard on resume would raise the iOS
+  /// paste prompt every time the customer came back, and on Android 10+ a
+  /// background app cannot read it at all.
+  Future<void> _pasteCode() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted) return;
+
+    // The first standalone run of exactly four digits — not the last four
+    // digits of everything. Customers paste the whole message: "Your UDrive
+    // code is 1234. Valid for 10 minutes." Stripping every non-digit and
+    // taking the tail gives "3410", which then auto-submits and burns an
+    // attempt on a code the customer can plainly see is right.
+    //
+    // Split rather than a lookaround regex: the runs are what we want, and
+    // this cannot be got subtly wrong.
+    final runs = RegExp(r'\d+')
+        .allMatches(data?.text ?? '')
+        .map((match) => match.group(0)!)
+        .toList(growable: false);
+
+    final exact = runs.where((run) => run.length == _length);
+    final code = exact.isNotEmpty
+        ? exact.first
+        : (runs.isEmpty
+            ? ''
+            // Never longer than the field: the controller is set directly, so
+            // the input formatters do not get a chance to trim it.
+            : runs.first.substring(
+                0,
+                runs.first.length < _length ? runs.first.length : _length,
+              ));
+
+    if (code.isEmpty) {
+      setState(() => _error = 'No code found in the clipboard.');
+      return;
+    }
+    setState(() {
+      _error = null;
+      _otp.text = code;
+      _otp.selection = TextSelection.collapsed(offset: code.length);
+    });
+    if (code.length == _length) await _verify();
+  }
+
   void _startResendCountdown() {
     _resendTimer?.cancel();
-    setState(() => _secondsLeft = _resendSeconds);
+    setState(() =>
+        _resendAt = DateTime.now().add(const Duration(seconds: _resendSeconds)));
     _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return;
-      setState(() => _secondsLeft--);
+      if (!mounted) {
+        // Cancel rather than just returning: a timer that outlives its State
+        // keeps firing for nothing.
+        timer.cancel();
+        return;
+      }
+      setState(() {});
       if (_secondsLeft <= 0) {
         timer.cancel();
         _resendTimer = null;
@@ -74,7 +170,13 @@ class _OtpScreenState extends State<OtpScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Stack(
+      // AutofillGroup so the AutofillHints.oneTimeCode on the field below can
+      // actually commit on Android — without an ancestor group the hint is
+      // declared and then ignored. It only ever fires for an SMS-delivered
+      // code, which UDrive does not send today, but it costs nothing and is
+      // correct the day a second channel is added.
+      body: AutofillGroup(
+        child: Stack(
         fit: StackFit.expand,
         children: [
           const _Backdrop(),
@@ -154,7 +256,21 @@ class _OtpScreenState extends State<OtpScreen> {
                           value: _otp.text,
                           length: _length,
                           hasError: _error != null,
-                          onTap: _focus.requestFocus,
+                          onTap: _focusInput,
+                        ),
+                        const SizedBox(height: 10),
+                        // The code arrives in WhatsApp, which neither Android
+                        // nor iOS will let an app read. Copy-and-paste is the
+                        // whole of what the platforms allow, so it gets a
+                        // button rather than a long-press on a field that is
+                        // deliberately off-screen.
+                        Align(
+                          alignment: Alignment.center,
+                          child: TextButton.icon(
+                            onPressed: _pasteCode,
+                            icon: const Icon(Icons.content_paste_rounded, size: 17),
+                            label: const Text('Paste code'),
+                          ),
                         ),
                         // Real input, kept off-screen so autofill and paste work
                         // while the boxes above do the presentation.
@@ -164,6 +280,7 @@ class _OtpScreenState extends State<OtpScreen> {
                             child: TextField(
                               controller: _otp,
                               focusNode: _focus,
+                              autofocus: true,
                               keyboardType: TextInputType.number,
                               maxLength: _length,
                               autofillHints: const [AutofillHints.oneTimeCode],
@@ -285,6 +402,7 @@ class _OtpScreenState extends State<OtpScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -312,16 +430,29 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   Future<void> _resend() async {
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      // A new code goes into empty boxes. Leaving the old digits there invited
+      // the customer to press Verify on a code that had just been replaced.
+      _otp.clear();
+    });
     try {
       await AppControllerScope.of(context).requestOtp(widget.phone);
       if (!mounted) return;
       _startResendCountdown();
+      _focusInput();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('A new code was requested.')),
       );
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      // A timeout or a dropped connection is not an ApiException, and the
+      // field has already been cleared — without this the customer is left
+      // with empty boxes, no countdown and no explanation.
+      if (mounted) {
+        setState(() => _error = 'Could not request a new code. Try again.');
+      }
     }
   }
 }
