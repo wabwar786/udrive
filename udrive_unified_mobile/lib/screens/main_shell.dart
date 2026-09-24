@@ -52,6 +52,92 @@ class _MainShellState extends State<MainShell> {
   String _customerPage = 'home';
   String _driverPage = 'dashboard';
 
+  /// Where back goes, per mode.
+  ///
+  /// This shell shows about forty-five screens by swapping the Scaffold body,
+  /// not by pushing routes, so the Navigator only ever holds one route. Without
+  /// a history of its own, the system back gesture found nothing to pop and
+  /// handed the event to the platform, which closed the app - from any screen,
+  /// however deep the customer felt they were. These two lists are that
+  /// history; PopScope below turns them into ordinary back behaviour.
+  final List<String> _customerHistory = <String>[];
+  final List<String> _driverHistory = <String>[];
+
+  /// Needed to tell whether the drawer is open when back is pressed.
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  /// Anything deeper than this is old navigation the customer will never use,
+  /// and an unbounded list is a slow leak on a long session.
+  static const int _maxHistory = 24;
+
+  /// The bottom-navigation destinations, per mode.
+  ///
+  /// Switching between these is not "going deeper", so it does not build
+  /// history: on Android, back from a bottom-navigation root leaves the app.
+  /// Treating tab taps as history meant Home -> Explore -> Home -> Explore
+  /// needed four back presses to escape.
+  static const Set<String> _customerRoots = {
+    'home',
+    'explore',
+    'nearMe',
+    'profile',
+  };
+  // Exactly the keys in _bottomNavigation's `values` list. Keep the two in
+  // step: a key here that is not a tab would silently wipe the history.
+  static const Set<String> _driverRoots = {
+    'dashboard',
+    'requests',
+    'driverPackages',
+    'earnings',
+    'driverProfile',
+  };
+
+  void _goToCustomer(String page) {
+    if (page == _customerPage) return;
+    setState(() {
+      if (_customerRoots.contains(page)) {
+        _customerHistory.clear();
+      } else {
+        _customerHistory
+          ..remove(_customerPage)
+          ..add(_customerPage);
+        if (_customerHistory.length > _maxHistory) _customerHistory.removeAt(0);
+      }
+      _customerPage = page;
+    });
+  }
+
+  void _goToDriver(String page) {
+    if (page == _driverPage) return;
+    setState(() {
+      if (_driverRoots.contains(page)) {
+        _driverHistory.clear();
+      } else {
+        _driverHistory
+          ..remove(_driverPage)
+          ..add(_driverPage);
+        if (_driverHistory.length > _maxHistory) _driverHistory.removeAt(0);
+      }
+      _driverPage = page;
+    });
+  }
+
+  bool _canGoBack(bool driver) =>
+      (driver ? _driverHistory : _customerHistory).isNotEmpty;
+
+  void _goBack(bool driver) {
+    final history = driver ? _driverHistory : _customerHistory;
+    if (history.isEmpty) return;
+    setState(() {
+      final previous = history.removeLast();
+      if (driver) {
+        _driverPage = previous;
+      } else {
+        _customerPage = previous;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
@@ -88,7 +174,29 @@ class _MainShellState extends State<MainShell> {
     final customerHome = !driver && pageKey == 'home';
     final driverHome = driver && pageKey == 'dashboard';
 
-    return Scaffold(
+    // The verification gate replaces the page regardless of _driverPage, so
+    // going "back" there would swap a screen the driver cannot see and remove
+    // their only route to the drawer.
+    final canGoBack = !driverNeedsVerification && _canGoBack(driver);
+
+    // canPop is false only while this shell has somewhere of its own to go.
+    // On a root page it stays true, so back still leaves the app the way the
+    // platform expects rather than trapping the customer inside it.
+    return PopScope(
+      canPop: !canGoBack,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // An open drawer is a local history entry on this same route, but
+        // PopScope is consulted first, so without this back would navigate
+        // underneath a drawer that stays on screen.
+        if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+          Navigator.of(context).pop();
+          return;
+        }
+        _goBack(driver);
+      },
+      child: Scaffold(
+      key: _scaffoldKey,
       backgroundColor: customerHome ? AppColors.background : null,
       extendBody: customerHome,
       drawer: _PremiumDrawer(
@@ -96,23 +204,46 @@ class _MainShellState extends State<MainShell> {
         current: pageKey,
         onSelected: (value) {
           Navigator.pop(context);
-          setState(() {
-            if (driver) {
-              _driverPage = value;
-            } else {
-              _customerPage = value;
-            }
-          });
+          if (driver) {
+            _goToDriver(value);
+          } else {
+            _goToCustomer(value);
+          }
         },
         onSwitchMode: () async {
           Navigator.pop(context);
           final newMode = driver ? UserMode.customer : UserMode.driver;
           await controller.switchMode(newMode);
-          if (mounted) setState(() {});
+          if (mounted) {
+            setState(() {
+              _customerHistory.clear();
+              _driverHistory.clear();
+              // Not just the history: leaving the page too would strand the
+              // customer on a deep screen with nothing behind it, so one back
+              // press would exit the app.
+              _customerPage = 'home';
+              _driverPage = 'dashboard';
+            });
+          }
         },
       ),
       appBar: customerHome ? null : AppBar(
         titleSpacing: 4,
+        // A back arrow when this shell has history, otherwise nothing, which
+        // lets Scaffold insert the drawer's hamburger as before. Previously
+        // there was no leading at all, so every one of these pages showed a
+        // hamburger and offered no way back.
+        // A back arrow only where there is somewhere to go back to. On a root
+        // page leading stays null so Scaffold inserts the drawer's hamburger —
+        // the drawer is the only route to Settings, Wallet and Switch mode, so
+        // replacing it everywhere would hide them.
+        leading: canGoBack
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () => _goBack(driver),
+                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+              )
+            : null,
         // Just the name, at ordinary weight.
         //
         // "Good evening, Waseem" in 900-weight ran out of room on a phone and
@@ -177,13 +308,13 @@ class _MainShellState extends State<MainShell> {
             Padding(
               padding: const EdgeInsets.only(right: 10),
               child: InkWell(
-                onTap: () => setState(() {
+                onTap: () {
                   if (driverHome) {
-                    _driverPage = 'driverProfile';
+                    _goToDriver('driverProfile');
                   } else {
-                    _customerPage = 'profile';
+                    _goToCustomer('profile');
                   }
-                }),
+                },
                 borderRadius: BorderRadius.circular(999),
                 child: CircleAvatar(
                   radius: 17,
@@ -208,6 +339,7 @@ class _MainShellState extends State<MainShell> {
         child: KeyedSubtree(key: ValueKey('${controller.mode.name}-$pageKey'), child: page),
       ),
       bottomNavigationBar: driverNeedsVerification || !driver ? null : _bottomNavigation(driver),
+      ),
     );
   }
 
@@ -237,7 +369,7 @@ class _MainShellState extends State<MainShell> {
 
     return NavigationBar(
       selectedIndex: index,
-      onDestinationSelected: (value) => setState(() => _driverPage = values[value]),
+      onDestinationSelected: (value) => _goToDriver(values[value]),
       destinations: [
         NavigationDestination(icon: const Icon(Icons.dashboard_outlined), selectedIcon: const Icon(Icons.dashboard_rounded), label: context.tr('home')),
         NavigationDestination(icon: const Icon(Icons.notifications_active_outlined), selectedIcon: const Icon(Icons.notifications_active_rounded), label: context.tr('rideRequests')),
@@ -262,7 +394,7 @@ class _MainShellState extends State<MainShell> {
           selected: selected,
           label: label,
           child: InkWell(
-            onTap: () => setState(() => _customerPage = key),
+            onTap: () => _goToCustomer(key),
             borderRadius: BorderRadius.circular(16),
             child: SizedBox(
               height: 58,
@@ -492,8 +624,8 @@ class _MainShellState extends State<MainShell> {
         _ => DriverHomeScreen(onNavigate: _driverNavigate),
       };
 
-  void _customerNavigate(String page) => setState(() => _customerPage = page);
-  void _driverNavigate(String page) => setState(() => _driverPage = page);
+  void _customerNavigate(String page) => _goToCustomer(page);
+  void _driverNavigate(String page) => _goToDriver(page);
 }
 
 class _PremiumDrawer extends StatelessWidget {

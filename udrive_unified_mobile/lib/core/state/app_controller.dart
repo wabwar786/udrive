@@ -166,6 +166,37 @@ class AppController extends ChangeNotifier {
   DriverProfileLive? get driverProfile => _driverProfile;
   List<LiveVehicle> get liveVehicles => List.unmodifiable(_liveVehicles);
   List<LiveRideRequest> get liveRideRequests => List.unmodifiable(_liveRideRequests);
+
+  /// Statuses in which the server still treats a ride request as live.
+  ///
+  /// Must match the `IN (...)` list the API uses to refuse a second request
+  /// (BookingService.CreateRideRequestAsync) and the one it will accept a
+  /// cancellation for (CancelRideRequestAsync). If these drift apart, the
+  /// customer is told to cancel something the app refuses to show them.
+  static const Set<String> openRideRequestStatuses = {
+    'Open',
+    'SearchingDrivers',
+    'ReceivingOffers',
+  };
+
+  /// The searches the customer can still resume or cancel.
+  ///
+  /// This exists because the search has no other home. A ride request is not a
+  /// booking, so it never appears in the bookings list; before this getter the
+  /// only view of an open search was the screen the customer had just left,
+  /// which is exactly how a search became impossible to reach or cancel.
+  List<LiveRideRequest> get openRideRequests => List.unmodifiable(
+        _liveRideRequests.where(
+          (request) =>
+              openRideRequestStatuses.contains(request.status) &&
+              // The server's guard carries the same time bound. Without it this
+              // list keeps offering to resume or cancel a search that expired
+              // an hour ago and is no longer blocking anything.
+              (request.expiresAt == null ||
+                  request.expiresAt!.isAfter(DateTime.now())),
+        ),
+      );
+
   List<LiveRideRequest> get liveDriverRideRequests => List.unmodifiable(_liveDriverRideRequests);
   List<LiveDriverOffer> get liveDriverOffers => List.unmodifiable(_liveDriverOffers);
   List<LiveDriverRideOfferStatus> get liveDriverRideOfferStatuses => List.unmodifiable(_liveDriverRideOfferStatuses);
@@ -608,6 +639,31 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       return request;
     });
+  }
+
+  /// Cancels an open search and refreshes the customer's ride state.
+  ///
+  /// Everything that cancels a ride request goes through here rather than
+  /// calling BookingRepository directly. The repository swallows failures on
+  /// purpose so a customer can always leave the search screen, which means a
+  /// direct caller cannot tell a real cancellation from a failed one and the
+  /// in-memory list keeps showing a request the server has already closed.
+  /// Re-reading the list from the server afterwards settles both questions.
+  ///
+  /// Returns whether the server confirmed the cancellation.
+  Future<bool> cancelLiveRideRequest(String rideRequestId) async {
+    final cancelled = await _bookingRepository.cancelRideRequest(rideRequestId);
+    try {
+      _liveRideRequests = await _bookingRepository.getMyRideRequests();
+    } catch (_) {
+      // The cancel is what mattered. A failed refresh leaves the list stale
+      // until the next poll rather than losing the customer's action.
+      _liveRideRequests = _liveRideRequests
+          .where((request) => request.id != rideRequestId)
+          .toList(growable: false);
+    }
+    notifyListeners();
+    return cancelled;
   }
 
   Future<void> loadRideOffers(String rideRequestId) async {

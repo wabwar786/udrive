@@ -48,6 +48,7 @@ class _TourMapScreenState extends State<TourMapScreen> {
   Timer? _poller;
   bool _loading = true;
   bool _accepting = false;
+  bool _cancelling = false;
   final Set<String> _declined = <String>{};
 
   @override
@@ -133,12 +134,120 @@ class _TourMapScreenState extends State<TourMapScreen> {
   static double _advanceFor(double fare) =>
       (fare * AppConfig.tourAdvancePercent).roundToDouble();
 
+  /// Asks what to do with a running tour search before leaving.
+  ///
+  /// This screen previously had no cancel affordance of any kind, so a tour
+  /// request could only ever be abandoned: it stayed open on the server and
+  /// blocked every later booking until it expired.
+  Future<void> _handleBack() async {
+    // Mid-accept or mid-cancel there is nothing to decide, but the gesture must
+    // not simply die: leave, the same way the on-demand offers screen does.
+    if (_accepting || _cancelling) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+
+    final choice = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: AppColors.surfaceHigh,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _t('Drivers are still being asked', 'ڈرائیوروں سے ابھی پوچھا جا رہا ہے'),
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _t(
+                  'You can leave and come back to this search from Trips, or cancel '
+                      'it now so you can book something else.',
+                  'آپ جا سکتے ہیں اور Trips سے دوبارہ اسی تلاش پر آ سکتے ہیں، یا ابھی '
+                      'منسوخ کر دیں تاکہ نئی بکنگ کر سکیں۔',
+                ),
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  height: 1.45,
+                  color: AppColors.muted,
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(sheetContext, false),
+                  child: Text(_t('Keep searching', 'تلاش جاری رکھیں')),
+                ),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(sheetContext, true),
+                  child: Text(
+                    _t('Cancel this tour request', 'یہ ٹور درخواست منسوخ کریں'),
+                    style: const TextStyle(color: AppColors.danger),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: Text(_t('Stay here', 'یہیں رہیں')),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!mounted || choice == null) return;
+
+    if (!choice) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    setState(() => _cancelling = true);
+    _poller?.cancel();
+
+    final controller = AppControllerScope.of(context);
+    final navigator = Navigator.of(context);
+    await controller.cancelLiveRideRequest(widget.rideRequestId);
+
+    if (!mounted) return;
+    navigator.pop();
+  }
+
+  String _t(String en, String ur) =>
+      AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
+
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
     final offers = _offers(controller);
     final height = MediaQuery.sizeOf(context).height;
 
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        unawaited(_handleBack());
+      },
+      child: _buildBody(offers, height),
+    );
+  }
+
+  Widget _buildBody(List<LiveDriverOffer> offers, double height) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(

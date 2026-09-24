@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../models/booking_models.dart';
 import 'booking_payment_screen.dart';
+import 'driver_offers_screen.dart';
 import '../common/booking_chat_screen.dart';
 
 class LiveBookingsScreen extends StatefulWidget {
@@ -22,17 +24,28 @@ class _LiveBookingsScreenState extends State<LiveBookingsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
-  Future<void> _refresh() =>
-      AppControllerScope.of(context).refreshLiveBookings();
+  /// Loads bookings AND open ride requests.
+  ///
+  /// Was refreshLiveBookings, which fetched only bookings. A search that has
+  /// not yet produced a booking is a ride request, so it was invisible here —
+  /// and this screen is the only place a customer could reasonably look for it.
+  Future<void> _refresh() async {
+    // Guarded: every caller reaches this after an await, and two of them after
+    // a pushed screen has been on top for a while. Reading an InheritedWidget
+    // from a defunct element throws.
+    if (!mounted) return;
+    await AppControllerScope.of(context).refreshCustomerRideState();
+  }
 
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
     final bookings = controller.liveBookings;
+    final searches = controller.openRideRequests;
 
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: bookings.isEmpty
+      child: bookings.isEmpty && searches.isEmpty
           ? ListView(
               padding: const EdgeInsets.all(22),
               children: [
@@ -72,13 +85,20 @@ class _LiveBookingsScreenState extends State<LiveBookingsScreen> {
             )
           : ListView.builder(
               padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
-              itemCount: bookings.length,
+              // Open searches first: they are the only thing on this screen
+              // that blocks the customer from booking anything else.
+              itemCount: searches.length + bookings.length,
               itemBuilder: (_, index) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: _BookingCard(
-                  booking: bookings[index],
-                  onChanged: _refresh,
-                ),
+                child: index < searches.length
+                    ? _OpenSearchCard(
+                        request: searches[index],
+                        onChanged: _refresh,
+                      )
+                    : _BookingCard(
+                        booking: bookings[index - searches.length],
+                        onChanged: _refresh,
+                      ),
               ),
             ),
     );
@@ -86,6 +106,125 @@ class _LiveBookingsScreenState extends State<LiveBookingsScreen> {
 
   String _t(BuildContext context, String en, String ur) =>
       AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
+}
+
+/// A ride request that is still looking for a driver.
+///
+/// Two actions, and both must always be available: return to the search, or
+/// end it. The server refuses a second booking while one of these is open, so
+/// a customer with no way to reach this card has no way to book at all.
+class _OpenSearchCard extends StatelessWidget {
+  const _OpenSearchCard({
+    required this.request,
+    required this.onChanged,
+  });
+
+  final LiveRideRequest request;
+  final Future<void> Function() onChanged;
+
+  String _t(BuildContext context, String en, String ur) =>
+      AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
+
+  Future<void> _resume(BuildContext context) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DriverOffersScreen(
+          rideRequestId: request.id,
+          pickup: request.pickupLabel,
+          destination: request.destinationLabel,
+          customerOffer: request.customerOffer.round(),
+          vehicleName: request.vehicleCategory,
+          pickupPoint: LatLng(request.pickupLatitude, request.pickupLongitude),
+          destinationPoint:
+              LatLng(request.destinationLatitude, request.destinationLongitude),
+        ),
+      ),
+    );
+    await onChanged();
+  }
+
+  Future<void> _cancel(BuildContext context) async {
+    final controller = AppControllerScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final failedMessage = _t(
+      context,
+      'Could not cancel the search. Please try again.',
+      'تلاش منسوخ نہیں ہو سکی۔ دوبارہ کوشش کریں۔',
+    );
+
+    final cancelled = await controller.cancelLiveRideRequest(request.id);
+    await onChanged();
+
+    // Unlike the search screen, this button reports failure. There the
+    // customer is leaving anyway and the request expires on its own; here they
+    // are cancelling precisely so they can book again, and a silent failure
+    // would send them back to the same refusal.
+    if (!cancelled) {
+      messenger.showSnackBar(SnackBar(content: Text(failedMessage)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final waiting = request.offersCount == 0;
+
+    return PremiumCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _t(context, 'Looking for a driver', 'ڈرائیور تلاش کیا جا رہا ہے'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+              ),
+              StatusPill(
+                label: waiting
+                    ? _t(context, 'Searching', 'تلاش جاری')
+                    : _t(context, '${request.offersCount} offers', '${request.offersCount} آفرز'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${request.pickupLabel} → ${request.destinationLabel}',
+            style: const TextStyle(height: 1.4),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${request.vehicleCategory} · PKR ${request.customerOffer.round()}',
+            style: const TextStyle(color: AppColors.muted, fontSize: 12.5),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => _resume(context),
+                  child: Text(_t(context, 'Resume search', 'تلاش پر واپس جائیں')),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _cancel(context),
+                  child: Text(
+                    _t(context, 'Cancel', 'منسوخ کریں'),
+                    style: const TextStyle(color: AppColors.danger),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _BookingCard extends StatelessWidget {
@@ -105,8 +244,14 @@ class _BookingCard extends StatelessWidget {
       'NoShow',
       'Disputed',
     ].contains(booking.status);
+    // 'DriverAccepted' is what the API actually writes when a customer picks an
+    // offer (BookingService.SelectDriverOffer). It was missing here, so every
+    // marketplace booking showed neither Cancel nor Reschedule even though the
+    // server accepts both for that status — the customer's only remaining exit
+    // was to wait for the trip to expire.
     final canChange = [
       'DriverSelected',
+      'DriverAccepted',
       'Confirmed',
       'Scheduled',
     ].contains(booking.status);

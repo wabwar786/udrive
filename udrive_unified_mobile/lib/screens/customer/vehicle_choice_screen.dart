@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/booking/booking_options.dart';
-import '../../core/booking/booking_repository.dart';
 import '../../core/routing/route_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -18,6 +17,7 @@ import '../../core/vehicles/seat_fares_repository.dart';
 import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/vehicles/vehicle_options_repository.dart';
 import '../../core/widgets/home_service.dart';
+import '../../models/auth_models.dart';
 import 'driver_offers_screen.dart';
 
 /// Choose a vehicle and name a price.
@@ -474,9 +474,12 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
 
     try {
       final controller = AppControllerScope.of(context);
-      final repository = BookingRepository(controller.apiClient);
 
-      final request = await repository.createRideRequest({
+      // Through the controller, not BookingRepository directly. Creating the
+      // request here without telling the controller left _liveRideRequests
+      // unaware of a search the server had just opened, so the Trips tab could
+      // not offer to resume or cancel it.
+      final request = await controller.createLiveRideRequest({
         'pickupLabel': widget.pickupLabel,
         'destinationLabel': widget.destinationLabel,
         'pickupLatitude': widget.pickupPoint.latitude,
@@ -521,7 +524,58 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         _error = '$error';
         _submitting = false;
       });
+
+      // "Cancel that request before starting a new one" is only useful if the
+      // customer can reach the request. Offer the way there rather than leaving
+      // them to find a screen that used to be unreachable.
+      if (error is ApiException && error.code == 'request_already_open') {
+        await _offerToResumeOpenSearch();
+      }
     }
+  }
+
+  /// Takes the customer to the search the server is refusing to replace.
+  Future<void> _offerToResumeOpenSearch() async {
+    final controller = AppControllerScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    // Hoisted with the others: the action below runs when the customer taps it,
+    // which may be seconds later and after this screen has gone.
+    final navigator = Navigator.of(context);
+
+    await controller.refreshCustomerRideState();
+    if (!mounted) return;
+
+    final open = controller.openRideRequests;
+    if (open.isEmpty) return;
+    final request = open.first;
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: const Text('You already have a search running.'),
+        action: SnackBarAction(
+          label: 'View it',
+          onPressed: () {
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) => DriverOffersScreen(
+                  rideRequestId: request.id,
+                  pickup: request.pickupLabel,
+                  destination: request.destinationLabel,
+                  customerOffer: request.customerOffer.round(),
+                  vehicleName: request.vehicleCategory,
+                  pickupPoint:
+                      LatLng(request.pickupLatitude, request.pickupLongitude),
+                  destinationPoint: LatLng(
+                    request.destinationLatitude,
+                    request.destinationLongitude,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _editFare() async {

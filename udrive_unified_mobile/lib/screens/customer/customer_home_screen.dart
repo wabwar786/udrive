@@ -199,6 +199,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     // `Confirmed` and `DriverAssigned` were missing, which is why a second
     // booking could still be started while a car was already on its way — the
     // banner appeared, but nothing treated that as "a ride is running".
+    //
+    // `DriverAccepted` is the status trip_operations is actually created with
+    // when a customer picks an offer (BookingService.SelectDriverOffer). It was
+    // absent from every client-side "is a ride running?" set while the driver
+    // side has always included it, so between accepting an offer and the driver
+    // pressing "on my way" the app believed nothing was happening. Matches the
+    // driver-busy list in BookingService.
+    'DriverAccepted',
     'Confirmed',
     'DriverAssigned',
     'DriverEnRoute',
@@ -679,11 +687,35 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
 
     if (_service.isTour) {
+      // The same one-ride-at-a-time guard the vehicle path uses. It used to
+      // live only inside _pushVehicleSelection, and this branch returns before
+      // ever reaching it — so a tour could be requested on top of a running
+      // ride, and the server's refusal arrived after the whole form was filled.
+      if (await _blockedByActiveRide()) return;
       await _submitTour();
       return;
     }
 
     await _openVehicleSelection();
+  }
+
+  /// True when a ride is already under way, after showing the customer why.
+  ///
+  /// Opens the running ride rather than only refusing: that is what they would
+  /// have to do next anyway, and it answers the question instead of blocking it.
+  Future<bool> _blockedByActiveRide() async {
+    if (_activeTrip == null) return false;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'You already have a ride under way. Finish or cancel it before '
+          'booking another.',
+        ),
+      ),
+    );
+    await _openActiveTrip();
+    return true;
   }
 
   /// Resolves whatever the customer typed into coordinates.
@@ -740,19 +772,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     //
     // So it opens the ride instead. That is what they would have to do next
     // anyway, and it answers the question rather than blocking it.
-    final running = _activeTrip;
-    if (running != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'You already have a ride under way. Finish or cancel it before '
-            'booking another.',
-          ),
-        ),
-      );
-      await _openActiveTrip();
-      return;
-    }
+    if (await _blockedByActiveRide()) return;
+    if (!mounted) return;
 
     final destinationPoint = await _resolveDestination();
     if (!mounted) return;

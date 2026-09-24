@@ -23,6 +23,9 @@ import '../../core/vehicles/nearby_vehicle.dart';
 import '../../models/booking_models.dart';
 import '../operations/live_trip_navigation_screen.dart';
 
+/// What the Customer chose when backing out of a running search.
+enum _LeaveSearchChoice { keepSearching, cancelRide }
+
 class DriverOffersScreen extends StatefulWidget {
   const DriverOffersScreen({
     required this.rideRequestId,
@@ -657,42 +660,131 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     }
   }
 
-  /// Stops the search and leaves the screen.
+  /// What to do when the Customer leaves this screen with a search running.
   ///
-  /// Confirmed first: pressing it by mistake would throw away a request the
-  /// Customer has already priced and would have to build again.
-  Future<void> _cancelRequest() async {
-    if (_cancelling || _resolved) return;
+  /// Leaving used to cancel nothing and show nothing: the request stayed open
+  /// on the server for an hour while the app behaved as though no ride existed,
+  /// so every new booking was refused with "cancel that request first" and
+  /// there was nothing anywhere to cancel. The search is now reachable from
+  /// Trips, which makes keeping it a real choice rather than a trap.
+  Future<void> _handleBack() async {
+    if (_resolved || _cancelling) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
 
-    final confirmed = await showDialog<bool>(
+    final choice = await showModalBottomSheet<_LeaveSearchChoice>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceHigh,
-        title: Text(_t('Cancel this request?', 'یہ درخواست منسوخ کریں؟')),
-        content: Text(
-          _t(
-            'Drivers will stop sending offers and you will go back to choosing a vehicle.',
-            'ڈرائیور آفر بھیجنا بند کر دیں گے اور آپ دوبارہ گاڑی منتخب کرنے پر واپس چلے جائیں گے۔',
+      backgroundColor: AppColors.surfaceHigh,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _t('Drivers are still being asked', 'ڈرائیوروں سے ابھی پوچھا جا رہا ہے'),
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _t(
+                  'You can leave this screen and come back to the search from Trips, '
+                      'or cancel it now so you can book something else.',
+                  'آپ یہ صفحہ چھوڑ سکتے ہیں اور Trips سے دوبارہ اسی تلاش پر آ سکتے ہیں، '
+                      'یا ابھی منسوخ کر دیں تاکہ نئی بکنگ کر سکیں۔',
+                ),
+                style: const TextStyle(fontSize: 12.5, height: 1.45, color: AppColors.muted),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () =>
+                      Navigator.pop(sheetContext, _LeaveSearchChoice.keepSearching),
+                  child: Text(_t('Keep searching', 'تلاش جاری رکھیں')),
+                ),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () =>
+                      Navigator.pop(sheetContext, _LeaveSearchChoice.cancelRide),
+                  child: Text(
+                    _t('Cancel this ride', 'یہ رائیڈ منسوخ کریں'),
+                    style: const TextStyle(color: AppColors.danger),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: Text(_t('Stay here', 'یہیں رہیں')),
+                ),
+              ),
+            ],
           ),
-          style: const TextStyle(fontSize: 12.5, height: 1.45),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(_t('Keep waiting', 'انتظار جاری رکھیں')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(
-              _t('Cancel request', 'درخواست منسوخ کریں'),
-              style: const TextStyle(color: AppColors.danger),
-            ),
-          ),
-        ],
       ),
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!mounted || choice == null) return;
+
+    switch (choice) {
+      case _LeaveSearchChoice.keepSearching:
+        Navigator.of(context).pop();
+      case _LeaveSearchChoice.cancelRide:
+        await _cancelRequest(confirm: false);
+    }
+  }
+
+  /// Stops the search and leaves the screen.
+  ///
+  /// Confirmed first: pressing it by mistake would throw away a request the
+  /// Customer has already priced and would have to build again. The back
+  /// handler passes `confirm: false` because it has already asked.
+  Future<void> _cancelRequest({bool confirm = true}) async {
+    if (_cancelling || _resolved) return;
+
+    if (confirm) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppColors.surfaceHigh,
+          title: Text(_t('Cancel this request?', 'یہ درخواست منسوخ کریں؟')),
+          content: Text(
+            _t(
+              'Drivers will stop sending offers and you will go back to choosing a vehicle.',
+              'ڈرائیور آفر بھیجنا بند کر دیں گے اور آپ دوبارہ گاڑی منتخب کرنے پر واپس چلے جائیں گے۔',
+            ),
+            style: const TextStyle(fontSize: 12.5, height: 1.45),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(_t('Keep waiting', 'انتظار جاری رکھیں')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(
+                _t('Cancel request', 'درخواست منسوخ کریں'),
+                style: const TextStyle(color: AppColors.danger),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+    }
+
+    if (!mounted) return;
 
     setState(() => _cancelling = true);
     _poller?.cancel();
@@ -701,11 +793,12 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
 
     final controller = AppControllerScope.of(context);
     final navigator = Navigator.of(context);
-    // The result is deliberately ignored. The request expires on its own, so a
-    // route an older API does not have must not trap the Customer on a screen
-    // they have asked to leave.
-    await BookingRepository(controller.apiClient)
-        .cancelRideRequest(widget.rideRequestId);
+    // Through the controller, not the repository: the controller re-reads the
+    // customer's requests afterwards, so the Trips tab stops offering a search
+    // the server has already closed. The result is still not acted on — the
+    // request expires on its own, and a route an older API does not have must
+    // not trap the Customer on a screen they have asked to leave.
+    await controller.cancelLiveRideRequest(widget.rideRequestId);
 
     if (!mounted) return;
     navigator.pop();
@@ -729,6 +822,20 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _promptRaiseFare());
     }
 
+    // canPop is false so the system back gesture reaches _handleBack instead of
+    // tearing the route down. Predictive back decides at gesture start, so this
+    // has to be declared before the Customer touches the screen, not at commit.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        unawaited(_handleBack());
+      },
+      child: _buildBody(offers),
+    );
+  }
+
+  Widget _buildBody(List<LiveDriverOffer> offers) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
@@ -743,11 +850,27 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-                  child: _CancelPill(
-                    busy: _cancelling,
-                    label: _t('Cancel request', 'درخواست منسوخ کریں'),
-                    onTap: _cancelRequest,
+                  padding: const EdgeInsets.fromLTRB(4, 6, 16, 12),
+                  child: Row(
+                    children: [
+                      // This screen is where five different booking flows end
+                      // up, and it had no visible way back at all — the only
+                      // exit was the system gesture, which silently abandoned
+                      // the search.
+                      IconButton(
+                        onPressed: _cancelling ? null : _handleBack,
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        color: AppColors.primaryDark,
+                        tooltip: _t('Back', 'واپس'),
+                      ),
+                      Expanded(
+                        child: _CancelPill(
+                          busy: _cancelling,
+                          label: _t('Cancel request', 'درخواست منسوخ کریں'),
+                          onTap: _cancelRequest,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Padding(

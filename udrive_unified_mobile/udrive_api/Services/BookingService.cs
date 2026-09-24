@@ -38,6 +38,15 @@ public sealed class BookingService(
         //
         // Scheduled trips are not affected: this counts only requests still
         // looking for a Driver and bookings still under way.
+        //
+        // "Under way" is read from trip_operations.trip_status, not
+        // bookings.status. A marketplace booking is created as 'DriverAccepted'
+        // in both tables, and the old bookings.status list
+        // ('Confirmed','DriverAssigned','InProgress') contained none of the
+        // values this flow ever writes — so a customer whose driver had already
+        // accepted could open a second ride request. This list is the same one
+        // the driver-side busy check uses, so the two sides now agree on what a
+        // running trip is.
         await using (var existing = new NpgsqlConnection(connectionString))
         {
             await existing.OpenAsync(cancellationToken);
@@ -48,8 +57,11 @@ public sealed class BookingService(
                         AND rr.status IN ('Open','SearchingDrivers','ReceivingOffers')
                         AND (rr.expires_at IS NULL OR rr.expires_at > now())),
                     (SELECT count(*) FROM udrive.bookings b
+                      JOIN udrive.trip_operations o ON o.booking_id = b.id
                       WHERE b.customer_user_id = @user
-                        AND b.status IN ('Confirmed','DriverAssigned','InProgress'));
+                        AND b.status NOT IN ('Cancelled','Completed','NoShow','Disputed')
+                        AND o.trip_status IN ('DriverAccepted','DriverEnRoute',
+                                              'DriverArrived','TripStarted','Emergency'));
                 """;
 
             await using var command = new NpgsqlCommand(activeSql, existing);
@@ -1452,6 +1464,37 @@ public sealed class BookingService(
             update.Parameters.AddWithValue("reason", request.Reason.Trim());
             update.Parameters.AddWithValue("bookingId", bookingId);
             await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // Cancel the operations row in the same transaction.
+        //
+        // This used to be left behind, which was survivable only while nothing
+        // read trip_status to decide whether a customer had a ride running.
+        // Several things do now — the create guard above, the Home banner and
+        // the driver-busy check — so a booking cancelled here but still
+        // 'DriverAccepted' in trip_operations would block that customer from
+        // ever booking again and keep their driver marked busy, with no way out
+        // of either from inside the app.
+        //
+        // Not conditional on a package: every booking has exactly one
+        // trip_operations row (booking_id is UNIQUE), created alongside it.
+        await using (var cancelOperations = new NpgsqlCommand(
+            """
+            UPDATE udrive.trip_operations
+               SET trip_status='Cancelled',
+                   operational_status='Cancelled',
+                   cancelled_at=now(),
+                   last_activity_at=now(),
+                   updated_at=now(),
+                   version=version+1
+             WHERE booking_id=@bookingId
+               AND trip_status NOT IN ('TripCompleted','Cancelled');
+            """,
+            connection,
+            transaction))
+        {
+            cancelOperations.Parameters.AddWithValue("bookingId", bookingId);
+            await cancelOperations.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await AddHistoryAsync(
