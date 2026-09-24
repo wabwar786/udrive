@@ -1,15 +1,27 @@
 import 'package:flutter/material.dart';
 
+/// The UDrive pin, from the brand kit.
+///
+/// Three colourways, and the rule is the background it sits on:
+/// navy on light, lime on dark, white where neither works. The mark has
+/// transparent edges, so it is drawn as-is rather than clipped into a rounded
+/// square — the old asset was a filled app-icon tile and needed the clip.
+enum UDriveMarkTone { navy, lime, white }
+
 class UDriveMark extends StatelessWidget {
   const UDriveMark({
     this.size = 56,
-    this.showBackground = true,
+    this.tone = UDriveMarkTone.navy,
     this.onTap,
     super.key,
   });
 
   final double size;
-  final bool showBackground;
+
+  /// Which colourway to draw. Defaults to navy, which is right on every light
+  /// surface in the app — the light and white variants are for a navy panel
+  /// and for sitting over a photograph.
+  final UDriveMarkTone tone;
 
   /// Tapping the logo returns to Home.
   ///
@@ -34,38 +46,51 @@ class UDriveMark extends StatelessWidget {
     );
   }
 
-  Widget _buildMark() {
-    final image = ClipRRect(
-      borderRadius: BorderRadius.circular(size * .22),
-      child: Image.asset(
-        'assets/images/udrive_icon_v3.png',
+  static const _assets = {
+    UDriveMarkTone.navy: 'assets/brand/udrive_mark_navy_1024.png',
+    UDriveMarkTone.lime: 'assets/brand/udrive_mark_lime_1024.png',
+    UDriveMarkTone.white: 'assets/brand/udrive_mark_white_1024.png',
+  };
+
+  Widget _buildMark() => SizedBox(
         width: size,
         height: size,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-        isAntiAlias: true,
-        gaplessPlayback: true,
-      ),
-    );
-
-    if (!showBackground) {
-      return SizedBox(width: size, height: size, child: image);
-    }
-
-    return SizedBox(width: size, height: size, child: image);
-  }
+        child: Image.asset(
+          _assets[tone]!,
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+          isAntiAlias: true,
+          gaplessPlayback: true,
+        ),
+      );
 }
 
+/// Pin plus "UDrive", horizontal.
 class UDriveWordmark extends StatelessWidget {
-  const UDriveWordmark({this.light = false, this.compact = false, super.key});
+  const UDriveWordmark({
+    this.light = false,
+    this.compact = false,
+    this.onDark = false,
+    super.key,
+  });
+
+  /// Draws the mark on a white plate. For placing it over a photograph or a
+  /// map, where the page behind it cannot be relied on.
   final bool light;
   final bool compact;
+
+  /// The dark-background colourway: lime pin, white text.
+  final bool onDark;
 
   @override
   Widget build(BuildContext context) {
     final height = compact ? 42.0 : 56.0;
     final image = Image.asset(
-      'assets/images/udrive_wordmark_v3.png',
+      onDark
+          ? 'assets/brand/udrive_logo_horizontal_dark.png'
+          : 'assets/brand/udrive_logo_horizontal_light.png',
       height: height,
       fit: BoxFit.contain,
       filterQuality: FilterQuality.high,

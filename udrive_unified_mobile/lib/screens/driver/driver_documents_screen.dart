@@ -347,7 +347,7 @@ class _StatusBanner extends StatelessWidget {
         : rejected
             ? (
                 AppTint.danger,
-                AppColors.danger,
+                AppTint.dangerText,
                 Icons.error_outline_rounded,
                 'Something needs fixing',
                 notes?.trim().isNotEmpty == true

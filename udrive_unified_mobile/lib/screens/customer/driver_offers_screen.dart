@@ -1415,12 +1415,12 @@ class _CancelPill extends StatelessWidget {
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: AppColors.danger,
+                      color: AppTint.dangerText,
                     ),
                   )
                 else
                   const Icon(Icons.close_rounded,
-                      size: 18, color: AppColors.danger),
+                      size: 18, color: AppTint.dangerText),
                 const SizedBox(width: 9),
                 Text(
                   label,

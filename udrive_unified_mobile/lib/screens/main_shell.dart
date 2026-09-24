@@ -318,7 +318,7 @@ class _MainShellState extends State<MainShell> {
                 borderRadius: BorderRadius.circular(999),
                 child: CircleAvatar(
                   radius: 17,
-                  backgroundColor: const Color(0xFFE2F7EF),
+                  backgroundColor: AppTint.brand,
                   child: Text(
                     _initials(controller.currentUserName),
                     style: const TextStyle(
@@ -710,7 +710,7 @@ class _PremiumDrawer extends StatelessWidget {
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              const Icon(Icons.star_rounded, color: Color(0xFFFFB000), size: 17),
+                              const Icon(Icons.star_rounded, color: AppTint.star, size: 17),
                               const SizedBox(width: 4),
                               Text(
                                 driver ? 'Driver account' : 'Customer account',
@@ -769,14 +769,14 @@ class _PremiumDrawer extends StatelessWidget {
                       onPressed: onSwitchMode,
                       style: FilledButton.styleFrom(
                         backgroundColor: lime,
-                        foregroundColor: const Color(0xFF101310),
+                        foregroundColor: AppColors.inkSurface,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       icon: driver
                           ? const Icon(Icons.person_rounded, size: 22)
                           : const SteeringWheelIcon(
                               size: 22,
-                              color: Color(0xFF101310),
+                              color: AppColors.inkSurface,
                             ),
                       label: Text(
                         driver ? 'Customer mode' : 'Driver mode',

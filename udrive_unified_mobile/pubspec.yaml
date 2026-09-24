@@ -36,6 +36,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    # The brand kit: logos, marks and the splash artwork. Everything that draws
+    # the UDrive identity reads from here and nowhere else, so replacing the
+    # logo is a matter of replacing these files.
+    - assets/brand/
     - assets/images/
     - assets/images/home_services/
     - assets/vehicles/

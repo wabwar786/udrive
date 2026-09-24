@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/theme/accent_store.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
@@ -157,17 +156,6 @@ class _CacheResetScreenState extends State<CacheResetScreen> {
             ),
           ],
           const SizedBox(height: 26),
-          const Text(
-            'App colour',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: AppText.primary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const AccentPicker(),
-
           const SizedBox(height: 26),
           FilledButton(
             onPressed: _busy ? null : _clear,
@@ -197,79 +185,6 @@ class _CacheResetScreenState extends State<CacheResetScreen> {
 /// colour that fails contrast against the dark surfaces, or one that collides
 /// with the red used for danger and the green used for success — and then every
 /// warning in the app quietly stops reading as a warning.
-class AccentPicker extends StatelessWidget {
-  const AccentPicker({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    // Listens to the store rather than reading it once.
-    //
-    // Without this the swatches appeared and selecting one did nothing
-    // visible: the store notified, but nothing in this subtree was subscribed,
-    // so the ring never moved to the colour just chosen.
-    return AnimatedBuilder(
-      animation: AccentStore.instance,
-      builder: (context, _) => _swatches(),
-    );
-  }
-
-  Widget _swatches() {
-    final current = AccentStore.instance.accent;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.panel),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Text(
-              'App colour',
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: AppText.secondary,
-              ),
-            ),
-          ),
-          for (final accent in AppAccent.values)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Semantics(
-                button: true,
-                selected: accent == current,
-                label: accent.label,
-                child: GestureDetector(
-                  onTap: () => AccentStore.instance.select(accent),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: accent.seed,
-                      shape: BoxShape.circle,
-                      // A ring rather than a tick inside the swatch: the tick
-                      // needs a colour of its own, and on three different
-                      // backgrounds one of them always reads badly.
-                      border: Border.all(
-                        color: accent == current
-                            ? AppText.primary
-                            : Colors.transparent,
-                        width: 2.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 /// A rounded block on the page.
 ///
 /// The sheet is two of these — what you are booking, then where you are going.

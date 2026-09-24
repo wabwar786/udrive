@@ -79,9 +79,9 @@ class _LiveExploreScreenState extends State<LiveExploreScreen> {
     }).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF111311),
+      backgroundColor: AppColors.inkSurface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF111311),
+        backgroundColor: AppColors.inkSurface,
         foregroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
@@ -238,7 +238,7 @@ class _Hero extends StatelessWidget {
       gradient: const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFF073E31), Color(0xFF0C8A65)],
+        colors: [AppColors.inkDeep, AppColors.inkTile],
       ),
     ),
     child: Row(
@@ -259,7 +259,7 @@ class _Hero extends StatelessWidget {
             children: [
               Text(title, style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900)),
               const SizedBox(height: 5),
-              Text(subtitle, style: const TextStyle(color: AppText.secondary, height: 1.35, fontSize: 12)),
+              Text(subtitle, style: const TextStyle(color: AppColors.onInkMuted, height: 1.35, fontSize: 12)),
             ],
           ),
         ),
@@ -287,7 +287,7 @@ class _SegmentedTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(4),
-    decoration: BoxDecoration(color: const Color(0xFFEDF5F2), borderRadius: BorderRadius.circular(16)),
+    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16)),
     child: Row(
       children: [
         Expanded(child: _TabButton(selected: selected == 0, icon: Icons.landscape_rounded, label: destinationLabel, count: destinationsCount, onTap: () => onChanged(0))),
@@ -315,7 +315,7 @@ class _TabButton extends StatelessWidget {
       decoration: BoxDecoration(
         color: selected ? Colors.white : Colors.transparent,
         borderRadius: BorderRadius.circular(13),
-        boxShadow: selected ? const [BoxShadow(color: Color(0x14063F32), blurRadius: 12, offset: Offset(0, 4))] : null,
+        boxShadow: selected ? const [BoxShadow(color: AppTint.shadowSoft, blurRadius: 12, offset: Offset(0, 4))] : null,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -326,7 +326,7 @@ class _TabButton extends StatelessWidget {
           const SizedBox(width: 5),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(color: selected ? const Color(0xFFDFF5EC) : Colors.white, borderRadius: BorderRadius.circular(99)),
+            decoration: BoxDecoration(color: selected ? AppTint.brand : Colors.white, borderRadius: BorderRadius.circular(99)),
             child: Text('$count', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.primaryDark)),
           ),
         ],
@@ -356,8 +356,8 @@ class _DestinationCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(23)),
                 child: item['coverImageUrl'] == null
-                    ? const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF08151C), Color(0xFF10212B)])), child: Center(child: Icon(Icons.landscape_rounded, color: AppText.secondary, size: 62)))
-                    : Image.network(ApiConfig.absoluteUrl(item['coverImageUrl']?.toString()), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF08151C), Color(0xFF10212B)])), child: Center(child: Icon(Icons.landscape_rounded, color: AppText.secondary, size: 62)))),
+                    ? const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [AppColors.inkDeep, AppColors.inkSurface])), child: Center(child: Icon(Icons.landscape_rounded, color: AppText.secondary, size: 62)))
+                    : Image.network(ApiConfig.absoluteUrl(item['coverImageUrl']?.toString()), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [AppColors.inkDeep, AppColors.inkSurface])), child: Center(child: Icon(Icons.landscape_rounded, color: AppText.secondary, size: 62)))),
               ),
               const DecoratedBox(decoration: BoxDecoration(borderRadius: BorderRadius.vertical(top: Radius.circular(23)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black54]))),
               Positioned(
@@ -433,17 +433,17 @@ class _ExplorePackageCard extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               if (package.coverImageUrl != null && package.coverImageUrl!.isNotEmpty)
-                ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(23)), child: Image.network(package.coverImageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0C6049), Color(0xFF16A978)])))))
+                ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(23)), child: Image.network(package.coverImageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [AppColors.inkDeep, AppColors.inkTile])))))
               else
-                const DecoratedBox(decoration: BoxDecoration(borderRadius: BorderRadius.vertical(top: Radius.circular(23)), gradient: LinearGradient(colors: [Color(0xFF0C6049), Color(0xFF16A978)]))),
+                const DecoratedBox(decoration: BoxDecoration(borderRadius: BorderRadius.vertical(top: Radius.circular(23)), gradient: LinearGradient(colors: [AppColors.inkDeep, AppColors.inkTile]))),
               const DecoratedBox(decoration: BoxDecoration(borderRadius: BorderRadius.vertical(top: Radius.circular(23)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black54]))),
               Positioned(
                 right: 12,
                 top: 12,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                  decoration: BoxDecoration(color: package.bookableSeats <= 2 ? const Color(0xFFFFE8C4) : const Color(0xFFD9F7E9), borderRadius: BorderRadius.circular(99)),
-                  child: Text(_t('${package.bookableSeats} seats free', '${package.bookableSeats} نشستیں خالی'), style: TextStyle(color: package.bookableSeats <= 2 ? const Color(0xFF955900) : const Color(0xFF08754F), fontSize: 10, fontWeight: FontWeight.w900)),
+                  decoration: BoxDecoration(color: package.bookableSeats <= 2 ? AppTint.warning : AppTint.success, borderRadius: BorderRadius.circular(99)),
+                  child: Text(_t('${package.bookableSeats} seats free', '${package.bookableSeats} نشستیں خالی'), style: TextStyle(color: package.bookableSeats <= 2 ? AppTint.warningText : AppTint.successText, fontSize: 10, fontWeight: FontWeight.w900)),
                 ),
               ),
               Positioned(left: 15, right: 15, bottom: 13, child: Text(package.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 17))),
@@ -458,7 +458,7 @@ class _ExplorePackageCard extends StatelessWidget {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                decoration: BoxDecoration(color: const Color(0xFFEAF7F2), borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(12)),
                 child: Row(children: [
                   Expanded(child: Text(package.startingCity, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5))),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Icon(Icons.arrow_forward_rounded, size: 17, color: AppColors.primary)),
@@ -467,7 +467,7 @@ class _ExplorePackageCard extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Row(children: [
-                Expanded(child: Text('${package.driverName} · ${package.vehicle}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted, fontSize: 11))),
+                Expanded(child: Text('${package.driverName} · ${package.vehicle}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.text, fontSize: 11))),
                 const Icon(Icons.verified_rounded, size: 16, color: AppColors.primary),
               ]),
               const SizedBox(height: 10),
@@ -497,7 +497,7 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-    decoration: BoxDecoration(color: const Color(0xFFF1F6F4), borderRadius: BorderRadius.circular(99)),
+    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(99)),
     child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 14, color: AppColors.primaryDark), const SizedBox(width: 5), Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700))]),
   );
 }

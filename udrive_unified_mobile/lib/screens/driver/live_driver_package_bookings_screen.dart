@@ -37,7 +37,7 @@ class _LiveDriverPackageBookingsScreenState
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
         children: [
           PremiumCard(
-            color: const Color(0xFF0D4337),
+            color: AppColors.navy,
             child: Row(
               children: [
                 const Icon(

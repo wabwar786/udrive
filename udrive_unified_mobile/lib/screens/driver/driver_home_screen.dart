@@ -675,7 +675,7 @@ class _RecentFareSentCard extends StatelessWidget {
         const SizedBox(width: 9),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(approved ? 'APPROVED · ride confirmed' : rejected ? 'NOT SELECTED' : 'Fare sent · waiting for customer', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: AppColors.navy)),
-          Text('${sent.pickupLabel} → ${sent.destinationLabel}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9.5, color: AppColors.muted)),
+          Text('${sent.pickupLabel} → ${sent.destinationLabel}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9.5, color: AppColors.text)),
         ])),
         const SizedBox(width: 8),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -800,7 +800,7 @@ class _HomeSectionTitle extends StatelessWidget {
           Container(width: 36, height: 36, decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(12)), child: Icon(icon, size: 19, color: AppColors.primaryDark)),
           const SizedBox(width: 9),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.navy)), const SizedBox(height: 2), Text(subtitle, style: const TextStyle(fontSize: 10.5, color: AppColors.muted))])),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5), decoration: BoxDecoration(color: const Color(0xFFF1F5F8), borderRadius: BorderRadius.circular(999)), child: Text(trailing, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy, fontSize: 11))),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5), decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(999)), child: Text(trailing, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy, fontSize: 11))),
         ],
       );
 }
@@ -836,7 +836,7 @@ class _NextRideUnlockBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(color: const Color(0xFFFFF7E7), borderRadius: BorderRadius.circular(13)),
+        decoration: BoxDecoration(color: AppTint.warning, borderRadius: BorderRadius.circular(13)),
         child: const Row(children: [Icon(Icons.next_plan_rounded, size: 18, color: AppColors.warning), SizedBox(width: 8), Expanded(child: Text('Next rides stay hidden during this trip. They unlock automatically when you are within 1 KM of the destination; the same 5 KM pickup-radius rule then applies.', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.navy)))]),
       );
 }
@@ -890,7 +890,7 @@ class _DocumentRequestBanner extends StatelessWidget {
     final blocked = remaining <= 0;
 
     return Material(
-      color: blocked ? const Color(0xFFFDECEC) : const Color(0xFFFFF6E5),
+      color: blocked ? AppTint.danger : AppTint.warning,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: () => onOpen(),
@@ -908,8 +908,8 @@ class _DocumentRequestBanner extends StatelessWidget {
                         : Icons.upload_file_rounded,
                     size: 19,
                     color: blocked
-                        ? AppColors.danger
-                        : const Color(0xFF8A5A00),
+                        ? AppTint.dangerText
+                        : AppTint.warningText,
                   ),
                   const SizedBox(width: 9),
                   Expanded(
@@ -921,8 +921,8 @@ class _DocumentRequestBanner extends StatelessWidget {
                         fontSize: 14.5,
                         fontWeight: FontWeight.w800,
                         color: blocked
-                            ? AppColors.danger
-                            : const Color(0xFF8A5A00),
+                            ? AppTint.dangerText
+                            : AppTint.warningText,
                       ),
                     ),
                   ),
@@ -942,7 +942,7 @@ class _DocumentRequestBanner extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 12.5,
                       height: 1.4,
-                      color: Color(0xFF6B4A00),
+                      color: AppTint.warningText,
                     ),
                   ),
                 ),
@@ -961,7 +961,7 @@ class _DocumentRequestBanner extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: blocked
                       ? AppColors.danger
-                      : const Color(0xFF8A5A00),
+                      : AppTint.warningText,
                 ),
               ),
               const SizedBox(height: 11),
@@ -972,7 +972,7 @@ class _DocumentRequestBanner extends StatelessWidget {
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(44),
                     backgroundColor:
-                        blocked ? AppColors.danger : const Color(0xFF8A5A00),
+                        blocked ? AppColors.danger : AppTint.warningText,
                   ),
                   child: const Text('Upload now'),
                 ),
@@ -1041,7 +1041,7 @@ class _TodayStrip extends StatelessWidget {
                   height: 1.1,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -.5,
-                  color: Color(0xFF148A5A),
+                  color: AppColors.success,
                 ),
               ),
             ],
@@ -1062,7 +1062,7 @@ class _DriverHomeInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: const Color(0xFFF7F9FB), borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
+        decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
         child: Row(children: [Icon(icon, color: AppColors.primaryDark), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy)), const SizedBox(height: 2), Text(message, style: const TextStyle(fontSize: 10.5, color: AppColors.muted))])), if (onAction != null) TextButton(onPressed: onAction, child: Text(actionLabel ?? 'Open'))]),
       );
 }
@@ -1088,7 +1088,7 @@ class _DriverFareStatusCard extends StatelessWidget {
         const SizedBox(height: 4),
         _RouteLine(icon: Icons.location_on_rounded, text: offer.destinationLabel, color: AppColors.danger),
         const SizedBox(height: 9),
-        Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: offer.isWholeVehicle ? const Color(0xFFFFF3E8) : const Color(0xFFEAF4FF), borderRadius: BorderRadius.circular(999)), child: Text(offer.isWholeVehicle ? 'WHOLE VEHICLE' : '${offer.seatsRequested} SEAT${offer.seatsRequested == 1 ? '' : 'S'}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900))), const Spacer(), Text('Your fare  PKR ${NumberFormat('#,###').format(offer.driverAmount)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy, fontSize: 12))]),
+        Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: offer.isWholeVehicle ? AppTint.warning : AppTint.info, borderRadius: BorderRadius.circular(999)), child: Text(offer.isWholeVehicle ? 'WHOLE VEHICLE' : '${offer.seatsRequested} SEAT${offer.seatsRequested == 1 ? '' : 'S'}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900))), const Spacer(), Text('Your fare  PKR ${NumberFormat('#,###').format(offer.driverAmount)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.navy, fontSize: 12))]),
         const SizedBox(height: 9),
         Row(children: [OutlinedButton.icon(onPressed: onMap, icon: const Icon(Icons.map_rounded, size: 17), label: const Text('Map')), if (approved && onOpenRide != null) ...[const SizedBox(width: 8), Expanded(child: FilledButton.icon(onPressed: onOpenRide, icon: const Icon(Icons.navigation_rounded, size: 17), label: const Text('Open live ride')))] else const Spacer(), if (pending) const Text('Auto checking approval…', style: TextStyle(fontSize: 9.5, color: AppColors.muted, fontWeight: FontWeight.w700))]),
       ]),
@@ -1275,7 +1275,7 @@ class _DashboardRequestCard extends StatelessWidget {
                           height: 1.1,
                           fontWeight: FontWeight.w900,
                           letterSpacing: -.8,
-                          color: Color(0xFF148A5A),
+                          color: AppColors.success,
                         ),
                       ),
                     ),
@@ -1479,7 +1479,7 @@ class _SmallAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-        color: onTap == null ? const Color(0xFFF1F3F5) : color.withValues(alpha: .12),
+        color: onTap == null ? AppColors.surfaceAlt : color.withValues(alpha: .12),
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           onTap: onTap,
@@ -1502,17 +1502,17 @@ class _LatestAssignment extends StatelessWidget {
   Widget build(BuildContext context) => PremiumCard(
         onTap: onTap,
         padding: const EdgeInsets.all(13),
-        color: const Color(0xFFF3F8FF),
+        color: AppTint.info,
         child: Row(
           children: [
             Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: const Color(0xFFDCEAFF),
+                color: AppTint.info,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(Icons.route_rounded, color: Color(0xFF275FC6)),
+              child: const Icon(Icons.route_rounded, color: AppColors.info),
             ),
             const SizedBox(width: 11),
             Expanded(
@@ -1660,7 +1660,7 @@ class _AcceptedRideCard extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 22,
-            backgroundColor: const Color(0xFFEAF8F2),
+            backgroundColor: AppTint.brand,
             child: Text(
               initials.isEmpty ? 'C' : initials,
               style: const TextStyle(
@@ -1730,7 +1730,7 @@ class _EmptyRequests extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => PremiumCard(
-        color: const Color(0xFFF7FAF9),
+        color: AppColors.surface,
         child: Row(
           children: [
             const Icon(Icons.inbox_outlined, color: AppColors.muted),

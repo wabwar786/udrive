@@ -14,7 +14,7 @@
          now that the shells declare PopScope: before that the app had nothing
          to pop and genuinely was about to exit. -->
     <application
-        android:label="Udrive"
+        android:label="UDrive"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"

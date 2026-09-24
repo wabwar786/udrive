@@ -38,7 +38,7 @@ class _LivePackagesScreenState extends State<LivePackagesScreen> {
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 30),
         children: [
           PremiumCard(
-            color: const Color(0xFF0D4337),
+            color: AppColors.navy,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -146,13 +146,13 @@ class _PackageCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: package.bookableSeats <= 2 ? const Color(0xFFFFE9C7) : const Color(0xFFD9F8E9),
+                      color: package.bookableSeats <= 2 ? AppTint.warning : AppTint.success,
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
                       '${package.bookableSeats} seats free',
                       style: TextStyle(
-                        color: package.bookableSeats <= 2 ? const Color(0xFF9A5A00) : const Color(0xFF087A4B),
+                        color: package.bookableSeats <= 2 ? AppTint.warningText : AppTint.successText,
                         fontWeight: FontWeight.w900,
                         fontSize: 10,
                       ),
@@ -169,7 +169,7 @@ class _PackageCard extends StatelessWidget {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-                    decoration: BoxDecoration(color: const Color(0xFFEAF7F2), borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(12)),
                     child: Row(children: [
                       const Icon(Icons.trip_origin_rounded, size: 16, color: AppColors.primary),
                       const SizedBox(width: 6),
@@ -181,7 +181,7 @@ class _PackageCard extends StatelessWidget {
                           children: [
                             Flexible(child: Text(package.destination, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900, fontSize: 13.5))),
                             const SizedBox(width: 4),
-                            const Icon(Icons.star_rounded, size: 15, color: Color(0xFFFFB300)),
+                            const Icon(Icons.star_rounded, size: 15, color: AppTint.star),
                             Text(package.destinationRating.toStringAsFixed(1), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
                           ],
                         ),
@@ -204,7 +204,7 @@ class _PackageCard extends StatelessWidget {
                             style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
                           ),
                         ),
-                        const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFB300)),
+                        const Icon(Icons.star_rounded, size: 14, color: AppTint.star),
                         Text(' ${package.vehicleRating.toStringAsFixed(1)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
                       ],
                     ),
@@ -421,7 +421,7 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(13),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEAF7F2),
+                    color: AppTint.brand,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
@@ -508,7 +508,7 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
                       const SizedBox(width: 9),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
-                          ...List.generate(5, (index) => const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFB300))),
+                          ...List.generate(5, (index) => const Icon(Icons.star_rounded, size: 14, color: AppTint.star)),
                         ]),
                         const SizedBox(height: 3),
                         Text(review, style: const TextStyle(color: AppColors.muted, height: 1.35, fontSize: 11.5)),
@@ -521,7 +521,7 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
           ),
           const SizedBox(height: 14),
           PremiumCard(
-            color: const Color(0xFFF1FAF6),
+            color: AppColors.surface,
             child: Row(children: [const Icon(Icons.lock_clock_rounded, color: AppColors.primaryDark), const SizedBox(width: 10), Expanded(child: Text('Your selected inventory will be locked for 10 minutes before confirmation. Available now: ${package.bookableSeats} seats.', style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primaryDark, height: 1.35)))]),
           ),
         ],
@@ -685,13 +685,13 @@ class _RatingPill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF7DF),
+          color: AppTint.warning,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.star_rounded, size: 15, color: Color(0xFFFFB300)),
+            const Icon(Icons.star_rounded, size: 15, color: AppTint.star),
             const SizedBox(width: 3),
             Text('$label ${rating.toStringAsFixed(1)} · $count reviews', style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800)),
           ],
@@ -740,7 +740,7 @@ class _ItineraryTimeline extends StatelessWidget {
                           child: Container(
                             width: 2,
                             margin: const EdgeInsets.symmetric(vertical: 4),
-                            color: const Color(0xFFDCECE6),
+                            color: AppColors.border,
                           ),
                         ),
                     ],
@@ -752,7 +752,7 @@ class _ItineraryTimeline extends StatelessWidget {
                     margin: EdgeInsets.only(bottom: last ? 0 : 10),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF6F9F8),
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: AppColors.border),
                     ),

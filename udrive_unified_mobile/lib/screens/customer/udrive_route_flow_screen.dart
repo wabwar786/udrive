@@ -15,11 +15,11 @@ import '../../core/state/app_controller.dart';
 import '../../models/booking_models.dart';
 import 'driver_offers_screen.dart';
 
-const _ink = Color(0xFF161816);
-const _panel = Color(0xFF202220);
-const _tile = Color(0xFF303330);
-const _lime = Color(0xFFB7F20A);
-const _muted = Color(0xFF9FA59F);
+const _ink = AppColors.inkSurface;
+const _panel = AppColors.inkPanel;
+const _tile = AppColors.inkTile;
+const _lime = AppColors.brand;
+const _muted = AppColors.onInkMuted;
 
 enum UDriveServiceType { city, tours, privateVehicle }
 
@@ -423,7 +423,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
             ),
           ),
           const Positioned.fill(
-            child: ColoredBox(color: Color(0xB8121513)),
+            child: ColoredBox(color: AppTint.inkVeil),
           ),
           SafeArea(
             child: Column(
@@ -435,7 +435,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                       IconButton.filled(
                         onPressed: () => Navigator.maybePop(context),
                         style: IconButton.styleFrom(
-                          backgroundColor: const Color(0xA8121413),
+                          backgroundColor: AppTint.inkGlass,
                         ),
                         icon: const Icon(
                           Icons.arrow_back_rounded,
@@ -461,7 +461,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                         onPressed: () => Navigator.of(context)
                             .popUntil((route) => route.isFirst),
                         style: IconButton.styleFrom(
-                          backgroundColor: const Color(0xA8121413),
+                          backgroundColor: AppTint.inkGlass,
                         ),
                         icon: const Icon(
                           Icons.home_rounded,
@@ -475,7 +475,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                   child: Container(
                     width: double.infinity,
                     decoration: const BoxDecoration(
-                      color: Color(0xE8151715),
+                      color: AppTint.inkScrim,
                       border: Border(
                         top: BorderSide(color: Colors.white12),
                       ),
@@ -602,7 +602,7 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
                                               'Type a city, district, hotel or Kashmir destination.',
                                           textAlign: TextAlign.center,
                                           style: const TextStyle(
-                                            color: AppText.secondary,
+                                            color: AppColors.onInkMuted,
                                             fontSize: 12.5,
                                             height: 1.4,
                                           ),
@@ -1327,7 +1327,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: const Color(0xFF222522),
+            color: AppColors.inkPanel,
             borderRadius: BorderRadius.circular(18),
           ),
           child: const Row(
@@ -1341,7 +1341,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               Expanded(
                 child: Text(
                   'Loading approved vehicles from the UDrive server…',
-                  style: TextStyle(color: AppText.secondary, fontSize: 11.5),
+                  style: TextStyle(color: AppColors.onInkMuted, fontSize: 11.5),
                 ),
               ),
             ],
@@ -1355,15 +1355,15 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF222522),
+            color: AppColors.inkPanel,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0x55F79009)),
+            border: Border.all(color: AppTint.pendingBorder),
           ),
           child: Column(
             children: [
               const Row(
                 children: [
-                  Icon(Icons.directions_car_filled_rounded, color: Color(0xFFF79009)),
+                  Icon(Icons.directions_car_filled_rounded, color: AppTint.pending),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -1376,7 +1376,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               const SizedBox(height: 8),
               Text(
                 _vehicleLoadError ?? 'Add demo data from Admin → Data Management, then retry.',
-                style: const TextStyle(color: AppText.secondary, fontSize: 10.5, height: 1.35),
+                style: const TextStyle(color: AppColors.onInkMuted, fontSize: 10.5, height: 1.35),
               ),
               const SizedBox(height: 10),
               SizedBox(
@@ -1389,6 +1389,10 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     });
                     _loadRates();
                   },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.onInk,
+                    side: const BorderSide(color: AppColors.inkTile),
+                  ),
                   icon: const Icon(Icons.refresh_rounded),
                   label: const Text('Retry vehicles'),
                 ),
@@ -1407,7 +1411,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Material(
-          color: active ? const Color(0xFF292C2A) : const Color(0xFF181B19),
+          color: active ? AppColors.inkTile : AppColors.inkPanel,
           borderRadius: BorderRadius.circular(18),
           child: InkWell(
             onTap: vehicle.isOnline ? () => _selectPublicVehicle(vehicle) : null,
@@ -1455,7 +1459,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                               label: vehicle.isOnline ? 'Online' : 'Offline',
                               color: vehicle.isOnline
                                   ? AppColors.secondary
-                                  : const Color(0xFFF79009),
+                                  : AppTint.pending,
                             ),
                             if (vehicle.isDemo) ...[
                               const SizedBox(width: 4),
@@ -1468,7 +1472,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                           '${vehicle.driverName} • ★ ${vehicle.driverRating.toStringAsFixed(1)} • ${vehicle.completedTrips} trips',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: AppText.secondary, fontSize: 10),
+                          style: const TextStyle(color: AppColors.onInkMuted, fontSize: 10),
                         ),
                         const SizedBox(height: 4),
                         Wrap(
@@ -1509,7 +1513,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         ? _lime
                         : vehicle.isOnline
                             ? Colors.white30
-                            : const Color(0xFFF79009),
+                            : AppTint.pending,
                     size: 23,
                   ),
                 ],
@@ -1644,24 +1648,24 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     child: Container(
                       width: 42,
                       height: 4,
-                      decoration: BoxDecoration(color: const Color(0xFFD1D5DB), borderRadius: BorderRadius.circular(99)),
+                      decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(99)),
                     ),
                   ),
                   const SizedBox(height: 14),
-                  const Text('Confirm your ride', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: AppColors.surface)),
+                  const Text('Confirm your ride', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: AppColors.text)),
                   const SizedBox(height: 6),
                   Text('${widget.pickupLabel}  →  ${widget.destination.title}', style: const TextStyle(color: AppText.secondary, fontSize: 12, height: 1.35)),
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(color: const Color(0xFFF7F8F9), borderRadius: BorderRadius.circular(16)),
+                    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16)),
                     child: Column(
                       children: [
                         Row(children: [
-                          Icon(_cityVehicleIcon(choice.name), color: AppColors.surface),
+                          Icon(_cityVehicleIcon(choice.name), color: AppColors.text),
                           const SizedBox(width: 10),
                           Expanded(child: Text(choice.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15))),
-                          Text(_money(amount), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF365314))),
+                          Text(_money(amount), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppColors.secondary)),
                         ]),
                         const Divider(height: 24),
                         Row(children: [
@@ -1689,7 +1693,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         const Row(children: [
                           Text('Payment', style: TextStyle(color: AppText.secondary, fontSize: 12)),
                           Spacer(),
-                          Icon(Icons.payments_outlined, size: 17, color: Color(0xFF374151)),
+                          Icon(Icons.payments_outlined, size: 17, color: AppColors.text),
                           SizedBox(width: 5),
                           Text('Cash', style: TextStyle(fontWeight: FontWeight.w800)),
                         ]),
@@ -1703,8 +1707,8 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     child: FilledButton(
                       onPressed: amount <= 0 ? null : () => Navigator.pop(sheetContext, true),
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF84CC16),
-                        foregroundColor: AppColors.surface,
+                        backgroundColor: AppColors.brand,
+                        foregroundColor: AppColors.onBrand,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       child: const Text('Confirm Ride', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
@@ -1733,11 +1737,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   Widget _buildCityMinimalResultsScreen(BuildContext context) {
     final choices = _choices;
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7F8),
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
-        foregroundColor: AppColors.surface,
+        foregroundColor: AppColors.text,
         title: const Text('Choose your ride', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
       ),
       body: SafeArea(
@@ -1749,11 +1753,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
               child: Row(
                 children: [
-                  const Icon(Icons.my_location_rounded, size: 20, color: Color(0xFF16A34A)),
+                  const Icon(Icons.my_location_rounded, size: 20, color: AppTint.pickup),
                   const SizedBox(width: 8),
                   Expanded(child: Text(widget.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Icon(Icons.arrow_forward_rounded, size: 18, color: Color(0xFF9CA3AF))),
-                  const Icon(Icons.location_on_rounded, size: 21, color: Color(0xFFF97316)),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Icon(Icons.arrow_forward_rounded, size: 18, color: AppText.disabled)),
+                  const Icon(Icons.location_on_rounded, size: 21, color: AppTint.dropoff),
                   const SizedBox(width: 5),
                   Expanded(child: Text(widget.destination.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12))),
                 ],
@@ -1783,11 +1787,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         width: 48,
                         height: 48,
                         decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(14)),
-                        child: Icon(_cityVehicleIcon(choice.name), color: AppColors.surface, size: 25),
+                        child: Icon(_cityVehicleIcon(choice.name), color: AppColors.text, size: 25),
                       ),
                       const SizedBox(width: 12),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(choice.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.surface)),
+                        Text(choice.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.text)),
                         const SizedBox(height: 3),
                         Text('${choice.capacity} seat${choice.capacity == 1 ? '' : 's'} • $availability', style: const TextStyle(color: AppText.secondary, fontSize: 11)),
                       ])),
@@ -1805,7 +1809,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                       Expanded(
                         child: FilledButton(
                           onPressed: whole <= 0 ? null : () => _confirmCityRide(choiceIndex: index, mode: _FareBookingMode.wholeVehicle),
-                          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF84CC16), foregroundColor: AppColors.surface, padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          style: FilledButton.styleFrom(backgroundColor: AppColors.brand, foregroundColor: AppColors.onBrand, padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                           child: Text(whole <= 0 ? 'Full fare loading' : 'Full  •  ${_money(whole)}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
                         ),
                       ),
@@ -1850,11 +1854,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         : perSeatAmount * _seats;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7F8),
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
-        foregroundColor: AppColors.surface,
+        foregroundColor: AppColors.text,
         title: Text(
           widget.serviceType.title,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
@@ -1883,7 +1887,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.my_location_rounded, color: Color(0xFF16A34A), size: 21),
+                      const Icon(Icons.my_location_rounded, color: AppTint.pickup, size: 21),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -1891,7 +1895,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                           children: [
                             const Text('PICKUP', style: TextStyle(color: AppText.secondary, fontSize: 10, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 2),
-                            Text(widget.pickupLabel, style: const TextStyle(color: AppColors.surface, fontSize: 13, fontWeight: FontWeight.w800)),
+                            Text(widget.pickupLabel, style: const TextStyle(color: AppColors.text, fontSize: 13, fontWeight: FontWeight.w800)),
                           ],
                         ),
                       ),
@@ -1901,13 +1905,13 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     padding: EdgeInsets.only(left: 9),
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: SizedBox(height: 18, child: VerticalDivider(width: 2, thickness: 2, color: Color(0xFFD1D5DB))),
+                      child: SizedBox(height: 18, child: VerticalDivider(width: 2, thickness: 2, color: AppColors.border)),
                     ),
                   ),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.location_on_rounded, color: Color(0xFFF97316), size: 22),
+                      const Icon(Icons.location_on_rounded, color: AppTint.dropoff, size: 22),
                       const SizedBox(width: 9),
                       Expanded(
                         child: Column(
@@ -1915,7 +1919,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                           children: [
                             const Text('DESTINATION', style: TextStyle(color: AppText.secondary, fontSize: 10, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 2),
-                            Text(widget.destination.title, style: const TextStyle(color: AppColors.surface, fontSize: 14, fontWeight: FontWeight.w900)),
+                            Text(widget.destination.title, style: const TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w900)),
                             if (widget.destination.subtitle.trim().isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2),
@@ -1949,16 +1953,16 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                   decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
                   child: Row(children: [
-                    const Icon(Icons.calendar_month_rounded, color: Color(0xFF374151)),
+                    const Icon(Icons.calendar_month_rounded, color: AppColors.text),
                     const SizedBox(width: 10),
-                    const Expanded(child: Text('Tour date', style: TextStyle(color: Color(0xFF374151), fontWeight: FontWeight.w800))),
-                    Text('${_tourDate.day.toString().padLeft(2, '0')}/${_tourDate.month.toString().padLeft(2, '0')}/${_tourDate.year}', style: const TextStyle(color: AppColors.surface, fontWeight: FontWeight.w900)),
+                    const Expanded(child: Text('Tour date', style: TextStyle(color: AppColors.text, fontWeight: FontWeight.w800))),
+                    Text('${_tourDate.day.toString().padLeft(2, '0')}/${_tourDate.month.toString().padLeft(2, '0')}/${_tourDate.year}', style: const TextStyle(color: AppColors.text, fontWeight: FontWeight.w900)),
                   ]),
                 ),
               ),
             ],
             const SizedBox(height: 18),
-            const Text('Choose vehicle', style: TextStyle(color: AppColors.surface, fontSize: 17, fontWeight: FontWeight.w900)),
+            const Text('Choose vehicle', style: TextStyle(color: AppColors.text, fontSize: 17, fontWeight: FontWeight.w900)),
             const SizedBox(height: 9),
             ...choices.asMap().entries.map((entry) {
               final index = entry.key;
@@ -1984,7 +1988,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: active ? const Color(0xFF84CC16) : AppColors.border, width: active ? 2 : 1),
+                      border: Border.all(color: active ? AppColors.secondary : AppColors.border, width: active ? 2 : 1),
                     ),
                     child: Row(
                       children: [
@@ -1992,25 +1996,25 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(12)),
-                          child: Icon(_cityVehicleIcon(choice.name), color: AppColors.surface),
+                          child: Icon(_cityVehicleIcon(choice.name), color: AppColors.text),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(choice.name, style: const TextStyle(color: AppColors.surface, fontSize: 14, fontWeight: FontWeight.w900)),
+                              Text(choice.name, style: const TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w900)),
                               const SizedBox(height: 3),
                               Text('${choice.meta} • ${choice.note}', style: const TextStyle(color: AppText.secondary, fontSize: 10.5)),
                               const SizedBox(height: 5),
                               Text(
                                 'Seat ${seatEstimate <= 0 ? 'rate loading' : _money(seatEstimate)}  •  Full ${wholeEstimate <= 0 ? 'rate loading' : _money(wholeEstimate)}',
-                                style: const TextStyle(color: Color(0xFF374151), fontSize: 10.5, fontWeight: FontWeight.w700),
+                                style: const TextStyle(color: AppColors.text, fontSize: 10.5, fontWeight: FontWeight.w700),
                               ),
                             ],
                           ),
                         ),
-                        Icon(active ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: active ? const Color(0xFF65A30D) : const Color(0xFF9CA3AF)),
+                        Icon(active ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: active ? AppColors.secondary : AppText.disabled),
                       ],
                     ),
                   ),
@@ -2025,7 +2029,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F4),
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Row(children: [
@@ -2052,7 +2056,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         style: FilledButton.styleFrom(
                           elevation: 0,
                           backgroundColor: _bookingMode == _FareBookingMode.perSeat ? Colors.white : Colors.transparent,
-                          foregroundColor: AppColors.surface,
+                          foregroundColor: AppColors.text,
                         ),
                         child: const Text('Per seat', style: TextStyle(fontWeight: FontWeight.w800)),
                       ),
@@ -2063,7 +2067,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         style: FilledButton.styleFrom(
                           elevation: 0,
                           backgroundColor: _bookingMode == _FareBookingMode.wholeVehicle ? Colors.white : Colors.transparent,
-                          foregroundColor: AppColors.surface,
+                          foregroundColor: AppColors.text,
                         ),
                         child: const Text('Whole vehicle', style: TextStyle(fontWeight: FontWeight.w800)),
                       ),
@@ -2076,7 +2080,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
-                child: const Row(children: [Icon(Icons.directions_car_filled_rounded, color: Color(0xFF65A30D)), SizedBox(width: 9), Text('Complete vehicle booking', style: TextStyle(color: AppColors.surface, fontWeight: FontWeight.w900))]),
+                child: const Row(children: [Icon(Icons.directions_car_filled_rounded, color: AppColors.secondary), SizedBox(width: 9), Text('Complete vehicle booking', style: TextStyle(color: AppColors.text, fontWeight: FontWeight.w900))]),
               ),
             if (_bookingMode == _FareBookingMode.perSeat) ...[
               const SizedBox(height: 12),
@@ -2085,10 +2089,10 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                 decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
                 child: Row(
                   children: [
-                    const Text('Seats', style: TextStyle(color: Color(0xFF374151), fontWeight: FontWeight.w800)),
+                    const Text('Seats', style: TextStyle(color: AppColors.text, fontWeight: FontWeight.w800)),
                     const Spacer(),
                     IconButton(onPressed: _seats > 1 ? () => setState(() => _seats--) : null, icon: const Icon(Icons.remove_circle_outline_rounded)),
-                    Text('$_seats', style: const TextStyle(color: AppColors.surface, fontSize: 16, fontWeight: FontWeight.w900)),
+                    Text('$_seats', style: const TextStyle(color: AppColors.text, fontSize: 16, fontWeight: FontWeight.w900)),
                     IconButton(onPressed: _seats < capacity ? () => setState(() => _seats++) : null, icon: const Icon(Icons.add_circle_outline_rounded)),
                   ],
                 ),
@@ -2125,12 +2129,12 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               child: FilledButton.icon(
                 onPressed: _submitting ? null : _submit,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF84CC16),
-                  foregroundColor: AppColors.surface,
+                  backgroundColor: AppColors.brand,
+                  foregroundColor: AppColors.onBrand,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                 ),
                 icon: _submitting
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.surface))
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onBrand))
                     : const Icon(Icons.local_taxi_rounded),
                 label: Text(_submitting ? 'Creating booking…' : 'Book selected ride', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
               ),
@@ -2149,7 +2153,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         children: [
           Text(label, textAlign: TextAlign.center, style: const TextStyle(color: AppText.secondary, fontSize: 9.5, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text(value, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.surface, fontSize: 11, fontWeight: FontWeight.w900)),
+          Text(value, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.text, fontSize: 11, fontWeight: FontWeight.w900)),
         ],
       ),
     );
@@ -2165,9 +2169,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   Widget _buildRouteRenderRecovery(BuildContext context, Object error) {
     return Scaffold(
-      backgroundColor: const Color(0xFF111312),
+      backgroundColor: AppColors.inkSurface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF111312),
+        backgroundColor: AppColors.inkSurface,
         foregroundColor: Colors.white,
         title: Text(widget.serviceType.title),
       ),
@@ -2181,7 +2185,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               const SizedBox(height: 14),
               const Text('This booking screen could not finish rendering.', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
-              Text('${widget.pickupLabel} → ${widget.destination.title}', style: const TextStyle(color: AppText.secondary, fontSize: 12)),
+              Text('${widget.pickupLabel} → ${widget.destination.title}', style: const TextStyle(color: AppColors.onInkMuted, fontSize: 12)),
               const SizedBox(height: 18),
               SizedBox(
                 width: double.infinity,
@@ -2234,10 +2238,10 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     final wholeAmount = _typedAmount(_wholeVehicleOffer) ?? selectedPackage?.wholeVehiclePrice ?? _wholeVehicleEstimate(selected, selectedDbRate);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0C0E0D),
+      backgroundColor: AppColors.inkSurface,
       body: Stack(
         children: [
-          const Positioned.fill(child: ColoredBox(color: Color(0xFF111312))),
+          const Positioned.fill(child: ColoredBox(color: AppColors.inkSurface)),
           Positioned.fill(
             child: SafeArea(
               child: ListView(
@@ -2246,7 +2250,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF202321),
+                      color: AppColors.inkPanel,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: Colors.white10),
                     ),
@@ -2319,11 +2323,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   if (widget.serviceType == UDriveServiceType.tours && tourPackages.isEmpty) ...[
                     Container(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: const Color(0xFF222522), borderRadius: BorderRadius.circular(18)),
+                      decoration: BoxDecoration(color: AppColors.inkPanel, borderRadius: BorderRadius.circular(18)),
                       child: const Row(children: [
                         Icon(Icons.directions_bus_filled_rounded, color: _lime),
                         SizedBox(width: 10),
-                        Expanded(child: Text('No fixed tour package is scheduled for this destination in the next 30 days. Choose an approved tour-capable vehicle below and submit your offer.', style: TextStyle(color: AppText.secondary, fontSize: 11.5, height: 1.35))),
+                        Expanded(child: Text('No fixed tour package is scheduled for this destination in the next 30 days. Choose an approved tour-capable vehicle below and submit your offer.', style: TextStyle(color: AppColors.onInkMuted, fontSize: 11.5, height: 1.35))),
                       ]),
                     ),
                     const SizedBox(height: 8),
@@ -2335,7 +2339,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Material(
-                          color: active ? const Color(0xFF292D2A) : const Color(0xFF181B19),
+                          color: active ? AppColors.inkTile : AppColors.inkPanel,
                           borderRadius: BorderRadius.circular(18),
                           child: InkWell(
                             onTap: bookable ? () {
@@ -2367,7 +2371,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   Row(children: [
                                     Expanded(child: Text('${package.vehicle} • ${package.driverName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w900))),
-                                    if (!bookable) const _StatusBadge(label: 'Closed', color: Color(0xFFE5484D)),
+                                    if (!bookable) const _StatusBadge(label: 'Closed', color: AppColors.danger),
                                   ]),
                                   const SizedBox(height: 3),
                                   Text(_packageTiming(package), style: TextStyle(color: bookable ? _lime : Colors.white38, fontSize: 10.5, fontWeight: FontWeight.w800)),
@@ -2402,24 +2406,24 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         labelStyle: const TextStyle(color: _muted, fontSize: 11),
                         prefixIcon: const Icon(Icons.payments_outlined, color: _lime, size: 20),
                         filled: true,
-                        fillColor: const Color(0xFF242725),
+                        fillColor: AppColors.inkTile,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                       ),
                     )
                   else
                     Container(
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: const Color(0xFF242725), borderRadius: BorderRadius.circular(14)),
+                      decoration: BoxDecoration(color: AppColors.inkTile, borderRadius: BorderRadius.circular(14)),
                       child: Row(children: [
                         const Icon(Icons.verified_rounded, color: _lime, size: 20),
                         const SizedBox(width: 9),
-                        Expanded(child: Text('Published by ${selectedPackage.driverName} • ${selectedPackage.availableSeats} seats available', style: const TextStyle(color: AppText.secondary, fontSize: 10.5))),
+                        Expanded(child: Text('Published by ${selectedPackage.driverName} • ${selectedPackage.availableSeats} seats available', style: const TextStyle(color: AppColors.onInkMuted, fontSize: 10.5))),
                       ]),
                     ),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(color: const Color(0xFF202321), borderRadius: BorderRadius.circular(14)),
+                    decoration: BoxDecoration(color: AppColors.inkPanel, borderRadius: BorderRadius.circular(14)),
                     child: Row(children: [
                       const Icon(Icons.info_outline_rounded, color: AppText.disabled, size: 18),
                       const SizedBox(width: 8),
@@ -2427,7 +2431,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         selectedPackage == null
                             ? 'Fare is calculated from the database per-km rate and estimated route distance. You can keep this fare or adjust your offer before booking.'
                             : 'Per-seat and whole-vehicle prices come directly from the selected tour package.',
-                        style: const TextStyle(color: AppText.secondary, fontSize: 10.5, height: 1.35),
+                        style: const TextStyle(color: AppColors.onInkMuted, fontSize: 10.5, height: 1.35),
                       )),
                     ]),
                   ),
@@ -2466,13 +2470,13 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                 children: [
                   IconButton.filled(
                     onPressed: () => Navigator.pop(context),
-                    style: IconButton.styleFrom(backgroundColor: const Color(0x84121413)),
+                    style: IconButton.styleFrom(backgroundColor: AppTint.inkGlassSoft),
                     icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
                   ),
                   const Spacer(),
                   IconButton.filled(
                     onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-                    style: IconButton.styleFrom(backgroundColor: const Color(0x84121413)),
+                    style: IconButton.styleFrom(backgroundColor: AppTint.inkGlassSoft),
                     icon: const Icon(Icons.home_rounded, color: Colors.white, size: 20),
                   ),
                 ],
@@ -2535,7 +2539,7 @@ class _RatePill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
         decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
-        child: Text('$label: $value', style: const TextStyle(color: AppText.secondary, fontSize: 9.5, fontWeight: FontWeight.w700)),
+        child: Text('$label: $value', style: const TextStyle(color: AppColors.onInkMuted, fontSize: 9.5, fontWeight: FontWeight.w700)),
       );
 }
 
@@ -2582,7 +2586,7 @@ class _RouteSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: const Color(0xEB181A18), borderRadius: BorderRadius.circular(18), boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 12)]),
+        decoration: BoxDecoration(color: AppTint.inkScrim, borderRadius: BorderRadius.circular(18), boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 12)]),
         child: Column(children: [
           Row(children: [const Icon(Icons.circle, size: 12, color: _lime), const SizedBox(width: 10), Expanded(child: Text(pickup, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)))]),
           const SizedBox(height: 8),

@@ -1,7 +1,10 @@
 @font-face{font-family:PJ;font-weight:500;src:url(pj500.woff2)}
 @font-face{font-family:PJ;font-weight:700;src:url(pj700.woff2)}
 @font-face{font-family:PJ;font-weight:800;src:url(pj800.woff2)}
-:root{--navy:#031428;--navy2:#0B2440;--lime:#94BF28;--lime2:#B5DA4E;--ink:#E8EEF5}
+/* UDrive brand kit: lime #C6F432 on navy #0B1B33. The previous values were
+   the old green scheme (#94BF28 / #031428) and no longer match the app,
+   the launcher icon or the store icon. */
+:root{--navy:#071224;--navy2:#0B1B33;--navy3:#122540;--lime:#C6F432;--lime2:#C6F432;--ink:#FFFFFF}
 *{margin:0;box-sizing:border-box}
 body{font-family:PJ,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
 .phone{position:absolute;background:#0A0F14;border-radius:64px;padding:18px;box-shadow:0 40px 80px rgba(0,0,0,.45),0 0 0 3px #26303A}

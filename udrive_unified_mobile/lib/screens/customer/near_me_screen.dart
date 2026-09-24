@@ -540,7 +540,7 @@ class _ListingCard extends StatelessWidget {
                     ),
                     if (listing.rating != null) ...[
                       const Icon(Icons.star_rounded,
-                          size: 15, color: Color(0xFFF5B942)),
+                          size: 15, color: AppTint.star),
                       const SizedBox(width: 3),
                       Text(
                         listing.rating!.toStringAsFixed(1),
@@ -583,7 +583,7 @@ class _ListingCard extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                             color: listing.openNow!
                                 ? AppTint.successText
-                                : AppColors.danger,
+                                : AppTint.dangerText,
                           ),
                         ),
                       ),

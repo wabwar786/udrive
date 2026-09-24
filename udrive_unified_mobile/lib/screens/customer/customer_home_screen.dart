@@ -2437,7 +2437,7 @@ class _VehicleMarkerSheet extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.star_rounded,
-                          size: 17, color: Color(0xFFF5B942)),
+                          size: 17, color: AppTint.star),
                       const SizedBox(width: 4),
                       Text(
                         vehicle.rating.toStringAsFixed(1),
@@ -2991,7 +2991,7 @@ class _QuickTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     // A touch deeper than the page, so the row reads as five
                     // buttons rather than five labels.
-                    color: selected ? AppTint.brand : const Color(0xFFE7EDEA),
+                    color: selected ? AppTint.brand : AppColors.surfaceAlt,
                     borderRadius: BorderRadius.circular(13),
                   ),
                   child: Icon(

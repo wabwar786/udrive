@@ -47,7 +47,7 @@ class _FamilyTourPlannerScreenState extends State<FamilyTourPlannerScreen> {
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 30),
         children: [
           PremiumCard(
-            color: const Color(0xFF0D4337),
+            color: AppColors.navy,
             child: Row(
               children: [
                 Container(width: 56, height: 56, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(18)), child: const Icon(Icons.family_restroom_rounded, color: Colors.white, size: 29)),
@@ -116,7 +116,7 @@ class _FamilyTourPlannerScreenState extends State<FamilyTourPlannerScreen> {
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 30),
         children: [
           PremiumCard(
-            color: const Color(0xFF0D4337),
+            color: AppColors.navy,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [Icon(Icons.auto_awesome_rounded, color: AppColors.accent), SizedBox(width: 9), Expanded(child: Text(context.tr('yourFamilyPlanReady'), style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 19)))]),
               const SizedBox(height: 14),

@@ -199,7 +199,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
                 Container(
                   constraints: const BoxConstraints(maxHeight: 170),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FBFA),
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: AppColors.border),
                   ),
@@ -287,7 +287,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE7F6F0),
+                  color: AppTint.success,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -550,7 +550,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
           _StepIntro(icon: Icons.fact_check_rounded, title: context.tr('reviewBooking'), subtitle: context.tr('bookingStepFourHelp')),
           const SizedBox(height: 18),
           PremiumCard(
-            color: const Color(0xFF0D4337),
+            color: AppColors.navy,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -604,7 +604,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
           ),
           const SizedBox(height: 14),
           PremiumCard(
-            color: const Color(0xFFEAF8F2),
+            color: AppTint.brand,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -913,7 +913,7 @@ class _CompactDateField extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
-            color: const Color(0xFFF6F9F8),
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(15),
             border: Border.all(color: AppColors.border),
           ),
@@ -961,7 +961,7 @@ class _VehicleSearchHint extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFFF5F8FA),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.border),
         ),
@@ -998,12 +998,12 @@ class _SearchVehicleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final image = package.coverImageUrl?.trim();
     final seats = package.bookableSeats;
-    final seatColor = seats <= 2 ? const Color(0xFFFFE9C7) : const Color(0xFFD9F8E9);
-    final seatText = seats <= 2 ? const Color(0xFF9A5A00) : const Color(0xFF087A4B);
+    final seatColor = seats <= 2 ? AppTint.warning : AppTint.success;
+    final seatText = seats <= 2 ? AppTint.warningText : AppTint.successText;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAF9),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(17),
         border: Border.all(color: AppColors.border),
       ),
@@ -1012,7 +1012,7 @@ class _SearchVehicleCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF7F2),
+              color: AppTint.brand,
               borderRadius: BorderRadius.circular(11),
             ),
             child: Row(
@@ -1151,7 +1151,7 @@ class _ChoiceCard extends StatelessWidget {
           duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEAF8F2) : Colors.white,
+            color: selected ? AppTint.brand : Colors.white,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: selected ? AppColors.primary : AppColors.border,
@@ -1248,7 +1248,7 @@ class _VehicleChoice extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-              color: selected ? const Color(0xFFEAF8F2) : Colors.white,
+              color: selected ? AppTint.brand : Colors.white,
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
                 color: selected ? AppColors.primary : AppColors.border,

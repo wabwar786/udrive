@@ -1,3 +1,4 @@
+import '../../core/theme/app_tokens.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/localization/app_strings.dart';
@@ -54,7 +55,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       children: [
         if (!MapConfig.hasLiveConfiguration)
           PremiumCard(
-            color: const Color(0xFFEAF4FF),
+            color: AppTint.info,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -128,12 +129,12 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         ),
         const SizedBox(height: 12),
         PremiumCard(
-          color: trip.routeDeviation ? const Color(0xFFFFF0F0) : null,
+          color: trip.routeDeviation ? AppTint.danger : null,
           child: SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: trip.routeDeviation,
             onChanged: controller.setRouteDeviation,
-            secondary: Icon(Icons.alt_route_rounded, color: trip.routeDeviation ? AppColors.danger : AppColors.primaryDark),
+            secondary: Icon(Icons.alt_route_rounded, color: trip.routeDeviation ? AppTint.dangerText : AppColors.primaryDark),
             title: Text(context.tr('routeDeviationSimulation'), style: TextStyle(fontWeight: FontWeight.w900)),
             subtitle: Text(
               trip.routeDeviation
@@ -186,7 +187,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
               ),
               const SizedBox(height: 14),
               PremiumCard(
-                color: const Color(0xFFF1FAF6),
+                color: AppColors.surface,
                 child: SelectableText(controller.buildShareLink(), style: const TextStyle(fontWeight: FontWeight.w800)),
               ),
               const SizedBox(height: 12),
@@ -226,7 +227,7 @@ class _AnimatedRouteMap extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(28),
-          gradient: const LinearGradient(colors: [Color(0xFFE8F5EF), Color(0xFFE5EEF6)]),
+          gradient: const LinearGradient(colors: [AppColors.surface, AppColors.surfaceAlt]),
           border: Border.all(color: AppColors.border),
         ),
         child: LayoutBuilder(

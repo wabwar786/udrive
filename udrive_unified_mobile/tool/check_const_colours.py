@@ -1,14 +1,20 @@
 """Finds `const` expressions that reach a runtime colour token.
 
-`AppColors.secondary`, `AppColors.accent`, `AppTint.brand` and `AppText.onBrand`
-follow the accent the customer picks, so they are runtime getters. Dart rejects
-them inside any `const` expression.
+Dart rejects a runtime getter inside any `const` expression, and the compiler is
+not available here, so this stands in for it.
+
+TOKENS is empty as of the brand-kit change. Every colour token is a `const`
+again: the customer-selectable accent that made four of them getters
+(`AppColors.secondary`, `AppColors.accent`, `AppTint.brand`, `AppText.onBrand`)
+was removed when the app took the brand's single lime. Keeping the check with an
+empty list is deliberate — the next colour that has to be computed at runtime
+gets added here and the whole codebase is swept for it in one run, instead of
+the build failing on sixty-odd sites the way it did the first time.
 
 The first version of this check looked one line at a time, which is not how
 `const` works: an outer `const TextStyle(` four lines up makes everything inside
-it constant too. That version passed clean and the build failed on sixty-odd
-sites — so this one walks the balanced bracket group each `const` opens and
-checks the whole body.
+it constant too. This one walks the balanced bracket group each `const` opens
+and checks the whole body.
 
 Run from udrive_unified_mobile/:
 
@@ -19,12 +25,7 @@ import os
 import re
 import sys
 
-TOKENS = (
-    'AppColors.secondary',
-    'AppColors.accent',
-    'AppTint.brand',
-    'AppText.onBrand',
-)
+TOKENS = ()
 
 CLOSERS = {'(': ')', '[': ']', '{': '}'}
 

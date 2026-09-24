@@ -54,7 +54,7 @@ class _JoinTourScreenState extends State<JoinTourScreen> with SingleTickerProvid
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
         children: [
           PremiumCard(
-            color: const Color(0xFF0D4337),
+            color: AppColors.navy,
             child: Row(
               children: [
                 Container(width: 54, height: 54, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(17)), child: const Icon(Icons.groups_rounded, color: Colors.white)),
@@ -120,7 +120,7 @@ class SharedTourCard extends StatelessWidget {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-                    decoration: BoxDecoration(color: const Color(0xFFEAF7F2), borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(12)),
                     child: Row(children: [
                       const Icon(Icons.trip_origin_rounded, size: 16, color: AppColors.primary),
                       const SizedBox(width: 6),
@@ -144,8 +144,8 @@ class SharedTourCard extends StatelessWidget {
                       Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                          decoration: BoxDecoration(color: tour.availableSeats <= 2 ? const Color(0xFFFFE9C7) : const Color(0xFFD9F8E9), borderRadius: BorderRadius.circular(999)),
-                          child: Text('${tour.availableSeats} ${context.tr('seatsLeft')}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: tour.availableSeats <= 2 ? const Color(0xFF9A5A00) : const Color(0xFF087A4B))),
+                          decoration: BoxDecoration(color: tour.availableSeats <= 2 ? AppTint.warning : AppTint.success, borderRadius: BorderRadius.circular(999)),
+                          child: Text('${tour.availableSeats} ${context.tr('seatsLeft')}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: tour.availableSeats <= 2 ? AppTint.warningText : AppTint.successText)),
                         ),
                         const SizedBox(height: 3),
                         Text('${tour.totalSeats} total', style: const TextStyle(color: AppColors.muted, fontSize: 9.5)),
@@ -392,7 +392,7 @@ class _SafetyLine extends StatelessWidget {
 
 class _InterestHero extends StatelessWidget {
   @override
-  Widget build(BuildContext context) => PremiumCard(color: Color(0xFFFFF8E5), child: Row(children: [Container(width: 50, height: 50, decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: .2), borderRadius: BorderRadius.circular(16)), child: Icon(Icons.auto_awesome_rounded, color: Color(0xFF8A5B00))), SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('cannotFindTour'), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)), SizedBox(height: 4), Text(context.tr('registerAndNotify'), style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35))]))]));
+  Widget build(BuildContext context) => PremiumCard(color: AppTint.warning, child: Row(children: [Container(width: 50, height: 50, decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: .2), borderRadius: BorderRadius.circular(16)), child: Icon(Icons.auto_awesome_rounded, color: AppTint.warningText)), SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('cannotFindTour'), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)), SizedBox(height: 4), Text(context.tr('registerAndNotify'), style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35))]))]));
 }
 
 class _DatePickerField extends StatelessWidget {

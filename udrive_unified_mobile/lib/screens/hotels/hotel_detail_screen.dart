@@ -1,3 +1,4 @@
+import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -7,11 +8,11 @@ import '../../core/state/app_controller.dart';
 import '../../models/hotel_models.dart';
 import '../customer/udrive_route_flow_screen.dart';
 
-const _ink = Color(0xFF0C0E0D);
-const _card = Color(0xFF151816);
-const _tile = Color(0xFF232724);
-const _lime = Color(0xFFB7F20A);
-const _muted = Color(0xFF9AA09A);
+const _ink = AppColors.inkSurface;
+const _card = AppColors.inkPanel;
+const _tile = AppColors.inkTile;
+const _lime = AppColors.brand;
+const _muted = AppColors.onInkMuted;
 
 class HotelDetailScreen extends StatefulWidget {
   const HotelDetailScreen({required this.hotel, required this.checkIn, required this.checkOut, super.key});
@@ -109,11 +110,11 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                     height: 190,
                     width: double.infinity,
                     child: hotel.mainImageUrl.isEmpty
-                        ? const ColoredBox(color: Color(0xFF20241F), child: Icon(Icons.hotel_rounded, size: 66, color: _lime))
+                        ? const ColoredBox(color: AppColors.inkPanel, child: Icon(Icons.hotel_rounded, size: 66, color: _lime))
                         : Image.network(hotel.mainImageUrl,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) =>
-                                const ColoredBox(color: Color(0xFF20241F), child: Icon(Icons.hotel_rounded, size: 66, color: _lime))),
+                                const ColoredBox(color: AppColors.inkPanel, child: Icon(Icons.hotel_rounded, size: 66, color: _lime))),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -134,7 +135,7 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                 ]),
                 if ((_details?.description ?? '').isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  Text(_details!.description, style: const TextStyle(color: AppText.secondary, fontSize: 12, height: 1.5)),
+                  Text(_details!.description, style: const TextStyle(color: _muted, fontSize: 12, height: 1.5)),
                 ],
                 const SizedBox(height: 14),
                 SizedBox(
@@ -157,7 +158,7 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                 if (_details!.rooms.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Text('No rooms available for these dates.', style: TextStyle(color: AppText.disabled, fontSize: 12)),
+                    child: Text('No rooms available for these dates.', style: TextStyle(color: _muted, fontSize: 12)),
                   ),
               ],
             ),
@@ -195,7 +196,7 @@ class _RoomCard extends StatelessWidget {
               width: 66,
               height: 60,
               decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(13)),
-              child: const Icon(Icons.bed_rounded, size: 32, color: AppText.secondary),
+              child: const Icon(Icons.bed_rounded, size: 32, color: _muted),
             ),
             const SizedBox(width: 11),
             Expanded(
@@ -205,7 +206,7 @@ class _RoomCard extends StatelessWidget {
                   Text(room.roomType, style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 3),
                   Text('${room.capacity} guests • ${room.availableRooms} left',
-                      style: TextStyle(color: soldOut ? const Color(0xFFE5484D) : _muted, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                      style: TextStyle(color: soldOut ? AppColors.danger : _muted, fontSize: 10.5, fontWeight: FontWeight.w700)),
                 ],
               ),
             ),

@@ -66,7 +66,7 @@ class _DriverVerificationStatusScreenState
       'ChangesRequired' || 'Rejected' => (
           Icons.error_outline_rounded,
           AppTint.danger,
-          AppColors.danger,
+          AppTint.dangerText,
           'Something needs to be sent again',
           notes == null || notes.trim().isEmpty
               // A rejection with no reason is the worst of both: the driver

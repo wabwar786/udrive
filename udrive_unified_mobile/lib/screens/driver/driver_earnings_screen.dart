@@ -1,3 +1,4 @@
+import '../../core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 
 import 'package:intl/intl.dart';
@@ -297,7 +298,7 @@ class _DriverRecord extends StatelessWidget {
                         height: 1.05,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -.7,
-                        color: Color(0xFF148A5A),
+                        color: AppColors.success,
                       ),
                     ),
                   ],
@@ -330,7 +331,7 @@ class _DriverRecord extends StatelessWidget {
               // such, because "5.0" that nobody gave is worse than a blank.
               if (dashboard.rating != null) ...[
                 const Icon(Icons.star_rounded,
-                    size: 17, color: Color(0xFFF5A524)),
+                    size: 17, color: AppTint.star),
                 const SizedBox(width: 4),
                 Text(
                   dashboard.rating!.toStringAsFixed(1),
@@ -357,7 +358,7 @@ class _DriverRecord extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF7F9FB),
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -371,7 +372,7 @@ class _DriverRecord extends StatelessWidget {
                                   ? Icons.star_rounded
                                   : Icons.star_outline_rounded,
                               size: 12,
-                              color: const Color(0xFFF5A524),
+                              color: AppTint.star,
                             ),
                           const SizedBox(width: 7),
                           Text(

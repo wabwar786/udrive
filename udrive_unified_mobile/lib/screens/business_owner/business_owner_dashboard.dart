@@ -94,7 +94,7 @@ class _BusinessOwnerDashboardState extends State<BusinessOwnerDashboard> {
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.danger,
+                          color: AppTint.dangerText,
                         ),
                       ),
                     ),
@@ -167,8 +167,8 @@ class _OwnerListingTile extends StatelessWidget {
 
   (Color background, Color text) get _statusColors => switch (listing.status) {
         BusinessStatus.approved => (AppTint.success, AppTint.successText),
-        BusinessStatus.rejected => (AppTint.danger, AppColors.danger),
-        BusinessStatus.suspended => (AppTint.danger, AppColors.danger),
+        BusinessStatus.rejected => (AppTint.danger, AppTint.dangerText),
+        BusinessStatus.suspended => (AppTint.danger, AppTint.dangerText),
         _ => (AppTint.warning, AppTint.warningText),
       };
 

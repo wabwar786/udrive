@@ -33,7 +33,7 @@ class VehicleListScreen extends StatelessWidget {
                       width: double.infinity,
                       decoration: const BoxDecoration(
                         borderRadius: BorderRadius.vertical(top: Radius.circular(23)),
-                        gradient: LinearGradient(colors: [Color(0xFFE6F5EE), Color(0xFFDDEAF5)]),
+                        gradient: LinearGradient(colors: [AppColors.surface, AppColors.surfaceAlt]),
                       ),
                       child: Stack(children: [
                         const Center(child: Icon(Icons.directions_car_filled_rounded, size: 95, color: AppColors.primaryDark)),
@@ -64,7 +64,7 @@ class VehicleListScreen extends StatelessWidget {
               ),
             )),
         PremiumCard(
-          color: const Color(0xFFFFF9E9),
+          color: AppTint.warning,
           child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.info_outline_rounded, color: AppColors.warning), SizedBox(width: 10), Expanded(child: Text('Every vehicle is reviewed before it can receive bookings. Expired compulsory documents automatically restrict the vehicle.', style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.4)))]),
         ),
       ],
@@ -219,7 +219,7 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
         ])),
         const SizedBox(height: 12),
         PremiumCard(
-          color: const Color(0xFFEAF4FF),
+          color: AppTint.info,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -241,14 +241,14 @@ class _VehicleRegistrationScreenState extends State<VehicleRegistrationScreen> {
   Widget _documentsStep() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _StepTitle(title: context.tr('uploadDocuments'), subtitle: 'Tap each item to simulate selecting a clear file or photograph.'),
         ..._uploads.entries.map((entry) => Padding(padding: const EdgeInsets.only(bottom: 10), child: UploadTile(label: entry.key, uploaded: entry.value, icon: entry.key.contains('photo') ? Icons.add_a_photo_rounded : Icons.upload_file_rounded, onTap: () => setState(() => _uploads[entry.key] = !entry.value)))),
-        PremiumCard(color: const Color(0xFFFFF9E9), child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.security_rounded, color: AppColors.warning), SizedBox(width: 10), Expanded(child: Text('In the live version files will be securely uploaded to cloud storage. This frontend currently stores only dummy upload status.', style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.4)))])),
+        PremiumCard(color: AppTint.warning, child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.security_rounded, color: AppColors.warning), SizedBox(width: 10), Expanded(child: Text('In the live version files will be securely uploaded to cloud storage. This frontend currently stores only dummy upload status.', style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.4)))])),
       ]);
 
   Widget _reviewStep() {
     final completed = _uploads.values.where((e) => e).length;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _StepTitle(title: context.tr('reviewSubmit'), subtitle: 'Review the information before submitting it for verification.'),
-      Container(height: 150, decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), gradient: const LinearGradient(colors: [Color(0xFFE6F5EE), Color(0xFFDDEAF5)])), child: const Icon(Icons.directions_car_filled_rounded, size: 96, color: AppColors.primaryDark)),
+      Container(height: 150, decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), gradient: const LinearGradient(colors: [AppColors.surface, AppColors.surfaceAlt])), child: const Icon(Icons.directions_car_filled_rounded, size: 96, color: AppColors.primaryDark)),
       const SizedBox(height: 14),
       PremiumCard(child: Column(children: [
         _ReviewRow(label: 'Vehicle', value: '${_make.text} ${_model.text} ${_year.text}'),

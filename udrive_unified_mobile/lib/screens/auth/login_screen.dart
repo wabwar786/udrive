@@ -305,13 +305,13 @@ class _FormSheet extends StatelessWidget {
                 child: Row(
                   children: [
                     const Icon(Icons.error_outline_rounded,
-                        size: 16, color: AppColors.danger),
+                        size: 16, color: AppTint.dangerText),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         error!,
                         style: const TextStyle(
-                          color: AppColors.danger,
+                          color: AppTint.dangerText,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),

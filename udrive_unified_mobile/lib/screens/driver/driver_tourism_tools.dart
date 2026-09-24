@@ -1,3 +1,4 @@
+import '../../core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
@@ -78,7 +79,7 @@ class VehicleSuitabilityScreen extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 4, 18, 30),
       children: [
         PremiumCard(
-          color: const Color(0xFFF1FAF6),
+          color: AppColors.surface,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -156,7 +157,7 @@ class DriverRoadReportsScreen extends StatelessWidget {
         FilledButton.icon(onPressed: () => _newReport(context, controller), icon: const Icon(Icons.add_road_rounded), label: Text(context.tr('reportRoadCondition'))),
         const SizedBox(height: 14),
         PremiumCard(
-          color: const Color(0xFFFFF9E9),
+          color: AppTint.warning,
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.fact_check_rounded, color: AppColors.warning), const SizedBox(width: 10), Expanded(child: Text(context.tr('driverReportNotice'), style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.45)))]),
         ),
         const SizedBox(height: 14),

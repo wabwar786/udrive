@@ -1,8 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12 and up compose the splash themselves: the app supplies a
+    background colour and an icon, and the platform centres, masks and animates
+    it. windowBackground is ignored here, so launch_background.xml never runs on
+    these versions and these three attributes are the whole splash.
+
+    The icon is its own drawable rather than the density-bucketed launch_icon,
+    which the pre-12 layer-list draws at native size. One name, two jobs, and
+    the platform picks whichever density it likes.
+-->
 <resources>
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <item name="android:windowSplashScreenBackground">#087A55</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_icon</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">#17B978</item>
+        <item name="android:windowSplashScreenBackground">@color/udrive_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
         <!-- No android:postSplashScreenTheme here. That attribute does not
              exist in the platform: it belongs to androidx.core:core-splashscreen
              and is written without the android: prefix, on a theme whose parent
@@ -13,12 +23,17 @@
              activity carries io.flutter.embedding.android.NormalTheme in
              AndroidManifest.xml, and the engine applies that theme once the
              first frame is ready. -->
-        <item name="android:windowLightStatusBar">false</item>
+        <!-- No windowSplashScreenIconBackgroundColor either. It draws a filled
+             circle behind the icon, and the pin is navy on white already;
+             a plate behind it would only put a second shape on screen. -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/udrive_background</item>
+        <item name="android:navigationBarColor">@color/udrive_background</item>
     </style>
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:statusBarColor">#F5F8F7</item>
-        <item name="android:navigationBarColor">#FFFFFF</item>
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <item name="android:statusBarColor">@color/udrive_background</item>
+        <item name="android:navigationBarColor">@color/udrive_background</item>
+        <item name="android:windowBackground">@color/udrive_background</item>
     </style>
 </resources>

@@ -1,3 +1,4 @@
+import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -9,11 +10,11 @@ import '../customer/udrive_route_flow_screen.dart';
 import '../hotel_owner/hotel_owner_add_screen.dart';
 import 'hotel_detail_screen.dart';
 
-const _ink = Color(0xFF0C0E0D);
-const _card = Color(0xFF151816);
-const _tile = Color(0xFF232724);
-const _lime = Color(0xFFB7F20A);
-const _muted = Color(0xFF9AA09A);
+const _ink = AppColors.inkSurface;
+const _card = AppColors.inkPanel;
+const _tile = AppColors.inkTile;
+const _lime = AppColors.brand;
+const _muted = AppColors.onInkMuted;
 
 class HotelListScreen extends StatefulWidget {
   const HotelListScreen({
@@ -208,10 +209,14 @@ class _HotelListScreenState extends State<HotelListScreen> {
                   _loadError ?? 'Hotels could not be loaded.',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppText.secondary, fontSize: 10.5, height: 1.3),
+                  style: const TextStyle(color: _muted, fontSize: 10.5, height: 1.3),
                 ),
               ),
-              TextButton(onPressed: _load, child: const Text('Retry')),
+              TextButton(
+                      onPressed: _load,
+                      style: TextButton.styleFrom(foregroundColor: _lime),
+                      child: const Text('Retry'),
+                    ),
             ],
           ),
         ),
@@ -220,7 +225,7 @@ class _HotelListScreenState extends State<HotelListScreen> {
   Widget _addHotelBanner() => Padding(
         padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
         child: Material(
-          color: const Color(0xFF20251F),
+          color: AppColors.inkPanel,
           borderRadius: BorderRadius.circular(15),
           child: InkWell(
             borderRadius: BorderRadius.circular(15),
@@ -231,8 +236,8 @@ class _HotelListScreenState extends State<HotelListScreen> {
                 children: [
                   CircleAvatar(
                     radius: 19,
-                    backgroundColor: Color(0xFFB7F20A),
-                    child: Icon(Icons.add_business_rounded, color: Colors.black, size: 20),
+                    backgroundColor: AppColors.brand,
+                    child: Icon(Icons.add_business_rounded, color: AppColors.onBrand, size: 20),
                   ),
                   SizedBox(width: 11),
                   Expanded(
@@ -241,11 +246,11 @@ class _HotelListScreenState extends State<HotelListScreen> {
                       children: [
                         Text('Own a hotel or guest house?', style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w900)),
                         SizedBox(height: 2),
-                        Text('Add it for admin approval and publish it on UDrive.', style: TextStyle(color: AppText.secondary, fontSize: 9.5)),
+                        Text('Add it for admin approval and publish it on UDrive.', style: TextStyle(color: _muted, fontSize: 9.5)),
                       ],
                     ),
                   ),
-                  Icon(Icons.chevron_right_rounded, color: AppText.secondary),
+                  Icon(Icons.chevron_right_rounded, color: _muted),
                 ],
               ),
             ),
@@ -262,7 +267,7 @@ class _HotelListScreenState extends State<HotelListScreen> {
               onSubmitted: (_) => _load(),
               style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppText.secondary),
+                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: _muted),
                 hintText: 'Destination or hotel',
                 hintStyle: const TextStyle(color: _muted, fontSize: 12.5),
                 isDense: true,
@@ -395,14 +400,14 @@ class _HotelCard extends StatelessWidget {
                     width: double.infinity,
                     child: hotel.mainImageUrl.isEmpty
                         ? const ColoredBox(
-                            color: Color(0xFF20241F),
+                            color: AppColors.inkPanel,
                             child: Icon(Icons.hotel_rounded, size: 46, color: _lime),
                           )
                         : Image.network(
                             hotel.mainImageUrl,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) => const ColoredBox(
-                              color: Color(0xFF20241F),
+                              color: AppColors.inkPanel,
                               child: Icon(Icons.hotel_rounded, size: 46, color: _lime),
                             ),
                           ),
@@ -468,7 +473,7 @@ class _HotelCard extends StatelessWidget {
                         ),
                         const Spacer(),
                         Text('${hotel.availableRooms} rooms',
-                            style: const TextStyle(color: AppText.disabled, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                            style: const TextStyle(color: _muted, fontSize: 10.5, fontWeight: FontWeight.w700)),
                       ],
                     ),
                     const SizedBox(height: 11),
@@ -536,7 +541,7 @@ class _EmptyHotels extends StatelessWidget {
                     ? 'Hotels are temporarily unavailable. Use Retry after the updated API is deployed.'
                     : 'No approved hotels match this search. Clear the destination and search again.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppText.disabled, fontSize: 12.5, height: 1.35),
+                style: const TextStyle(color: _muted, fontSize: 12.5, height: 1.35),
               ),
             ],
           ),

@@ -1,3 +1,4 @@
+import '../../core/theme/app_tokens.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -438,7 +439,7 @@ class _MapUnavailable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        color: const Color(0xFFEAF2FF),
+        color: AppTint.info,
         alignment: Alignment.center,
         child: Column(
           mainAxisSize: MainAxisSize.min,

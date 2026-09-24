@@ -33,7 +33,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
             gradient: const LinearGradient(
-              colors: [Color(0xFF063F32), AppColors.primary],
+              colors: [AppColors.inkDeep, AppColors.primary],
             ),
           ),
           child: Column(
@@ -75,7 +75,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     ? 'ہر اہم کام آسان مراحل میں سمجھایا گیا ہے۔ جس سیکشن کی ضرورت ہو اسے کھولیں۔'
                     : 'Every important task is explained in simple steps. Open the section you need.',
                 textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
-                style: const TextStyle(color: AppText.secondary, height: 1.5),
+                style: const TextStyle(color: AppColors.onInkMuted, height: 1.5),
               ),
             ],
           ),
@@ -141,14 +141,14 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
           ),
         ),
         Card(
-          color: const Color(0xFFFFF7E8),
+          color: AppTint.warning,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
               children: [
-                const Icon(Icons.support_agent_rounded, color: Color(0xFF9B6500)),
+                const Icon(Icons.support_agent_rounded, color: AppTint.warningText),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(

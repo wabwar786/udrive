@@ -57,7 +57,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
-              gradient: const LinearGradient(colors: [Color(0xFF063F32), AppColors.primary]),
+              gradient: const LinearGradient(colors: [AppColors.inkDeep, AppColors.primary]),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

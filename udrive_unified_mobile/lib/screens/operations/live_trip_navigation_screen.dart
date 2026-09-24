@@ -663,7 +663,7 @@ class _DriverLiveNavigationScreenState
                     Polyline(
                       points: routePoints,
                       strokeWidth: 5,
-                      color: const Color(0xFF0E4F4F),
+                      color: AppColors.inkTile,
                     ),
                   ],
                 ),
@@ -676,7 +676,7 @@ class _DriverLiveNavigationScreenState
                       height: 54,
                       child: const _MapMarker(
                         icon: Icons.directions_car_filled_rounded,
-                        color: Color(0xFF06201F),
+                        color: AppColors.inkDeep,
                       ),
                     ),
                   if (_headingToPickup && pickup != null)
@@ -696,7 +696,7 @@ class _DriverLiveNavigationScreenState
                       height: 48,
                       child: const _MapMarker(
                         icon: Icons.flag_rounded,
-                        color: Color(0xFFE5484D),
+                        color: AppColors.danger,
                       ),
                     ),
                 ],
@@ -766,7 +766,7 @@ class _DriverLiveNavigationScreenState
                             width: 9,
                             height: 9,
                             decoration: const BoxDecoration(
-                              color: Color(0xFF148A5A),
+                              color: AppColors.success,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -951,13 +951,13 @@ class _DriverLiveNavigationScreenState
                           margin: const EdgeInsets.only(bottom: 11),
                           padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEAF2FF),
+                            color: AppTint.info,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
                             children: [
                               const Icon(Icons.chat_bubble_rounded,
-                                  size: 15, color: Color(0xFF1B4E9B)),
+                                  size: 15, color: AppColors.info),
                               const SizedBox(width: 9),
                               Expanded(
                                 child: Text(
@@ -967,7 +967,7 @@ class _DriverLiveNavigationScreenState
                                   style: const TextStyle(
                                     fontSize: 12.5,
                                     height: 1.35,
-                                    color: Color(0xFF1B4E9B),
+                                    color: AppColors.info,
                                   ),
                                 ),
                               ),
@@ -1004,8 +1004,8 @@ class _DriverLiveNavigationScreenState
                             child: OutlinedButton.icon(
                               onPressed: _actionBusy ? null : _cancelWithReason,
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: AppColors.danger,
-                                side: const BorderSide(color: Color(0x33E5484D)),
+                                foregroundColor: AppTint.dangerText,
+                                side: const BorderSide(color: AppTint.dangerBorder),
                                 minimumSize: const Size.fromHeight(44),
                               ),
                               icon: const Icon(Icons.close_rounded, size: 17),
@@ -1699,7 +1699,7 @@ class _CustomerFullScreenTrackingScreenState
                           ? _leg.points
                           : [driver, target].whereType<LatLng>().toList(),
                       strokeWidth: 5,
-                      color: const Color(0xFF0E4F4F),
+                      color: AppColors.inkTile,
                     ),
                   ],
                 ),
@@ -1737,7 +1737,7 @@ class _CustomerFullScreenTrackingScreenState
                       point: destination,
                       width: 48,
                       height: 48,
-                      child: const _MapMarker(icon: Icons.flag, color: Color(0xFFE5484D)),
+                      child: const _MapMarker(icon: Icons.flag, color: AppColors.danger),
                     ),
                 ],
               ),
@@ -2295,8 +2295,8 @@ class _CustomerFullScreenTrackingScreenState
                         child: OutlinedButton.icon(
                           onPressed: _cancelRide,
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.danger,
-                            side: const BorderSide(color: Color(0x33E5484D)),
+                            foregroundColor: AppTint.dangerText,
+                            side: const BorderSide(color: AppTint.dangerBorder),
                             minimumSize: const Size.fromHeight(46),
                           ),
                           icon: const Icon(Icons.close_rounded, size: 18),
@@ -2337,10 +2337,10 @@ class _PassengerRecord extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (background, ink) = switch (standing.standing) {
-      'Trusted' => (const Color(0xFFE7F7EF), const Color(0xFF0B6B4A)),
-      'Mixed' => (const Color(0xFFFFF1E6), const Color(0xFF8A4B12)),
-      'New' => (const Color(0xFFEDF1F5), const Color(0xFF44525E)),
-      _ => (const Color(0xFFEAF2FF), const Color(0xFF1B4E9B)),
+      'Trusted' => (AppTint.success, AppTint.successText),
+      'Mixed' => (AppTint.warning, AppTint.warningText),
+      'New' => (AppColors.surfaceAlt, AppColors.muted),
+      _ => (AppTint.info, AppColors.info),
     };
 
     return Container(

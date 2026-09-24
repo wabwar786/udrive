@@ -103,7 +103,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                   ],
                   const SizedBox(height: 18),
                   PremiumCard(
-                    color: const Color(0xFFF1FAF6),
+                    color: AppColors.surface,
                     child: Column(
                       children: [
                         _DetailLine(icon: Icons.privacy_tip_rounded, text: widget.package.passengerPolicy),
@@ -119,7 +119,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
                   ...widget.package.itinerary.asMap().entries.map((entry) => Padding(padding: const EdgeInsets.only(bottom: 12), child: PremiumCard(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: 32, height: 32, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle), child: Center(child: Text('${entry.key + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)))), const SizedBox(width: 12), Expanded(child: Text(entry.value, style: const TextStyle(fontWeight: FontWeight.w800, height: 1.4)))])))),
                   const SizedBox(height: 20),
                   PremiumCard(
-                    color: const Color(0xFFF1FAF6),
+                    color: AppColors.surface,
                     child: Column(children: [
                       Row(children: [Text(_bookingType == BookingType.perSeat ? context.tr('seatFare') : context.tr('vehicleFare'), style: const TextStyle(fontWeight: FontWeight.w800)), const Spacer(), Text('PKR ${NumberFormat('#,###').format(_selectedPrice)}', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: AppColors.primaryDark))]),
                       if (widget.package.allowOffers) ...[const SizedBox(height: 14), TextField(controller: _offer, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('yourOffer'), prefixText: 'PKR '))],
@@ -173,7 +173,7 @@ class _BookingTypeCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         child: Container(
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: selected ? const Color(0xFFEAF8F2) : Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.6 : 1)),
+          decoration: BoxDecoration(color: selected ? AppTint.brand : Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.6 : 1)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, color: AppColors.primaryDark), const SizedBox(height: 11), Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)), const SizedBox(height: 3), Text('PKR ${NumberFormat('#,###').format(amount)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))]),
         ),
       );

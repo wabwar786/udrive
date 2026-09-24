@@ -1,3 +1,4 @@
+import '../../core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
@@ -25,7 +26,7 @@ class DriverTourismPackagesScreen extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         PremiumCard(
-          color: const Color(0xFFF1FAF6),
+          color: AppColors.surface,
           child: const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -196,8 +197,8 @@ class _AdvancedCreatePackageScreenState extends State<AdvancedCreatePackageScree
           ),
           const SizedBox(height: 10),
           PremiumCard(
-            color: suitable ? const Color(0xFFF1FAF6) : const Color(0xFFFFF0F0),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(suitable ? Icons.verified_rounded : Icons.warning_amber_rounded, color: suitable ? AppColors.success : AppColors.danger), const SizedBox(width: 10), Expanded(child: Text(suitable ? 'Selected vehicle is suitable for this package configuration.' : 'This route requires a mountain-ready 4×4 vehicle with first-aid kit and spare tyre.', style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.45)))]),
+            color: suitable ? AppColors.surface : AppTint.danger,
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(suitable ? Icons.verified_rounded : Icons.warning_amber_rounded, color: suitable ? AppColors.success : AppTint.dangerText), const SizedBox(width: 10), Expanded(child: Text(suitable ? 'Selected vehicle is suitable for this package configuration.' : 'This route requires a mountain-ready 4×4 vehicle with first-aid kit and spare tyre.', style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.45)))]),
           ),
           const SizedBox(height: 12),
           Row(children: [Expanded(child: TextFormField(controller: _seatPrice, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Price per seat', prefixText: 'PKR '), validator: _money)), const SizedBox(width: 8), Expanded(child: TextFormField(controller: _wholePrice, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Whole vehicle price', prefixText: 'PKR '), validator: _money))]),

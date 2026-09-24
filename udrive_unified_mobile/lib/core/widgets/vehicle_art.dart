@@ -1,7 +1,7 @@
+import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../theme/app_theme.dart';
 
 /// Maps free-text vehicle descriptions to bundled, on-brand vehicle
 /// illustrations so every ride card shows a real vehicle picture instead of a
@@ -105,7 +105,7 @@ class VehicleThumb extends StatelessWidget {
             ? const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFF0FAF5), Color(0xFFE7F3FA)],
+                colors: [AppColors.surface, AppColors.surfaceAlt],
               )
             : null,
         color: tinted ? null : Colors.white,
@@ -153,7 +153,7 @@ class VehicleBanner extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF10212B), Color(0xFF10212B)],
+          colors: [AppColors.inkPanel, AppColors.inkSurface],
         ),
       ),
       child: Center(

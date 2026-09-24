@@ -1,7 +1,7 @@
+import '../../core/theme/app_tokens.dart';
+import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
-import '../theme/app_tokens.dart';
 
 /// A panel that sits collapsed at the bottom of a map and opens on a tap.
 ///
@@ -102,7 +102,7 @@ class _CollapsibleMapSheetState extends State<CollapsibleMapSheet>
           color: AppColors.background,
           borderRadius: BorderRadius.circular(18),
           elevation: 6,
-          shadowColor: const Color(0x1A0F1512),
+          shadowColor: AppTint.shadowSoft,
           child: InkWell(
             onTap: () => _setOpen(true),
             borderRadius: BorderRadius.circular(18),
@@ -133,7 +133,7 @@ class _CollapsibleMapSheetState extends State<CollapsibleMapSheet>
         color: AppColors.background,
         borderRadius: BorderRadius.circular(22),
         elevation: 8,
-        shadowColor: const Color(0x1F0F1512),
+        shadowColor: AppTint.shadow,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

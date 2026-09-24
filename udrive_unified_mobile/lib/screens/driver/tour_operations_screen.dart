@@ -71,7 +71,7 @@ class _TourOperationsScreenState extends State<TourOperationsScreen>
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
           child: PremiumCard(
-            color: const Color(0xFF0D4337),
+            color: AppColors.navy,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -266,7 +266,7 @@ class _OperationCard extends StatelessWidget {
   Widget _metric(String value, String label) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFFF2F7F5),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text('$value $label',

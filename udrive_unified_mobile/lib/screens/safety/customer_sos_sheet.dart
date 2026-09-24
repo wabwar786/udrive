@@ -1,3 +1,4 @@
+import '../../core/theme/app_tokens.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -280,7 +281,7 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
       constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .92),
       padding: EdgeInsets.fromLTRB(18, 12, 18, 18 + bottom),
       decoration: const BoxDecoration(
-        color: Color(0xFFF7FAF9),
+        color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
       child: Column(
@@ -293,8 +294,8 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
               Container(
                 width: 48,
                 height: 48,
-                decoration: BoxDecoration(color: const Color(0xFFFFE3E5), borderRadius: BorderRadius.circular(16)),
-                child: const Icon(Icons.mic_rounded, color: AppColors.danger, size: 28),
+                decoration: BoxDecoration(color: AppTint.danger, borderRadius: BorderRadius.circular(16)),
+                child: const Icon(Icons.mic_rounded, color: AppTint.dangerText, size: 28),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -315,8 +316,8 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(color: const Color(0xFFFFF1D6), borderRadius: BorderRadius.circular(13)),
-              child: Text(_error!, style: const TextStyle(color: Color(0xFF795500), fontSize: 12)),
+              decoration: BoxDecoration(color: AppTint.warning, borderRadius: BorderRadius.circular(13)),
+              child: Text(_error!, style: const TextStyle(color: AppTint.warningText, fontSize: 12)),
             ),
           ],
           const SizedBox(height: 12),
@@ -341,7 +342,7 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: const Color(0xFFFFD5D9)),
+                          border: Border.all(color: AppTint.danger),
                         ),
                         child: Column(
                           children: [
@@ -365,9 +366,9 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
                                 width: _recording ? 82 : 72,
                                 height: _recording ? 82 : 72,
                                 decoration: BoxDecoration(
-                                  color: _sending ? const Color(0xFFB8BEC5) : AppColors.danger,
+                                  color: _sending ? AppText.disabled : AppColors.danger,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: const Color(0xFFFFE5E7), width: _recording ? 9 : 6),
+                                  border: Border.all(color: AppTint.danger, width: _recording ? 9 : 6),
                                   boxShadow: [
                                     BoxShadow(
                                       color: AppColors.danger.withValues(alpha: _recording ? .38 : .20),
@@ -409,12 +410,12 @@ class _ContactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = item.isOfficial ? AppColors.primaryDark : const Color(0xFF6C55C9);
-    final pale = item.isOfficial ? const Color(0xFFE8F7F1) : const Color(0xFFF0ECFF);
+    final pale = item.isOfficial ? AppTint.success : const Color(0xFFF0ECFF);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 9, 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: item.isOfficial ? const Color(0xFFDDEAE5) : const Color(0xFFDDD5FA)),
+        border: Border.all(color: item.isOfficial ? AppColors.border : const Color(0xFFDDD5FA)),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(

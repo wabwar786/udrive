@@ -1,3 +1,5 @@
+import '../../core/theme/app_tokens.dart';
+import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/hotels/hotel_repository.dart';
@@ -62,18 +64,18 @@ class _HotelOwnerAddScreenState extends State<HotelOwnerAddScreen> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF5EF),
+                color: AppTint.success,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.verified_user_outlined, color: Color(0xFF315239)),
+                  Icon(Icons.verified_user_outlined, color: AppColors.secondary),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'Your hotel will stay hidden until the UDrive admin reviews and approves it. After approval it will automatically appear in Hotels & Stays.',
-                      style: TextStyle(fontSize: 11, height: 1.45, color: Color(0xFF315239), fontWeight: FontWeight.w700),
+                      style: TextStyle(fontSize: 11, height: 1.45, color: AppColors.secondary, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ],
@@ -194,7 +196,7 @@ class _HotelOwnerAddScreenState extends State<HotelOwnerAddScreen> {
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          icon: const Icon(Icons.hourglass_top_rounded, color: Color(0xFF315239), size: 36),
+          icon: const Icon(Icons.hourglass_top_rounded, color: AppColors.secondary, size: 36),
           title: const Text('Submitted for approval'),
           content: const Text('Your hotel is pending admin review. It will become visible to customers only after approval.'),
           actions: [FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Done'))],

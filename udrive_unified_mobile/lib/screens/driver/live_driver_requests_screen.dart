@@ -79,7 +79,7 @@ class _LiveDriverRequestsScreenState extends State<LiveDriverRequestsScreen> {
           const SizedBox(height: 12),
           if (verifiedVehicles.isEmpty)
             PremiumCard(
-              color: const Color(0xFFFFF5E5),
+              color: AppTint.warning,
               child: Text(
                 _t(context, 'Verify at least one vehicle before accepting requests.', 'درخواست قبول کرنے سے پہلے کم از کم ایک گاڑی کی تصدیق کروائیں۔'),
                 style: const TextStyle(color: AppColors.warning, fontWeight: FontWeight.w800, fontSize: 12),
@@ -326,7 +326,7 @@ class _Action extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-        color: onTap == null ? const Color(0xFFF1F3F5) : color.withValues(alpha: .12),
+        color: onTap == null ? AppColors.surfaceAlt : color.withValues(alpha: .12),
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           onTap: onTap,

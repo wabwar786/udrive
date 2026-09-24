@@ -172,7 +172,7 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
                           Row(
                             children: [
                               const Icon(Icons.star_rounded,
-                                  size: 15, color: Color(0xFFF5B942)),
+                                  size: 15, color: AppTint.star),
                               const SizedBox(width: 4),
                               Text(
                                 widget.offer.driverRating.toStringAsFixed(1),

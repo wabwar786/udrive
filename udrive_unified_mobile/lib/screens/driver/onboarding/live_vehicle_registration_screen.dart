@@ -1,3 +1,4 @@
+import '../../../core/theme/app_tokens.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../../core/media/image_compressor.dart';
@@ -95,7 +96,7 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
           children: [
             Container(
               padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), gradient: const LinearGradient(colors: [Color(0xFF063F32), AppColors.primary])),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), gradient: const LinearGradient(colors: [AppColors.inkDeep, AppColors.primary])),
               child: const Row(children: [
                 CircleAvatar(radius: 28, backgroundColor: Colors.white, child: Icon(Icons.directions_car_filled_rounded, color: AppColors.primaryDark, size: 32)),
                 SizedBox(width: 13),
@@ -143,7 +144,7 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFFF0F7F4),
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -193,7 +194,7 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
 
   Widget _documentUpload() => Column(children: [
         PremiumCard(
-          color: const Color(0xFFE9F7EF),
+          color: AppTint.success,
           child: Row(children: [
             const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 31),
             const SizedBox(width: 12),
@@ -212,7 +213,7 @@ class _LiveVehicleRegistrationScreenState extends State<LiveVehicleRegistrationS
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: CircleAvatar(
-                  backgroundColor: _uploaded.contains(item.$1) ? const Color(0xFFE4F7EC) : const Color(0xFFF1F4F3),
+                  backgroundColor: _uploaded.contains(item.$1) ? AppTint.success : AppColors.surfaceAlt,
                   child: Icon(_uploaded.contains(item.$1) ? Icons.check_rounded : Icons.upload_file_rounded, color: AppColors.primaryDark),
                 ),
                 title: Text(item.$2, style: const TextStyle(fontWeight: FontWeight.w800)),

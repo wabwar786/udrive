@@ -1,7 +1,7 @@
+import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../localization/app_strings.dart';
-import '../theme/app_theme.dart';
 
 class PagePadding extends StatelessWidget {
   const PagePadding({required this.child, this.bottom = 28, super.key});
@@ -109,7 +109,7 @@ class MapPreview extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(26),
           border: Border.all(color: AppColors.border),
-          gradient: const LinearGradient(colors: [Color(0xFFE6F5EE), Color(0xFFE6F0F5)]),
+          gradient: const LinearGradient(colors: [AppColors.surface, AppColors.surfaceAlt]),
         ),
         child: Stack(
           children: [

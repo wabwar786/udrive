@@ -1,4 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The brand, for the parts of the app Dart never sees: the launcher icon, the
+    window the OS paints before Flutter starts, and the system bars.
+
+    These must stay in step with lib/core/theme/app_theme.dart. Android cannot
+    read a Dart constant, so the same two colours are written twice and this is
+    the second place. If the brand colour moves, it moves here too.
+-->
 <resources>
-    <color name="udrive_primary">#17B978</color>
-    <color name="udrive_primary_dark">#087A55</color>
+    <!-- Lime #C6F432, navy #0B1B33. -->
+    <color name="udrive_brand">#C6F432</color>
+    <color name="udrive_navy">#0B1B33</color>
+
+    <!-- The app's ground, and the colour of the launch window. -->
+    <color name="udrive_background">#FFFFFF</color>
+
+    <!-- The plate behind the adaptive launcher icon's lime pin. -->
+    <color name="ic_launcher_background">#0B1B33</color>
+
+    <!--
+        Kept because older resources still reference them by name. Repointed
+        from the previous green so nothing can quietly paint a system bar
+        #17B978 on a white app.
+    -->
+    <color name="udrive_primary">#0B1B33</color>
+    <color name="udrive_primary_dark">#0B1B33</color>
 </resources>

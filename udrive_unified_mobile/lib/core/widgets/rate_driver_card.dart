@@ -1,7 +1,7 @@
+import '../../core/theme/app_tokens.dart';
+import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
-import '../theme/app_tokens.dart';
 
 /// The shared driver-offer card.
 ///
@@ -138,7 +138,7 @@ class RateDriverCard extends StatelessWidget {
                       children: [
                         if (rating != null) ...[
                           const Icon(Icons.star_rounded,
-                              size: 14, color: Color(0xFFF5B942)),
+                              size: 14, color: AppTint.star),
                           const SizedBox(width: 3),
                           Text(
                             rating!.toStringAsFixed(1),
