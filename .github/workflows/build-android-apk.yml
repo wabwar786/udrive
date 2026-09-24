@@ -112,14 +112,35 @@ jobs:
 
       # Repository secret MAPS_ANDROID_KEY, read by the manifestPlaceholder in
       # android/app/build.gradle.kts. Absent key still builds; map stays blank.
+      #
+      # The APK is signed with the SAME upload key as the Play bundle, when the
+      # keystore secrets exist. Without them Gradle falls back to the debug key,
+      # and a debug-signed APK has a SHA-1 that is generated on the runner and
+      # differs every time - so it can never match the Android restriction on the
+      # Maps key, and the map renders as an empty grey canvas with nothing but
+      # the Google watermark. Signing with the upload key makes the test APK
+      # match the SHA-1 registered in Google Cloud Console.
       - name: Build release APK
         working-directory: udrive_unified_mobile
         env:
           MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
+          UDRIVE_KEYSTORE_BASE64: ${{ secrets.UDRIVE_KEYSTORE_BASE64 }}
+          UDRIVE_KEYSTORE_PASSWORD: ${{ secrets.UDRIVE_KEYSTORE_PASSWORD }}
+          UDRIVE_KEY_ALIAS: ${{ secrets.UDRIVE_KEY_ALIAS }}
+          UDRIVE_KEY_PASSWORD: ${{ secrets.UDRIVE_KEY_PASSWORD }}
         run: |
+          if [ -n "$UDRIVE_KEYSTORE_BASE64" ]; then
+            echo "$UDRIVE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload-keystore.jks"
+            export UDRIVE_KEYSTORE_PATH="$RUNNER_TEMP/upload-keystore.jks"
+            echo "Signing the APK with the upload key."
+          else
+            echo "::warning::No keystore secrets - APK will be debug-signed and the map will not load."
+          fi
           flutter build apk --release \
             --dart-define=DEFAULT_MODE=customer \
+            --dart-define=API_BASE_URL=https://udrive-api-production.up.railway.app \
             -Pmaps_key="$MAPS_ANDROID_KEY"
+          rm -f "$RUNNER_TEMP/upload-keystore.jks"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
