@@ -1,0 +1,111 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- No RECORD_AUDIO. The SOS sheet used to record a clip and post it to an
+         endpoint the API never implemented, so the permission bought nothing
+         and the privacy policy had to declare audio it never received. The
+         alert now sends name and location only. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Location is used only while the app is open (foreground). No background
+         location or foreground-service permission: Google Play requires a
+         separate declaration and video review for those. -->
+    <!-- Predictive back. Opting in lets Android animate back inside the app
+         rather than previewing a return to the launcher. It is only correct
+         now that the shells declare PopScope: before that the app had nothing
+         to pop and genuinely was about to exit. -->
+    <application
+        android:label="UDrive"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:enableOnBackInvokedCallback="true"
+        android:usesCleartextTraffic="false">
+
+        <!-- Google Maps SDK key.
+             This MUST be present at build time; Google does not allow the map
+             key to be supplied at runtime. Supply it without committing it, by
+             passing the Gradle property maps_key to the build (see
+             PLAY_STORE_RELEASE.md for the exact command), or replace the
+             placeholder below for a local debug build.
+
+             No command line is written out here: an XML comment may not
+             contain two consecutive hyphens, and a pasted flag such as the
+             dart-define one makes the whole manifest unparseable. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <meta-data android:name="flutterEmbedding" android:value="2" />
+    </application>
+    <!--
+        Package visibility (Android 11 / API 30 and above, which this app targets
+        at API 36). Without an <intent> entry here, canLaunchUrl() returns false
+        for that scheme and the app cannot see the app that would handle it —
+        url_launcher does not add these itself.
+
+        Every entry below corresponds to a button that exists in the app:
+          tel     SOS emergency call, and the call buttons between rider and
+                  driver during a trip. These were silently dead: three of the
+                  call sites check canLaunchUrl with no else branch, so the
+                  button did nothing at all, with no message. The SOS one is the
+                  reason this block is not optional.
+          https   the "open online" button on the Privacy and Terms reader.
+          geo /
+          google.navigation
+                  "Navigate" on the driver's live trip screen, which hands the
+                  pickup or drop-off to a maps app.
+          mailto  support contact links.
+
+        These grant no permission and collect nothing. They only let the app ask
+        the system whether a handler exists before offering the button.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="google.navigation" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+    </queries>
+</manifest>

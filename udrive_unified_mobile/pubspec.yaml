@@ -1,0 +1,78 @@
+name: udrive_mobile
+publish_to: "none"
+description: Premium unified Udrive customer and driver app for Azad Kashmir tourism.
+version: 9.0.0+10
+
+environment:
+  sdk: ">=3.9.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+  http: ^1.6.0
+  shared_preferences: ^2.5.5
+  flutter_secure_storage: ^10.3.1
+  file_picker: ^11.0.2
+  battery_plus: ^7.0.0
+  connectivity_plus: ^7.0.0
+  geolocator: ^14.0.2
+  geocoding: ^4.0.0
+  flutter_map: ^8.3.1
+  latlong2: ^0.9.1
+  google_maps_flutter: ^2.10.0
+  share_plus: ^11.0.0
+  url_launcher: ^6.3.2
+  # google_fonts was removed with design system v2. It fetched Poppins at
+  # run time, so a first launch on a weak connection rendered the whole app
+  # in the platform fallback font. Plus Jakarta Sans is bundled below
+  # instead — 172 KB, and no network call to draw a screen.
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    # The brand kit: logos, marks and the splash artwork. Everything that draws
+    # the UDrive identity reads from here and nowhere else, so replacing the
+    # logo is a matter of replacing these files.
+    - assets/brand/
+    # The privacy policy, terms and account-deletion page, in both languages.
+    # Bundled so they can be read with no connection at all — the API serves
+    # the same files at /privacy and /terms, and tool/check_legal_sync.py
+    # refuses a release if the two copies differ.
+    - assets/legal/
+    - assets/images/
+    - assets/images/home_services/
+    - assets/vehicles/
+    - assets/vehicles_photo/
+
+  fonts:
+    # Plus Jakarta Sans, the typeface of design system v2. SIL Open Font
+    # License — see assets/fonts/LICENSE.txt.
+    #
+    # Five weights, because the design uses all five and Flutter will not
+    # synthesise them: asking for w800 with only a regular file bundled gets
+    # you faux-bold, which is heavier than the real 800 and loses the tighter
+    # letterforms the large headings depend on.
+    #
+    # Latin subset only. Urdu is not in this font and falls back to the
+    # platform's own Nastaliq/Naskh face, which is exactly what happened with
+    # Poppins before — no change there.
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800
