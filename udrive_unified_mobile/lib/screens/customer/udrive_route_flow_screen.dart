@@ -15,13 +15,10 @@ import '../../core/format/money.dart';
 import '../../core/pricing/fare_quote.dart';
 import '../../core/pricing/fare_quote_repository.dart';
 import '../../core/state/app_controller.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/booking_models.dart';
 import 'driver_offers_screen.dart';
 
-const _ink = AppColors.inkSurface;
-const _tile = AppColors.inkTile;
-const _lime = AppColors.brand;
-const _muted = AppColors.onInkMuted;
 
 enum UDriveServiceType { city, tours, privateVehicle }
 
@@ -369,18 +366,6 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     )));
   }
 
-  InputDecoration _fieldDecoration(String label, IconData icon, {Widget? suffix}) => InputDecoration(
-    labelText: label,
-    labelStyle: const TextStyle(color: _muted, fontSize: 12),
-    prefixIcon: Icon(icon, color: Colors.white, size: 25),
-    suffixIcon: suffix,
-    filled: true,
-    fillColor: _tile,
-    contentPadding: const EdgeInsets.symmetric(vertical: 14),
-    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.white24)),
-    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.white, width: 1.5)),
-  );
-
   @override
   Widget build(BuildContext context) {
     final activeText = (_editingFrom ? _from.text : _to.text).trim();
@@ -388,299 +373,222 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      backgroundColor: _ink,
-      body: Stack(
+      backgroundColor: AppColors.background,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: FlutterMap(
-                options: MapOptions(
-                  initialCenter: _pickupPoint,
-                  initialZoom: 13.4,
-                  interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.none,
-                  ),
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.udrive.mobile',
-                  ),
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: _pickupPoint,
-                        width: 46,
-                        height: 46,
-                        child: const Icon(
-                          Icons.location_pin,
-                          color: _lime,
-                          size: 44,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+          UdTopBar(
+            title: _serviceType.title,
+            divider: true,
+            onBack: () => Navigator.maybePop(context),
+            actions: [
+              UdIconButton(
+                icon: Icons.home_outlined,
+                tooltip: 'Go to home',
+                onPressed: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
               ),
-            ),
+            ],
           ),
-          const Positioned.fill(
-            child: ColoredBox(color: AppTint.inkVeil),
-          ),
-          SafeArea(
-            child: Column(
+
+          // A short strip of map, not a full-bleed backdrop behind a veil.
+          //
+          // The whole screen used to be a dark map under a scrim with the
+          // fields floating on it, which is the only place in the app that
+          // still looked like the old dark theme. It is a reminder of where
+          // the trip starts, and that is worth 150px and no more.
+          SizedBox(
+            height: 150,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-                  child: Row(
-                    children: [
-                      IconButton.filled(
-                        onPressed: () => Navigator.maybePop(context),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTint.inkGlass,
-                        ),
-                        icon: const Icon(
-                          Icons.arrow_back_rounded,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _serviceType.title,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton.filled(
-                        onPressed: () => Navigator.of(context)
-                            .popUntil((route) => route.isFirst),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTint.inkGlass,
-                        ),
-                        icon: const Icon(
-                          Icons.home_rounded,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: AppTint.inkScrim,
-                      border: Border(
-                        top: BorderSide(color: Colors.white12),
+                IgnorePointer(
+                  child: FlutterMap(
+                    options: MapOptions(
+                      initialCenter: _pickupPoint,
+                      initialZoom: 13.4,
+                      interactionOptions: const InteractionOptions(
+                        flags: InteractiveFlag.none,
                       ),
                     ),
-                    child: Column(
-                      children: [
-                        SingleChildScrollView(
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                          child: Column(
-                            children: [
-                              // Service/booking mode is chosen from the home card.
-                              // Keep this screen focused only on pickup and destination.
-                              TextField(
-                                controller: _from,
-                                focusNode: _fromFocus,
-                                onTap: () {
-                                  setState(() => _editingFrom = true);
-                                  _onChanged(_from.text, from: true);
-                                },
-                                onChanged: (value) {
-                                  setState(() => _editingFrom = true);
-                                  _onChanged(value, from: true);
-                                },
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                decoration: _fieldDecoration(
-                                  'Pickup location',
-                                  Icons.my_location_rounded,
-                                ),
-                              ),
-                              const SizedBox(height: 9),
-                              TextField(
-                                controller: _to,
-                                focusNode: _toFocus,
-                                textInputAction: TextInputAction.search,
-                                onTap: () =>
-                                    setState(() => _editingFrom = false),
-                                onChanged: (value) {
-                                  setState(() => _editingFrom = false);
-                                  _onChanged(value, from: false);
-                                },
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                decoration: _fieldDecoration(
-                                  'Search destination',
-                                  Icons.search_rounded,
-                                  suffix: _to.text.isEmpty
-                                      ? const Icon(
-                                          Icons.map_rounded,
-                                          color: Color(0xFF75B8FF),
-                                        )
-                                      : IconButton(
-                                          onPressed: () {
-                                            _to.clear();
-                                            _onChanged('', from: false);
-                                            setState(() {});
-                                          },
-                                          icon: const Icon(
-                                            Icons.cancel_rounded,
-                                            color: AppText.disabled,
-                                          ),
-                                        ),
-                                ),
-                              ),
-                            ],
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.udrive.mobile',
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: _pickupPoint,
+                            width: 26,
+                            height: 26,
+                            child: const _PickupDot(),
                           ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSizes.sidePadding, 16, AppSizes.sidePadding, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Service and booking mode are chosen from the home card.
+                      // This screen stays on pickup and destination only.
+                      _FlowField(
+                        controller: _from,
+                        focusNode: _fromFocus,
+                        hint: 'Pickup location',
+                        icon: Icons.my_location_rounded,
+                        active: _editingFrom,
+                        onTap: () {
+                          setState(() => _editingFrom = true);
+                          _onChanged(_from.text, from: true);
+                        },
+                        onChanged: (value) {
+                          setState(() => _editingFrom = true);
+                          _onChanged(value, from: true);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _FlowField(
+                        controller: _to,
+                        focusNode: _toFocus,
+                        hint: 'Search destination',
+                        icon: Icons.search_rounded,
+                        active: !_editingFrom,
+                        textInputAction: TextInputAction.search,
+                        onTap: () => setState(() => _editingFrom = false),
+                        onChanged: (value) {
+                          setState(() => _editingFrom = false);
+                          _onChanged(value, from: false);
+                        },
+                        onClear: _to.text.isEmpty
+                            ? null
+                            : () {
+                                _to.clear();
+                                _onChanged('', from: false);
+                                setState(() {});
+                              },
+                      ),
+                    ],
+                  ),
+                ),
+
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSizes.sidePadding, 6, AppSizes.sidePadding, 10),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: UdChip(
+                          label: typed
+                              ? 'Search results'
+                              : 'Popular Kashmir destinations',
+                          selected: true,
                         ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-                          child: Row(
-                            children: [
-                              Flexible(
-                                child: _FilterChip(
-                                  label: typed
-                                      ? 'Search results'
-                                      : 'Popular Kashmir destinations',
-                                  selected: true,
-                                ),
-                              ),
-                              if (_searching) ...[
-                                const Spacer(),
-                                const SizedBox(
-                                  width: 17,
-                                  height: 17,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: _lime,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: _results.isEmpty
-                              ? Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 28,
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          _searching
-                                              ? Icons.travel_explore_rounded
-                                              : Icons.search_rounded,
-                                          color: _searching
-                                              ? _lime
-                                              : Colors.white38,
-                                          size: 42,
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Text(
-                                          _searchMessage ??
-                                              'Type a city, district, hotel or Kashmir destination.',
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(
-                                            color: AppColors.onInkMuted,
-                                            fontSize: 12.5,
-                                            height: 1.4,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                )
-                              : ListView.separated(
-                                  keyboardDismissBehavior:
-                                      ScrollViewKeyboardDismissBehavior.onDrag,
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    0,
-                                    16,
-                                    24,
-                                  ),
-                                  itemCount: _results.length,
-                                  separatorBuilder: (_, __) => const Divider(
-                                    color: Colors.white10,
-                                    height: 1,
-                                    indent: 48,
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    final place = _results[index];
-                                    final distance = const Distance().as(
-                                      LengthUnit.Kilometer,
-                                      _pickupPoint,
-                                      LatLng(
-                                        place.latitude,
-                                        place.longitude,
-                                      ),
-                                    );
-                                    return ListTile(
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                        vertical: 4,
-                                      ),
-                                      leading: Icon(
-                                        typed
-                                            ? Icons.location_on_outlined
-                                            : Icons.place_rounded,
-                                        color: typed ? AppText.disabled : _lime,
-                                        size: 27,
-                                      ),
-                                      title: Text(
-                                        place.title,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      subtitle: Text(
-                                        place.subtitle,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: _muted,
-                                          fontSize: 11.5,
-                                          height: 1.25,
-                                        ),
-                                      ),
-                                      trailing: Text(
-                                        '${distance.toStringAsFixed(0)} km',
-                                        style: const TextStyle(
-                                          color: _muted,
-                                          fontSize: 10.5,
-                                        ),
-                                      ),
-                                      onTap: () => _select(place),
-                                    );
-                                  },
-                                ),
+                      ),
+                      if (_searching) ...[
+                        const Spacer(),
+                        const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                       ],
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: _results.isEmpty
+                      ? Center(
+                          child: UdEmptyState(
+                            icon: _searching
+                                ? Icons.travel_explore_rounded
+                                : Icons.search_rounded,
+                            tone: _searching ? UdTone.lime : UdTone.gray,
+                            title: _searching
+                                ? 'Looking…'
+                                : 'Nothing to show yet',
+                            text: _searchMessage ??
+                                'Type a city, district, hotel or Kashmir '
+                                    'destination.',
+                          ),
+                        )
+                      : ListView.builder(
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          padding: const EdgeInsets.fromLTRB(
+                              AppSizes.sidePadding, 0, AppSizes.sidePadding, 24),
+                          itemCount: _results.length,
+                          itemBuilder: (context, index) {
+                            final place = _results[index];
+                            final distance = const Distance().as(
+                              LengthUnit.Kilometer,
+                              _pickupPoint,
+                              LatLng(place.latitude, place.longitude),
+                            );
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: UdCard(
+                                padding: EdgeInsets.zero,
+                                radius: AppRadii.tile,
+                                onTap: () => _select(place),
+                                child: UdListRow(
+                                  leading: UdIconTile(
+                                    icon: typed
+                                        ? Icons.location_on_outlined
+                                        : Icons.place_rounded,
+                                    // Lime while browsing the curated list,
+                                    // grey once the customer is searching: the
+                                    // first says "we picked these", the second
+                                    // says "these matched".
+                                    tone: typed
+                                        ? UdIconTone.neutral
+                                        : UdIconTone.soft,
+                                    size: UdIconTileSize.sm,
+                                  ),
+                                  title: place.title,
+                                  subtitle: place.subtitle.isEmpty
+                                      ? null
+                                      : place.subtitle,
+                                  trailing: Text(
+                                    '${distance.toStringAsFixed(0)} km',
+                                    style: AppType.caption
+                                        .copyWith(color: AppText.secondary),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+
+                // The code's own empty-results copy, kept as a standing hint
+                // under the list rather than only appearing when nothing is
+                // found — it is the advice that gets an unmapped village
+                // booked, and it is no use only after the search has failed.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSizes.sidePadding, 0, AppSizes.sidePadding, 12),
+                  child: SafeArea(
+                    top: false,
+                    child: UdBanner(
+                      icon: Icons.tips_and_updates_outlined,
+                      text: 'Type a city, district, hotel or Kashmir '
+                          'destination.',
                     ),
                   ),
                 ),
@@ -691,7 +599,117 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
       ),
     );
   }
+}
 
+/// The pickup marker on the short map strip: a navy dot in a white ring, the
+/// same mark the route rail uses for where a trip starts.
+class _PickupDot extends StatelessWidget {
+  const _PickupDot();
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: AppTint.pinPickupFill,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppTint.pinPickupRing, width: 5),
+            boxShadow: AppShadows.floating,
+          ),
+        ),
+      );
+}
+
+/// One of the two address fields on the route flow.
+///
+/// Built here rather than with [UdTextField] because both fields stay on
+/// screen at once and the active one is decided by [active], not by focus
+/// alone — tapping either one switches which end the search is editing.
+class _FlowField extends StatelessWidget {
+  const _FlowField({
+    required this.controller,
+    required this.focusNode,
+    required this.hint,
+    required this.icon,
+    required this.active,
+    required this.onTap,
+    required this.onChanged,
+    this.onClear,
+    this.textInputAction,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String hint;
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
+  final ValueChanged<String> onChanged;
+  final VoidCallback? onClear;
+  final TextInputAction? textInputAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: AppSizes.field,
+      padding: const EdgeInsets.only(left: 14, right: 6),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: AppRadii.all(AppRadii.field),
+        border: Border.all(
+          color: active ? AppColors.navy : AppColors.borderStrong,
+          width: active ? 2 : 1.5,
+        ),
+        boxShadow: active
+            ? const [BoxShadow(color: AppColors.limeGlow, spreadRadius: 3)]
+            : const <BoxShadow>[],
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 22, color: AppText.secondary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              onTap: onTap,
+              onChanged: onChanged,
+              textInputAction: textInputAction,
+              cursorColor: AppColors.navy,
+              style: AppType.listTitle.copyWith(
+                fontSize: 16,
+                height: 1.25,
+                color: AppText.primary,
+              ),
+              decoration: InputDecoration(
+                isCollapsed: true,
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                hintText: hint,
+                hintStyle: AppType.body2.copyWith(
+                  fontSize: 15.5,
+                  height: 1.25,
+                  color: AppText.caption,
+                ),
+              ),
+            ),
+          ),
+          if (onClear != null)
+            UdIconButton(
+              icon: Icons.close_rounded,
+              variant: UdIconButtonVariant.soft,
+              small: true,
+              tooltip: 'Clear',
+              onPressed: onClear,
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 enum _FareBookingMode { perSeat, wholeVehicle }
@@ -1159,25 +1177,20 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   /// out, that state was hidden; it is a real state now, so it needs to say so.
   List<Widget> _availabilityBanner() {
     if (_loadingVehicles || _loadingRates) {
-      return [Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceAlt,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: const Row(children: [
-          SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2)),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Checking which drivers are available and what the fare is…',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppText.secondary),
+      return const [
+        Padding(
+          padding: EdgeInsets.only(bottom: 14),
+          child: UdBanner(
+            text: 'Checking which drivers are available and what the fare '
+                'is\u2026',
+            trailing: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2.2),
             ),
           ),
-        ]),
-      )];
+        ),
+      ];
     }
 
     // Two separate ways this screen can be unusable, and the banner has to
@@ -1201,43 +1214,37 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
             : 'No approved driver is offering this service near you at the moment. '
                 'You can still send a request, or try again in a few minutes.');
 
-    return [Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTint.pendingSurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTint.pendingBorder),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(Icons.info_outline_rounded, size: 19, color: AppTint.pending),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, height: 1.35),
-            ),
-          ),
-        ]),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              setState(() {
-                _loadingVehicles = true;
-                _loadingRates = true;
-                _vehicleLoadError = null;
-              });
-              _loadRates();
-            },
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: const Text('Try again'),
+    return [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: UdBanner(
+          tone: UdTone.warn,
+          icon: Icons.info_outline_rounded,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(message),
+              const SizedBox(height: 12),
+              UdButton(
+                label: 'Try again',
+                icon: Icons.refresh_rounded,
+                variant: UdButtonVariant.outline,
+                size: UdButtonSize.small,
+                onPressed: () {
+                  setState(() {
+                    _loadingVehicles = true;
+                    _loadingRates = true;
+                    _vehicleLoadError = null;
+                  });
+                  _loadRates();
+                },
+              ),
+            ],
           ),
         ),
-      ]),
-    )];
+      ),
+    ];
   }
 
   // The public vehicle-card builder was removed with the dead renderer in
@@ -1436,21 +1443,14 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     final capacity = (vehicle?.passengerCapacity ?? choice.capacity).clamp(1, 50).toInt();
     int seats = 1;
 
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showUdSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) {
           final amount = mode == _FareBookingMode.wholeVehicle ? whole : perSeat * seats;
-          return SafeArea(
-            child: Container(
-              margin: const EdgeInsets.all(10),
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-              ),
+          return SingleChildScrollView(
+            child: Padding(
+              padding: EdgeInsets.zero,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1512,18 +1512,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     ),
                   ),
                   const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton(
-                      onPressed: amount <= 0 ? null : () => Navigator.pop(sheetContext, true),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.brand,
-                        foregroundColor: AppColors.onBrand,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: const Text('Confirm Ride', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-                    ),
+                  UdButton.primary(
+                    label: 'Confirm Ride',
+                    onPressed: amount <= 0
+                        ? null
+                        : () => Navigator.pop(sheetContext, true),
                   ),
                 ],
               ),
@@ -1548,94 +1541,191 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   Widget _buildCityMinimalResultsScreen(BuildContext context) {
     final choices = _choices;
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.text,
-        title: const Text('Choose your ride', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
-              child: Row(
-                children: [
-                  const Icon(Icons.my_location_rounded, size: 20, color: AppTint.pickup),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(widget.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Icon(Icons.arrow_forward_rounded, size: 18, color: AppText.disabled)),
-                  const Icon(Icons.location_on_rounded, size: 21, color: AppTint.dropoff),
-                  const SizedBox(width: 5),
-                  Expanded(child: Text(widget.destination.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12))),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text('${_routeDistanceKm.toStringAsFixed(1)} km estimated route', style: const TextStyle(color: AppText.secondary, fontSize: 11, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 15),
-            ..._availabilityBanner(),
-            ...choices.asMap().entries.map((entry) {
-              final index = entry.key;
-              final choice = entry.value;
-              final rate = _dbRates[_normaliseVehicle(choice.name)];
-              final perSeat = _perSeatEstimate(choice, rate);
-              final whole = _wholeVehicleEstimate(choice, rate);
-              final matching = _availableVehicles.where((v) => _normaliseVehicle(v.category) == _normaliseVehicle(choice.name)).toList();
-              final available = matching.where((v) => v.isOnline).length;
-              final availability = available > 0 ? '$available available now' : 'Searching nearby drivers';
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 11),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
-                child: Column(
-                  children: [
-                    Row(children: [
+      backgroundColor: AppColors.background,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UdTopBar(
+            title: 'Choose your ride',
+            divider: true,
+            onBack: () => Navigator.maybePop(context),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSizes.sidePadding, 16, AppSizes.sidePadding, 28),
+              children: [
+                UdCard(
+                  tone: UdCardTone.tint,
+                  radius: 18,
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
                       Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(14)),
-                        child: Icon(_cityVehicleIcon(choice.name), color: AppColors.text, size: 25),
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: AppTint.pinPickupFill, width: 3),
+                        ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(choice.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.text)),
-                        const SizedBox(height: 3),
-                        Text('${choice.capacity} seat${choice.capacity == 1 ? '' : 's'} • $availability', style: const TextStyle(color: AppText.secondary, fontSize: 11)),
-                      ])),
-                    ]),
-                    const SizedBox(height: 12),
-                    Row(children: [
+                      const SizedBox(width: 10),
                       Expanded(
-                        child: OutlinedButton(
-                          onPressed: perSeat <= 0 ? null : () => _confirmCityRide(choiceIndex: index, mode: _FareBookingMode.perSeat),
-                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                          child: Text(perSeat <= 0 ? 'Seat fare loading' : '1 Seat  •  ${_money(perSeat)}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                        child: Text(
+                          widget.pickupLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.small.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: AppText.secondary,
+                          ),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Icon(Icons.arrow_forward_rounded,
+                            size: 16, color: AppText.caption),
+                      ),
+                      Container(
+                        width: 13,
+                        height: 13,
+                        decoration: BoxDecoration(
+                          color: AppTint.pinDropFill,
+                          borderRadius: AppRadii.all(3),
+                          border: Border.all(
+                              color: AppTint.pinDropBorder, width: 2.5),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: FilledButton(
-                          onPressed: whole <= 0 ? null : () => _confirmCityRide(choiceIndex: index, mode: _FareBookingMode.wholeVehicle),
-                          style: FilledButton.styleFrom(backgroundColor: AppColors.brand, foregroundColor: AppColors.onBrand, padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                          child: Text(whole <= 0 ? 'Full fare loading' : 'Full  •  ${_money(whole)}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
+                        child: Text(
+                          widget.destination.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.listTitle.copyWith(
+                            fontSize: 15,
+                            color: AppText.primary,
+                          ),
                         ),
                       ),
-                    ]),
-                  ],
+                    ],
+                  ),
                 ),
-              );
-            }),
-            // The "Refreshing live availability…" spinner that used to sit here
-            // was removed: _availabilityBanner() at the top of this list shows
-            // the same thing for the same condition, and two spinners saying
-            // one thing on one screen reads like two things are happening.
-          ],
-        ),
+                const SizedBox(height: 10),
+                Text(
+                  '${_routeDistanceKm.toStringAsFixed(1)} km estimated route',
+                  style: AppType.caption.copyWith(color: AppText.secondary),
+                ),
+                const SizedBox(height: 18),
+                ..._availabilityBanner(),
+                ...choices.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final choice = entry.value;
+                  final rate = _dbRates[_normaliseVehicle(choice.name)];
+                  final perSeat = _perSeatEstimate(choice, rate);
+                  final whole = _wholeVehicleEstimate(choice, rate);
+                  final matching = _availableVehicles
+                      .where((v) =>
+                          _normaliseVehicle(v.category) ==
+                          _normaliseVehicle(choice.name))
+                      .toList();
+                  final available = matching.where((v) => v.isOnline).length;
+                  final availability = available > 0
+                      ? '$available available now'
+                      : 'Searching nearby drivers';
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: UdCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              UdIconTile(icon: _cityVehicleIcon(choice.name)),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      choice.name,
+                                      style: AppType.listTitle.copyWith(
+                                        fontSize: 16,
+                                        color: AppText.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '${choice.capacity} seat'
+                                      '${choice.capacity == 1 ? '' : 's'}'
+                                      '  ·  $availability',
+                                      style: AppType.small.copyWith(
+                                        color: available > 0
+                                            ? AppColors.brandInk
+                                            : AppText.secondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          // Both buttons on every vehicle, bike and rickshaw
+                          // included. That does not match the "per seat only
+                          // above five seats" rule written elsewhere, and it is
+                          // reproduced rather than corrected: changing which
+                          // fares a vehicle can be booked on is a pricing
+                          // decision, not something a restyle should do
+                          // quietly.
+                          UdButtonRow(
+                            children: [
+                              UdButton.outline(
+                                label: perSeat <= 0
+                                    ? 'Seat fare loading'
+                                    : '1 Seat  ·  ${_money(perSeat)}',
+                                size: UdButtonSize.small,
+                                onPressed: perSeat <= 0
+                                    ? null
+                                    : () => _confirmCityRide(
+                                          choiceIndex: index,
+                                          mode: _FareBookingMode.perSeat,
+                                        ),
+                              ),
+                              UdButton.primary(
+                                label: whole <= 0
+                                    ? 'Full fare loading'
+                                    : 'Full  ·  ${_money(whole)}',
+                                size: UdButtonSize.small,
+                                onPressed: whole <= 0
+                                    ? null
+                                    : () => _confirmCityRide(
+                                          choiceIndex: index,
+                                          mode: _FareBookingMode.wholeVehicle,
+                                        ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                // The "Refreshing live availability…" spinner that used to sit
+                // here was removed: _availabilityBanner() at the top of this
+                // list shows the same thing for the same condition, and two
+                // spinners saying one thing on one screen reads like two
+                // things are happening.
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1661,26 +1751,27 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         : perSeatAmount * _seats;
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.text,
-        title: Text(
-          widget.serviceType.title,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Home',
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-            icon: const Icon(Icons.home_rounded),
+      backgroundColor: AppColors.background,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UdTopBar(
+            title: widget.serviceType.title,
+            divider: true,
+            onBack: () => Navigator.maybePop(context),
+            actions: [
+              UdIconButton(
+                icon: Icons.home_outlined,
+                tooltip: 'Go to home',
+                onPressed: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSizes.sidePadding, 16, AppSizes.sidePadding, 28),
           children: [
             ..._availabilityBanner(),
             Container(
@@ -1853,35 +1944,12 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               ),
             if (widget.serviceType != UDriveServiceType.privateVehicle &&
                 _showBookingModeToggle)
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(14)),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () => setState(() => _bookingMode = _FareBookingMode.perSeat),
-                        style: FilledButton.styleFrom(
-                          elevation: 0,
-                          backgroundColor: _bookingMode == _FareBookingMode.perSeat ? Colors.white : Colors.transparent,
-                          foregroundColor: AppColors.text,
-                        ),
-                        child: const Text('Per seat', style: TextStyle(fontWeight: FontWeight.w800)),
-                      ),
-                    ),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () => setState(() => _bookingMode = _FareBookingMode.wholeVehicle),
-                        style: FilledButton.styleFrom(
-                          elevation: 0,
-                          backgroundColor: _bookingMode == _FareBookingMode.wholeVehicle ? Colors.white : Colors.transparent,
-                          foregroundColor: AppColors.text,
-                        ),
-                        child: const Text('Whole vehicle', style: TextStyle(fontWeight: FontWeight.w800)),
-                      ),
-                    ),
-                  ],
-                ),
+              UdSegmented(
+                options: const ['Per seat', 'Whole vehicle'],
+                index: _bookingMode == _FareBookingMode.perSeat ? 0 : 1,
+                onChanged: (index) => setState(() => _bookingMode = index == 0
+                    ? _FareBookingMode.perSeat
+                    : _FareBookingMode.wholeVehicle),
               )
             else
               Container(
@@ -1922,31 +1990,26 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
             const SizedBox(height: 12),
             // Second spinner removed for the same reason as the one on the city
             // screen: _availabilityBanner() above already covers this state.
-            SizedBox(
-              height: 54,
-              child: FilledButton.icon(
-                onPressed: _submitting ? null : _submit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.brand,
-                  foregroundColor: AppColors.onBrand,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                ),
-                icon: _submitting
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onBrand))
-                    : const Icon(Icons.local_taxi_rounded),
-                label: Text(_submitting ? 'Creating booking…' : 'Book selected ride', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
-              ),
+            UdButton.primary(
+              label: _submitting
+                  ? 'Creating booking\u2026'
+                  : 'Book selected ride',
+              icon: Icons.local_taxi_rounded,
+              busy: _submitting,
+              onPressed: _submit,
             ),
-          ],
-        ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _cityInfoBox(String label, String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(color: AppColors.surface, borderRadius: AppRadii.all(AppRadii.tile)),
       child: Column(
         children: [
           Text(label, textAlign: TextAlign.center, style: const TextStyle(color: AppText.secondary, fontSize: 9.5, fontWeight: FontWeight.w700)),
@@ -1967,42 +2030,47 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   Widget _buildRouteRenderRecovery(BuildContext context, Object error) {
     return Scaffold(
-      backgroundColor: AppColors.inkSurface,
-      appBar: AppBar(
-        backgroundColor: AppColors.inkSurface,
-        foregroundColor: Colors.white,
-        title: Text(widget.serviceType.title),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.directions_car_filled_rounded, color: _lime, size: 42),
-              const SizedBox(height: 14),
-              const Text('This booking screen could not finish rendering.', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 8),
-              Text('${widget.pickupLabel} → ${widget.destination.title}', style: const TextStyle(color: AppColors.onInkMuted, fontSize: 12)),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _selected = 0;
-                      _loadingVehicles = true;
-                      _vehicleLoadError = null;
-                    });
-                    _loadRates();
-                  },
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Reload rides'),
-                ),
-              ),
-            ],
+      backgroundColor: AppColors.background,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UdTopBar(
+            title: widget.serviceType.title,
+            divider: true,
+            onBack: () => Navigator.maybePop(context),
           ),
-        ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSizes.sidePadding),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  UdEmptyState(
+                    icon: Icons.directions_car_filled_outlined,
+                    tone: UdTone.warn,
+                    title: 'This booking screen could not finish rendering.',
+                    text: '${widget.pickupLabel} \u2192 '
+                        '${widget.destination.title}',
+                    action: UdButton.primary(
+                      label: 'Reload rides',
+                      icon: Icons.refresh_rounded,
+                      expand: false,
+                      onPressed: () {
+                        setState(() {
+                          _selected = 0;
+                          _loadingVehicles = true;
+                          _vehicleLoadError = null;
+                        });
+                        _loadRates();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2035,21 +2103,6 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
 
 
-
-
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({required this.label, required this.selected});
-  final String label;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-        decoration: BoxDecoration(color: selected ? Colors.white : _tile, borderRadius: BorderRadius.circular(24)),
-        child: Text(label, style: TextStyle(color: selected ? Colors.black : Colors.white, fontWeight: FontWeight.w800)),
-      );
-}
 
 
 
