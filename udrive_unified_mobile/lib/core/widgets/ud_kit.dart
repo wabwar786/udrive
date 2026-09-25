@@ -16,15 +16,12 @@
 ///                     UdRouteBlock
 ///   ud_scaffold.dart  UdTopBar, UdHeroTitle, UdSectionHeader, UdBottomBar,
 ///                     UdSheetHandle, showUdSheet, showUdDialog
-///
-/// Not here yet: `UdBottomNav`. It is a shared component in the handoff, but
-/// its whole content — which tabs, in which order, with the SOS button raised
-/// out of the customer bar — is decided by `main_shell.dart`, and it ships with
-/// the shell in the next phase rather than being guessed at now.
+///   ud_nav.dart       UdBottomNav, UdNavDestination, UdDrawerRow
 library;
 
 export 'ud_bits.dart';
 export 'ud_button.dart';
 export 'ud_input.dart';
+export 'ud_nav.dart';
 export 'ud_scaffold.dart';
 export 'ud_surface.dart';

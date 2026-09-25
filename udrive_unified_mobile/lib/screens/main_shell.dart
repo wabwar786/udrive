@@ -3,7 +3,7 @@ import '../core/localization/app_strings.dart';
 import '../core/state/app_controller.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/app_tokens.dart';
-import '../core/widgets/brand.dart';
+import '../core/widgets/ud_kit.dart';
 import '../data/models.dart';
 import 'common/common_pages.dart';
 import 'common/help_guide_screen.dart';
@@ -203,7 +203,11 @@ class _MainShellState extends State<MainShell> {
       child: Scaffold(
       key: _scaffoldKey,
       backgroundColor: customerHome ? AppColors.background : null,
-      extendBody: customerHome,
+      // Not extended under the bar any more. `extendBody` was set for a
+      // floating, rounded navigation bar that never actually rendered; the v2
+      // bar is solid white against the bottom edge, so anything drawn beneath
+      // it is simply hidden. Home's last row would have been.
+      extendBody: false,
       drawer: _PremiumDrawer(
         mode: controller.mode,
         current: pageKey,
@@ -232,121 +236,163 @@ class _MainShellState extends State<MainShell> {
           }
         },
       ),
-      appBar: customerHome ? null : AppBar(
-        titleSpacing: 4,
-        // A back arrow when this shell has history, otherwise nothing, which
-        // lets Scaffold insert the drawer's hamburger as before. Previously
-        // there was no leading at all, so every one of these pages showed a
-        // hamburger and offered no way back.
-        // A back arrow only where there is somewhere to go back to. On a root
-        // page leading stays null so Scaffold inserts the drawer's hamburger —
-        // the drawer is the only route to Settings, Wallet and Switch mode, so
-        // replacing it everywhere would hide them.
-        leading: canGoBack
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: () => _goBack(driver),
-                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-              )
-            : null,
-        // Just the name, at ordinary weight.
-        //
-        // "Good evening, Waseem" in 900-weight ran out of room on a phone and
-        // truncated to "Good evening, Was…", which is a greeting that has
-        // stopped greeting anybody. The time of day is not information, and a
-        // heavy title makes every screen open with a shout.
-        title: (customerHome || driverHome)
-            ? Text(
-                _firstName(controller.currentUserName),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 17,
-                ),
-              )
-            : Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 18,
-                ),
-              ),
-        actions: [
-          if (driverHome)
-            Padding(
-              padding: const EdgeInsets.only(right: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    controller.driverOnline
-                        ? Icons.wifi_tethering_rounded
-                        : Icons.wifi_off_rounded,
-                    size: 17,
-                    color: controller.driverOnline
-                        ? AppColors.success
-                        : AppColors.muted,
-                  ),
-                  Switch.adaptive(
-                    value: controller.driverOnline,
-                    onChanged: controller.toggleDriverOnline,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ],
+      // The bar is the first child of the body rather than `Scaffold.appBar`.
+      //
+      // `UdTopBar` draws its own status-bar inset, and an appBar is measured by
+      // its `preferredSize` before that inset exists — so in the appBar slot it
+      // would be laid out 72px tall and then paint taller than its box. In the
+      // body it measures itself. The one thing the appBar slot was doing for
+      // free is the drawer's hamburger, which is why `leading` below is
+      // explicit: without it the drawer would have no way in.
+      body: Column(
+        children: [
+          if (!customerHome)
+            _topBar(
+              context: context,
+              controller: controller,
+              title: title,
+              canGoBack: canGoBack,
+              driver: driver,
+              driverHome: driverHome,
+            ),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 240),
+              child: KeyedSubtree(
+                key: ValueKey('${controller.mode.name}-$pageKey'),
+                child: page,
               ),
             ),
-          IconButton(
-            tooltip: context.tr('notifications'),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => Scaffold(
-                  appBar: AppBar(title: Text(context.tr('notifications'))),
-                  body: const NotificationsScreen(),
-                ),
-              ),
-            ),
-            icon: const Icon(Icons.notifications_none_rounded),
           ),
-          if (customerHome || driverHome)
-            Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: InkWell(
-                onTap: () {
-                  if (driverHome) {
-                    _goToDriver('driverProfile');
-                  } else {
-                    _goToCustomer('profile');
-                  }
-                },
-                borderRadius: BorderRadius.circular(999),
-                child: CircleAvatar(
-                  radius: 17,
-                  backgroundColor: AppTint.brand,
-                  child: Text(
-                    _initials(controller.currentUserName),
-                    style: const TextStyle(
-                      color: AppColors.primaryDark,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-              ),
-            )
-          else
-            const SizedBox(width: 8),
         ],
       ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 240),
-        child: KeyedSubtree(key: ValueKey('${controller.mode.name}-$pageKey'), child: page),
-      ),
-      bottomNavigationBar: driverNeedsVerification || !driver ? null : _bottomNavigation(driver),
+      bottomNavigationBar:
+          driverNeedsVerification ? null : _bottomNavigation(driver),
       ),
     );
   }
+
+  /// The white top bar. Everything it holds is the same as before: a back arrow
+  /// where there is history, the drawer otherwise, the person's first name on a
+  /// tab root and the page title elsewhere, the driver's online switch, the
+  /// notifications bell and the avatar.
+  Widget _topBar({
+    required BuildContext context,
+    required AppController controller,
+    required String title,
+    required bool canGoBack,
+    required bool driver,
+    required bool driverHome,
+  }) {
+    // Just the name on the driver's dashboard, the page title everywhere else.
+    //
+    // "Good evening, Waseem" in 900-weight ran out of room on a phone and
+    // truncated to "Good evening, Was...", which is a greeting that has stopped
+    // greeting anybody. The customer's Home draws no bar at all — its controls
+    // float over the map.
+    return UdTopBar(
+      title: driverHome ? _firstName(controller.currentUserName) : title,
+      // A back arrow only where there is somewhere to go back to. Everywhere
+      // else the slot holds the drawer, which is the only route to Settings,
+      // Wallet and Switch mode.
+      leading: canGoBack
+          ? UdIconButton(
+              icon: Icons.arrow_back_rounded,
+              onPressed: () => _goBack(driver),
+              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            )
+          : UdIconButton(
+              icon: Icons.menu_rounded,
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
+            ),
+      actions: [
+        if (driverHome)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                controller.driverOnline
+                    ? Icons.wifi_tethering_rounded
+                    : Icons.wifi_off_rounded,
+                size: 18,
+                color: controller.driverOnline
+                    ? AppColors.brandInk
+                    : AppText.secondary,
+              ),
+              const SizedBox(width: 8),
+              UdSwitch(
+                value: controller.driverOnline,
+                onChanged: controller.toggleDriverOnline,
+                semanticLabel: 'Go online',
+              ),
+            ],
+          ),
+        UdIconButton(
+          icon: Icons.notifications_none_rounded,
+          tooltip: context.tr('notifications'),
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => Scaffold(
+                backgroundColor: AppColors.background,
+                body: Column(
+                  children: [
+                    Builder(
+                      builder: (inner) => UdTopBar(
+                        title: context.tr('notifications'),
+                        onBack: () => Navigator.maybePop(inner),
+                      ),
+                    ),
+                    const Expanded(child: NotificationsScreen()),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (driverHome)
+          GestureDetector(
+            onTap: () => _goToDriver('driverProfile'),
+            behavior: HitTestBehavior.opaque,
+            child: UdAvatar(
+              initials: _initials(controller.currentUserName),
+              size: 40,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// The driver's tabs. Exactly the five keys in [_driverRoots].
+  List<UdNavDestination> _driverDestinations() => [
+        UdNavDestination(
+          icon: Icons.dashboard_outlined,
+          activeIcon: Icons.dashboard_rounded,
+          label: context.tr('home'),
+        ),
+        UdNavDestination(
+          icon: Icons.notifications_active_outlined,
+          activeIcon: Icons.notifications_active_rounded,
+          label: context.tr('rideRequests'),
+        ),
+        UdNavDestination(
+          icon: Icons.luggage_outlined,
+          activeIcon: Icons.luggage_rounded,
+          label: context.tr('packages'),
+        ),
+        UdNavDestination(
+          icon: Icons.payments_outlined,
+          activeIcon: Icons.payments_rounded,
+          label: context.tr('earnings'),
+        ),
+        UdNavDestination(
+          icon: Icons.person_outline_rounded,
+          activeIcon: Icons.person_rounded,
+          label: context.tr('profile'),
+        ),
+      ];
+
 
   String _firstName(String name) {
     final clean = name.trim();
@@ -366,139 +412,71 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _bottomNavigation(bool driver) {
-    if (!driver) return _customerBottomNavigation();
+    if (driver) {
+      const values = [
+        'dashboard',
+        'requests',
+        'driverPackages',
+        'earnings',
+        'driverProfile',
+      ];
+      var index = values.indexOf(_driverPage);
+      if (index < 0) index = 0;
 
-    final values = const ['dashboard', 'requests', 'driverPackages', 'earnings', 'driverProfile'];
-    var index = values.indexOf(_driverPage);
-    if (index < 0) index = 0;
-
-    return NavigationBar(
-      selectedIndex: index,
-      onDestinationSelected: (value) => _goToDriver(values[value]),
-      destinations: [
-        NavigationDestination(icon: const Icon(Icons.dashboard_outlined), selectedIcon: const Icon(Icons.dashboard_rounded), label: context.tr('home')),
-        NavigationDestination(icon: const Icon(Icons.notifications_active_outlined), selectedIcon: const Icon(Icons.notifications_active_rounded), label: context.tr('rideRequests')),
-        NavigationDestination(icon: const Icon(Icons.luggage_outlined), selectedIcon: const Icon(Icons.luggage_rounded), label: context.tr('packages')),
-        NavigationDestination(icon: const Icon(Icons.payments_outlined), selectedIcon: const Icon(Icons.payments_rounded), label: context.tr('earnings')),
-        NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: context.tr('profile')),
-      ],
-    );
-  }
-
-  /// Redesigned customer bar: Home · Explore · (SOS) · Near me · Profile.
-  ///
-  /// No border-top — a soft upward shadow instead, per the handoff. The active
-  /// tab gets a pill background behind icon and label; inactive tabs are plain.
-  /// SOS stays in the centre slot rather than moving onto the map band.
-  Widget _customerBottomNavigation() {
-    Widget item(String key, IconData icon, IconData activeIcon, String label) {
-      final selected = _customerPage == key;
-      return Expanded(
-        child: Semantics(
-          button: true,
-          selected: selected,
-          label: label,
-          child: InkWell(
-            onTap: () => _goToCustomer(key),
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              height: 58,
-              child: Center(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: selected ? AppTint.brand : Colors.transparent,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        selected ? activeIcon : icon,
-                        size: 20,
-                        color: selected ? AppColors.secondary : AppText.disabled,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: selected ? AppColors.secondary : AppText.disabled,
-                          fontSize: 9,
-                          fontWeight:
-                              selected ? FontWeight.w800 : FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+      return UdBottomNav(
+        destinations: _driverDestinations(),
+        currentIndex: index,
+        onSelected: (value) => _goToDriver(values[value]),
       );
     }
 
-    return ColoredBox(
-      color: AppColors.background,
-      child: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.fromLTRB(13, 5, 13, 9),
-        child: Container(
-          height: 66,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            border: Border.all(color: AppColors.border),
-            borderRadius: BorderRadius.circular(23),
-            boxShadow: AppShadows.navBar,
-          ),
-          child: Row(
-            children: [
-              item('home', Icons.home_outlined, Icons.home_rounded, 'Home'),
-              item('explore', Icons.explore_outlined, Icons.explore_rounded,
-                  'Explore'),
-              Expanded(
-                child: Center(
-                  child: Semantics(
-                    button: true,
-                    label: 'Emergency SOS',
-                    child: InkWell(
-                      onTap: () => CustomerSosSheet.show(context),
-                      customBorder: const CircleBorder(),
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: AppColors.danger,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.surface, width: 3),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.danger.withValues(alpha: .30),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(Icons.sos_rounded,
-                            color: Colors.white, size: 22),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              item('nearMe', Icons.location_on_outlined,
-                  Icons.location_on_rounded, 'Near me'),
-              item('profile', Icons.person_outline_rounded,
-                  Icons.person_rounded, 'Profile'),
-            ],
-          ),
+    // Home . Explore . SOS . Near me . Profile.
+    //
+    // This bar was built and then never shown. The line that placed it read
+    // `driverNeedsVerification || !driver ? null : ...`, so every customer got
+    // `null` and `_customerBottomNavigation` was unreachable code -- which is
+    // why Explore, Near me and Profile could only be reached through the
+    // drawer. The design has this bar on every customer tab root, so it is
+    // wired up now. That is a change in behaviour, not only in paint.
+    //
+    // SOS is a slot, not a tab: it opens the sheet and leaves the selected tab
+    // where it was.
+    const values = ['home', 'explore', '', 'nearMe', 'profile'];
+    var index = values.indexOf(_customerPage);
+    if (index < 0) index = 0;
+
+    return UdBottomNav(
+      destinations: [
+        UdNavDestination(
+          icon: Icons.home_outlined,
+          activeIcon: Icons.home_rounded,
+          label: context.tr('home'),
         ),
-      ),
+        UdNavDestination(
+          icon: Icons.explore_outlined,
+          activeIcon: Icons.explore_rounded,
+          label: context.tr('explore'),
+        ),
+        UdNavDestination.sos(
+          label: 'SOS',
+          onTap: () => CustomerSosSheet.show(context),
+        ),
+        UdNavDestination(
+          icon: Icons.location_on_outlined,
+          activeIcon: Icons.location_on_rounded,
+          label: context.tr('nearMe'),
+        ),
+        UdNavDestination(
+          icon: Icons.person_outline_rounded,
+          activeIcon: Icons.person_rounded,
+          label: context.tr('profile'),
+        ),
+      ],
+      currentIndex: index,
+      onSelected: (value) {
+        final key = values[value];
+        if (key.isNotEmpty) _goToCustomer(key);
+      },
     );
   }
 
@@ -672,172 +650,150 @@ class _PremiumDrawer extends StatelessWidget {
     }
     final driver = mode == UserMode.driver;
     final entries = driver ? _driverEntries(context) : _customerEntries(context);
-    // White, like every other surface now.
-    //
-    // This was `AppColors.surface`, which used to be a dark teal panel — and
-    // when the palette flipped, the surface went white while every ink inside
-    // the drawer stayed the white it had been chosen to be. White on white:
-    // the menu was there and unreadable.
-    const drawerColor = AppColors.background;
-    final lime = AppColors.secondary;
 
     return Drawer(
-      width: MediaQuery.sizeOf(context).width.clamp(300, 360).toDouble(),
-      backgroundColor: drawerColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.horizontal(right: Radius.circular(0)),
-      ),
+      // 310, the width the design asks for. It used to be
+      // `width.clamp(300, 360)`, which on a wide phone let the panel grow until
+      // the dimmed screen behind it stopped reading as a screen.
+      width: 310,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(),
       child: SafeArea(
         child: Column(
           children: [
+            // The header is the way to Profile, so the whole row is the target.
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 22, 18, 18),
-              child: InkWell(
-                onTap: () => onSelected(driver ? 'driverProfile' : 'profile'),
-                borderRadius: BorderRadius.circular(18),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 28,
-                      backgroundColor: AppTint.brand,
-                      child: Text(
-                        _initials(controller.currentUserName),
-                        style: const TextStyle(
-                          color: AppText.primary,
-                          fontWeight: FontWeight.w900,
+              padding: const EdgeInsets.fromLTRB(14, 16, 12, 12),
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: () => onSelected(driver ? 'driverProfile' : 'profile'),
+                  borderRadius: AppRadii.all(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Row(
+                      children: [
+                        UdAvatar(
+                          initials: _initials(controller.currentUserName),
+                          size: 52,
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            controller.currentUserName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppText.primary,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.star_rounded, color: AppTint.star, size: 17),
-                              const SizedBox(width: 4),
                               Text(
-                                driver ? 'Driver account' : 'Customer account',
-                                style: const TextStyle(color: AppText.secondary, fontSize: 12),
+                                controller.currentUserName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppType.h3.copyWith(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppText.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  const Icon(Icons.star_rounded,
+                                      color: AppTint.star, size: 16),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    driver
+                                        ? 'Driver account'
+                                        : 'Customer account',
+                                    style: AppType.caption
+                                        .copyWith(color: AppText.secondary),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                        const Icon(Icons.chevron_right_rounded,
+                            color: AppText.caption),
+                      ],
                     ),
-                    const Icon(Icons.chevron_right_rounded, color: AppText.secondary),
-                  ],
+                  ),
                 ),
               ),
             ),
-            Divider(height: 1, color: AppColors.border),
+            const Divider(height: 1, thickness: 1, color: AppColors.border),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
                 children: [
                   for (final entry in entries)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: ListTile(
-                        minLeadingWidth: 28,
-                        selected: current == entry.$1,
-                        selectedTileColor: AppTint.brand,
-                        iconColor: AppText.secondary,
-                        // Near-black on white, and the accent when selected.
-                        textColor: AppText.primary,
-                        selectedColor: AppColors.secondary,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
-                        leading: Icon(entry.$2, size: 24),
-                        title: Text(
-                          entry.$3,
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                        ),
-                        onTap: () => onSelected(entry.$1),
-                      ),
+                    UdDrawerRow(
+                      icon: entry.$2,
+                      label: entry.$3,
+                      selected: current == entry.$1,
+                      onTap: () => onSelected(entry.$1),
                     ),
                 ],
               ),
             ),
+            const Divider(height: 1, thickness: 1, color: AppColors.border),
             Padding(
-              padding: const EdgeInsets.fromLTRB(22, 10, 22, 22),
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    // A steering wheel for Driver mode, a passenger for
-                    // Customer mode. The two modes are the same app wearing a
-                    // different hat, and an icon says which hat faster than the
-                    // words underneath it do.
-                    child: FilledButton.icon(
-                      onPressed: onSwitchMode,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: lime,
-                        foregroundColor: AppColors.inkSurface,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      icon: driver
-                          ? const Icon(Icons.person_rounded, size: 22)
-                          : const SteeringWheelIcon(
-                              size: 22,
-                              color: AppColors.inkSurface,
-                            ),
-                      label: Text(
-                        driver ? 'Customer mode' : 'Driver mode',
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextButton.icon(
+                  // A steering wheel for Driver mode, a passenger for Customer
+                  // mode. The two modes are the same app wearing a different
+                  // hat, and an icon says which hat faster than the words
+                  // underneath it do.
+                  //
+                  // UdButton takes an IconData, and the steering wheel is a
+                  // painted widget rather than a glyph, so the driver-bound
+                  // button is built by hand to keep it. Same height, radius and
+                  // type as UdButton.primary.
+                  driver
+                      ? UdButton.primary(
+                          label: 'Customer mode',
+                          icon: Icons.person_rounded,
+                          onPressed: onSwitchMode,
+                        )
+                      : _SwitchToDriverButton(onPressed: onSwitchMode),
+                  const SizedBox(height: 8),
+                  UdButton.ghost(
+                    label: 'Logout',
+                    icon: Icons.logout_rounded,
+                    size: UdButtonSize.small,
                     // Confirmed. Logout sits directly under the menu items, so
                     // a mis-tap signed the customer straight out and they had
                     // to wait for another code to get back in.
                     onPressed: () async {
                       final navigator = Navigator.of(context);
-                      final confirmed = await showDialog<bool>(
+                      final confirmed = await showUdDialog<bool>(
                         context: context,
-                        builder: (dialogContext) => AlertDialog(
-                          title: const Text('Log out?'),
-                          content: const Text(
-                            'You will need to verify your phone number again '
-                            'to sign back in.',
-                          ),
-                          actions: [
-                            TextButton(
+                        title: 'Log out?',
+                        message: 'You will need to verify your phone number '
+                            'again to sign back in.',
+                        actions: [
+                          Builder(
+                            builder: (dialogContext) => UdButton.outline(
+                              label: 'Stay signed in',
                               onPressed: () =>
                                   Navigator.pop(dialogContext, false),
-                              child: const Text('Stay signed in'),
                             ),
-                            TextButton(
+                          ),
+                          Builder(
+                            builder: (dialogContext) => UdButton(
+                              label: 'Log out',
+                              variant: UdButtonVariant.danger,
                               onPressed: () =>
                                   Navigator.pop(dialogContext, true),
-                              child: const Text(
-                                'Log out',
-                                style: TextStyle(color: AppColors.danger),
-                              ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       );
                       if (confirmed != true) return;
                       navigator.pop();
                       await controller.logout();
                     },
-                    icon: const Icon(Icons.logout_rounded, color: AppText.secondary, size: 19),
-                    label: const Text('Logout', style: TextStyle(color: AppText.secondary)),
                   ),
                 ],
               ),
@@ -903,3 +859,49 @@ class _PremiumDrawer extends StatelessWidget {
       ];
 }
 
+
+/// The drawer's "Driver mode" button.
+///
+/// A copy of [UdButton] with the primary fill, because the steering wheel is a
+/// painted widget rather than an icon glyph and [UdButton] takes an [IconData].
+/// Every measurement here is the same one: 58px, radius 17, `AppType.button`.
+class _SwitchToDriverButton extends StatelessWidget {
+  const _SwitchToDriverButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = AppRadii.all(AppRadii.cta);
+
+    return SizedBox(
+      height: AppSizes.button,
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.brand,
+          borderRadius: radius,
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          borderRadius: radius,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: radius,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SteeringWheelIcon(size: 22, color: AppText.onBrand),
+                const SizedBox(width: 10),
+                Text(
+                  'Driver mode',
+                  style: AppType.button.copyWith(color: AppText.onBrand),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

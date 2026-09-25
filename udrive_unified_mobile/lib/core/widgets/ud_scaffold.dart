@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
@@ -43,8 +44,27 @@ class UdTopBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => const Size.fromHeight(AppSizes.topBar);
 
+  /// White bar, so the clock and the battery have to be dark.
+  ///
+  /// Material's `AppBar` worked this out from its own background colour and
+  /// asserted it. This bar is an ordinary widget, so it asserts it itself —
+  /// otherwise the status bar falls back to whatever the last screen set,
+  /// which on a white page can mean a white clock on white.
+  static const _overlay = SystemUiOverlayStyle(
+    statusBarColor: Color(0x00000000),
+    statusBarIconBrightness: Brightness.dark, // Android
+    statusBarBrightness: Brightness.light, // iOS
+  );
+
   @override
   Widget build(BuildContext context) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _overlay,
+      child: _bar(context),
+    );
+  }
+
+  Widget _bar(BuildContext context) {
     return Container(
       constraints: const BoxConstraints(minHeight: AppSizes.topBar),
       padding: const EdgeInsets.fromLTRB(
