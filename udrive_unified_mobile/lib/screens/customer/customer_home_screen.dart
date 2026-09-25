@@ -29,6 +29,7 @@ import '../../core/widgets/brand.dart';
 import '../../core/widgets/route_fields.dart';
 import '../../core/widgets/home_service.dart';
 import '../../core/widgets/ud_controls.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../data/models.dart';
 import '../../models/trip_operations_models.dart';
 import '../hotels/hotel_list_screen.dart';
@@ -473,9 +474,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   void _showVehicleSheet(NearbyVehicle vehicle) {
-    showModalBottomSheet<void>(
+    showUdSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
       builder: (_) => _VehicleMarkerSheet(vehicle: vehicle),
     );
   }
@@ -1000,30 +1000,32 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
     final height = MediaQuery.sizeOf(context).height;
+    final topInset = MediaQuery.paddingOf(context).top;
 
-    // Lifted, the map keeps just enough of itself to stay a map — the pin, the
-    // vehicles around it and the locate button. Hiding it entirely would leave
-    // the customer setting a pickup they cannot see.
-    // One height. With the sheet fixed open there is no second state to
-    // switch to, and the old lifted value — 22% of the screen — is what left
-    // the header, the pickup pill and the nearby chip stacked on top of each
-    // other in about 170 pixels.
-    final mapHeight = (height * .30).clamp(230.0, 330.0);
+    // The design's map band is 300px on a 390-wide artboard. Kept as a
+    // proportion so it is still a map on a small phone and still leaves room
+    // for the booking card on a tall one, plus the status bar the controls
+    // float under.
+    final mapHeight = (height * .32).clamp(250.0, 340.0) + topInset;
 
-    return Container(
+    // How far the booking card rides up over the map. The design's -24.
+    const overlap = 24.0;
+
+    return ColoredBox(
       color: AppColors.background,
-      child: Column(
+      // Every child of this Stack is positioned, so the Stack has no size of
+      // its own and would collapse under loose constraints. `expand` gives it
+      // whatever the parent allows, whether that parent hands down tight
+      // constraints or not.
+      child: SizedBox.expand(
+        child: Stack(
         children: [
-          AnimatedContainer(
-            duration: AppConfig.panelSwitch,
-            curve: Curves.easeOutCubic,
-            // The header is inside the map now, not above it.
-            //
-            // A white bar across the top was about fifty pixels spent on a logo
-            // and two buttons — the same fifty pixels the map wanted. The
-            // controls float on the map instead, which is where every other map
-            // app puts them, and the map reaches the top of the screen.
-            height: mapHeight + MediaQuery.paddingOf(context).top + 52,
+          // The map, fixed at the top, with everything that floats on it.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: mapHeight,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -1040,9 +1042,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     // pin appeared on Street 20 while the blue dot — the real
                     // position — sat on Street 19: the dot was right, the pin
                     // was drawn a header's height away from what it meant.
-                    //
-                    // Clearing the header is the header's problem, not the
-                    // pin's. The label sits below the pin now instead of above.
                     child: IgnorePointer(
                       child: Center(
                         child: _CentrePin(
@@ -1057,87 +1056,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 // Everything that floats on the map, in one column.
                 //
                 // These were four separate `Positioned` widgets at fixed
-                // offsets — a header pinned to the top, a locate button at
-                // bottom 60, a nearby chip at bottom 62. At a tall map they
-                // looked fine; when the map shrank they landed on top of one
-                // another, which is what the screenshots kept showing.
-                //
-                // A column cannot overlap itself. The header takes the height
-                // it needs, the spacer absorbs whatever is left, and the bottom
-                // row sits above the map's edge at any map height at all.
+                // offsets, and when the map shrank they landed on top of one
+                // another. A column cannot overlap itself: the header takes the
+                // height it needs, the spacer absorbs what is left, and the
+                // recentre button sits above the map's edge at any map height.
                 SafeArea(
                   bottom: false,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                    // Bottom padding clears the booking card, which rides up
+                    // over the last 24px of the map.
+                    padding: const EdgeInsets.fromLTRB(
+                        16, 10, 16, overlap + 14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // One height for all three, and a row that centres
-                        // them on it.
-                        //
-                        // The logo was 38, the buttons 40, and the row was
-                        // sizing itself to whichever was tallest — so the mark
-                        // sat a pixel or two low against the two circles beside
-                        // it. Small, and exactly the kind of thing that reads
-                        // as "not aligned" without being nameable.
-                        SizedBox(
-                          height: 42,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              UDriveMark(
-                                size: 42,
-                                // Already home, so this clears anything stacked
-                                // on top rather than pushing another copy.
-                                onTap: () => Navigator.of(context)
-                                    .popUntil((route) => route.isFirst),
-                              ),
-                              if (widget.onOpenMenu != null) ...[
-                                const SizedBox(width: 6),
-                                _MapIconButton(
-                                  semanticLabel: 'Open menu',
-                                  child: Icon(
-                                    Icons.menu_rounded,
-                                    size: 22,
-                                    color: AppColors.secondary,
-                                  ),
-                                  onTap: widget.onOpenMenu!,
-                                ),
-                              ],
-                              const Spacer(),
-                              _MapIconButton(
-                                semanticLabel: 'Switch to driver mode',
-                                child: SteeringWheelIcon(
-                                  size: 22,
-                                  color: AppColors.secondary,
-                                ),
-                                onTap: () =>
-                                    controller.switchMode(UserMode.driver),
-                              ),
-                              const SizedBox(width: 8),
-                              _MapIconButton(
-                                icon: Icons.notifications_none_rounded,
-                                semanticLabel: 'Notifications',
-                                showDot: _unreadNotifications,
-                                onTap: _openNotifications,
-                              ),
-                            ],
-                          ),
-                        ),
-
+                        _mapControls(controller),
                         const Spacer(),
-
-                        // The nearby count and the locate button share one row,
-                        // so neither can drift under the other.
-                        // No nearby-count banner on the map.
-                        //
-                        // "No cars nearby right now" was a wide white bar
-                        // across the map saying something the City rides tile
-                        // already says, in a place where the only thing worth
-                        // showing is the map. When there are cars, the markers
-                        // say so; when there are none, an empty map says so.
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             const Spacer(),
                             _LocateButton(
@@ -1154,9 +1089,97 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
           ),
 
-          Expanded(child: _buildSheet()),
+          // The page under the card. It starts at the map's bottom edge, so the
+          // 24px the card overlaps by still shows map on either side of its
+          // rounded corners — which is what makes the card read as sitting on
+          // the map rather than below it.
+          Positioned(
+            top: mapHeight,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: const ColoredBox(color: AppColors.surface),
+          ),
+
+          // The scrolling page. Transparent, and it begins one overlap above
+          // the seam.
+          Positioned(
+            top: mapHeight - overlap,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildSheet(),
+          ),
         ],
+        ),
       ),
+    );
+  }
+
+  /// The row of controls floating on the map: the menu and the mark on the
+  /// left, driver mode and notifications on the right.
+  Widget _mapControls(AppController controller) {
+    return Row(
+      children: [
+        if (widget.onOpenMenu != null) ...[
+          UdIconButton(
+            icon: Icons.menu_rounded,
+            variant: UdIconButtonVariant.float,
+            tooltip: 'Open menu',
+            onPressed: widget.onOpenMenu!,
+          ),
+          const SizedBox(width: 10),
+        ],
+        // The mark and the wordmark in one white pill, as the design draws it.
+        GestureDetector(
+          // Already home, so this clears anything stacked on top rather than
+          // pushing another copy.
+          onTap: () => Navigator.of(context).popUntil((route) => route.isFirst),
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            height: AppSizes.iconButton,
+            padding: const EdgeInsets.fromLTRB(8, 0, 16, 0),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: AppRadii.all(15),
+              boxShadow: AppShadows.floating,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const UDriveMark(size: 30),
+                const SizedBox(width: 7),
+                Text(
+                  AppConfig.appName,
+                  style: AppType.listTitle.copyWith(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const Spacer(),
+        UdFloatButton(
+          // A steering wheel, not a car. Material has no steering-wheel glyph
+          // and `drive_eta` is a car seen from the side, which reads as "a
+          // vehicle" rather than "you are driving it" — and that distinction is
+          // the whole point of this button.
+          child: const SteeringWheelIcon(size: 22, color: AppColors.navy),
+          onPressed: () => controller.switchMode(UserMode.driver),
+          tooltip: 'Switch to driver mode',
+        ),
+        const SizedBox(width: 10),
+        UdIconButton(
+          icon: Icons.notifications_none_rounded,
+          variant: UdIconButtonVariant.float,
+          badgeDot: _unreadNotifications,
+          tooltip: 'Notifications',
+          onPressed: _openNotifications,
+        ),
+      ],
     );
   }
 
@@ -1250,180 +1273,166 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// happens. Service, booking type and seats are decided on the next screen,
   /// where the route and the real vehicles are known.
   Widget _buildSheet() {
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        controller: _sheetScroll,
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 0, AppSizes.sidePadding, 24),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // The hero slot. A ride already under way takes it: booking a
+            // second one is refused by `_blockedByActiveRide` anyway, so the
+            // ordinary "Where to?" form here would be a question with a
+            // foregone answer. The card that replaces it goes where the
+            // customer is already looking.
+            if (_activeTrip != null)
+              _ActiveTripBanner(trip: _activeTrip!, onTrack: _openActiveTrip)
+            else
+              _bookingCard(),
+
+            const SizedBox(height: 22),
+
+            if (_offline) ...[
+              const _OfflineNotice(),
+              const SizedBox(height: 16),
+            ],
+
+            const UdSectionHeader(title: 'Services'),
+            const SizedBox(height: 12),
+
+            _ServiceCards(
+              selected: _service,
+              cityRides: _availabilityOf('cityRides'),
+              tour: _availabilityOf('tour'),
+              cityToCity: _availabilityOf('cityToCity'),
+              onSelect: _selectService,
+              onClosed: _serviceClosed,
+              nearbyCount: _visibleVehicles.length,
+            ),
+            const SizedBox(height: 12),
+
+            // The second rank: things people reach for less often, as icons
+            // rather than cards. A card carries a title, a subtitle and a
+            // picture, and four of them side by side is four things competing.
+            _QuickRow(
+              selected: _service,
+              hotels: _availabilityOf('hotels'),
+              carRental: _availabilityOf('carRental'),
+              coster: _availabilityOf('coster'),
+              explore: _availabilityOf('explore'),
+              onSelect: _selectService,
+              onExplore: _openExplore,
+              onClosed: _serviceClosed,
+            ),
+
+            const SizedBox(height: 16),
+            // `_shareApp` has been in this file all along with nothing calling
+            // it — the invite row it belonged to was lost in an earlier pass.
+            // The design has it back.
+            _InviteRow(onTap: _shareApp),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The white card that overlaps the map: one question, and everything needed
+  /// to answer it.
+  Widget _bookingCard() {
     final hotel = _service == HomeService.hotel;
 
     // Hotel asks for a city and dates, not a destination, so it opens its own
-    // panel straight away. Previously it waited on a destination it never
-    // used, which left the product selectable and then apparently inert.
+    // panel straight away. Previously it waited on a destination it never used,
+    // which left the product selectable and then apparently inert.
     final planning = hotel || _destination.text.trim().isNotEmpty;
 
-    return ColoredBox(
-      // The page behind the panels.
-      //
-      // A very light grey, so the white panels on top of it read as cards. On
-      // the dark theme this was the darker of two greys; inverted, the page is
-      // the quiet surface and the content is the bright one.
-      color: AppColors.surface,
-      child: SafeArea(
-        top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // No "Show map" handle: the card is fully open and stays that way,
-            // so a row whose only job was to lower it earned nothing.
-            //
-            // One gutter for the whole sheet — 14 on every side, 12 between
-            // blocks. The panels used 12, the panel insides 12 or 14, and the
-            // gaps between them 10 — close enough to look accidental rather
-            // than chosen, which is most of what "not aligned" means.
-            Expanded(
-              child: SingleChildScrollView(
-                controller: _sheetScroll,
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 20),
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_activeTrip != null) ...[
-                      _ActiveTripBanner(
-                        trip: _activeTrip!,
-                        onTrack: _openActiveTrip,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
+    return UdCard(
+      tone: UdCardTone.raised,
+      radius: AppRadii.largeCard,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            hotel ? 'Where are you staying?' : 'Where to?',
+            style: AppType.h2.copyWith(color: AppText.primary),
+          ),
+          const SizedBox(height: 14),
 
-                    // What you are booking.
-                    _SheetPanel(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _ServiceCards(
-                            selected: _service,
-                            cityRides: _availabilityOf('cityRides'),
-                            tour: _availabilityOf('tour'),
-                            cityToCity: _availabilityOf('cityToCity'),
-                            onSelect: _selectService,
-                            onClosed: _serviceClosed,
-                            nearbyCount: _visibleVehicles.length,
-                          ),
-                          const SizedBox(height: 12),
-                          // The second rank: things people reach for less
-                          // often, as icons rather than cards.
-                          //
-                          // A card carries a title, a subtitle and a picture,
-                          // and four of them side by side is four things
-                          // competing. An icon and one word is enough for a
-                          // destination you already know you want.
-                          _QuickRow(
-                            selected: _service,
-                            hotels: _availabilityOf('hotels'),
-                            carRental: _availabilityOf('carRental'),
-                            coster: _availabilityOf('coster'),
-                            explore: _availabilityOf('explore'),
-                            onSelect: _selectService,
-                            onExplore: _openExplore,
-                            onClosed: _serviceClosed,
-                          ),
-                        ],
-                      ),
-                    ),
+          if (_locationError != null) ...[
+            _LocationErrorBanner(
+              message: _locationError!,
+              busy: _locating,
+              onRetry: _loadLocation,
+            ),
+            const SizedBox(height: 14),
+          ],
 
-                    const SizedBox(height: 12),
-
-                    // Where you are going, and — once that is known —
-                    // everything needed to send the request.
-                    _SheetPanel(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_locationError != null) ...[
-                            _LocationErrorBanner(
-                              message: _locationError!,
-                              busy: _locating,
-                              onRetry: _loadLocation,
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-
-                          if (!planning) ...[
-                            // One control, one question, and it is the question
-                            // this app actually asks: where, and for how much.
-                            // A separate pickup row above it was two fields to
-                            // read before the customer could start.
-                            _SearchPill(
-                              onTap: () =>
-                                  _openSearch(RouteFieldKind.destination),
-                            ),
-                            const SizedBox(height: 10),
-                            _PickupRow(
-                              uncertain: _pickupUncertain,
-                              label: _pickup.text,
-                              busy: _locating || _resolvingPin,
-                              onTap: () => _openSearch(RouteFieldKind.pickup),
-                            ),
-                            if (_recent.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              // Most trips repeat, so the fastest path for a
-                              // regular is the one they took last time.
-                              ..._recent.map(
-                                (place) => _RecentRow(
-                                  place: place,
-                                  onTap: () => _useRecent(place),
-                                ),
-                              ),
-                            ],
-                          ] else ...[
-                            if (!hotel) ...[
-                              // Both ends stay visible and editable. Hiding
-                              // pickup once a destination existed meant a wrong
-                              // pickup could not be corrected, which is exactly
-                              // when it matters.
-                              _RouteSummaryFields(
-                                pickupLabel: _pickup.text,
-                                destinationLabel: _destination.text,
-                                locating: _locating || _resolvingPin,
-                                onUseMyLocation: _loadLocation,
-                                onEditPickup: () =>
-                                    _openSearch(RouteFieldKind.pickup),
-                                onEditDestination: () =>
-                                    _openSearch(RouteFieldKind.destination),
-                              ),
-                              _TripSummary(
-                                loading: _routeLoading,
-                                result: _routeResult,
-                                selected: _selectedRoute,
-                                hasDestination: true,
-                              ),
-                            ],
-                            const SizedBox(height: 12),
-                            AnimatedSize(
-                              duration: AppConfig.panelSwitch,
-                              curve: Curves.easeOut,
-                              alignment: Alignment.topCenter,
-                              child: hotel
-                                  ? _buildHotelPanel()
-                                  : _buildVehiclePanel(),
-                            ),
-                            const SizedBox(height: 14),
-                            _StickyCta(
-                              label: _ctaLabel,
-                              enabled: _ctaEnabled,
-                              busy: _submitting,
-                              onTap: _submit,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
+          if (!planning) ...[
+            // One control, one question, and it is the question this app
+            // actually asks. A separate pickup row above it was two fields to
+            // read before the customer could start.
+            _SearchPill(onTap: () => _openSearch(RouteFieldKind.destination)),
+            const SizedBox(height: 10),
+            _PickupRow(
+              uncertain: _pickupUncertain,
+              label: _pickup.text,
+              busy: _locating || _resolvingPin,
+              onTap: () => _openSearch(RouteFieldKind.pickup),
+            ),
+            if (_recent.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              // Most trips repeat, so the fastest path for a regular is the one
+              // they took last time.
+              ..._recent.map(
+                (place) => _RecentRow(
+                  place: place,
+                  onTap: () => _useRecent(place),
                 ),
               ),
+            ],
+          ] else ...[
+            if (!hotel) ...[
+              // Both ends stay visible and editable. Hiding pickup once a
+              // destination existed meant a wrong pickup could not be
+              // corrected, which is exactly when it matters.
+              _RouteSummaryFields(
+                pickupLabel: _pickup.text,
+                destinationLabel: _destination.text,
+                locating: _locating || _resolvingPin,
+                onUseMyLocation: _loadLocation,
+                onEditPickup: () => _openSearch(RouteFieldKind.pickup),
+                onEditDestination: () =>
+                    _openSearch(RouteFieldKind.destination),
+              ),
+              _TripSummary(
+                loading: _routeLoading,
+                result: _routeResult,
+                selected: _selectedRoute,
+                hasDestination: true,
+              ),
+            ],
+            const SizedBox(height: 14),
+            AnimatedSize(
+              duration: AppConfig.panelSwitch,
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: hotel ? _buildHotelPanel() : _buildVehiclePanel(),
+            ),
+            const SizedBox(height: 18),
+            _StickyCta(
+              label: _ctaLabel,
+              enabled: _ctaEnabled,
+              busy: _submitting,
+              onTap: _submit,
             ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1958,36 +1967,11 @@ class _TourRateGuideCard extends StatelessWidget {
   }
 }
 
-class _SheetPanel extends StatelessWidget {
-  const _SheetPanel({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    // White with a hairline, not a grey block.
-    //
-    // On the dark theme these panels were lighter than the page and that was
-    // enough to separate them. On white, a grey panel on a white page is the
-    // wrong way round — the content should be the bright part and the page the
-    // quiet one. A border does the separating instead.
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: AppRadii.all(AppRadii.panel),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: child,
-    );
-  }
-}
-
-/// The one question the app asks.
+/// The one question the app asks, before a destination is known.
 ///
-/// "Where to & for how much?" rather than "Where to?" because naming the price
-/// is the whole model — a customer who does not know that until the next screen
-/// is being asked to discover it.
+/// A `.field`-shaped inset: the same 58px box and 16px radius as every other
+/// input in the app, so it reads as something to fill in rather than as a
+/// button that happens to have a magnifier on it.
 class _SearchPill extends StatelessWidget {
   const _SearchPill({required this.onTap});
 
@@ -1996,31 +1980,33 @@ class _SearchPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surfaceAlt,
-      borderRadius: AppRadii.all(AppRadii.largeCard),
+      color: AppColors.surface,
+      borderRadius: AppRadii.all(AppRadii.field),
       child: InkWell(
         onTap: onTap,
-        borderRadius: AppRadii.all(AppRadii.largeCard),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 17),
-          child: Row(
-            children: [
-              Icon(Icons.search_rounded, size: 24, color: AppText.primary),
-              SizedBox(width: 13),
-              Expanded(
-                child: Text(
-                  'Where to & for how much?',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 18.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -.2,
-                    color: AppText.primary,
+        borderRadius: AppRadii.all(AppRadii.field),
+        child: SizedBox(
+          height: AppSizes.field,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                const Icon(Icons.search_rounded,
+                    size: 22, color: AppText.secondary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Where to & for how much?',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppType.listTitle.copyWith(
+                      fontSize: 16.5,
+                      color: AppText.primary,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2031,8 +2017,8 @@ class _SearchPill extends StatelessWidget {
 /// Pickup as one quiet line under the search control.
 ///
 /// The map already shows the pickup on its own pin, so repeating it as a full
-/// field competed with the question above it. It stays tappable because a
-/// wrong pickup has to be fixable without first choosing a destination.
+/// field competed with the question above it. It stays tappable because a wrong
+/// pickup has to be fixable without first choosing a destination.
 class _PickupRow extends StatelessWidget {
   const _PickupRow({
     required this.label,
@@ -2053,268 +2039,62 @@ class _PickupRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = label.trim();
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: AppRadii.all(AppRadii.row),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        child: Row(
-          children: [
-            Container(
-              width: 9,
-              height: 9,
-              decoration: BoxDecoration(
-                color: AppColors.secondary,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                text.isEmpty ? 'Set a pickup point' : text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w600,
-                  color: AppText.secondary,
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadii.all(AppRadii.row),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+          child: Row(
+            children: [
+              // The route rail's start marker, on its own: a navy ring.
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppTint.pinPickupFill, width: 3),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            if (busy)
-              const SizedBox(
-                width: 13,
-                height: 13,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              Text(
-                // Louder when the fix was vague. "Change" is an option; "Check
-                // this" is a request, and the difference matters when the
-                // address on screen may be a street out.
-                uncertain ? 'Check this' : 'Change',
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w800,
-                  color: uncertain ? AppColors.warning : AppColors.secondary,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LocationControl extends StatelessWidget {
-  const _LocationControl({
-    required this.expanded,
-    required this.placeName,
-    required this.onTap,
-  });
-
-  final bool expanded;
-  final String placeName;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Current location: $placeName',
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const UDriveMark(size: 38),
-            AnimatedSize(
-              duration: AppConfig.pillExpand,
-              curve: Curves.easeOut,
-              child: expanded
-                  ? Padding(
-                      padding: const EdgeInsets.only(left: 7),
-                      child: Container(
-                        constraints: const BoxConstraints(maxWidth: 165),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceHigh.withValues(alpha: .92),
-                          borderRadius: BorderRadius.circular(11),
-                          boxShadow: AppShadows.floating,
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Current location',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                color: AppText.secondary,
-                              ),
-                            ),
-                            Text(
-                              placeName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w800,
-                                color: AppText.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MapIconButton extends StatelessWidget {
-  const _MapIconButton({
-    required this.semanticLabel,
-    required this.onTap,
-    this.icon,
-    this.child,
-    this.showDot = false,
-  });
-
-  /// Either an [icon] or a [child], not both.
-  ///
-  /// The driver-mode button needs a drawn steering wheel, which Material does
-  /// not have as a glyph — and `swap_horiz`, the arrows it used to show, says
-  /// "change something" without saying into what.
-  final IconData? icon;
-  final Widget? child;
-  final String semanticLabel;
-  final VoidCallback onTap;
-  final bool showDot;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: semanticLabel,
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                // Solid white with a hairline, no shadow.
-                //
-                // These sit on the map now. A shadow on a light map is a ring
-                // of grey around the icon rather than depth, and translucency
-                // let street names show through the button.
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: child ??
-                  Icon(icon, size: 20, color: AppColors.secondary),
-            ),
-            if (showDot)
-              Positioned(
-                right: 6,
-                top: 6,
-                child: Container(
-                  width: 7,
-                  height: 7,
-                  decoration: const BoxDecoration(
-                    color: AppColors.danger,
-                    shape: BoxShape.circle,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  text.isEmpty ? 'Set a pickup point' : text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.small.copyWith(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppText.secondary,
                   ),
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// "6 cars within 5 km" chip over the map.
-class _NearbyCountChip extends StatelessWidget {
-  const _NearbyCountChip({
-    required this.service,
-    required this.count,
-    required this.loading,
-    required this.offline,
-  });
-
-  final HomeService service;
-  final int count;
-  final bool loading;
-  final bool offline;
-
-  String get _label {
-    if (offline) return 'Offline — vehicles unavailable';
-    if (loading) return 'Looking for vehicles…';
-
-    final noun = switch (service) {
-      HomeService.bus => count == 1 ? 'coaster' : 'coasters',
-      HomeService.car => count == 1 ? 'car' : 'cars',
-      HomeService.bike => count == 1 ? 'bike' : 'bikes',
-      HomeService.hotel => 'hotels',
-      HomeService.tour => count == 1 ? 'tour vehicle' : 'tour vehicles',
-    };
-    if (count == 0) return 'No $noun nearby right now';
-    return '$count $noun within '
-        '${AppConfig.nearbyVehiclesRadiusKm.toStringAsFixed(0)} km';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: .95),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.secondary.withValues(alpha: .40),
-        ),
-        boxShadow: AppShadows.floating,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (loading)
-            const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            Icon(service.icon, size: 17, color: AppColors.secondary),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              _label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppText.primary,
-              ),
-            ),
+              const SizedBox(width: 8),
+              if (busy)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Text(
+                  // Louder when the fix was vague. "Change" is an option;
+                  // "Check this" is a request, and the difference matters when
+                  // the address on screen may be a street out.
+                  uncertain ? 'Check this' : 'Change',
+                  style: AppType.caption.copyWith(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: uncertain
+                        ? AppTint.warningText
+                        : AppColors.brandInk,
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -2327,39 +2107,25 @@ class _LocateButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Centre the map on my location',
-      child: GestureDetector(
-        onTap: busy ? null : onTap,
-        child: Container(
-          width: 40,
-          height: 40,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            shape: BoxShape.circle,
-            boxShadow: AppShadows.floating,
-          ),
-          child: busy
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Icon(Icons.my_location_rounded,
-                  size: 19, color: AppColors.secondary),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => UdFloatButton(
+        tooltip: 'Centre the map on my location',
+        onPressed: busy ? null : onTap,
+        child: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.my_location_rounded,
+                size: 22, color: AppColors.navy),
+      );
 }
 
-/// Opened by tapping a vehicle marker.
+/// What one nearby vehicle is — screen C-06.
 ///
-/// Shows what the customer needs to judge availability and nothing more. The
-/// driver's name, plate and phone stay private until a booking is confirmed.
+/// No driver name, no plate, no CTA. The API withholds identity before a
+/// booking exists, so there is nothing here to book with and nothing to
+/// pretend otherwise.
 class _VehicleMarkerSheet extends StatelessWidget {
   const _VehicleMarkerSheet({required this.vehicle});
 
@@ -2367,130 +2133,94 @@ class _VehicleMarkerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.sheetTop(),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    final mode = vehicle.bookingMode;
+    final String modeLine;
+    if (mode.allowsPerSeat && mode.allowsWholeVehicle) {
+      modeLine = 'Per seat or whole vehicle.';
+    } else if (mode.allowsPerSeat) {
+      modeLine = 'Offered per seat.';
+    } else {
+      modeLine = 'Booked as a whole vehicle.';
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppTint.brand,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    vehicle.service?.icon ?? Icons.directions_car_rounded,
-                    size: 24,
-                    color: AppColors.secondary,
-                  ),
-                ),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        vehicle.category,
-                        style: const TextStyle(
-                          fontSize: 18.5,
-                          fontWeight: FontWeight.w900,
-                          color: AppText.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '${vehicle.distanceKm.toStringAsFixed(1)} km away  ·  '
-                        'about ${vehicle.etaMinutes} min',
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          color: AppText.secondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (vehicle.rating > 0)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.star_rounded,
-                          size: 17, color: AppTint.star),
-                      const SizedBox(width: 4),
-                      Text(
-                        vehicle.rating.toStringAsFixed(1),
-                        style: const TextStyle(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w900,
-                          color: AppText.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceAlt,
-                borderRadius: AppRadii.all(AppRadii.field),
-              ),
-              child: Row(
+            UdIconTile(icon: _icon, tone: UdIconTone.soft),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.info_outline_rounded,
-                      size: 15, color: AppText.disabled),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      vehicle.bookingMode.allowsPerSeat &&
-                              !vehicle.bookingMode.allowsWholeVehicle
-                          ? 'Offered per seat.'
-                          : vehicle.bookingMode.allowsWholeVehicle &&
-                                  !vehicle.bookingMode.allowsPerSeat
-                              ? 'Booked as a whole vehicle.'
-                              : 'Per seat or whole vehicle.',
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        color: AppText.secondary,
-                      ),
+                  Text(
+                    vehicle.category,
+                    style: AppType.h3.copyWith(
+                      fontSize: 18.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppText.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${vehicle.distanceKm.toStringAsFixed(1)} km away  ·  '
+                    'about ${vehicle.etaMinutes} min',
+                    style: AppType.small.copyWith(
+                      fontSize: 14.5,
+                      color: AppText.secondary,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 10),
-            const Text(
-              'Driver details are shared once your booking is confirmed.',
-              style: TextStyle(fontSize: 13, color: AppText.disabled),
-            ),
+            if (vehicle.rating > 0) ...[
+              const SizedBox(width: 10),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.star_rounded,
+                      size: 18, color: AppTint.star),
+                  const SizedBox(width: 4),
+                  Text(
+                    vehicle.rating.toStringAsFixed(1),
+                    style: AppType.small.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: AppText.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
-      ),
+        const SizedBox(height: 16),
+        UdBanner(icon: Icons.event_seat_outlined, text: modeLine),
+        const SizedBox(height: 14),
+        Text(
+          'Driver details are shared once your booking is confirmed.',
+          textAlign: TextAlign.center,
+          style: AppType.caption.copyWith(color: AppText.caption),
+        ),
+      ],
     );
+  }
+
+  IconData get _icon {
+    final category = vehicle.category.toLowerCase();
+    if (category.contains('bike')) return Icons.two_wheeler_rounded;
+    if (category.contains('coaster') ||
+        category.contains('coster') ||
+        category.contains('bus')) {
+      return Icons.airport_shuttle_rounded;
+    }
+    if (category.contains('hiace') || category.contains('van')) {
+      return Icons.airport_shuttle_outlined;
+    }
+    if (category.contains('rickshaw')) return Icons.electric_rickshaw_rounded;
+    return Icons.directions_car_rounded;
   }
 }
 
@@ -2781,17 +2511,14 @@ class _ServiceCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      // Taller, for the larger type.
-      //
-      // 148 was set when titles were 15pt and subtitles 10.5. At 17 and 11.5
-      // the two right-hand cards had their subtitles clipped by the artwork
-      // and each other.
-      height: 172,
+      // Taller again, for v2's type. 148 was set when titles were 15pt and
+      // subtitles 10.5; the large card's title is 24 now and its subtitle
+      // wraps to two lines.
+      height: 190,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            flex: 27,
             child: _ProductCard(
               title: 'City rides',
               // The driver count when there is one, because "3 nearby" is the
@@ -2813,9 +2540,8 @@ class _ServiceCards extends StatelessWidget {
               onTap: () => onSelect(HomeService.car),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Expanded(
-            flex: 20,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -2835,7 +2561,7 @@ class _ServiceCards extends StatelessWidget {
                     onTap: () => onSelect(HomeService.tour),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Expanded(
                   // Hotels moved down to the icon row, so this slot carries
                   // the other kind of ride: out of the city rather than across
@@ -2900,7 +2626,7 @@ class _QuickRow extends StatelessWidget {
             onClosed: onClosed,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Expanded(
           child: _QuickTile(
             icon: Icons.vpn_key_rounded,
@@ -2914,7 +2640,7 @@ class _QuickRow extends StatelessWidget {
             onClosed: onClosed,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Expanded(
           child: _QuickTile(
             icon: Icons.airport_shuttle_rounded,
@@ -2925,7 +2651,7 @@ class _QuickRow extends StatelessWidget {
             onClosed: onClosed,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Expanded(
           child: _QuickTile(
             icon: Icons.explore_rounded,
@@ -2976,68 +2702,56 @@ class _QuickTile extends StatelessWidget {
         onTap: closed ? () => onClosed(service) : onTap,
         child: Opacity(
           opacity: closed ? .55 : 1,
-          child: Column(
-          children: [
-            // Not expanded here: this Stack sizes to the icon box, which is
-            // what should decide the tile's height. The badge is Positioned
-            // and does not count towards it.
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  height: 52,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    // A touch deeper than the page, so the row reads as five
-                    // buttons rather than five labels.
-                    color: selected ? AppTint.brand : AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(13),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? AppColors.brandWash
+                      : AppColors.surfaceHigh,
+                  borderRadius: AppRadii.all(18),
+                  border: Border.all(
+                    color: selected ? AppColors.navy : AppColors.border,
+                    width: selected ? 2 : 1,
                   ),
-                  child: Icon(
-                    icon,
-                    size: 21,
-                    color: selected ? AppColors.secondary : AppText.secondary,
-                  ),
+                  boxShadow: AppShadows.card,
                 ),
-                if (closed)
-                  Positioned(
-                    top: -4,
-                    right: -2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        // Grey, not the brand colour. A badge in the action
-                        // colour reads as something to press.
-                        color: AppText.secondary,
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: Text(
-                        service.badgeLabel,
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: .3,
-                          color: AppColors.background,
-                        ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 26,
+                      color: selected
+                          ? AppColors.brandInk
+                          : AppColors.navy,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.caption.copyWith(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: selected
+                            ? AppColors.brandInk
+                            : AppText.primary,
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? AppText.primary : AppText.secondary,
+                  ],
+                ),
               ),
-            ),
-          ],
+              if (closed)
+                Positioned(
+                  top: -6,
+                  right: -4,
+                  child: UdBadge(label: service.badgeLabel),
+                ),
+            ],
           ),
         ),
       ),
@@ -3070,6 +2784,8 @@ class _ProductCard extends StatelessWidget {
   final Color titleInk;
   final Color subInk;
   final bool selected;
+
+  /// The tall left-hand card. The two on the right are the small form.
   final bool large;
 
   /// A second vehicle drawn beside [icon] on the large tile.
@@ -3088,17 +2804,12 @@ class _ProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final closed = !service.isOpen;
 
-    // Unselected tiles keep their colour, only quieter.
+    // Selection is a navy border, not a change of fill.
     //
-    // They used to drop to the flat grey surface, which is why the row looked
-    // like one coloured box and three empty ones — and why deepening the tints
-    // would have changed nothing: only the selected tile was ever using them.
-    //
-    // Selection now reads from depth rather than from colour-versus-no-colour.
-    final background = selected
-        ? surface
-        : Color.alphaBlend(surface.withValues(alpha: .45), AppColors.background);
-
+    // The tiles used to drop to a washed-out version of their own colour when
+    // unselected, which is why the row looked like one coloured box and three
+    // empty ones. In v2 the brand tile keeps its lime and the others stay
+    // white; what moves is the border.
     return Semantics(
       button: true,
       selected: selected,
@@ -3109,147 +2820,29 @@ class _ProductCard extends StatelessWidget {
         onTap: closed ? () => onClosed(service) : onTap,
         child: Opacity(
           opacity: closed ? .55 : 1,
-          // `StackFit.expand`, and this is the whole reason the cards were
-          // different heights.
-          //
-          // A Stack defaults to passing **loose** constraints to its
-          // non-positioned children. So this one filled its 172px slot while
-          // the card inside it shrank to fit its own text — leaving the left
-          // tile short, the two right tiles uneven, and a gap under each.
-          //
-          // The Stack was only added to hold the SOON badge; it had no business
-          // changing how the card sizes.
           child: Stack(
             fit: StackFit.expand,
+            clipBehavior: Clip.none,
             children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(large ? 20 : 16),
-            border: Border.all(
-              color: selected ? accent : Colors.transparent,
-              width: 1.4,
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(
-            children: [
-              // Oversized artwork bleeding off the bottom corner, with the
-              // label reading from the top. The eye lands on the word first
-              // and the picture only confirms it — the other way round, four
-              // tiles read as four pictures with captions.
-              // Artwork in the bottom-right corner, out of the text's way.
-              //
-              // It used to be oversized and bleeding off the corner, behind the
-              // words. That worked at the old type size and stopped working at
-              // the new one: the car was printing straight through "Car · Bike
-              // · Coster · Hiace". Smaller, inset, and the text column now
-              // reserves the space it needs above it.
-              Positioned(
-                right: large ? 10 : 6,
-                bottom: large ? 8 : 5,
-                child: large && secondaryIcon != null
-                    // Two vehicles on the large tile, overlapped.
-                    //
-                    // "City rides" covers car, bike, Coster and Hiace, and a
-                    // single car said only "car" — the tile looked like the
-                    // car option rather than the category containing it.
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Icon(
-                            secondaryIcon,
-                            size: 34,
-                            color: accent.withValues(
-                                alpha: selected ? .32 : .18),
-                          ),
-                          const SizedBox(width: 2),
-                          Icon(
-                            icon,
-                            size: 48,
-                            color: accent.withValues(
-                                alpha: selected ? .42 : .24),
-                          ),
-                        ],
-                      )
-                    : Icon(
-                        icon,
-                        size: large ? 46 : 28,
-                        color: accent.withValues(alpha: selected ? .40 : .22),
-                      ),
-              ),
-              // Text reserves the left side and stops short of the artwork.
-              //
-              // The subtitle ran the full width and "Hiace" was printing over
-              // the car. Right padding of 56 on the large card keeps the words
-              // clear of it without moving either.
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  large ? 14 : 11,
-                  large ? 14 : 11,
-                  large ? 56 : 34,
-                  large ? 14 : 11,
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: AppRadii.all(large ? AppRadii.largeCard : 18),
+                  border: Border.all(
+                    color: selected ? AppColors.navy : AppColors.border,
+                    width: selected ? 2 : 1,
+                  ),
+                  boxShadow: AppShadows.card,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        // Bigger and heavier. These are the headings of the
-                        // screen and were reading as captions.
-                        fontSize: large ? 21 : 15.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -.3,
-                        color: titleInk,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      maxLines: large ? 2 : 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: large ? 13 : 11.5,
-                        height: 1.35,
-                        fontWeight: FontWeight.w600,
-                        color: subInk,
-                      ),
-                    ),
-                  ],
-                ),
+                clipBehavior: Clip.antiAlias,
+                child: large ? _large() : _small(),
               ),
-            ],
-          ),
-        ),
               if (closed)
                 Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      // Grey, not the action colour: a badge in the colour of
-                      // buttons reads as something to press.
-                      color: AppText.secondary,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: Text(
-                      service.badgeLabel,
-                      style: TextStyle(
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: .3,
-                        color: AppColors.background,
-                      ),
-                    ),
-                  ),
+                  top: 10,
+                  right: 10,
+                  child: UdBadge(label: service.badgeLabel),
                 ),
             ],
           ),
@@ -3257,6 +2850,100 @@ class _ProductCard extends StatelessWidget {
       ),
     );
   }
+
+  /// Title at the top, artwork in the bottom-right corner, out of the words'
+  /// way. It used to be oversized and bleeding behind them, which worked at the
+  /// old type size and stopped working at this one: the car printed straight
+  /// through "Car · Bike · Coster · Hiace".
+  Widget _large() => Stack(
+        children: [
+          Positioned(
+            right: 14,
+            bottom: 12,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (secondaryIcon != null) ...[
+                  Icon(secondaryIcon, size: 28, color: accent),
+                  const SizedBox(width: 6),
+                ],
+                Icon(icon, size: 34, color: accent),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.h2.copyWith(
+                    fontSize: 24,
+                    letterSpacing: -0.6,
+                    color: titleInk,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.small.copyWith(
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                    color: subInk,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+
+  /// Words on the left, one icon tile on the right.
+  Widget _small() => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppType.listTitle.copyWith(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: titleInk,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppType.small.copyWith(color: subInk),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            UdIconTile(
+              icon: icon,
+              tone: UdIconTone.neutral,
+              size: UdIconTileSize.sm,
+            ),
+          ],
+        ),
+      );
 }
 
 class _LocationErrorBanner extends StatelessWidget {
@@ -3271,41 +2958,19 @@ class _LocationErrorBanner extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(13, 11, 9, 11),
-      decoration: BoxDecoration(
-        color: AppTint.warning,
-        borderRadius: AppRadii.all(AppRadii.row),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.location_off_rounded,
-              size: 17, color: AppTint.warningText),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                fontSize: 13.5,
-                height: 1.4,
-                fontWeight: FontWeight.w600,
-                color: AppTint.warningText,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: busy ? null : onRetry,
-            style: TextButton.styleFrom(
-              foregroundColor: AppTint.warningText,
-              minimumSize: const Size(0, 34),
-            ),
-            child: Text(busy ? '…' : 'Retry'),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => UdBanner(
+        tone: UdTone.warn,
+        icon: Icons.location_off_rounded,
+        text: message,
+        trailing: UdButton(
+          label: 'Retry',
+          variant: UdButtonVariant.ghost,
+          size: UdButtonSize.xs,
+          expand: false,
+          busy: busy,
+          onPressed: onRetry,
+        ),
+      );
 }
 
 /// A destination used before. One tap sets it and plots the route.
@@ -3328,7 +2993,7 @@ class _RecentRow extends StatelessWidget {
         child: Row(
           children: [
             const Icon(Icons.history_rounded,
-                size: 21, color: AppText.disabled),
+                size: 21, color: AppText.caption),
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -3367,6 +3032,12 @@ class _RecentRow extends StatelessWidget {
   }
 }
 
+/// Time, distance and which road — the answer to "how far is it?".
+///
+/// The alternatives are not listed. They are chosen by tapping the road on the
+/// map, which is more direct and how every taxi app works; a duplicate list
+/// here would be a second way to do the same thing and a second thing to keep
+/// in step with the map. The line under the figures says how many there are.
 class _TripSummary extends StatelessWidget {
   const _TripSummary({
     required this.loading,
@@ -3385,32 +3056,11 @@ class _TripSummary extends StatelessWidget {
     if (!hasDestination) return const SizedBox.shrink();
 
     if (loading) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceAlt,
-            borderRadius: AppRadii.all(AppRadii.row),
-          ),
-          child: const Row(
-            children: [
-              SizedBox(
-                width: 15,
-                height: 15,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              SizedBox(width: 11),
-              Text(
-                'Working out the route…',
-                style: TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppText.secondary,
-                ),
-              ),
-            ],
-          ),
+      return const Padding(
+        padding: EdgeInsets.only(top: 12),
+        child: UdBanner(
+          text: 'Working out the route…',
+          icon: Icons.schedule_rounded,
         ),
       );
     }
@@ -3425,48 +3075,25 @@ class _TripSummary extends StatelessWidget {
       };
       return Padding(
         padding: const EdgeInsets.only(top: 12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-          decoration: BoxDecoration(
-            color: AppTint.warning,
-            borderRadius: AppRadii.all(AppRadii.row),
-          ),
-          child: Row(
+        child: UdBanner(
+          tone: UdTone.warn,
+          icon: Icons.route_outlined,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.route_outlined,
-                  size: 16, color: AppTint.warningText),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      message,
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        height: 1.4,
-                        fontWeight: FontWeight.w600,
-                        color: AppTint.warningText,
-                      ),
-                    ),
-                    if (result.detail != null &&
-                        result.detail!.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        result.detail!,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          height: 1.35,
-                          color: AppText.disabled,
-                        ),
-                      ),
-                    ],
-                  ],
+              Text(message),
+              if (result.detail != null && result.detail!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  result.detail!,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.caption.copyWith(
+                    color: AppTint.warningText,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -3475,90 +3102,78 @@ class _TripSummary extends StatelessWidget {
 
     final active = result.routes[selected.clamp(0, result.routes.length - 1)];
 
+    final detail = StringBuffer();
+    if (active.summary.isNotEmpty) detail.write('via ${active.summary}');
+    if (result.routes.length > 1) {
+      if (detail.isNotEmpty) detail.write('  ·  ');
+      detail
+        ..write(result.routes.length - 1)
+        ..write(result.routes.length == 2 ? ' other route' : ' other routes')
+        ..write(' on the map');
+    }
+
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppTint.brand,
-              borderRadius: AppRadii.all(AppRadii.row),
-              border: Border.all(
-                color: AppColors.secondary.withValues(alpha: .35),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTint.success,
+          borderRadius: AppRadii.all(AppRadii.field),
+          border: Border.all(color: AppTint.successBorder),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: AppSizes.iconTileSm,
+              height: AppSizes.iconTileSm,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: AppRadii.all(12),
               ),
+              child: const Icon(Icons.schedule_rounded,
+                  size: 20, color: AppColors.navy),
             ),
-            child: Row(
-              children: [
-                Icon(Icons.schedule_rounded,
-                    size: 19, color: AppColors.secondary),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '${active.durationLabel}  ·  ${active.distanceLabel}',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppText.primary,
-                        ),
-                      ),
-                      if (active.summary.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'via ${active.summary}',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13.5,
-                            color: AppText.secondary,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // No chips for the alternatives.
-          //
-          // They are chosen by tapping the road on the map, which is more
-          // direct and how every taxi app works. A duplicate list here would be
-          // a second way to do the same thing, and a second thing to keep in
-          // step with the map.
-          if (result.routes.length > 1) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.alt_route_rounded,
-                    size: 14, color: AppText.disabled),
-                const SizedBox(width: 7),
-                Expanded(
-                  child: Text(
-                    '${result.routes.length - 1} other '
-                    '${result.routes.length == 2 ? 'route' : 'routes'} — tap '
-                    'one on the map',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppText.disabled,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${active.durationLabel}  ·  ${active.distanceLabel}',
+                    style: AppType.h2.copyWith(
+                      fontSize: 20,
+                      letterSpacing: -0.3,
+                      color: AppText.primary,
                     ),
                   ),
-                ),
-              ],
+                  if (detail.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      detail.toString(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.small.copyWith(
+                        color: AppColors.brandInk,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
+/// Per seat or the whole vehicle.
+///
+/// When only one mode is on offer there is nothing to choose, so it states the
+/// fact instead of drawing a control with one option in it.
 class _BookingTypeSelector extends StatelessWidget {
   const _BookingTypeSelector({
     required this.value,
@@ -3573,94 +3188,42 @@ class _BookingTypeSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (available.length < 2) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Icon(available.first.icon, size: 18, color: AppColors.secondary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                available.first == BookingType.wholeVehicle
-                    ? 'Whole vehicle — nearby vehicles seat 5 or fewer'
-                    : 'Per seat only',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: AppText.secondary,
-                ),
+      final whole = available.first == BookingType.wholeVehicle;
+      return UdBanner(
+        icon: available.first.icon,
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: whole ? 'Whole vehicle' : 'Per seat only',
+                style: const TextStyle(fontWeight: FontWeight.w800),
               ),
-            ),
-          ],
+              if (whole)
+                const TextSpan(
+                  text: ' — nearby vehicles seat 5 or fewer, so you book '
+                      'the full car.',
+                ),
+            ],
+          ),
         ),
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: available.map((mode) {
-          final selected = mode == value;
-          return Expanded(
-            child: Semantics(
-              button: true,
-              selected: selected,
-              label: mode.label,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onChanged(mode),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(vertical: 9),
-                  decoration: BoxDecoration(
-                    color:
-                        selected ? AppColors.secondary : Colors.transparent,
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        mode.icon,
-                        size: 19,
-                        color:
-                            selected ? AppText.onBrand : AppText.disabled,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        mode.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.2,
-                          fontWeight:
-                              selected ? FontWeight.w900 : FontWeight.w600,
-                          color: selected
-                              ? AppText.onBrand
-                              : AppText.secondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(growable: false),
-      ),
+    return UdSegmented(
+      options: available.map((mode) => mode.label).toList(growable: false),
+      index: available.indexOf(value).clamp(0, available.length - 1),
+      onChanged: (index) => onChanged(available[index]),
     );
   }
 }
 
+/// The from/to block, plus the one-tap way to reset the start.
+///
+/// The rail tells the two ends apart by shape rather than by hue: an open navy
+/// ring for where you are, a lime square with a navy border for where you are
+/// going. That replaced a green dot and an orange square, which were the only
+/// two colours left in the app belonging to no part of the brand — and which a
+/// colour-blind rider could not tell apart anyway.
 class _RouteSummaryFields extends StatelessWidget {
   const _RouteSummaryFields({
     required this.pickupLabel,
@@ -3683,126 +3246,36 @@ class _RouteSummaryFields extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 18),
-              child: Column(
-                children: [
-                  Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(
-                      color: AppColors.secondary,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  Container(
-                    width: 1.5,
-                    height: 32,
-                    margin: const EdgeInsets.symmetric(vertical: 5),
-                    color: AppColors.border,
-                  ),
-                  Container(width: 8, height: 8, color: AppText.primary),
-                ],
-              ),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _RouteRow(
-                    caption: 'From',
-                    value: pickupLabel,
-                    placeholder: locating
-                        ? 'Finding your location…'
-                        : 'Set a pickup point',
-                    onTap: onEditPickup,
-                  ),
-                  Container(height: 1, color: AppColors.border),
-                  _RouteRow(
-                    caption: 'To',
-                    value: destinationLabel,
-                    placeholder: 'Where are you going?',
-                    onTap: onEditDestination,
-                  ),
-                ],
-              ),
-            ),
-          ],
+        UdCard(
+          tone: UdCardTone.tint,
+          radius: AppRadii.field,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: UdRouteBlock(
+            fromLabel: 'From',
+            fromValue: pickupLabel,
+            fromPlaceholder:
+                locating ? 'Finding your location…' : 'Set a pickup point',
+            onTapFrom: onEditPickup,
+            toLabel: 'To',
+            toValue: destinationLabel,
+            toPlaceholder: 'Where are you going?',
+            onTapTo: onEditDestination,
+          ),
         ),
+        const SizedBox(height: 4),
         Align(
           alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: locating ? null : onUseMyLocation,
-            icon: locating
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.my_location_rounded, size: 16),
-            label: Text(locating ? 'Locating…' : 'Use my location'),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.secondary,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              minimumSize: const Size(0, 34),
-              textStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+          child: UdButton(
+            label: locating ? 'Locating…' : 'Use my location',
+            icon: Icons.my_location_rounded,
+            variant: UdButtonVariant.ghost,
+            size: UdButtonSize.small,
+            expand: false,
+            busy: locating,
+            onPressed: onUseMyLocation,
           ),
         ),
       ],
-    );
-  }
-}
-
-class _RouteRow extends StatelessWidget {
-  const _RouteRow({
-    required this.caption,
-    required this.value,
-    required this.onTap,
-    this.placeholder,
-  });
-
-  final String caption;
-  final String value;
-  final String? placeholder;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final empty = value.trim().isEmpty;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              caption,
-              style: const TextStyle(fontSize: 12.5, color: AppText.disabled),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              empty ? (placeholder ?? '') : value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 15.5,
-                fontWeight: FontWeight.w600,
-                color: empty ? AppText.disabled : AppText.primary,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -4063,7 +3536,7 @@ class _TapField extends StatelessWidget {
   }
 }
 
-/// The primary action at the foot of the booking sheet.
+/// The button that sends the request.
 class _StickyCta extends StatelessWidget {
   const _StickyCta({
     required this.label,
@@ -4078,73 +3551,31 @@ class _StickyCta extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 54,
-      child: Material(
-        color: enabled ? AppColors.secondary : AppColors.border,
-        borderRadius: AppRadii.all(AppRadii.cta),
-        child: InkWell(
-          onTap: enabled ? onTap : null,
-          borderRadius: AppRadii.all(AppRadii.cta),
-          child: Center(
-            child: busy
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppText.onBrand,
-                    ),
-                  )
-                : Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: enabled ? AppText.onBrand : AppText.disabled,
-                    ),
-                  ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => UdButton.primary(
+        label: label,
+        trailingIcon: Icons.arrow_forward_rounded,
+        busy: busy,
+        onPressed: enabled ? onTap : null,
+      );
 }
 
 class _OfflineNotice extends StatelessWidget {
   const _OfflineNotice();
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppTint.warning,
-        borderRadius: AppRadii.all(AppRadii.row),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.cloud_off_rounded, size: 16, color: AppTint.warningText),
-          SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              'You are offline. Saved maps are in use and bookings will need a '
-              'connection.',
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.4,
-                fontWeight: FontWeight.w600,
-                color: AppTint.warningText,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const UdBanner(
+        tone: UdTone.warn,
+        icon: Icons.cloud_off_rounded,
+        text: 'You are offline. Saved maps are in use and bookings will need '
+            'a connection.',
+      );
 }
 
+/// The hero card when a ride is already under way — screen C-07.
+///
+/// It takes the slot the "Where to?" card normally owns, and it is outlined in
+/// the lime line rather than the hairline grey, because it is the one thing on
+/// the screen that is happening right now.
 class _ActiveTripBanner extends StatelessWidget {
   const _ActiveTripBanner({required this.trip, required this.onTrack});
 
@@ -4154,34 +3585,36 @@ class _ActiveTripBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(15, 13, 12, 13),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
         color: AppColors.surfaceHigh,
-        borderRadius: AppRadii.all(AppRadii.card),
-        border: Border.all(color: AppColors.secondary.withValues(alpha: .35)),
+        borderRadius: AppRadii.all(AppRadii.largeCard),
+        border: Border.all(color: AppColors.limeLine, width: 1.5),
+        boxShadow: AppShadows.panel,
       ),
       child: Row(
         children: [
+          const UdIconTile(
+            icon: Icons.directions_car_rounded,
+            tone: UdIconTone.lime,
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Trip in progress',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppText.secondary,
-                  ),
+                Text(
+                  'TRIP IN PROGRESS',
+                  style: AppType.overline.copyWith(color: AppText.secondary),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
                   '${trip.pickupLabel} → ${trip.destinationLabel}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16.5,
+                  style: AppType.listTitle.copyWith(
+                    fontSize: 17,
                     fontWeight: FontWeight.w800,
                     color: AppText.primary,
                   ),
@@ -4189,28 +3622,63 @@ class _ActiveTripBanner extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          Material(
-            color: AppColors.secondary,
-            borderRadius: BorderRadius.circular(99),
-            child: InkWell(
-              onTap: onTrack,
-              borderRadius: BorderRadius.circular(99),
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                child: Text(
-                  'Track Ride',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                    color: AppText.onBrand,
-                  ),
-                ),
-              ),
-            ),
+          const SizedBox(width: 12),
+          UdButton.dark(
+            label: 'Track',
+            size: UdButtonSize.small,
+            expand: false,
+            onPressed: onTrack,
           ),
         ],
       ),
     );
   }
+}
+
+/// "Invite friends", at the foot of Home.
+///
+/// Wired to `_shareApp`, which has been in this file all along with nothing
+/// calling it.
+class _InviteRow extends StatelessWidget {
+  const _InviteRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => UdCard(
+        onTap: onTap,
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            const UdIconTile(
+              icon: Icons.card_giftcard_rounded,
+              tone: UdIconTone.soft,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Invite friends',
+                    style: AppType.listTitle.copyWith(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: AppText.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Earn points for every referral',
+                    style: AppType.small.copyWith(color: AppText.secondary),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                size: 22, color: AppText.caption),
+          ],
+        ),
+      );
 }

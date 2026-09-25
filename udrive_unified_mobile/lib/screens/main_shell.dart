@@ -245,6 +245,14 @@ class _MainShellState extends State<MainShell> {
       // free is the drawer's hamburger, which is why `leading` below is
       // explicit: without it the drawer would have no way in.
       body: Column(
+        // Stretch, not the default centre.
+        //
+        // `Scaffold.body` used to hold the page directly, which gave it tight
+        // width. Putting it in a Column changes that: a Column hands its
+        // children *loose* cross-axis constraints, so any page that sizes
+        // itself from its constraints rather than from its contents — a nested
+        // Scaffold, a Stack of Positioned children — would collapse to nothing.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (!customerHome)
             _topBar(

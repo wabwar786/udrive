@@ -224,6 +224,54 @@ class _SosPill extends StatelessWidget {
       );
 }
 
+/// A floating map control holding a painted glyph rather than a font icon.
+///
+/// [UdIconButton] takes an [IconData], and two things in this app are drawn
+/// rather than set: the steering wheel and the U-pin. Same 46px box, same
+/// radius, same `sh-2` as `UdIconButton(variant: float)`.
+class UdFloatButton extends StatelessWidget {
+  const UdFloatButton({
+    required this.child,
+    required this.onPressed,
+    this.tooltip,
+    super.key,
+  });
+
+  final Widget child;
+  final VoidCallback? onPressed;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = AppRadii.all(15);
+
+    final button = SizedBox(
+      width: AppSizes.iconButton,
+      height: AppSizes.iconButton,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: radius,
+          boxShadow: AppShadows.floating,
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          borderRadius: radius,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: radius,
+            child: Center(child: child),
+          ),
+        ),
+      ),
+    );
+
+    return tooltip == null
+        ? button
+        : Tooltip(message: tooltip!, child: button);
+  }
+}
+
 /// A row in the side drawer.
 ///
 /// The handoff builds this inline on both drawer screens and then notes that
