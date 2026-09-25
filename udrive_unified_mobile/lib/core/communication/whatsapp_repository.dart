@@ -1,5 +1,3 @@
-import 'package:file_picker/file_picker.dart';
-
 import '../network/api_client.dart';
 
 class WhatsAppRepository {
@@ -40,31 +38,8 @@ class WhatsAppRepository {
     }
     return numbers.length;
   }
-  Future<int> emergencyVoiceBroadcast({
-    required List<String> numbers,
-    required double latitude,
-    required double longitude,
-    required double accuracyMeters,
-    required String customerName,
-    required PlatformFile audio,
-  }) async {
-    final response = await client.uploadFile(
-      '/api/v1/communication/whatsapp/emergency-voice-broadcast',
-      fieldName: 'audio',
-      file: audio,
-      fields: {
-        'numbers': numbers.join(','),
-        'latitude': '$latitude',
-        'longitude': '$longitude',
-        'accuracyMeters': '$accuracyMeters',
-        'customerName': customerName,
-      },
-    );
-    final data = response['data'];
-    if (data is Map<String, dynamic>) {
-      return (data['recipientCount'] as num?)?.toInt() ?? numbers.length;
-    }
-    return numbers.length;
-  }
-
+  // emergencyVoiceBroadcast used to live here. It posted a PCM recording to
+  // /api/v1/communication/whatsapp/emergency-voice-broadcast — an endpoint the
+  // API has never implemented, so every call 404'd and the SOS sheet told the
+  // customer their alert had not been sent. The microphone went with it.
 }

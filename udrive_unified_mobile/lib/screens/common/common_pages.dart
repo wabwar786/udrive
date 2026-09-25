@@ -7,10 +7,9 @@ import '../../core/auth/session_store.dart';
 import '../../core/network/api_client.dart';
 import '../../core/communication/communication_repository.dart';
 import '../../models/communication_models.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../core/config/app_config.dart';
-import '../../core/network/api_config.dart';
 import 'delete_account_screen.dart';
+import 'legal_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -59,13 +58,8 @@ class _SupportScreenState extends State<SupportScreen> {
   }
 }
 
-Future<void> _openPublicPage(BuildContext context, String path) async {
-  final messenger = ScaffoldMessenger.of(context);
-  final opened = await launchUrl(ApiConfig.uri(path), mode: LaunchMode.externalApplication);
-  if (!opened) {
-    messenger.showSnackBar(const SnackBar(content: Text('Could not open the page. Check your internet.')));
-  }
-}
+// _openPublicPage lived here and sent Privacy and Terms to an external
+// browser. Both now open in LegalScreen, from the copy bundled with the app.
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -80,22 +74,25 @@ class SettingsScreen extends StatelessWidget {
       SectionHeader(title: context.tr('settings')),
       const SizedBox(height: 10),
       const SizedBox(height: 9),
-      // Privacy and Terms open the public pages served by the API. Google
-      // Play reviewers check that the in-app privacy link matches the one in
-      // the Play listing, so both point at the same URL.
+      // Privacy and Terms open inside the app, from the copy bundled with it,
+      // so they work with no connection — which is the state somebody is most
+      // likely to be in when they suddenly want to know what we do with their
+      // CNIC. The same documents are served by the API at /privacy and /terms,
+      // which is the URL on the Play listing, and the reader has an "open
+      // online" button for that.
       for (final item in [
-        (Icons.lock_rounded, context.tr('privacy'), '/privacy'),
-        (Icons.description_rounded, context.tr('terms'), '/terms'),
+        (Icons.lock_rounded, context.tr('privacy'), 'privacy-policy'),
+        (Icons.description_rounded, context.tr('terms'), 'terms'),
       ])
         Padding(
           padding: const EdgeInsets.only(bottom: 9),
           child: PremiumCard(
-            onTap: () => _openPublicPage(context, item.$3),
+            onTap: () => LegalScreen.open(context, item.$3),
             child: Row(children: [
               Icon(item.$1, color: AppColors.primaryDark),
               const SizedBox(width: 13),
               Expanded(child: Text(item.$2, style: const TextStyle(fontWeight: FontWeight.w900))),
-              const Icon(Icons.open_in_new_rounded, size: 18),
+              const Icon(Icons.chevron_right_rounded, size: 20),
             ]),
           ),
         ),

@@ -2,8 +2,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- SOS sheet records a short audio clip for the safety team. -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- No RECORD_AUDIO. The SOS sheet used to record a clip and post it to an
+         endpoint the API never implemented, so the permission bought nothing
+         and the privacy policy had to declare audio it never received. The
+         alert now sends name and location only. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Location is used only while the app is open (foreground). No background

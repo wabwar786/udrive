@@ -1,11 +1,7 @@
 import '../../core/theme/app_tokens.dart';
-import 'dart:async';
-import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/communication/whatsapp_repository.dart';
@@ -62,19 +58,12 @@ class _EmergencyNumber {
 }
 
 class _CustomerSosSheetState extends State<CustomerSosSheet> {
-  final AudioRecorder _recorder = AudioRecorder();
-  final List<int> _audioBytes = <int>[];
-
   late SafetyRepository _safety;
   late WhatsAppRepository _whatsApp;
-  StreamSubscription<Uint8List>? _audioSubscription;
-  Timer? _recordingTimer;
 
   bool _loading = true;
-  bool _recording = false;
   bool _sending = false;
   String? _error;
-  int _recordingSeconds = 0;
   List<_EmergencyNumber> _numbers = const [];
 
   static const _official = <_EmergencyNumber>[
@@ -94,14 +83,6 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
     _safety = SafetyRepository(client);
     _whatsApp = WhatsAppRepository(client);
     if (_loading && _numbers.isEmpty) _load();
-  }
-
-  @override
-  void dispose() {
-    _recordingTimer?.cancel();
-    _audioSubscription?.cancel();
-    _recorder.dispose();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -144,59 +125,26 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
     }
   }
 
-  Future<void> _startRecording() async {
-    if (_sending || _recording) return;
-    try {
-      if (!await _recorder.hasPermission()) {
-        throw Exception('Microphone permission is required to record an emergency message.');
-      }
-      _audioBytes.clear();
-      final stream = await _recorder.startStream(
-        const RecordConfig(
-          encoder: AudioEncoder.pcm16bits,
-          sampleRate: 16000,
-          numChannels: 1,
-          echoCancel: true,
-          noiseSuppress: true,
-        ),
-      );
-      _audioSubscription = stream.listen(_audioBytes.addAll);
-      if (!mounted) return;
-      setState(() {
-        _recording = true;
-        _recordingSeconds = 0;
-        _error = null;
-      });
-      _recordingTimer?.cancel();
-      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted || !_recording) return;
-        if (_recordingSeconds >= 29) {
-          _finishAndSendRecording();
-          return;
-        }
-        setState(() => _recordingSeconds++);
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
-    }
-  }
-
-  Future<void> _finishAndSendRecording() async {
-    if (!_recording || _sending) return;
-    _recordingTimer?.cancel();
-    await _recorder.stop();
-    await _audioSubscription?.cancel();
-    _audioSubscription = null;
-
-    if (!mounted) return;
+  /// Raises the alert: a case for the safety desk, and a WhatsApp message with
+  /// the customer's name and position to every personal contact they have
+  /// added.
+  ///
+  /// This used to be a press-and-hold that recorded thirty seconds of audio and
+  /// posted it to `/whatsapp/emergency-voice-broadcast`. **That endpoint does
+  /// not exist in the API.** Every alert therefore 404'd on the upload and told
+  /// the customer their recording "was not marked as sent" — in an emergency,
+  /// after they had held the button for half a minute. The microphone, and the
+  /// permission that went with it, bought nothing and cost a working SOS.
+  ///
+  /// One tap now, and the part that always worked is the part that runs.
+  Future<void> _sendAlert() async {
+    if (_sending) return;
     setState(() {
-      _recording = false;
       _sending = true;
+      _error = null;
     });
 
     try {
-      if (_audioBytes.isEmpty) throw Exception('No voice recording was captured. Please try again.');
       final controller = AppControllerScope.of(context);
       final location = await CustomerSosSheet.currentLocation();
       final personalNumbers = _numbers
@@ -206,34 +154,34 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
           .toSet()
           .toList();
 
+      // The case first. If the WhatsApp fan-out fails — no signal, WA Engine
+      // down — the safety desk has still been told, which is the half that
+      // matters most.
       await _safety.raiseSos(
-        type: 'EmergencyVoiceAlert',
-        description: 'Customer sent an emergency voice recording.',
+        type: 'EmergencyAlert',
+        description: 'Customer raised an emergency alert from the SOS sheet.',
         latitude: location.latitude,
         longitude: location.longitude,
         accuracy: location.accuracy,
       );
 
-      final audio = PlatformFile(
-        name: 'emergency_voice_${DateTime.now().millisecondsSinceEpoch}.pcm',
-        size: _audioBytes.length,
-        bytes: Uint8List.fromList(_audioBytes),
-      );
-
-      final sent = await _whatsApp.emergencyVoiceBroadcast(
+      final sent = await _whatsApp.emergencyBroadcast(
         numbers: personalNumbers,
         latitude: location.latitude,
         longitude: location.longitude,
         accuracyMeters: location.accuracy,
         customerName: controller.currentUserName,
-        audio: audio,
       );
 
       if (!mounted) return;
       setState(() => _sending = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Emergency voice alert sent to $sent personal contact(s). Udrive safety operations were notified.'),
+          content: Text(
+            personalNumbers.isEmpty
+                ? 'Udrive safety operations were notified with your location.'
+                : 'Emergency alert sent to $sent personal contact(s). Udrive safety operations were notified.',
+          ),
           backgroundColor: AppColors.primaryDark,
         ),
       );
@@ -241,7 +189,8 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
       if (!mounted) return;
       setState(() {
         _sending = false;
-        _error = '${error.toString().replaceFirst('Exception: ', '')} Your recording was not marked as sent; press and hold to retry.';
+        _error = '${error.toString().replaceFirst('Exception: ', '')} '
+            'If this keeps failing, call a helpline above.';
       });
     }
   }
@@ -270,9 +219,6 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
     }
   }
 
-  String get _timerText =>
-      '00:${_recordingSeconds.toString().padLeft(2, '0')}';
-
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
@@ -295,7 +241,7 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(color: AppTint.danger, borderRadius: BorderRadius.circular(16)),
-                child: const Icon(Icons.mic_rounded, color: AppTint.dangerText, size: 28),
+                child: const Icon(Icons.shield_rounded, color: AppTint.dangerText, size: 28),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -304,7 +250,7 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
                   children: [
                     Text('Emergency & safety contacts', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
                     SizedBox(height: 3),
-                    Text('Call an official helpline or send your voice and location to personal contacts.', style: TextStyle(color: AppColors.muted, height: 1.3)),
+                    Text('Call an official helpline, or send your name and live location to your personal contacts.', style: TextStyle(color: AppColors.muted, height: 1.3)),
                   ],
                 ),
               ),
@@ -346,50 +292,46 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
                         ),
                         child: Column(
                           children: [
-                            const Text('Send emergency voice alert', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                            const Text('Send emergency alert', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
                             const SizedBox(height: 5),
                             Text(
-                              _recording
-                                  ? 'Recording $_timerText — release to send'
-                                  : _sending
-                                      ? 'Sending voice recording and live location…'
-                                      : 'Press and hold the microphone. Release to send immediately.',
+                              _sending
+                                  ? 'Sending your location…'
+                                  : personalCount == 0
+                                      ? 'Tap to alert Udrive safety operations with your location.'
+                                      : 'Tap to send your name and live location to your $personalCount emergency contact(s) and Udrive safety operations.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: _recording ? AppColors.danger : AppColors.muted, fontSize: 12.5, height: 1.35),
+                              style: const TextStyle(color: AppColors.muted, fontSize: 12.5, height: 1.35),
                             ),
                             const SizedBox(height: 14),
                             GestureDetector(
-                              onLongPressStart: (_) => _startRecording(),
-                              onLongPressEnd: (_) => _finishAndSendRecording(),
+                              onTap: _sending ? null : _sendAlert,
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 160),
-                                width: _recording ? 82 : 72,
-                                height: _recording ? 82 : 72,
+                                width: 72,
+                                height: 72,
                                 decoration: BoxDecoration(
                                   color: _sending ? AppText.disabled : AppColors.danger,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: AppTint.danger, width: _recording ? 9 : 6),
+                                  border: Border.all(color: AppTint.danger, width: 6),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppColors.danger.withValues(alpha: _recording ? .38 : .20),
-                                      blurRadius: _recording ? 28 : 16,
-                                      spreadRadius: _recording ? 4 : 0,
+                                      color: AppColors.danger.withValues(alpha: .20),
+                                      blurRadius: 16,
                                     ),
                                   ],
                                 ),
                                 child: _sending
                                     ? const Padding(padding: EdgeInsets.all(23), child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white))
-                                    : Icon(_recording ? Icons.graphic_eq_rounded : Icons.mic_rounded, color: Colors.white, size: 34),
+                                    : const Icon(Icons.sos_rounded, color: Colors.white, size: 34),
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            const Text('Maximum recording: 30 seconds', style: TextStyle(color: AppColors.muted, fontSize: 11)),
                           ],
                         ),
                       ),
                       const SizedBox(height: 10),
                       const Text(
-                        'Official helplines receive calls only. Voice alerts are sent to your personal emergency contacts and Udrive safety operations.',
+                        'Official helplines receive calls only. Your alert goes to your personal emergency contacts and Udrive safety operations. No audio is recorded.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.muted, fontSize: 10.5, height: 1.35),
                       ),

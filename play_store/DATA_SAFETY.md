@@ -29,11 +29,22 @@ Har type par: **Collected = Yes**, **Shared = No**, **Processed ephemerally = No
 | Financial info → Other financial info (wallet top-ups, commission) | App functionality |
 | Messages → Other in-app messages (rider ↔ driver chat) | App functionality |
 | Photos and videos → Photos (driver documents, vehicle photos) | App functionality; Fraud prevention, security and compliance |
-| Audio → Voice or sound recordings *(optional — SOS only)* | App functionality |
-| App activity → Other user-generated content (trips, ratings) | App functionality; Analytics |
-| App info and performance → Crash logs | App functionality |
-| App info and performance → Diagnostics | App functionality |
+| App activity → Other user-generated content (trips, ratings) | App functionality |
 | Device or other IDs | Fraud prevention, security and compliance |
+
+**Teen entries jaan boojh kar hata di gayi hain.** Pehle yeh declare hoti thin,
+magar code mein mojood hi nahi thin — aur ghalat declaration bhee utni hi buri
+hai jitni kam declaration:
+
+- ~~Audio → Voice or sound recordings~~ — SOS ki recording us endpoint par jati
+  thi jo API mein kabhi bana hi nahi. Ab microphone poori tarah nikal diya gaya
+  hai (`RECORD_AUDIO` permission bhee).
+- ~~App info and performance → Crash logs~~ aur ~~→ Diagnostics~~ — poore
+  platform mein koi crash-reporting ya diagnostics SDK nahi. Flutter ki poori
+  dependency list mein Firebase, Sentry ya Crashlytics mein se kuch nahi.
+
+Isi tarah `App activity` se `Analytics` ka maqsad bhee hata diya — koi analytics
+tool mojood nahi hai, yeh data sirf app chalane ke liye hai.
 
 **"Shared" sab par No kyun:** rider aur driver ka ek doosre ko naam aur location
 dikhna user ke apne action se hota hai (Google is ko sharing nahi ginta), aur

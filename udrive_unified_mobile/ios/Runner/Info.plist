@@ -17,7 +17,14 @@
 <key>NSCameraUsageDescription</key><string>Udrive uses the camera to upload driver and vehicle documents.</string>
 <key>CADisableMinimumFrameDurationOnPhone</key><true/>
 <key>UIApplicationSupportsIndirectInputEvents</key><true/>
+<!-- No NSLocationAlwaysAndWhenInUseUsageDescription. It used to claim UDrive
+     collects location in the background during a driver trip, which is not
+     true on either platform: the Android manifest declares no background
+     location, nothing requests "always", no UIBackgroundModes is set, and all
+     collection runs on timers inside live widgets that stop on dispose. The
+     privacy policy states plainly that background location is never collected,
+     and a usage string saying otherwise is the kind of contradiction a store
+     reviewer reads as the real answer.
 
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>UDrive uses background location only during an active driver trip to share safe live progress.</string>
+     No NSMicrophoneUsageDescription either: the microphone is no longer used. -->
 </dict></plist>

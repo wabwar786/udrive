@@ -1,174 +1,232 @@
-# UDrive — Demo OTP text hata di, reviewer demo account 03000000001 / 5095
+# UDrive — Privacy Policy, Terms, aur in-app legal reader
 
-App ki kisi bhi screen par ab koi OTP likha hua nahi hai, aur Google Play
-reviewer ke liye demo account ka poora intezam tay ho gaya hai.
+Do dastawez, dono zabanon mein, aur woh code ki tabdeeliyan jo un dastawezat ko
+**sach** banati hain.
 
-**Server par koi code change nahi** — na API, na migration, na naya environment
-variable. Reviewer number ek database setting hai jo aap portal se lagayenge
-(neeche section 3).
+Ek baat pehle saaf kar doon: inDrive ka matn copy nahi kiya. Woh unka likha hua
+hai, aur us mein unki companies, unke sub-processors aur unke servers likhe
+hain. Agar aap ki policy kahe ke data Amsterdam jata hai jabke woh Railway par
+hai, to woh policy aap ko bachaegi nahi — Play ke Data Safety se mail na khane
+par takedown ki wajah ban jayegi. Jo yahan hai woh UDrive ka apna asal data
+flow hai, code se milakar likha gaya.
+
+**Main wakeel nahi hoon.** Yeh ek mazboot masauda hai. Publish se pehle Pakistan
+mein kisi wakeel se parhwa lein.
 
 ---
 
-## 1. Files kahan rakhni hain
+## 1. Sab se pehle — do surakh jo is kaam ke doran nikle
 
-ZIP ke andar ka raasta bilkul repo ke raaste jaisa hai.
+Yeh policy likhne ki wajah se pakre gaye, aur dono theek kar diye hain:
 
-| ZIP ka file | Kya badla |
+**(a) Koi bhee, bina login ke, kisi bhee driver ka CNIC utha sakta tha.**
+`PublicVehicleImageController` aur `CatalogController` ke image routes
+`[AllowAnonymous]` hain. Woh `ResolveProtectedFile` ko call karte the, aur us
+mein exact path na milne par `FindLegacyFile` **har storage root mein file ke
+naam se recursive talash** karta hai. Yani
+`GET /api/v1/vehicle-images/x/{koi-bhee-filename}.jpg` kisi bhee driver ka CNIC
+wapas kar deta tha — bina kisi token ke. Dono par ab
+`allowLegacyFallback: false` hai.
+
+**(b) Har logged-in customer ya driver bhee yahi kar sakta tha** —
+`/api/v1/feedback/files` par koi role, koi ownership, koi category check nahi
+tha. Ab teen shartein hain: category `disputes` ho, owner woh case ho jis mein
+aap shaamil hain, aur file us case ki evidence mein darj ho. `AdminDisputesController`
+par bhee category ki pabandi aur fallback band.
+
+Filenames random GUID hain, is liye andaze se nikalna aasan nahi tha — magar koi
+bhee raasta jisse ek path bahar aaye (support email, screenshot, log) hamesha ke
+liye khul jata tha.
+
+## 2. Files kahan rakhni hain
+
+ZIP ke andar ka raasta repo ke raaste jaisa hai.
+
+### udrive_api
+
+| File | Kya hai |
 |---|---|
-| `udrive_unified_mobile/lib/screens/auth/otp_screen.dart` | OTP wali screen ka info panel — ab koi code nahi likhta |
-| `udrive_unified_mobile/lib/screens/auth/login_screen.dart` | login screen ki neeche wali line — ab har build mein ek hi jumla |
-| `udrive_unified_mobile/lib/core/localization/app_strings.dart` | teen purani keys nikal di gayin |
-| `udrive_unified_mobile/lib/core/state/app_controller.dart` | demo login ab `5095` istemal karta hai |
-| `PLAY_STORE_RELEASE.md` | ek ghalat dawa theek kiya |
-| `play_store/DATA_SAFETY.md` | reviewer ke liye asal credentials aur qadam |
-| `RAILWAY_CHECKLIST.md` | SuperAdmin login ka qadam durust kiya |
-| `udrive_api/README.md` | test accounts ka section durust kiya |
+| `Content/legal/*.md` (6) | **Naya** — policy aur terms ka asal matn |
+| `Services/LegalDocumentService.cs` | **Naya** — markdown parhta aur render karta hai |
+| `Controllers/PublicPagesController.cs` | Badla — matn C# se nikal kar markdown se aata hai |
+| `Controllers/FeedbackController.cs` | Badla — **security fix** |
+| `Controllers/PublicVehicleImageController.cs` | Badla — **security fix** |
+| `Controllers/CatalogController.cs` | Badla — **security fix** |
+| `Services/LocalFileStorageService.cs` | Badla — naya `allowLegacyFallback` parameter |
+| `Services/AccountDeletionService.cs` | Badla — ab documents aur files bhee mitti hain |
+| `Services/WhatsAppService.cs` | Badla — SOS ka matn aur safety number ki tarteeb |
+| `Program.cs`, `UDrive.Api.csproj` | DI aur EmbeddedResource |
 
-Phir:
+### udrive_unified_mobile
+
+| File | Kya hai |
+|---|---|
+| `assets/legal/*.md` (6) | **Naya** — wohi chhe files, app ke sath bundle |
+| `lib/screens/common/legal_screen.dart` | **Naya** — app ke andr parhne wali screen |
+| `tool/check_legal_sync.py` | **Naya** — dono copies ka pehra |
+| `lib/screens/common/common_pages.dart` | Settings ke links ab andr khulte hain |
+| `lib/screens/common/delete_account_screen.dart` | "What happens to my data?" |
+| `lib/screens/auth/login_screen.dart` | Terms · Privacy ab tappable |
+| `lib/screens/safety/customer_sos_sheet.dart` | Microphone nikal diya |
+| `lib/core/communication/whatsapp_repository.dart` | Voice broadcast nikal diya |
+| `pubspec.yaml` | `record` package nikala, `assets/legal/` jora |
+| `android/.../AndroidManifest.xml` | `RECORD_AUDIO` nikala |
+| `ios/Runner/Info.plist` | Background-location wali ghalat line nikali |
+
+### play_store
+
+`DATA_SAFETY.md` — Audio, Crash logs aur Diagnostics nikal diye (teenon declare
+the magar code mein mojood hi nahi the).
+
+## 3. Chalane ka tareeqa
+
+```
+cd udrive_api          && dotnet build
+cd udrive_unified_mobile && flutter pub get && flutter analyze
+```
+
+Koi migration nahi. Koi naya environment variable nahi. `record` package hat gaya
+hai, is liye `flutter pub get` zaroori hai.
+
+Release se pehle **har baar**:
 
 ```
 cd udrive_unified_mobile
-flutter pub get
-flutter analyze
-flutter build appbundle --release
+python3 tool/check_legal_sync.py
 ```
 
-`versionCode` barhana na bhoolein.
+Yeh API se live matn utha kar app ki bundled copy se milata hai aur ek byte ka
+farq bhee ho to fail karta hai. Yehi woh cheez hai jo dono nuskhon ko alag hone
+se rokti hai.
 
 ---
 
-## 2. Kya hataaya — aur kyun
+## 4. Dastawez
 
-### `otp_screen.dart` — yahi asal masla tha
+`content/legal/` mein chhe files:
 
-OTP wali screen ke neeche ek info panel tha jo likhta tha:
+- `privacy-policy.en.md` / `.ur.md`
+- `terms.en.md` / `.ur.md`
+- `account-deletion.en.md` / `.ur.md`
 
-> **Use code 1234 during testing.** / ٹیسٹنگ کے لیے کوڈ 1234 استعمال کریں۔
+English **governing** hai, Roman Urdu tarjuma. Har file ke upar front matter
+mein version aur tareekh hai. Operator **Tech Geni Ltd.**, qanoon aur adalat
+**Azad Jammu & Kashmir, Muzaffarabad**, rabta **WhatsApp 0335-6823975**.
 
-Is par **koi build-guard nahi tha**. Yani yeh release Android build mein bhee
-dikhta tha — Play Store par chali gayi har build mein. Aur jis waqt provider
-`Development` ho, woh 1234 **har number** par chalta hai, sirf test number par
-nahi. Matlab app khud har us bande ko chaabi de rahi thi jo yeh screen kholta
-tha.
+URLs wohi hain jo Play Console mein pehle se darj hain — `/privacy`, `/terms`,
+`/account-deletion` — aur ab `?lang=ur` bhee chalta hai. Raw matn
+`/legal/privacy-policy.en.md` par.
 
-`PLAY_STORE_RELEASE.md` mein likha hua tha ke release build mein yeh line nahi
-dikhti. Woh dawa sirf login screen ke liye durust tha. Ab dono theek hain.
+### Markazi waada
 
-Nayi line:
+Jo aap ne khaas taur par maanga, aur jo UDrive **sach mein** keh sakta hai:
 
-> The code is sent on WhatsApp and expires in 5 minutes.
-> کوڈ واٹس ایپ پر بھیجا جاتا ہے اور 5 منٹ میں ختم ہو جاتا ہے۔
+> Tasdeeq ke liye asal CNIC, licence aur registration lete hain. Sirf usi ke liye
+> istemal hote hain. Kisi ko bechte nahi.
 
-### `login_screen.dart`
+Aur is ke sath woh baat jo inDrive nahi likh sakta: **poore platform mein koi
+analytics nahi, koi crash-reporting nahi, koi ishtihar nahi, koi attribution SDK
+nahi, koi third-party cookie nahi.** Advertising ID, IMEI, MAC — koi cheez parhi
+hi nahi jati. Device ID bhee sirf ek timestamp hai jo app khud banati hai.
 
-Pehle debug/web build mein "Testing code is 1234 on test builds." likha aata
-tha. Ab har build mein ek hi jumla:
+Magar poori sachai bhee likhi hai: data kin ko jata hai — Google (Places,
+Geocoding, Routes, Tiles, aur Maps SDK jo phone se seedha Google se baat karta
+hai), WA Engine, OpenStreetMap, Google Fonts, Apple (iPhone par ek screen ka
+geocoder), Unsplash (hotel ki namoona tasweerein), aur Railway. Yeh "sale" nahi,
+service providers hain — magar naam se likhe hain.
 
-> A 4-digit code is sent to this number on WhatsApp.
-> کوڈ آپ کے واٹس ایپ نمبر پر بھیجا جائے گا۔
+## 5. App mein link — paanch jagah
 
-"Use approved driver demo" wala button pehle ki tarah sirf web aur debug mein
-hai; release mein nahi.
+1. **Login screen** — "Terms · Privacy" ab tappable hai. Yehi razamandi ka lamha
+   hai, aur pehle yeh bejaan matn tha jis par tap hi nahi hota tha.
+2. Settings → Privacy Policy
+3. Settings → Terms
+4. Delete account screen → "What happens to my data?"
+5. Customer aur Driver dono ke menu Settings tak jate hain.
 
-### `app_strings.dart`
+**Matn app ke andr khulta hai, browser mein nahi**, aur app ke sath bundle hai —
+is liye Neelum ya Leepa mein bina signal ke bhee khul jata hai. Upar Roman /
+English ka switch hai, aur ek "open online" ka button.
 
-Teen keys nikal di gayin — `demoLogin`, `otpSubtitle`, `invalidOtp` (angrezi aur
-urdu dono). Inhein koi widget parhta hi nahi tha, magar do mein `1234` likha
-hua tha aur woh APK ke andr string ban kar chali jati thin, jahan se koi bhee
-nikal sakta hai. Dono maps ab 372-372 keys par barabar hain.
+## 6. Code ki tabdeeliyan jo dastawez ko sach banati hain
 
-### `app_controller.dart`
+**Microphone nikal diya.** SOS sheet 30 second ki recording kar ke
+`/whatsapp/emergency-voice-broadcast` par bhejti thi — **woh endpoint API mein
+kabhi bana hi nahi.** Har alert upload par 404 hota tha aur customer ko emergency
+mein, aadha minute button dabane ke baad, likha aata tha ke "recording bheji
+nahi gayi". Ab ek tap, aur wohi hissa chalta hai jo hamesha kaam karta tha:
+safety desk ko case, aur trusted contacts ko naam + location.
 
-Demo login ab `5095` bhejta hai, `1234` nahi, aur number aur code do named
-constants mein aa gaye hain (`demoPhoneNumber`, `demoReviewerCode`).
+**Account delete ab poora delete hai.** Pehle CNIC aur licence ke *number* mit
+jate the magar *tasweerein* volume par pari rehti thin. Ab documents, unki rows,
+payout account, top-up ke screenshots aur aakhri maloom jagah — sab mitte hain.
+Files transaction commit hone ke baad mittī hain, taake rollback ki soorat mein
+tasweerein bemaqsad zaya na hon.
 
----
+**SOS ka paighaam** ab "emergency microphone/panic alert" nahi kehta — mic hai hi
+nahi. Aur hamara safety number ab list mein **pehle** hai: pehle woh aakhir mein
+lagta tha aur `Take(12)` us ko hi kaat deta tha jis ke paas barah trusted
+contacts hon — yani ek emergency mein sab se zaroori number.
 
-## 3. Portal mein kya karna hai
+**iOS `Info.plist`** se woh line nikal di jo kehti thi ke UDrive background mein
+location leta hai. Woh ghalat thi (Android manifest, aur poora code, is ke ulat
+hai) aur policy ke barkhilaf thi.
 
-1. Admin portal mein **SuperAdmin** se login karein.
-2. **Services** page → neeche WA Engine / OTP ka panel.
-3. *Google Play reviewer number* = `03000000001`
-4. *Reviewer code (4 digits)* = `5095`
-5. **Save**.
+## 7. Jo dawe ghalat the aur theek kiye
 
-Ab `03000000001` hamesha `5095` qubool karega, us par koi WhatsApp message nahi
-jayega, aur yeh har provider se upar chalta hai.
+Dastawez ko ek alag reviewer se code ke khilaf janchwaya. Yeh nikla:
 
-### ⚠️ Yeh check kiye baghair release na karein
+- Fare ki hadd **sirf tab** lagu hoti hai jab app server ka quote bhejti hai —
+  `pricing.quote.required` abhi `false` par ship hoti hai. Terms ab yehi kehti
+  hain, mutlaq dawa nahi.
+- **18 saal ki koi jaanch nahi hoti.** Customer se tareekh-e-paidaish maangi hi
+  nahi jati. Terms ab saaf kehti hain ke yeh aap ki tasdeeq hai, hamari jaanch
+  nahi.
+- §8 ki "poori fehrist" adhoori thi — Apple, Unsplash aur Google ki tile service
+  chhoot gaye the.
+- §12 dono taraf se adhoora tha: kuch cheezein code mitta hai jo likhi nahi
+  thin, aur kuch reh jati hain jo "kya reh jata hai" mein nahi thin — trip chat
+  ke paighaam, dispute ki evidence files, emergency reports ke coordinates.
+- Trip ke ping mein `permission_status` bhee jata hai, woh likha nahi tha.
+- Driver ka **safety score** customer ko dikhta hai aur yeh tay karta hai ke trip
+  kis ko pehle bheji jaye. Aaj woh sab ka ek hi hai aur koi code usay badalta
+  nahi — magar "kuch bhee aap ko score nahi karta" ab is tafseel ke sath likha
+  hai.
+- §13 ka dawa ke kaghazat sirf verification staff dekhta hai — ghalat tha.
+  Customer ko driver ki tasweer aur gaari ki tasweer dikhai jati hai (yeh theek
+  hai), aur dispute staff ko evidence. Ab yeh likha hai.
 
-Usi panel mein sab se upar likha hota hai ke codes kahan se aa rahe hain:
+## 8. Janch jo ki gayi
 
-- `Login codes: WhatsApp — live` — **theek hai.**
-- `Login codes: Development code (WhatsApp off)` — **masla hai.** Is halat mein
-  har number ka code ek hi fixed code hota hai, yani koi bhi kisi ke account
-  mein ja sakta hai. Reviewer number lagane se yeh theek nahi hota.
+- **Markdown renderer** ko Python mein port kar ke chhon dastawezat par chalaya:
+  koi unconverted `**`, koi khali paragraph, list/table ke tag barabar.
+- **Front matter ka crash**: reviewer ne pakra ke `---\n---\n` par
+  `ArgumentOutOfRangeException` aata tha — yani ek wakeel do lines mita de to
+  `/privacy` par **500**, us URL par jo Google Play khud dekhta hai. Theek kar ke
+  saat adversarial inputs par dobara chalaya, sab saaf.
+- **Account deletion ka SQL asal PostgreSQL par** chalaya — ek driver, gaari,
+  do documents, ek vehicle document aur ek presence row seed kar ke. Natija:
+  har personal column NULL, 0 documents, 0 presence rows, aur collect query ne
+  teenon file URLs deletion se pehle theek nikaale.
+- **`check_legal_sync.py`** ki teen failure paths azmaayin: placeholder reh jana,
+  dono zabanon ka version alag hona, aur governing flag ghalat hona — teenon
+  pakri gayin.
+- Dono zabanein renderer mein **bilkul ek jaise block structure** deti hain
+  (81/81, 62/62, 17/17) — is se pata chalta hai ke tarjuma shakal mein poora hai.
+- `check_syntax.sh` → SYNTAX ERRORS: 0. `audit_structure.py` → AUDIT CLEAN.
+  `check_imports.py` aur `check_const_colours.py` saaf.
+- Render ki hui policy ka page browser mein khol kar dekha.
 
-Agar doosri surat ho to Railway par yeh dekhein:
+**Flutter SDK aur .NET 10 SDK yahan nahi hain**, is liye `flutter analyze` aur
+`dotnet build` main nahi chala saka. Apni machine par pehle yeh dono chala lein.
 
-- `OTP_PROVIDER_OVERRIDE` — yeh database se upar chalta hai.
-- `OTP_PROVIDER` — sirf `WhatsApp` aur `Development` pehchane jate hain. Koi aur
-  value (maslan `PHASE_20_ENVIRONMENT.example` mein likha hua
-  `ProductionProvider`) **chupke se `Development` ban jati hai**. Is liye
-  variable par bharosa na karein — portal jo likh raha hai wohi sach hai.
+## 9. Do cheezein jo aap ke faisle ki hain
 
----
+**`_accepted` default `true` hai** (`login_screen.dart:38`) — yani terms wala
+checkbox pehle se laga hua aata hai. Kai jurisdictions mein razamandi "pehle se
+lagi hui" nahi honi chahiye. Aap ne kehne ko nahi kaha, is liye maine nahi chhua
+— bolein to `false` kar doon.
 
-## 4. Demo account — reviewer ko kya dena hai
-
-`03000000001` database mein pehle se hai (`003_seed_catalog.sql`): naam
-**"Adeel Khan"**, role **Driver**, status Approved, aur verified gaari
-`AJK-DEMO-01`.
-
-Yeh ek hi account reviewer ko dono taraf dikha deta hai:
-
-- Login ke baad app **Customer mode** mein khulta hai — booking, fare,
-  tracking, Explore.
-- Home par **"Switch to Driver Mode"** ka card aata hai (kyunke account approved
-  driver hai) — ek tap aur driver ka app: requests, offers, earnings.
-
-Play Console → **App access** mein yeh daalein:
-
-```
-Username / phone: 03000000001
-Password / OTP:   5095
-
-1. Open the app. The first screen asks for a name and a mobile number.
-2. Enter the phone number above and tap "Send verification code".
-3. Enter the 4-digit code above. No SMS or WhatsApp message is sent to this
-   number — the code above always works.
-4. The app opens in Customer mode: book a ride, browse Explore, view tours.
-5. To review the driver side, tap "Switch to Driver Mode" on the home screen.
-   The same account is an approved driver with a verified vehicle.
-```
-
-Agar aap portal mein code kabhi badlein, to `app_controller.dart` ka
-`demoReviewerCode` bhee badalna hoga — warna web/debug wala demo button kaam
-karna chhor dega. Yeh jaan boojh kar aise rakha hai: app ke andr ek alag code
-rakhna, jise portal se mansookh na kiya ja sake, is se bura hai.
-
----
-
-## 5. Janch jo ki gayi
-
-- `lib/` mein ab koi OTP kisi UI string mein nahi. `1234` sirf do comments mein
-  raha, aur `5095` sirf us ek constant mein.
-- `app_strings.dart` ke dono maps 372-372 keys, dono ke key-set bilkul barabar,
-  koi duplicate nahi, braces barabar, aur teenon hatai gayi keys kahin nahi.
-- Hatai gayi keys kahin parhi nahi jati thin — poore `lib/` aur `test/` mein
-  grep kar ke dekha (`_demoLogin` sirf ek method ka naam hai, key nahi).
-- Repo ke apne static tools: `check_imports.py` saaf (0 ambiguous, 0 undeclared,
-  0 swallowed, 0 missing widget fields, 0 wrong API forms), `audit_structure.py`
-  → AUDIT CLEAN.
-- Dono badle hue widget blocks haath se parh kar dekhe — brackets barabar.
-
-**Yahan Flutter SDK nahi hai, is liye `flutter analyze` aur `flutter build` main
-nahi chala saka.** Apni machine par pehle `flutter analyze` chala lein.
-
----
-
-## 6. Ek cheez jo main ne nahi chhoi
-
-`login_screen.dart:34` mein phone ka khana `03001234567` se pehle se bhara hua
-aata hai (`hintText` bhee wohi). Aap ne kehne ko nahi kaha, is liye chhor diya —
-bolein to hata doon.
+**`pricing.quote.required` abhi `false` hai.** Jab nayi app build sab ke paas
+pohanch jaye, isay `true` kar dein — tab fare ki hadd har request par lagu
+hogi, aur Terms ka §4 bina kisi shart ke sach ho jayega.

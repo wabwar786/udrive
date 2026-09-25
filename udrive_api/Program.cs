@@ -36,6 +36,9 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton(authOptions);
 builder.Services.AddSingleton(new AuthSqlStore(connectionString));
 builder.Services.AddSingleton<LocalFileStorageService>();
+// Singleton: the documents are embedded in the assembly and never change at
+// runtime, so they are parsed and rendered once per process.
+builder.Services.AddSingleton<LegalDocumentService>();
 builder.Services.AddSingleton(sp => new ProductionMaintenanceService(
     connectionString,
     sp.GetRequiredService<ILogger<ProductionMaintenanceService>>()));
@@ -88,7 +91,9 @@ builder.Services.AddScoped<DriverWalletService>(serviceProvider =>
         serviceProvider.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<AuthService>();
-builder.Services.AddSingleton(new AccountDeletionService(connectionString));
+builder.Services.AddSingleton(sp => new AccountDeletionService(
+    connectionString,
+    sp.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddHttpClient(OtpDeliveryService.HttpClientName, client =>
 {
     client.Timeout = TimeSpan.FromSeconds(15);

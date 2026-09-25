@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/auth_models.dart';
+import 'legal_screen.dart';
 
 /// Self-service account deletion (Google Play "account deletion" policy).
 ///
@@ -147,6 +148,13 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             TextButton(
               onPressed: _busy ? null : () => Navigator.pop(context),
               child: const Text('Keep my account'),
+            ),
+            // Exactly what survives deletion and why, before the decision
+            // rather than after it. Opens from the copy bundled with the app,
+            // so it works on the roadside with no signal.
+            TextButton(
+              onPressed: () => LegalScreen.open(context, 'account-deletion'),
+              child: const Text('What happens to my data?'),
             ),
           ],
         ),

@@ -137,7 +137,16 @@ public sealed class LocalFileStorageService
         return new StoredFile(protectedUrl, file.Length, DetectContentType(extension));
     }
 
-    public ResolvedStoredFile? ResolveProtectedFile(string category, string owner, string fileName)
+    /// <param name="allowLegacyFallback">
+    /// When false, only the exact <c>{root}/{category}/{owner}/{file}</c> path
+    /// resolves. The fallback below searches every storage root for a matching
+    /// filename regardless of category or owner, which is what makes a route
+    /// that accepts user-supplied segments dangerous — a caller who has been
+    /// authorised for one specific file must not be able to reach another by
+    /// name alone.
+    /// </param>
+    public ResolvedStoredFile? ResolveProtectedFile(
+        string category, string owner, string fileName, bool allowLegacyFallback = true)
     {
         var safeCategory = SanitizeSegment(category);
         var safeOwner = SanitizeSegment(owner);
@@ -156,7 +165,7 @@ public sealed class LocalFileStorageService
             }
         }
 
-        return FindLegacyFile(safeFile);
+        return allowLegacyFallback ? FindLegacyFile(safeFile) : null;
     }
 
     public ResolvedStoredFile? ResolveStoredUrl(string? storedUrl)

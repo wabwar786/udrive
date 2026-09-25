@@ -29,11 +29,30 @@ public sealed class PublicVehicleImageController(
     [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Any)]
     public IActionResult Get(string owner, string fileName)
     {
+        // allowLegacyFallback: false is doing real work on an anonymous route.
+        // With the fallback on, a filename that does not exist under
+        // vehicle-images sends the resolver searching EVERY storage root
+        // recursively by name — so this endpoint, which needs no token at all,
+        // would hand out a driver's CNIC to anyone who learned the filename.
+        // Category imagery has no legacy layout to fall back to anyway.
         var file = fileStorage.ResolveProtectedFile(
-            "vehicle-images", owner, fileName);
+            "vehicle-images", owner, fileName, allowLegacyFallback: false);
 
-        return file is null
-            ? NotFound()
-            : PhysicalFile(file.Path, file.ContentType);
+        if (file is null) return NotFound();
+
+        // These pictures are meant to be embedded by other origins — the admin
+        // portal previews them with a plain <img> tag, and the portal is not
+        // served from the API's own site. SecurityHeadersMiddleware sets
+        // Cross-Origin-Resource-Policy: same-site for everything, which made
+        // the browser refuse them: the upload succeeded, the setting saved, and
+        // the preview box stayed empty. CORS does not help, because a no-cors
+        // <img> load is not a CORS request.
+        //
+        // Set here rather than relaxed globally: every other route, including
+        // driver documents, keeps same-site. The middleware uses TryAdd, so the
+        // value written here is the one that ships.
+        Response.Headers["Cross-Origin-Resource-Policy"] = "cross-origin";
+
+        return PhysicalFile(file.Path, file.ContentType);
     }
 }

@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/brand.dart';
 import '../../models/auth_models.dart';
+import '../common/legal_screen.dart';
 import 'otp_screen.dart';
 
 /// Whether the one-tap demo sign-in button shows.
@@ -344,14 +345,31 @@ class _FormSheet extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 11),
+                    // Both halves open the document. This is the moment the
+                    // customer is agreeing to them, so it is the one place they
+                    // must be reachable — it used to be plain text you could
+                    // tap all day without anything happening.
                     Expanded(
-                      child: Text(
-                        '${context.tr('terms')} · ${context.tr('privacy')}',
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppText.secondary,
-                        ),
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _LegalLink(
+                            label: context.tr('terms'),
+                            document: 'terms',
+                          ),
+                          const Text(
+                            '  ·  ',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppText.secondary,
+                            ),
+                          ),
+                          _LegalLink(
+                            label: context.tr('privacy'),
+                            document: 'privacy-policy',
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -418,4 +436,31 @@ class _FormSheet extends StatelessWidget {
   }
 }
 
-/// EN / اردو switch, styled to match the pill used on Home.
+/// One tappable legal link on the consent row.
+///
+/// Its own widget so the tap target is the word itself rather than the whole
+/// row: tapping the row is how you toggle the checkbox, and a link that steals
+/// that tap would stop people agreeing.
+class _LegalLink extends StatelessWidget {
+  const _LegalLink({required this.label, required this.document});
+
+  final String label;
+  final String document;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => LegalScreen.open(context, document),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w800,
+          color: AppColors.secondary,
+          decoration: TextDecoration.underline,
+          decorationColor: AppColors.secondary,
+        ),
+      ),
+    );
+  }
+}
