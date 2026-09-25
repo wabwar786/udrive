@@ -13,7 +13,9 @@ namespace UDrive.Api.Services;
 public sealed class BookingService(
     string connectionString,
     AuthOptions authOptions,
-    ServiceAvailabilityService settings)
+    ServiceAvailabilityService settings,
+    QuoteTokenService quoteTokens,
+    PricingSettingsService pricingSettings)
 {
     public async Task<ServiceResult<RideRequestDto>> CreateRideRequestAsync(
         Guid userId,
@@ -38,6 +40,15 @@ public sealed class BookingService(
         //
         // Scheduled trips are not affected: this counts only requests still
         // looking for a Driver and bookings still under way.
+        //
+        // "Under way" is read from trip_operations.trip_status, not
+        // bookings.status. A marketplace booking is created as 'DriverAccepted'
+        // in both tables, and the old bookings.status list
+        // ('Confirmed','DriverAssigned','InProgress') contained none of the
+        // values this flow ever writes — so a customer whose driver had already
+        // accepted could open a second ride request. This list is the same one
+        // the driver-side busy check uses, so the two sides now agree on what a
+        // running trip is.
         await using (var existing = new NpgsqlConnection(connectionString))
         {
             await existing.OpenAsync(cancellationToken);
@@ -48,8 +59,11 @@ public sealed class BookingService(
                         AND rr.status IN ('Open','SearchingDrivers','ReceivingOffers')
                         AND (rr.expires_at IS NULL OR rr.expires_at > now())),
                     (SELECT count(*) FROM udrive.bookings b
+                      JOIN udrive.trip_operations o ON o.booking_id = b.id
                       WHERE b.customer_user_id = @user
-                        AND b.status IN ('Confirmed','DriverAssigned','InProgress'));
+                        AND b.status NOT IN ('Cancelled','Completed','NoShow','Disputed')
+                        AND o.trip_status IN ('DriverAccepted','DriverEnRoute',
+                                              'DriverArrived','TripStarted','Emergency'));
                 """;
 
             await using var command = new NpgsqlCommand(activeSql, existing);
@@ -78,6 +92,22 @@ public sealed class BookingService(
             }
         }
 
+        // The fare the server quoted, and the proof it quoted it.
+        //
+        // Everything above this line is about whether the customer may book at
+        // all; this is about whether the number they are booking at is one the
+        // platform ever offered.
+        var quoteCheck = await ResolveQuoteAsync(userId, request, cancellationToken);
+        if (quoteCheck.Failure is not null)
+        {
+            return ServiceResult<RideRequestDto>.Fail(
+                quoteCheck.Failure.Value.Status,
+                quoteCheck.Failure.Value.Code,
+                quoteCheck.Failure.Value.Message);
+        }
+
+        var quote = quoteCheck.Quote;
+
         var id = Guid.NewGuid();
         var expiresAt = DateTimeOffset.UtcNow.AddHours(1);
 
@@ -87,7 +117,8 @@ public sealed class BookingService(
                  pickup_label, destination_label, pickup_at, return_at,
                  booking_type, seats_requested, adults, children, luggage_count,
                  customer_offer, vehicle_category, party_type, family_only,
-                 women_only, notes, status, expires_at, version, created_at, updated_at)
+                 women_only, notes, status, expires_at, version, created_at, updated_at,
+                 quote_id, quoted_minimum, quoted_recommended, quoted_maximum, quoted_surge)
             VALUES
                 (@id, @userId,
                  ST_SetSRID(ST_MakePoint(@pickupLongitude, @pickupLatitude), 4326)::geography,
@@ -95,7 +126,8 @@ public sealed class BookingService(
                  @pickupLabel, @destinationLabel, @pickupAt, @returnAt,
                  @bookingType, @seatsRequested, @adults, @children, @luggageCount,
                  @customerOffer, @vehicleCategory, @partyType, @familyOnly,
-                 @womenOnly, @notes, 'ReceivingOffers', @expiresAt, 0, now(), now());
+                 @womenOnly, @notes, 'ReceivingOffers', @expiresAt, 0, now(), now(),
+                 @quoteId, @quotedMinimum, @quotedRecommended, @quotedMaximum, @quotedSurge);
             """;
 
         await using var connection = new NpgsqlConnection(connectionString);
@@ -126,7 +158,29 @@ public sealed class BookingService(
             command.Parameters.AddWithValue("womenOnly", request.WomenOnly);
             command.Parameters.Add(new NpgsqlParameter("notes", NpgsqlDbType.Varchar) { Value = (object?)request.Notes?.Trim() ?? DBNull.Value });
             command.Parameters.AddWithValue("expiresAt", expiresAt);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            command.Parameters.Add(new NpgsqlParameter("quoteId", NpgsqlDbType.Uuid) { Value = (object?)quote?.QuoteId ?? DBNull.Value });
+            command.Parameters.Add(new NpgsqlParameter("quotedMinimum", NpgsqlDbType.Numeric) { Value = (object?)quote?.Minimum ?? DBNull.Value });
+            command.Parameters.Add(new NpgsqlParameter("quotedRecommended", NpgsqlDbType.Numeric) { Value = (object?)quote?.Recommended ?? DBNull.Value });
+            command.Parameters.Add(new NpgsqlParameter("quotedMaximum", NpgsqlDbType.Numeric) { Value = (object?)quote?.Maximum ?? DBNull.Value });
+            command.Parameters.Add(new NpgsqlParameter("quotedSurge", NpgsqlDbType.Numeric) { Value = (object?)quote?.Surge ?? DBNull.Value });
+
+            try
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+            catch (PostgresException failure) when (
+                failure.SqlState == PostgresErrorCodes.UniqueViolation
+                && failure.ConstraintName == "ux_ride_requests_quote_id")
+            {
+                // One signed quote, one ride request. A second attempt with the
+                // same token is either a double tap or a replay, and both want
+                // the same answer: go and get a fresh price.
+                await transaction.RollbackAsync(cancellationToken);
+                return ServiceResult<RideRequestDto>.Fail(
+                    StatusCodes.Status409Conflict,
+                    "quote_already_used",
+                    "That fare has already been used for a ride. Check the price again.");
+            }
         }
 
         if (DemoMarketplaceEnabled())
@@ -180,7 +234,8 @@ public sealed class BookingService(
             null,
             expiresAt,
             DateTimeOffset.UtcNow,
-            customerName);
+            customerName,
+            quote?.Minimum);
 
         return ServiceResult<RideRequestDto>.Created(
             dto,
@@ -207,7 +262,8 @@ public sealed class BookingService(
                       AND o.status IN ('Pending', 'Countered', 'Accepted', 'Selected')
                       AND o.expires_at > now()) AS offers_count,
                    rr.selected_offer_id, rr.expires_at, rr.created_at,
-                   COALESCE(NULLIF(u.full_name, ''), 'Customer') AS customer_name
+                   COALESCE(NULLIF(u.full_name, ''), 'Customer') AS customer_name,
+                   rr.quoted_minimum
             FROM udrive.ride_requests rr
             JOIN udrive.users u ON u.id = rr.customer_user_id
             WHERE rr.customer_user_id = @userId
@@ -257,7 +313,8 @@ public sealed class BookingService(
                       AND o.status IN ('Pending', 'Countered', 'Accepted', 'Selected')
                       AND o.expires_at > now()) AS offers_count,
                    rr.selected_offer_id, rr.expires_at, rr.created_at,
-                   COALESCE(NULLIF(u.full_name, ''), 'Customer') AS customer_name
+                   COALESCE(NULLIF(u.full_name, ''), 'Customer') AS customer_name,
+                   rr.quoted_minimum
             FROM udrive.ride_requests rr
             JOIN udrive.users u ON u.id = rr.customer_user_id
             JOIN udrive.driver_presence_locations dpl ON dpl.driver_profile_id = @driverProfileId
@@ -552,9 +609,13 @@ public sealed class BookingService(
 
         DateTimeOffset pickupAt;
         DateTimeOffset? requestExpiresAt;
+        decimal customerOffer;
+        decimal? quotedMinimum;
+        decimal? quotedMaximum;
 
         const string lockSql = """
-            SELECT status, pickup_at, expires_at
+            SELECT status, pickup_at, expires_at, customer_offer,
+                   quoted_minimum, quoted_maximum
             FROM udrive.ride_requests
             WHERE id = @rideRequestId
             FOR UPDATE;
@@ -574,6 +635,9 @@ public sealed class BookingService(
             var status = reader.GetString(0);
             pickupAt = reader.GetFieldValue<DateTimeOffset>(1);
             requestExpiresAt = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2);
+            customerOffer = reader.GetDecimal(3);
+            quotedMinimum = reader.IsDBNull(4) ? null : reader.GetDecimal(4);
+            quotedMaximum = reader.IsDBNull(5) ? null : reader.GetDecimal(5);
             if (status is not ("Open" or "ReceivingOffers") || pickupAt < DateTimeOffset.UtcNow.AddMinutes(-15) || (requestExpiresAt is not null && requestExpiresAt <= DateTimeOffset.UtcNow))
             {
                 return ServiceResult<DriverOfferDto>.Fail(
@@ -605,6 +669,41 @@ public sealed class BookingService(
                     "customer_driver_reject_limit",
                     "The Customer has rejected this Driver five times for this ride.");
             }
+        }
+
+        // The driver is held to the same floor as the customer.
+        //
+        // This is the one place UDrive parts company with the model it is
+        // built on. inDrive lets a driver undercut the suggested fare, and the
+        // documented result in Pakistan was drivers bidding below their own
+        // running costs and the app nudging them lower still. A floor that
+        // binds only the customer is not a floor.
+        //
+        // Null when the request was created without a quote — an older app
+        // build, or before quotes were required. Nothing to hold the driver to
+        // in that case, so the check stands down rather than refusing work.
+        if (quotedMinimum is not null && request.Amount < quotedMinimum.Value)
+        {
+            return ServiceResult<DriverOfferDto>.Fail(
+                StatusCodes.Status400BadRequest,
+                "offer_below_minimum",
+                $"The lowest fare for this trip is PKR {quotedMinimum.Value:0}.");
+        }
+
+        // And the ceiling, which the band had on the customer's side from the
+        // start and not on the driver's.
+        //
+        // On a published seat_fares route the engine sets minimum = maximum, so
+        // this collapses to "the fare is the fare" — which is what the fixed
+        // route has always claimed to be. Without it the customer was held to
+        // the published price and the driver was free to counter at three times
+        // it, and SelectDriverOfferAsync would book the driver's number.
+        if (quotedMaximum is not null && request.Amount > quotedMaximum.Value)
+        {
+            return ServiceResult<DriverOfferDto>.Fail(
+                StatusCodes.Status400BadRequest,
+                "offer_above_maximum",
+                $"The highest fare for this trip is PKR {quotedMaximum.Value:0}.");
         }
 
         var offerId = Guid.NewGuid();
@@ -665,7 +764,7 @@ public sealed class BookingService(
                  counter_amount, responded_at, version, created_at, updated_at)
             VALUES
                 (@id, @rideRequestId, @driverProfileId, @vehicleId, @amount,
-                 @eta, @message, 'Countered', @expiresAt, @amount, now(), 0,
+                 @eta, @message, @offerStatus, @expiresAt, @counterAmount, now(), 0,
                  now(), now())
             ON CONFLICT (ride_request_id, driver_profile_id)
                 WHERE status IN ('Pending','Countered','Accepted')
@@ -675,7 +774,7 @@ public sealed class BookingService(
                 counter_amount = EXCLUDED.counter_amount,
                 estimated_arrival_minutes = EXCLUDED.estimated_arrival_minutes,
                 message = EXCLUDED.message,
-                status = 'Countered',
+                status = EXCLUDED.status,
                 expires_at = EXCLUDED.expires_at,
                 responded_at = now(),
                 version = udrive.driver_offers.version + 1,
@@ -693,6 +792,20 @@ public sealed class BookingService(
             command.Parameters.AddWithValue("eta", calculatedEtaMinutes);
             command.Parameters.Add(new NpgsqlParameter("message", NpgsqlDbType.Varchar) { Value = (object?)request.Message?.Trim() ?? DBNull.Value });
             command.Parameters.AddWithValue("expiresAt", offerExpiresAt);
+
+            // Accepting the customer's number and countering it stopped being
+            // the same row. Every offer used to be written 'Countered' with
+            // counter_amount set to the amount, which made the column dead and
+            // made COALESCE(counter_amount, amount) a no-op everywhere it
+            // appeared — and left the customer unable to see which driver had
+            // simply said yes.
+            var matchesCustomer = request.Amount == customerOffer;
+            command.Parameters.AddWithValue("offerStatus", matchesCustomer ? "Accepted" : "Countered");
+            command.Parameters.Add(new NpgsqlParameter("counterAmount", NpgsqlDbType.Numeric)
+            {
+                Value = matchesCustomer ? DBNull.Value : request.Amount,
+            });
+
             offerId = (Guid)(await command.ExecuteScalarAsync(cancellationToken)
                 ?? throw new InvalidOperationException("The Driver offer could not be saved."));
         }
@@ -842,6 +955,10 @@ public sealed class BookingService(
               AND customer_user_id = @customerUserId
               AND status IN ('Open','SearchingDrivers','ReceivingOffers')
               AND @offer > customer_offer
+              -- The same ceiling the original offer was held to. Without it
+              -- the raise-fare sheet is a way around the band: offer the
+              -- minimum, then raise to anything at all.
+              AND (quoted_maximum IS NULL OR @offer <= quoted_maximum)
             RETURNING id;
             """;
 
@@ -859,7 +976,7 @@ public sealed class BookingService(
                 StatusCodes.Status409Conflict,
                 "fare_not_raised",
                 "This request is closed, or the new fare is not higher than the "
-                + "current one.");
+                + "current one, or it is above the most this trip can be offered at.");
         }
 
         return ServiceResult<bool>.Ok(true);
@@ -1454,6 +1571,37 @@ public sealed class BookingService(
             await update.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // Cancel the operations row in the same transaction.
+        //
+        // This used to be left behind, which was survivable only while nothing
+        // read trip_status to decide whether a customer had a ride running.
+        // Several things do now — the create guard above, the Home banner and
+        // the driver-busy check — so a booking cancelled here but still
+        // 'DriverAccepted' in trip_operations would block that customer from
+        // ever booking again and keep their driver marked busy, with no way out
+        // of either from inside the app.
+        //
+        // Not conditional on a package: every booking has exactly one
+        // trip_operations row (booking_id is UNIQUE), created alongside it.
+        await using (var cancelOperations = new NpgsqlCommand(
+            """
+            UPDATE udrive.trip_operations
+               SET trip_status='Cancelled',
+                   operational_status='Cancelled',
+                   cancelled_at=now(),
+                   last_activity_at=now(),
+                   updated_at=now(),
+                   version=version+1
+             WHERE booking_id=@bookingId
+               AND trip_status NOT IN ('TripCompleted','Cancelled');
+            """,
+            connection,
+            transaction))
+        {
+            cancelOperations.Parameters.AddWithValue("bookingId", bookingId);
+            await cancelOperations.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await AddHistoryAsync(
             connection,
             transaction,
@@ -1969,7 +2117,8 @@ public sealed class BookingService(
         reader.IsDBNull(21) ? null : reader.GetGuid(21),
         reader.IsDBNull(22) ? null : reader.GetFieldValue<DateTimeOffset>(22),
         reader.GetFieldValue<DateTimeOffset>(23),
-        reader.IsDBNull(24) ? "Customer" : reader.GetString(24));
+        reader.IsDBNull(24) ? "Customer" : reader.GetString(24),
+        reader.IsDBNull(25) ? null : reader.GetDecimal(25));
 
     private static DriverOfferDto ReadOffer(NpgsqlDataReader reader) => new(
         reader.GetGuid(0),
@@ -2018,6 +2167,127 @@ public sealed class BookingService(
         reader.IsDBNull(19) ? null : reader.GetGuid(19),
         tripOtp,
         reader.GetFieldValue<DateTimeOffset>(20));
+
+    /// <summary>The band the server quoted, once it is satisfied it quoted it.</summary>
+    private sealed record QuoteCheck(
+        QuoteTokenService.Payload? Quote,
+        (int Status, string Code, string Message)? Failure);
+
+    /// <summary>
+    /// Holds the customer to the fare the server actually offered.
+    /// </summary>
+    /// <remarks>
+    /// The quote is a signed record of arithmetic this server did a few
+    /// minutes ago. Verifying it costs one HMAC and no database work, which is
+    /// why the fare can be authoritative without the booking path repeating
+    /// the routing call that produced it.
+    ///
+    /// Two things are checked beyond the signature. The trip has to be the
+    /// trip that was quoted — within a few hundred metres at both ends, so a
+    /// quote for a run across town cannot be spent on a run up the valley —
+    /// and the offer has to sit inside the band.
+    ///
+    /// <c>pricing.quote.required</c> governs what happens when no token
+    /// arrives at all. It ships off, because the app builds already in
+    /// people's hands do not send one and refusing them would take the
+    /// platform down for everyone still on the old version. Turn it on once
+    /// the new build is out; until then a request without a quote is stored
+    /// with a null band and the driver-side floor check stands down for it.
+    /// </remarks>
+    private async Task<QuoteCheck> ResolveQuoteAsync(
+        Guid userId,
+        CreateRideRequestRequest request,
+        CancellationToken cancellationToken)
+    {
+        var settings = await pricingSettings.GetAsync(cancellationToken);
+
+        // Read strictly, unlike every other setting here.
+        //
+        // The rest degrade to a documented default when they cannot be parsed,
+        // which is right for a rounding step and wrong for the switch that
+        // decides whether fares are enforced at all. An admin who types "1" or
+        // "yes" must not silently turn the floor back off — so anything
+        // present but unparseable is treated as ON.
+        var required = settings.TryGetValue("pricing.quote.required", out var requiredRaw)
+            ? !bool.TryParse(requiredRaw, out var parsedRequired) || parsedRequired
+            : false;
+
+        if (string.IsNullOrWhiteSpace(request.QuoteToken))
+        {
+            return required
+                ? new QuoteCheck(null, (
+                    StatusCodes.Status400BadRequest,
+                    "quote_required",
+                    "Please update the app — fares are now confirmed with the server "
+                    + "before a ride is requested."))
+                : new QuoteCheck(null, null);
+        }
+
+        var quote = quoteTokens.Verify(request.QuoteToken);
+        if (quote is null)
+        {
+            // One message for every kind of failure. Which part of a forged
+            // token was wrong is not something to tell whoever forged it, and
+            // for an honest client the fix is the same either way.
+            return new QuoteCheck(null, (
+                StatusCodes.Status409Conflict,
+                "quote_expired",
+                "That fare has expired. Go back and check the price again."));
+        }
+
+        var sameTrip =
+            QuoteTokenService.DistanceMetres(
+                quote.PickupLatitude, quote.PickupLongitude,
+                request.PickupLatitude, request.PickupLongitude) <= 500
+            && QuoteTokenService.DistanceMetres(
+                quote.DestinationLatitude, quote.DestinationLongitude,
+                request.DestinationLatitude, request.DestinationLongitude) <= 500;
+
+        var sameTerms =
+            string.Equals(quote.VehicleCategory, request.VehicleCategory.Trim(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(quote.BookingType, request.BookingType.ToString(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(quote.ServiceType, request.ServiceType.Trim(), StringComparison.OrdinalIgnoreCase)
+            && quote.Seats == request.SeatsRequested;
+
+        // A quote is not a bearer token. It was issued to one customer for one
+        // trip, and it is spendable by that customer only.
+        if (quote.CustomerUserId != userId)
+        {
+            return new QuoteCheck(null, (
+                StatusCodes.Status409Conflict,
+                "quote_mismatch",
+                "That fare was not issued for this account. Check the price again."));
+        }
+
+        if (!sameTrip || !sameTerms)
+        {
+            return new QuoteCheck(null, (
+                StatusCodes.Status409Conflict,
+                "quote_mismatch",
+                "The trip has changed since that fare was worked out. "
+                + "Check the price again."));
+        }
+
+        if (request.CustomerOffer < quote.Minimum)
+        {
+            return new QuoteCheck(null, (
+                StatusCodes.Status400BadRequest,
+                "offer_below_minimum",
+                $"The lowest fare for this trip is PKR {quote.Minimum:0}."));
+        }
+
+        if (request.CustomerOffer > quote.Maximum)
+        {
+            // A ceiling exists for mistyped amounts, not to stop generosity.
+            return new QuoteCheck(null, (
+                StatusCodes.Status400BadRequest,
+                "offer_above_maximum",
+                $"The highest fare for this trip is PKR {quote.Maximum:0}. "
+                + "Check the amount you entered."));
+        }
+
+        return new QuoteCheck(quote, null);
+    }
 
     private static (string Code, string Message)? ValidateRideRequest(CreateRideRequestRequest request)
     {

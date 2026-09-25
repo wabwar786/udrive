@@ -10,7 +10,7 @@ namespace UDrive.Api.Controllers;
 [ApiController]
 [Authorize(Roles = "SuperAdmin,Admin,Manager,Operations,VerificationOfficer,SupportAgent,FinanceOfficer,SafetyOfficer,TourismManager")]
 [Route("api/v1/admin/operations")]
-public sealed class AdminOperationsController(AdminOperationsService service) : ControllerBase
+public sealed class AdminOperationsController(AdminOperationsService service, PricingSettingsService pricingSettings) : ControllerBase
 {
     [HttpGet("dashboard")] public async Task<IActionResult> Dashboard(CancellationToken ct)=>Result(await service.DashboardAsync(ct));
     [HttpGet("bookings")] public async Task<IActionResult> Bookings([FromQuery]string? status,[FromQuery]string? search,CancellationToken ct)=>Result(await service.BookingsAsync(status,search,ct));
@@ -43,7 +43,15 @@ public sealed class AdminOperationsController(AdminOperationsService service) : 
     [Authorize(Roles="SuperAdmin,Admin,Operations,SupportAgent,SafetyOfficer,TourismManager")][HttpPost("notifications/broadcast")] public async Task<IActionResult> Broadcast(BroadcastNotificationRequest request,CancellationToken ct)=>Result(await service.BroadcastAsync(User.GetRequiredUserId(),request,ct));
     [Authorize(Roles="SuperAdmin,Admin,Operations")][HttpGet("audit-logs")] public async Task<IActionResult> Audit(CancellationToken ct)=>Result(await service.AuditLogsAsync(ct));
     [Authorize(Roles="SuperAdmin,Admin,Operations")][HttpGet("settings")] public async Task<IActionResult> Settings(CancellationToken ct)=>Result(await service.SettingsAsync(ct));
-    [Authorize(Roles="SuperAdmin")][HttpPut("settings")] public async Task<IActionResult> SettingsUpdate(UpdateSettingsRequest request,CancellationToken ct)=>Result(await service.UpdateSettingsAsync(User.GetRequiredUserId(),request,ct));
+    [Authorize(Roles="SuperAdmin")][HttpPut("settings")] public async Task<IActionResult> SettingsUpdate(UpdateSettingsRequest request,CancellationToken ct){
+        var result=await service.UpdateSettingsAsync(User.GetRequiredUserId(),request,ct);
+        // Most pricing keys are edited through this grid rather than through
+        // the fare screens, so this is the path that actually has to drop the
+        // cache. Without it "I changed the surge cap and nothing happened" is
+        // true for a minute on every instance.
+        if(result.Success&&request.Values.Any(v=>v.Key.StartsWith("pricing.",StringComparison.OrdinalIgnoreCase)||string.Equals(v.Key,"driver.commission.percentage",StringComparison.OrdinalIgnoreCase)))pricingSettings.Invalidate();
+        return Result(result);
+    }
 
     private IActionResult Result<T>(ServiceResult<T> result)
     {

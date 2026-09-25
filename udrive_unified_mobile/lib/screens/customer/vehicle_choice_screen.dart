@@ -11,6 +11,8 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/maps/ud_map.dart';
+import '../../core/pricing/fare_quote.dart';
+import '../../core/pricing/fare_quote_repository.dart';
 import '../../core/vehicles/nearby_repository.dart';
 import '../../core/vehicles/nearby_vehicle.dart';
 import '../../core/vehicles/seat_fares_repository.dart';
@@ -87,6 +89,23 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   /// the admin has listed it, that fare is the fare — no distance arithmetic
   /// and no bidding, because nobody haggles over a seat on a scheduled run.
   final Map<String, SeatFareQuote> _seatFares = <String, SeatFareQuote>{};
+
+  /// The server's answer for the vehicle, seat count and route on screen.
+  ///
+  /// Null while it is in flight or after it has failed. Everything the
+  /// customer can actually do with a fare — the floor on the stepper, the
+  /// keypad's bounds, the request itself — reads from here, so a missing quote
+  /// means the screen shows a price but will not send one.
+  FareQuote? _quote;
+  bool _quoting = false;
+  String? _quoteError;
+
+  /// Cancels a quote whose answer arrived after the question changed.
+  ///
+  /// The same guard the seat fares use, for the same reason: the customer
+  /// changes vehicle twice in a second and the slower of two replies must not
+  /// overwrite the faster.
+  int _quoteGeneration = 0;
 
   /// Which route the customer has chosen.
   ///
@@ -191,10 +210,31 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     return 50;
   }
 
+  /// What the fare box opens at.
+  ///
+  /// The server's figure when there is one. The local calculation is still
+  /// here and still runs, but only to put a number under the customer's eye
+  /// while the quote is in flight — it is a placeholder, and `_findOffers`
+  /// will not send a request without a real quote behind it.
   int get _recommended {
+    final quote = _quote;
+    if (quote != null) return quote.recommended;
     final fixed = _fixedSeatFare;
     if (fixed != null) return fixed.perSeatFare * _seats;
     return _selected?.fareFor(perSeat: _perSeat, seats: _seats) ?? 0;
+  }
+
+  /// The most the customer may offer.
+  ///
+  /// A guard against a mistyped amount rather than a limit on generosity — it
+  /// sits at several times the suggestion. Without a quote there is no ceiling
+  /// to enforce, and the old hard-coded 500000 stands in.
+  int get _maximum => _quote?.maximum ?? 500000;
+
+  /// True once the screen has a fare the server will actually honour.
+  bool get _hasUsableQuote {
+    final quote = _quote;
+    return quote != null && quote.isUsable;
   }
 
   /// What one vehicle would cost, for the price shown on its pill.
@@ -234,11 +274,17 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   /// the admin has set an actual figure, and an offer below it is one no driver
   /// answers.
   int get _minimum {
+    final quote = _quote;
+    if (quote != null) return quote.minimum;
     // A fixed route fare is its own floor and its own ceiling.
     final fixed = _fixedSeatFare;
     if (fixed != null) return fixed.perSeatFare * _seats;
     return _selected?.minimumFor(perSeat: _perSeat, seats: _seats) ?? 0;
   }
+
+  /// True when the fare is published rather than bid on.
+  bool get _fareIsFixed =>
+      _quote?.negotiable == false || _fixedSeatFare != null;
 
   @override
   void initState() {
@@ -383,9 +429,96 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         _error = 'No vehicles are available for this trip right now.';
       } else {
         _clampBooking();
+        // The previous route's quote priced a different journey. Selecting a
+        // longer way round and keeping the short route's floor is exactly the
+        // hole the server cannot see, because the pickup and destination have
+        // not moved.
+        _quote = null;
         _fare = _recommended;
       }
     });
+
+    if (_selected != null) unawaited(_loadQuote());
+  }
+
+  /// Asks the server what this trip costs, and holds the answer.
+  ///
+  /// Called wherever the question changes — the route, the vehicle, per seat
+  /// versus whole vehicle, the seat count. Each call takes a generation number
+  /// so a slow reply to an old question cannot land on a new one.
+  ///
+  /// A failure leaves [_quote] null and puts the server's own message on
+  /// screen. That is deliberate: the alternative is to fall back to the
+  /// client's own arithmetic, which is exactly how the app ended up with two
+  /// pricing formulas that disagreed with each other and with the admin's
+  /// rates.
+  Future<void> _loadQuote() async {
+    final option = _selected;
+    final route = _route;
+    if (option == null) return;
+
+    final generation = ++_quoteGeneration;
+    setState(() {
+      _quoting = true;
+      _quoteError = null;
+    });
+
+    final controller = AppControllerScope.of(context);
+    final repository = FareQuoteRepository(controller.apiClient);
+
+    // Straight-line distance stands in when no route has been fetched. The
+    // server checks the claim against the same straight line, so an honest
+    // approximation is accepted and a wild one is not.
+    final metres = route?.distanceMetres ??
+        const Distance().as(
+          LengthUnit.Meter,
+          widget.pickupPoint,
+          widget.destinationPoint,
+        );
+    final distanceKm = (metres / 1000).clamp(0.1, 5000).toDouble();
+    final minutes = route == null
+        ? distanceKm / 25 * 60
+        : route.durationSeconds / 60;
+
+    try {
+      final quote = await repository.quote(
+        // The same service type VehicleOptionsRepository asks for its rates
+        // with. If that ever stops being fixed, both have to move together or
+        // the quote prices a different rate card from the pills.
+        serviceType: 'City',
+        vehicleCategory: option.category,
+        perSeat: _perSeat,
+        seats: _perSeat ? _seats : 1,
+        pickupLatitude: widget.pickupPoint.latitude,
+        pickupLongitude: widget.pickupPoint.longitude,
+        destinationLatitude: widget.destinationPoint.latitude,
+        destinationLongitude: widget.destinationPoint.longitude,
+        distanceKm: distanceKm,
+        durationMinutes: minutes.clamp(1, 6000).toDouble(),
+      );
+
+      if (!mounted || generation != _quoteGeneration) return;
+      setState(() {
+        _quote = quote;
+        _quoting = false;
+        // The customer's own number is kept when it still sits inside the new
+        // band — they chose it, and a reprice that quietly resets it would
+        // undo a deliberate decision. Outside the band it has to move.
+        _fare = _fare <= 0
+            ? quote.recommended
+            : _fare.clamp(quote.minimum, quote.maximum);
+        if (!quote.negotiable) _fare = quote.recommended;
+      });
+    } catch (error) {
+      if (!mounted || generation != _quoteGeneration) return;
+      setState(() {
+        _quote = null;
+        _quoting = false;
+        _quoteError = error is ApiException
+            ? error.message
+            : 'The fare could not be checked. Try again.';
+      });
+    }
   }
 
   /// Reads the fixed route fares for the seat-sellable vehicles.
@@ -474,8 +607,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
       _clampBooking();
       // Reset to the recommendation for the new vehicle. Carrying a coaster
       // price onto a bike would be nonsense.
+      _quote = null;
       _fare = _recommended;
     });
+    unawaited(_loadQuote());
     _revealPill(option);
   }
 
@@ -495,8 +630,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     setState(() {
       _bookingType = type;
       if (type == BookingType.perSeat && _seats < 1) _seats = 1;
+      _quote = null;
       _fare = _recommended;
     });
+    unawaited(_loadQuote());
   }
 
   void _setSeats(int value) {
@@ -505,8 +642,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
       _seats = value.clamp(1, option?.seats ?? 12);
       // Recomputed either way: on a fixed route this is the listed fare times
       // the seats, and off one it is the recommendation for the new count.
+      _quote = null;
       _fare = _recommended;
     });
+    unawaited(_loadQuote());
   }
 
   void _nudge(int direction) {
@@ -514,17 +653,33 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     // Belt and braces. The buttons are hidden on a fixed route, but the state
     // is what actually protects the fare and the widget tree is not the place
     // to enforce a pricing rule.
-    if (_fixedSeatFare != null) return;
+    if (_fareIsFixed) return;
     setState(() {
-      // Never below the admin's minimum for this vehicle.
-      final floor = _minimum;
-      _fare = (_fare + direction * _step).clamp(floor, 500000);
+      // Never below the server's minimum for this trip, and never above its
+      // ceiling. Both are the same figures the API will check.
+      _fare = (_fare + direction * _step).clamp(_minimum, _maximum);
     });
   }
 
   Future<void> _findOffers() async {
     final option = _selected;
     if (option == null || _submitting) return;
+
+    // No quote, no request.
+    //
+    // Without this the button is live while the quote is in flight, after it
+    // has failed, and after it has expired — and in each of those the screen
+    // falls back to the figures it works out itself, which is the state this
+    // whole change exists to end. The comment on _recommended promises the
+    // request will not go out without a real quote behind it; this is the line
+    // that keeps the promise.
+    if (!_hasUsableQuote) {
+      setState(() {
+        _error = _quoteError ?? 'Checking the fare — one moment.';
+      });
+      if (!_quoting) unawaited(_loadQuote());
+      return;
+    }
 
     setState(() {
       _submitting = true;
@@ -552,6 +707,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         'children': 0,
         'luggageCount': 0,
         'customerOffer': _fare,
+        'quoteToken': _quote?.token,
+        // Which rate card the quote came from. Must match what _loadQuote
+        // asked for, or the server refuses the pair.
+        'serviceType': 'City',
         'vehicleCategory': option.category,
         'partyType': 'Any',
         'familyOnly': false,
@@ -641,7 +800,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     // Nothing to type on a fixed route. The tap is already disabled, but the
     // state is what protects the fare — a widget tree is not the place to
     // enforce a pricing rule.
-    if (_fixedSeatFare != null) return;
+    if (_fareIsFixed) return;
 
     final controller = TextEditingController(text: '$_fare');
     final value = await showDialog<int>(
@@ -673,10 +832,11 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     );
 
     if (value != null && value > 0 && mounted) {
-      // Typed figures obey the same floor as the stepper. Allowing one route
-      // around it would mean the customer waits for offers that never come.
+      // Typed figures obey the same band as the stepper — and the same band
+      // the API will check, so a number accepted here is never refused on the
+      // next screen.
       final floor = _minimum > 0 ? _minimum : 50;
-      setState(() => _fare = value.clamp(floor, 500000));
+      setState(() => _fare = value.clamp(floor, _maximum));
     }
   }
 
@@ -980,6 +1140,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
           recommended: _recommended,
           minimum: _minimum,
           fixedRoute: _fixedSeatFare,
+          quote: _quote,
+          quoting: _quoting,
+          quoteError: _quoteError,
+          onRetryQuote: _loadQuote,
           perSeat: _perSeat,
           seats: _seats,
           submitting: _submitting,
@@ -1585,6 +1749,10 @@ class _FarePanel extends StatelessWidget {
     required this.recommended,
     required this.minimum,
     required this.fixedRoute,
+    required this.quote,
+    required this.quoting,
+    required this.quoteError,
+    required this.onRetryQuote,
     required this.perSeat,
     required this.seats,
     required this.submitting,
@@ -1602,6 +1770,12 @@ class _FarePanel extends StatelessWidget {
   /// are hidden while it is, because the fare is not the customer's to move.
   final SeatFareQuote? fixedRoute;
 
+  /// The server's answer. Null while it is in flight or after it failed.
+  final FareQuote? quote;
+  final bool quoting;
+  final String? quoteError;
+  final VoidCallback onRetryQuote;
+
   final bool perSeat;
   final int seats;
   final bool submitting;
@@ -1610,12 +1784,17 @@ class _FarePanel extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onSubmit;
 
-  bool get _isFixed => fixedRoute != null;
+  bool get _isFixed => fixedRoute != null || quote?.negotiable == false;
 
   String get _caption {
     final route = fixedRoute;
     if (route != null) {
       return 'Fixed fare · ${route.routeLabel}'
+          '${seats > 1 ? '  ·  $seats seats' : ''}';
+    }
+    final published = quote?.fixedRouteLabel;
+    if (published != null && quote?.negotiable == false) {
+      return 'Fixed fare · $published'
           '${seats > 1 ? '  ·  $seats seats' : ''}';
     }
     if (recommended == 0) return '';
@@ -1651,6 +1830,80 @@ class _FarePanel extends StatelessWidget {
             // only by customers who happened to scroll — and never by the ones
             // who went straight to the fare, who are exactly the ones it is
             // for.
+            // Surge, said out loud.
+            //
+            // A fare that is higher than usual and does not say why is the
+            // thing that makes people distrust a ride app. The reason comes
+            // from the server with the quote and is shown as it was given.
+            if (quote?.hasSurge == true) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppTint.warning,
+                  borderRadius: BorderRadius.circular(AppRadii.row),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.trending_up_rounded,
+                        size: 15, color: AppTint.warningText),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        'Busy right now — fares are ${quote!.surge.toStringAsFixed(2)}×'
+                        '${quote!.breakdown?.surgeReason == null ? '' : ' · ${quote!.breakdown!.surgeReason}'}',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTint.warningText,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            // The fare could not be checked.
+            //
+            // Shown rather than hidden behind a silent fallback to the app's
+            // own arithmetic — that fallback is how the app came to have two
+            // pricing formulas that disagreed with the admin's rates and with
+            // each other.
+            if (quoteError != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: AppTint.danger,
+                  borderRadius: BorderRadius.circular(AppRadii.row),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline_rounded,
+                        size: 15, color: AppTint.dangerText),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        quoteError!,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTint.dangerText,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: quoting ? null : onRetryQuote,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [

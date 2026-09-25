@@ -52,6 +52,7 @@ type Rule = {
   perKmRate: number;
   minimumFare: number;
   perMinuteRate: number;
+  baseFare: number;
   daysOfWeek: number[];
   areaLabel: string | null;
   areaLatitude: number | null;
@@ -103,6 +104,7 @@ type Preview = {
   minimumFare: number;
   perMinuteRate: number;
   fare: number;
+  baseFare: number;
 };
 
 const BLANK: Rule = {
@@ -112,6 +114,7 @@ const BLANK: Rule = {
   perKmRate: 65,
   minimumFare: 1600,
   perMinuteRate: 2,
+  baseFare: 0,
   daysOfWeek: [],
   areaLabel: null,
   areaLatitude: null,
@@ -138,23 +141,31 @@ function describeArea(rule: Rule) {
 /**
  * What a trip of this length would cost under these numbers.
  *
- * Mirrors the client's formula exactly — distance x rate, plus 2 PKR a minute,
- * floored at the minimum. Showing the result is the only way an admin can tell
- * which of the two fields is binding, and a minimum that swallows every short
- * trip is otherwise invisible until a customer complains.
+ * Mirrors the client's formula exactly — distance x rate, plus the per-minute
+ * rate, floored at the minimum. Showing the result is the only way an admin can
+ * tell which of the two fields is binding, and a minimum that swallows every
+ * short trip is otherwise invisible until a customer complains.
+ *
+ * perMinute used to be the literal 2 here and in the app, even though it is a
+ * column on the rule that this very page can edit. Editing it changed nothing
+ * either operators or customers could see.
  */
 function FareExample({
   km,
   minutes,
   perKm,
+  perMinute,
   minimum,
+  baseFare,
 }: {
   km: number;
   minutes: number;
   perKm: number;
+  perMinute: number;
   minimum: number;
+  baseFare: number;
 }) {
-  const metered = perKm * km + minutes * 2;
+  const metered = baseFare + perKm * km + minutes * perMinute;
   const charged = Math.max(metered, minimum);
   const minimumWins = minimum > metered;
 
@@ -542,13 +553,17 @@ export default function Page() {
                       km={6}
                       minutes={15}
                       perKm={baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate}
+                      perMinute={rule.perMinuteRate}
                       minimum={baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare}
+                      baseFare={rule.baseFare}
                     /></td>
                     <td><FareExample
                       km={25}
                       minutes={45}
                       perKm={baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate}
+                      perMinute={rule.perMinuteRate}
                       minimum={baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare}
+                      baseFare={rule.baseFare}
                     /></td>
                   </tr>
                 ))}
@@ -875,7 +890,24 @@ export default function Page() {
                 onChange={(e) => setForm({ ...form, perMinuteRate: Number(e.target.value) })}
               />
             </Field>
+            <Field label="Base fare (PKR) — charged once per trip">
+              <input
+                type="number"
+                min={0}
+                value={form.baseFare}
+                onChange={(e) => setForm({ ...form, baseFare: Number(e.target.value) })}
+              />
+            </Field>
           </div>
+
+          <p style={{ fontSize: 12, opacity: 0.78, lineHeight: 1.55, margin: '2px 0 10px' }}>
+            A base fare is what lets the minimum come down. With no base and a high minimum, the
+            per-kilometre rate does nothing until a trip is long enough to clear it — at 65/km
+            with a 1,600 minimum that is about 23&nbsp;km, so every car ride inside Muzaffarabad
+            costs exactly 1,600 and the distance rate is decorative. Setting a base and lowering
+            the minimum together makes short rides cost what they should without making them
+            free.
+          </p>
 
           <Field label="Days this rate applies (none selected = every day)">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>

@@ -25,6 +25,7 @@ class LiveRideRequest {
     this.selectedOfferId,
     this.expiresAt,
     this.createdAt,
+    this.quotedMinimum,
   });
 
   final String id;
@@ -48,6 +49,13 @@ class LiveRideRequest {
   final bool womenOnly;
   final String status;
   final int offersCount;
+
+  /// The floor the server quoted for this trip.
+  ///
+  /// Null on requests made before fare authority shipped, or by an app build
+  /// that does not ask for a quote. Null means there is no floor to show and
+  /// none to enforce — not that the floor is zero.
+  final double? quotedMinimum;
   final String customerName;
   final String? selectedOfferId;
   final DateTime? expiresAt;
@@ -75,6 +83,7 @@ class LiveRideRequest {
         womenOnly: json['womenOnly'] == true,
         status: json['status']?.toString() ?? 'ReceivingOffers',
         offersCount: _int(json['offersCount']),
+        quotedMinimum: (json['quotedMinimum'] as num?)?.toDouble(),
         customerName: json['customerName']?.toString().trim().isNotEmpty == true
             ? json['customerName'].toString().trim()
             : 'Customer',

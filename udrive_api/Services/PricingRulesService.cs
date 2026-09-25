@@ -22,7 +22,8 @@ public sealed class PricingRulesService(string connectionString)
     private const string Columns = """
         id, name, service_type, vehicle_category, per_km_rate, minimum_fare,
         per_minute_rate, days_of_week, area_label, area_latitude,
-        area_longitude, area_radius_km, priority, is_active, updated_at
+        area_longitude, area_radius_km, priority, is_active, updated_at,
+        base_fare
         """;
 
     // ------------------------------------------------------------------ read
@@ -129,11 +130,11 @@ public sealed class PricingRulesService(string connectionString)
             INSERT INTO udrive.pricing_rules
                 (name, service_type, vehicle_category, per_km_rate, minimum_fare,
                  per_minute_rate, days_of_week, area_label, area_latitude,
-                 area_longitude, area_radius_km, priority, is_active)
+                 area_longitude, area_radius_km, priority, is_active, base_fare)
             VALUES
                 (@name, @service, @category, @perKm, @minimum, @perMinute,
                  @days, @areaLabel, @areaLat, @areaLng, @areaRadius,
-                 @priority, @active)
+                 @priority, @active, @baseFare)
             RETURNING {Columns};
             """;
 
@@ -170,6 +171,7 @@ public sealed class PricingRulesService(string connectionString)
                 per_km_rate = @perKm,
                 minimum_fare = @minimum,
                 per_minute_rate = @perMinute,
+                base_fare = @baseFare,
                 days_of_week = @days,
                 area_label = @areaLabel,
                 area_latitude = @areaLat,
@@ -266,7 +268,8 @@ public sealed class PricingRulesService(string connectionString)
                 connection, serviceType, category, latitude, longitude, cancellationToken);
             if (rule is null) continue;
 
-            var metered = rule.PerKmRate * (decimal)distanceKm
+            var metered = rule.BaseFare
+                          + rule.PerKmRate * (decimal)distanceKm
                           + rule.PerMinuteRate * minutes;
             var fare = Math.Max(metered, rule.MinimumFare);
 
@@ -276,9 +279,19 @@ public sealed class PricingRulesService(string connectionString)
                 rule.PerKmRate,
                 rule.MinimumFare,
                 rule.PerMinuteRate,
-                // Rounded the same way the app rounds it, so the preview and
-                // the customer's screen agree to the rupee.
-                Math.Round(fare / 5m, MidpointRounding.AwayFromZero) * 5m));
+                // The meter, rounded exactly as FareEngine rounds it — up,
+                // never to nearest, so a preview can never show a figure below
+                // the floor it was clamped to. This used to round to nearest
+                // and omit the base fare, which is why the portal and the
+                // customer's screen could differ by a few rupees.
+                //
+                // This is the meter alone. Zone difficulty, the empty-return
+                // share, the fuel index and surge are all applied by the
+                // engine at quote time against a real pickup and a real
+                // moment, and none of them can be shown honestly against a
+                // sample distance with no coordinates and no clock.
+                FareEngine.RoundUp(fare, 5m),
+                rule.BaseFare));
         }
 
         return ServiceResult<IReadOnlyList<PricingPreviewDto>>.Ok(list);
@@ -328,6 +341,7 @@ public sealed class PricingRulesService(string connectionString)
         command.Parameters.AddWithValue("perKm", request.PerKmRate);
         command.Parameters.AddWithValue("minimum", request.MinimumFare);
         command.Parameters.AddWithValue("perMinute", request.PerMinuteRate);
+        command.Parameters.AddWithValue("baseFare", request.BaseFare);
 
         // An empty selection is stored as NULL rather than an empty array, so
         // "every day" has one representation instead of two.
@@ -380,5 +394,6 @@ public sealed class PricingRulesService(string connectionString)
         reader.IsDBNull(11) ? null : reader.GetDouble(11),
         reader.GetInt32(12),
         reader.GetBoolean(13),
-        reader.GetFieldValue<DateTimeOffset>(14));
+        reader.GetFieldValue<DateTimeOffset>(14),
+        reader.GetDecimal(15));
 }

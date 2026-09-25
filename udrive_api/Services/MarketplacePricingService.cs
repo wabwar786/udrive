@@ -24,7 +24,8 @@ public sealed class MarketplacePricingService(string connectionString)
     {
         const string sql = """
             SELECT service_type, vehicle_category, per_seat_rate,
-                   whole_vehicle_rate, per_km_rate, currency
+                   whole_vehicle_rate, per_km_rate, currency,
+                   base_fare, fuel_type, seat_capacity
             FROM udrive.service_vehicle_rates
             WHERE is_active = true
               AND lower(service_type) = lower(@service)
@@ -45,7 +46,13 @@ public sealed class MarketplacePricingService(string connectionString)
                 reader.GetDecimal(2),
                 reader.GetDecimal(3),
                 reader.GetDecimal(4),
-                reader.GetString(5)));
+                reader.GetString(5),
+                // PerMinuteRate is not on this table; it arrives from the
+                // pricing rule below, or stays at the record's own default.
+                2m,
+                reader.GetDecimal(6),
+                reader.GetString(7),
+                reader.GetInt32(8)));
         }
 
         // The reader has to close before the connection can be used again for
@@ -71,9 +78,15 @@ public sealed class MarketplacePricingService(string connectionString)
             list[i] = rate with
             {
                 PerKmRate = rule.PerKmRate,
+                PerMinuteRate = rule.PerMinuteRate,
                 WholeVehicleRate = rule.MinimumFare > 0
                     ? rule.MinimumFare
                     : rate.WholeVehicleRate,
+                // A rule's base fare overlays only when it sets one. Zero is
+                // "this rule has nothing to say about the flagfall", not "make
+                // the flagfall zero" — otherwise every rule written before base
+                // fares existed would silently strip one.
+                BaseFare = rule.BaseFare > 0 ? rule.BaseFare : rate.BaseFare,
             };
         }
 
@@ -112,11 +125,43 @@ public sealed class MarketplacePricingService(string connectionString)
                 0,
                 rule.MinimumFare,
                 rule.PerKmRate,
-                "PKR"));
+                "PKR",
+                rule.PerMinuteRate,
+                rule.BaseFare,
+                // Without these two the record's own defaults applied — four
+                // seats and petrol — so a Coster known only through a pricing
+                // rule was divided by four instead of twenty-two and indexed
+                // against the wrong pump price. Both are properties of the
+                // category, not of the rule, so they come from the same map the
+                // rates table is seeded from.
+                FuelTypeFor(category),
+                SeatCapacityFor(category)));
         }
 
         return list;
     }
+
+    /// <summary>Which pump price moves a category, when no rate row says.</summary>
+    /// <remarks>
+    /// The same split as <c>service_vehicle_rates.fuel_type</c>: the two
+    /// passenger vans run on diesel here, everything else on petrol.
+    /// </remarks>
+    private static string FuelTypeFor(string category) =>
+        category.Equals("Coster", StringComparison.OrdinalIgnoreCase)
+        || category.Equals("Hiace", StringComparison.OrdinalIgnoreCase)
+            ? "Diesel"
+            : "Petrol";
+
+    /// <summary>Seats a category sells, when no rate row says.</summary>
+    private static int SeatCapacityFor(string category) => category.ToLowerInvariant() switch
+    {
+        "bike" => 1,
+        "rickshaw" => 3,
+        "car" => 4,
+        "hiace" => 12,
+        "coster" => 22,
+        _ => 4,
+    };
 
     /// <summary>Vehicle categories that have an active pricing rule.</summary>
     private static async Task<IReadOnlyList<string>> RuledCategoriesAsync(

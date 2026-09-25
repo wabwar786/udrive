@@ -159,7 +159,14 @@ class _LiveDriverRequestsScreenState extends State<LiveDriverRequestsScreen> {
                 decoration: InputDecoration(
                   labelText: 'Your fare (PKR)',
                   prefixIcon: const Icon(Icons.payments_rounded),
-                  helperText: 'Customer offered PKR ${NumberFormat('#,###').format(request.customerOffer)}',
+                  // The floor is stated before the driver types, not after
+                  // the API refuses the offer. A driver who is told his number
+                  // is too low only once he has sent it learns to distrust the
+                  // screen, not the rule.
+                  helperText: request.quotedMinimum == null
+                      ? 'Customer offered PKR ${NumberFormat('#,###').format(request.customerOffer)}'
+                      : 'Customer offered PKR ${NumberFormat('#,###').format(request.customerOffer)}'
+                          '  ·  lowest allowed PKR ${NumberFormat('#,###').format(request.quotedMinimum!)}',
                 ),
               ),
               const SizedBox(height: 10),
@@ -173,6 +180,24 @@ class _LiveDriverRequestsScreenState extends State<LiveDriverRequestsScreen> {
                   onPressed: () async {
                     final parsedAmount = double.tryParse(amount.text.trim());
                     if (parsedAmount == null || parsedAmount <= 0) return;
+
+                    // The same floor the customer was held to.
+                    //
+                    // UDrive parts company with inDrive here on purpose: there
+                    // a driver may undercut the customer's number, and what
+                    // that produced in this market was drivers bidding below
+                    // their own running costs.
+                    final floor = request.quotedMinimum;
+                    if (floor != null && parsedAmount < floor) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(
+                          'The lowest fare for this trip is PKR '
+                          '${NumberFormat('#,###').format(floor)}.',
+                        ),
+                      ));
+                      return;
+                    }
+
                     try {
                       await AppControllerScope.of(context).submitLiveDriverOffer(
                         rideRequestId: request.id,

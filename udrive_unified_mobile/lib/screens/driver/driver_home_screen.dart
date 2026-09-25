@@ -539,7 +539,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               decoration: InputDecoration(
                 labelText: _t('Your fare (PKR)', 'آپ کا کرایہ (PKR)'),
                 prefixIcon: const Icon(Icons.payments_rounded),
-                helperText: request.customerOffer > 0
+                helperText: request.quotedMinimum != null
+                    ? 'Customer offered PKR ${NumberFormat('#,###').format(request.customerOffer)}'
+                        '  ·  lowest allowed PKR ${NumberFormat('#,###').format(request.quotedMinimum!)}'
+                    : request.customerOffer > 0
                     ? 'Customer estimate: PKR ${NumberFormat('#,###').format(request.customerOffer)}'
                     : null,
               ),
@@ -556,6 +559,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     );
                     return;
                   }
+
+                  // The same floor the customer was held to. See the note in
+                  // live_driver_requests_screen.dart for why a driver is not
+                  // allowed to undercut it.
+                  final floor = request.quotedMinimum;
+                  if (floor != null && parsedAmount < floor) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(
+                        'The lowest fare for this trip is PKR '
+                        '${NumberFormat('#,###').format(floor)}.',
+                      ),
+                    ));
+                    return;
+                  }
+
                   try {
                     await AppControllerScope.of(context).submitLiveDriverOffer(
                       rideRequestId: request.id,

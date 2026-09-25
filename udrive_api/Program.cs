@@ -57,6 +57,28 @@ builder.Services.AddScoped<MarketplacePricingService>(_ => new MarketplacePricin
 builder.Services.AddScoped<PricingRulesService>(_ => new PricingRulesService(connectionString));
 builder.Services.AddScoped<TourRatesService>(_ => new TourRatesService(connectionString));
 builder.Services.AddScoped<SeatFaresService>(_ => new SeatFaresService(connectionString));
+
+// ------------------------------------------------------------------ pricing
+//
+// The fare engine and the four inputs it reads. Settings and demand are
+// singletons because both hold a short-lived cache that is only worth having
+// if it outlives a request; everything else is scoped like its neighbours.
+builder.Services.AddSingleton(new PricingSettingsService(connectionString));
+builder.Services.AddSingleton(new DemandService(connectionString));
+builder.Services.AddSingleton(new QuoteTokenService(authOptions));
+builder.Services.AddScoped<FuelPriceService>(_ => new FuelPriceService(connectionString));
+builder.Services.AddScoped<PricingZoneService>(_ => new PricingZoneService(connectionString));
+builder.Services.AddScoped<RateInsightsService>(_ => new RateInsightsService(connectionString));
+builder.Services.AddScoped<FareEngine>(serviceProvider =>
+    new FareEngine(
+        connectionString,
+        serviceProvider.GetRequiredService<MarketplacePricingService>(),
+        serviceProvider.GetRequiredService<SeatFaresService>(),
+        serviceProvider.GetRequiredService<PricingZoneService>(),
+        serviceProvider.GetRequiredService<DemandService>(),
+        serviceProvider.GetRequiredService<FuelPriceService>(),
+        serviceProvider.GetRequiredService<PricingSettingsService>(),
+        serviceProvider.GetRequiredService<QuoteTokenService>()));
 builder.Services.AddScoped<TripChatService>(_ => new TripChatService(connectionString));
 builder.Services.AddScoped<ServiceAvailabilityService>(_ =>
     new ServiceAvailabilityService(connectionString));
@@ -85,11 +107,13 @@ builder.Services.AddScoped<AdminVerificationService>(serviceProvider =>
     new AdminVerificationService(
         connectionString,
         serviceProvider.GetRequiredService<LocalFileStorageService>()));
-builder.Services.AddScoped<BookingService>(_ =>
+builder.Services.AddScoped<BookingService>(serviceProvider =>
     new BookingService(
         connectionString,
         authOptions,
-        new ServiceAvailabilityService(connectionString)));
+        new ServiceAvailabilityService(connectionString),
+        serviceProvider.GetRequiredService<QuoteTokenService>(),
+        serviceProvider.GetRequiredService<PricingSettingsService>()));
 builder.Services.AddScoped<PackageMarketplaceService>(_ =>
     new PackageMarketplaceService(connectionString, authOptions));
 builder.Services.AddScoped<TourInterestService>(_ =>

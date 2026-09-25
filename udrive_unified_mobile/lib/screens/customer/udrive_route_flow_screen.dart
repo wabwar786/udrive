@@ -11,6 +11,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/network/api_config.dart';
 import '../../core/booking/vehicle_booking_mode.dart';
+import '../../core/format/money.dart';
+import '../../core/pricing/fare_quote.dart';
+import '../../core/pricing/fare_quote_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/booking_models.dart';
 import 'driver_offers_screen.dart';
@@ -1231,6 +1234,20 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     if (value != null) setState(() => _tourDate = value);
   }
 
+  /// The screen's label, in the spelling the API prices by.
+  ///
+  /// This screen has always said "Coaster" while `service_vehicle_rates`,
+  /// `seat_fares` and the other booking screen all say "Coster" — so a quote
+  /// asked for under the screen's own label matches no rate row at all and
+  /// comes back 422. The booking then went out with no band, which on a
+  /// 22-seat vehicle is the most expensive place to have no floor.
+  String _apiVehicleCategory(String value) => switch (_normaliseVehicle(value)) {
+        'coster' => 'Coster',
+        'bike' => 'Bike',
+        'rickshaw' => 'Rickshaw',
+        _ => 'Car',
+      };
+
   String _normaliseVehicle(String value) {
     final v = value.toLowerCase();
     if (v.contains('coster') || v.contains('coaster') || v.contains('bus') ||
@@ -1530,6 +1547,45 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     return double.tryParse(clean);
   }
 
+  /// Asks the server for this trip's band, just before the request is made.
+  ///
+  /// Quoting at submit rather than live: this screen has no reprice loop to
+  /// hang a quote on, and adding one would mean rebuilding how it tracks the
+  /// vehicle, the seats and the mode. One call at the moment it matters closes
+  /// the hole without touching any of that.
+  ///
+  /// Returns null when the quote cannot be had at all. The request then goes
+  /// through unbanded, exactly as it did before — refusing to let someone book
+  /// because a pricing lookup failed would be a worse outcome than the one
+  /// this is fixing. The server applies its own rules either way.
+  Future<FareQuote?> _quoteFare(
+    AppController controller,
+    _VehicleChoiceData choice,
+    bool wholeVehicle,
+    int seatsForRequest,
+  ) async {
+    try {
+      final km = _routeDistanceKm;
+      return await FareQuoteRepository(controller.apiClient).quote(
+        serviceType: 'City',
+        vehicleCategory: _apiVehicleCategory(choice.name),
+        perSeat: !wholeVehicle,
+        // The seat count has to be the one the request will declare, because
+        // the server compares them. For a whole vehicle the request sends the
+        // capacity, and FareEngine ignores the number on that branch anyway.
+        seats: seatsForRequest,
+        pickupLatitude: widget.pickupPoint.latitude,
+        pickupLongitude: widget.pickupPoint.longitude,
+        destinationLatitude: widget.destination.latitude,
+        destinationLongitude: widget.destination.longitude,
+        distanceKm: km <= 0 ? 0.1 : km,
+        durationMinutes: (km <= 0 ? 1 : km / 25 * 60).clamp(1, 6000).toDouble(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _submit() async {
     if (_submitting) return;
     final controller = AppControllerScope.of(context);
@@ -1558,11 +1614,55 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
     setState(() => _submitting = true);
     try {
+      // The fare, checked with the server before anything is created.
+      //
+      // This screen priced trips with its own arithmetic — no per-minute term,
+      // a different distance fudge, no rounding, and no floor whatsoever on
+      // what could be typed into the box. A customer could offer PKR 1 here
+      // and the API would take it.
+      //
+      // A published tour package is skipped: its price is the operator's, not
+      // the meter's.
+      final capacityForQuote = package?.totalSeats ?? choice.capacity;
+      final seatsForQuote = wholeVehicle
+          ? capacityForQuote
+          : _seats.clamp(1, package?.bookableSeats ?? capacityForQuote).toInt();
+
+      FareQuote? quote;
+      if (package == null) {
+        quote = await _quoteFare(controller, choice, wholeVehicle, seatsForQuote);
+        if (!mounted) return;
+        if (quote != null) {
+          if (amount < quote.minimum) {
+            setState(() => _submitting = false);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                'The lowest fare for this trip is ${Money.amount(quote.minimum)}.'
+                '${wholeVehicle ? '' : ' That is ${Money.amount(quote.minimum ~/ _seats)} a seat.'}',
+              ),
+            ));
+            return;
+          }
+          if (amount > quote.maximum) {
+            setState(() => _submitting = false);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                'The highest fare for this trip is ${Money.amount(quote.maximum)}. '
+                'Check the amount you entered.',
+              ),
+            ));
+            return;
+          }
+        }
+      }
+
       final pickupAt = package?.departureAt ?? (widget.serviceType == UDriveServiceType.city
           ? DateTime.now()
           : DateTime(_tourDate.year, _tourDate.month, _tourDate.day, 8));
-      final capacity = package?.totalSeats ?? choice.capacity;
-      final requestedSeats = wholeVehicle ? capacity : _seats.clamp(1, package?.bookableSeats ?? capacity).toInt();
+      // The same number the quote was asked for. Computing it twice is how
+      // the token ends up declaring one seat count and the request another,
+      // which the server refuses as a changed trip.
+      final requestedSeats = seatsForQuote;
       final request = await controller.createLiveRideRequest({
         'pickupLabel': widget.pickupLabel,
         'destinationLabel': widget.destination.title,
@@ -1577,7 +1677,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         'children': 0,
         'luggageCount': 0,
         'customerOffer': amount,
-        'vehicleCategory': choice.name,
+        'quoteToken': quote?.token,
+        'serviceType': 'City',
+        // The API's spelling, so the quote and the request agree and the rate
+        // card is the one that priced it.
+        'vehicleCategory': _apiVehicleCategory(choice.name),
         'partyType': requestedSeats > 1 ? 'Group' : 'Individual',
         'familyOnly': false,
         'womenOnly': false,
