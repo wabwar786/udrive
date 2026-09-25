@@ -9,6 +9,7 @@ import '../../core/config/app_config.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/booking_models.dart';
 import '../common/booking_chat_screen.dart';
 
@@ -102,9 +103,8 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
   }
 
   Future<void> _openCancelSheet() async {
-    final reason = await showModalBottomSheet<String>(
+    final reason = await showUdSheet<String>(
       context: context,
-      backgroundColor: Colors.transparent,
       builder: (_) => const _CancelReasonSheet(),
     );
     if (reason == null || !mounted) return;
@@ -148,8 +148,9 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
         children: [
           _DriverBanner(name: widget.offer.driverName),
           Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+            color: AppColors.surfaceHigh,
+            padding: const EdgeInsets.fromLTRB(
+                AppSizes.sidePadding, 16, AppSizes.sidePadding, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -276,23 +277,19 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
                   value: 'PKR ${_money.format(balance)}',
                 ),
                 const SizedBox(height: 16),
-                Row(
+                UdButtonRow(
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _call,
-                        icon: const Icon(Icons.call_rounded, size: 18),
-                        label: const Text('Call'),
-                      ),
+                    UdButton.outline(
+                      label: 'Call',
+                      icon: Icons.call_rounded,
+                      size: UdButtonSize.small,
+                      onPressed: _call,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _chat,
-                        icon: const Icon(Icons.chat_bubble_outline_rounded,
-                            size: 18),
-                        label: const Text('Chat'),
-                      ),
+                    UdButton.outline(
+                      label: 'Chat',
+                      icon: Icons.chat_bubble_outline_rounded,
+                      size: UdButtonSize.small,
+                      onPressed: _chat,
                     ),
                   ],
                 ),
@@ -342,10 +339,11 @@ class _DriverBanner extends StatelessWidget {
             child: Center(
               child: Text(
                 _initials,
-                style: TextStyle(
+                // Lime on navy, 13.5:1. It was the deep lime ink, which is a
+                // colour chosen to sit on white and measures about 2:1 here.
+                style: AppType.display.copyWith(
                   fontSize: 56,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.secondary,
+                  color: AppColors.brand,
                 ),
               ),
             ),
@@ -355,20 +353,11 @@ class _DriverBanner extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
               child: Align(
                 alignment: Alignment.topLeft,
-                child: GestureDetector(
-                  onTap: () => Navigator.maybePop(context),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: AppShadows.floating,
-                    ),
-                    child: const Icon(Icons.arrow_back_rounded,
-                        size: 19, color: AppColors.navy),
-                  ),
+                child: UdIconButton(
+                  icon: Icons.arrow_back_rounded,
+                  variant: UdIconButtonVariant.float,
+                  tooltip: 'Back',
+                  onPressed: () => Navigator.maybePop(context),
                 ),
               ),
             ),
@@ -386,13 +375,8 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          letterSpacing: .04,
-          color: AppText.secondary,
-        ),
+        text.toUpperCase(),
+        style: AppType.overline.copyWith(color: AppText.secondary),
       );
 }
 
@@ -457,10 +441,10 @@ class _CancellationCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
       decoration: BoxDecoration(
-        color: windowOpen ? Colors.white : AppTint.danger,
+        color: windowOpen ? AppTint.success : AppTint.danger,
         borderRadius: AppRadii.all(AppRadii.card),
         border: Border.all(
-          color: windowOpen ? AppColors.border : AppColors.danger,
+          color: windowOpen ? AppTint.successBorder : AppTint.dangerBorder,
         ),
       ),
       child: Column(
@@ -472,19 +456,19 @@ class _CancellationCard extends StatelessWidget {
                 windowOpen
                     ? Icons.timer_outlined
                     : Icons.lock_clock_outlined,
-                size: 17,
-                color: windowOpen ? AppText.secondary : AppColors.danger,
+                size: 20,
+                color: windowOpen ? AppTint.successText : AppTint.dangerText,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   windowOpen
                       ? 'Free cancellation for $countdown'
                       : 'Cancellation window closed',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: windowOpen ? AppText.primary : AppColors.danger,
+                  style: AppType.listTitle.copyWith(
+                    fontSize: 15,
+                    color:
+                        windowOpen ? AppTint.successText : AppTint.dangerText,
                   ),
                 ),
               ),
@@ -495,32 +479,21 @@ class _CancellationCard extends StatelessWidget {
             windowOpen
                 ? 'Cancel now and your advance is refunded in full.'
                 : 'Contact support if you still need to change this booking.',
-            style: const TextStyle(
-              fontSize: 11,
-              height: 1.4,
-              color: AppText.secondary,
+            style: AppType.small.copyWith(
+              color: windowOpen ? AppTint.successText : AppTint.dangerText,
             ),
           ),
-          const SizedBox(height: 12),
-          Opacity(
-            opacity: windowOpen ? 1 : .45,
-            child: SizedBox(
-              height: 46,
-              child: OutlinedButton(
-                onPressed: windowOpen && !busy ? onCancel : null,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.danger,
-                  side: const BorderSide(color: AppColors.danger),
-                ),
-                child: busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Cancel Ride'),
-              ),
-            ),
+          const SizedBox(height: 14),
+          UdButton(
+            label: 'Cancel Ride',
+            icon: Icons.close_rounded,
+            variant: UdButtonVariant.danger,
+            size: UdButtonSize.small,
+            busy: busy,
+            // Disabled once the window has closed, rather than faded out with
+            // an Opacity wrapper — the disabled fill is the design's own way of
+            // saying a control is unavailable, and it keeps the label legible.
+            onPressed: windowOpen ? onCancel : null,
           ),
         ],
       ),
@@ -540,75 +513,27 @@ class _CancelReasonSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.sheetTop(),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    // The sheet's shape, handle and padding come from showUdSheet.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Why are you cancelling?',
+          style: AppType.h2.copyWith(color: AppText.primary),
+        ),
+        const SizedBox(height: 16),
+        UdListGroup(
           children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(99),
-                ),
+            for (final reason in _reasons)
+              UdListRow(
+                title: reason,
+                showChevron: true,
+                onTap: () => Navigator.pop(context, reason),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Why are you cancelling?',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: AppText.primary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ..._reasons.map(
-              (reason) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InkWell(
-                  onTap: () => Navigator.pop(context, reason),
-                  borderRadius: AppRadii.all(AppRadii.field),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: AppTint.surface,
-                      borderRadius: AppRadii.all(AppRadii.field),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            reason,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: AppText.primary,
-                            ),
-                          ),
-                        ),
-                        const Icon(Icons.chevron_right_rounded,
-                            size: 20, color: AppText.disabled),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
           ],
         ),
-      ),
+      ],
     );
   }
 }

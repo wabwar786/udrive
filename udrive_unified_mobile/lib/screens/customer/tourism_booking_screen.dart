@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/auth_models.dart';
@@ -95,28 +96,31 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(context.tr('advanceBooking'))),
-        body: SafeArea(
-          child: Column(
-            children: [
-              _BookingProgress(current: _step),
-              Expanded(
-                child: Form(
-                  key: _formKey,
-                  child: IndexedStack(
-                    index: _step,
-                    children: [
-                      _routeStep(),
-                      _travelStep(),
-                      _vehicleStep(),
-                      _reviewStep(),
-                    ],
-                  ),
+        backgroundColor: AppColors.background,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UdTopBar(
+              title: context.tr('advanceBooking'),
+              onBack: () => Navigator.maybePop(context),
+            ),
+            _BookingProgress(current: _step),
+            Expanded(
+              child: Form(
+                key: _formKey,
+                child: IndexedStack(
+                  index: _step,
+                  children: [
+                    _routeStep(),
+                    _travelStep(),
+                    _vehicleStep(),
+                    _reviewStep(),
+                  ],
                 ),
               ),
-              _bottomActions(),
-            ],
-          ),
+            ),
+            _bottomActions(),
+          ],
         ),
       );
 
@@ -140,7 +144,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surfaceHigh,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.border),
             boxShadow: [
@@ -354,7 +358,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
         const SizedBox(height: 12),
         SwitchListTile.adaptive(
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-          tileColor: Colors.white,
+          tileColor: AppColors.surfaceHigh,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
             side: const BorderSide(color: AppColors.border),
@@ -571,7 +575,19 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [const Icon(Icons.route_rounded, color: Colors.white), const SizedBox(width: 10), Expanded(child: Text('${_pickup.text} → ${_destination.text}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 17)))]),
+                Row(children: [
+                  const Icon(Icons.route_rounded, color: AppColors.brand),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${_pickup.text} → ${_destination.text}',
+                      style: AppType.h3.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppText.onInk,
+                      ),
+                    ),
+                  ),
+                ]),
                 const SizedBox(height: 16),
                 _ReviewLine(label: context.tr('dateTime'), value: '${DateFormat('dd MMM yyyy').format(_departureDate)} · ${_departureTime.format(context)}'),
                 _ReviewLine(label: context.tr('bookingOption'), value: _bookingType == BookingType.perSeat ? context.tr('bookPerSeat') : context.tr('bookWholeVehicle')),
@@ -634,25 +650,33 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
         ],
       );
 
-  Widget _bottomActions() => Container(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-        decoration: const BoxDecoration(color: AppColors.surface, border: Border(top: BorderSide(color: AppColors.border))),
-        child: Row(
-          children: [
-            if (_step > 0) ...[
-              SizedBox(width: 110, child: OutlinedButton(onPressed: () => setState(() => _step--), child: Text(context.tr('back')))),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              child: FilledButton(
-                onPressed: _submitting ? null : (_step == 3 ? _submit : _next),
-                child: _submitting
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Text(_step == 3 ? context.tr('findVerifiedDrivers') : context.tr('continue')),
+  Widget _bottomActions() => UdBottomBar(
+        children: [
+          Row(
+            children: [
+              if (_step > 0) ...[
+                SizedBox(
+                  width: 120,
+                  child: UdButton.outline(
+                    label: context.tr('back'),
+                    onPressed: () => setState(() => _step--),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: UdButton.primary(
+                  label: _step == 3
+                      ? context.tr('findVerifiedDrivers')
+                      : context.tr('continue'),
+                  trailingIcon: Icons.arrow_forward_rounded,
+                  busy: _submitting,
+                  onPressed: _step == 3 ? _submit : _next,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       );
 
   void _next() {
@@ -1083,32 +1107,31 @@ class _SearchVehicleCard extends StatelessWidget {
   }
 }
 
+/// Four steps, as four segments.
+///
+/// It used to be four numbered circles joined by a rule. The numbers were the
+/// only thing carrying the state, at 12px, and the row cost about forty pixels
+/// of a phone screen to say "you are on step 2 of 4" — which the segments say
+/// in six pixels, and which the step's own heading says in words anyway.
 class _BookingProgress extends StatelessWidget {
   const _BookingProgress({required this.current});
   final int current;
+
   @override
-  Widget build(BuildContext context) => Container(
-        color: Colors.white,
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
-        child: Row(
-          children: List.generate(4, (index) {
-            final active = index <= current;
-            return Expanded(
-              child: Row(
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(color: active ? AppColors.primary : AppColors.background, shape: BoxShape.circle, border: Border.all(color: active ? AppColors.primary : AppColors.border)),
-                    alignment: Alignment.center,
-                    child: Text('${index + 1}', style: TextStyle(color: active ? Colors.white : AppColors.muted, fontWeight: FontWeight.w900, fontSize: 12)),
-                  ),
-                  if (index < 3) Expanded(child: Container(height: 2, color: index < current ? AppColors.primary : AppColors.border)),
-                ],
-              ),
-            );
-          }),
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 2, AppSizes.sidePadding, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            UdSteps(total: 4, current: current),
+            const SizedBox(height: 8),
+            Text(
+              'Step ${current + 1} of 4',
+              style: AppType.overline.copyWith(color: AppText.secondary),
+            ),
+          ],
         ),
       );
 }
@@ -1122,9 +1145,22 @@ class _StepIntro extends StatelessWidget {
   Widget build(BuildContext context) => Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(width: 50, height: 50, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: AppColors.primaryDark)),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: AppColors.navy)), const SizedBox(height: 4), Text(subtitle, style: const TextStyle(color: AppColors.muted, height: 1.4))])),
+          UdIconTile(icon: icon, size: UdIconTileSize.lg),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title, style: AppType.h2.copyWith(color: AppText.primary)),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: AppType.body2.copyWith(color: AppText.secondary),
+                ),
+              ],
+            ),
+          ),
         ],
       );
 }
@@ -1161,39 +1197,41 @@ class _ChoiceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: AppRadii.all(AppRadii.card),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: selected ? AppTint.brand : Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            color: selected ? AppColors.brandWash : AppColors.surfaceHigh,
+            borderRadius: AppRadii.all(AppRadii.card),
             border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border,
-              width: selected ? 1.6 : 1,
+              color: selected ? AppColors.navy : AppColors.border,
+              width: selected ? 2 : 1,
             ),
           ),
           child: Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(icon, color: AppColors.primaryDark),
+              UdIconTile(
+                icon: icon,
+                tone: selected ? UdIconTone.soft : UdIconTone.neutral,
               ),
-              const SizedBox(width: 13),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                    Text(
+                      title,
+                      style: AppType.listTitle.copyWith(
+                        fontSize: 16,
+                        color: AppText.primary,
+                      ),
+                    ),
                     const SizedBox(height: 3),
                     Text(
                       subtitle,
-                      style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35),
+                      style: AppType.small.copyWith(color: AppText.secondary),
                     ),
                   ],
                 ),
@@ -1263,7 +1301,7 @@ class _VehicleChoice extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-              color: selected ? AppTint.brand : Colors.white,
+              color: selected ? AppColors.brandWash : AppColors.surfaceHigh,
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
                 color: selected ? AppColors.primary : AppColors.border,
@@ -1330,7 +1368,34 @@ class _ReviewLine extends StatelessWidget {
   final String label;
   final String value;
   @override
-  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(top: 9), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 105, child: Text(label, style: const TextStyle(color: AppText.secondary, fontSize: 12))), Expanded(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)))]));
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 110,
+              child: Text(
+                label,
+                // On navy, so the secondary ink is the on-navy one. It was
+                // AppText.secondary — a grey chosen for white pages — which on
+                // this card measured about 2:1.
+                style: AppType.caption.copyWith(color: AppText.onInkMuted),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                style: AppType.caption.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: AppText.onInk,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _PriceLine extends StatelessWidget {
@@ -1339,5 +1404,9 @@ class _PriceLine extends StatelessWidget {
   final int value;
   final bool bold;
   @override
-  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [Expanded(child: Text(label, style: TextStyle(color: bold ? AppColors.navy : AppColors.muted, fontWeight: bold ? FontWeight.w900 : FontWeight.w600))), Text('PKR ${NumberFormat('#,###').format(value)}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: bold ? 17 : 13, color: AppColors.navy))]));
+  Widget build(BuildContext context) => UdKeyValue(
+        label: label,
+        value: 'PKR ${NumberFormat('#,###').format(value)}',
+        total: bold,
+      );
 }

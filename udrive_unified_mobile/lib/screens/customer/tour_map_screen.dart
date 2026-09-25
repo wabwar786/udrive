@@ -10,6 +10,7 @@ import '../../core/maps/ud_map.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../core/widgets/rate_driver_card.dart';
 import '../../models/booking_models.dart';
 import 'tour_driver_detail_screen.dart';
@@ -87,10 +88,8 @@ class _TourMapScreenState extends State<TourMapScreen> {
       .toList(growable: false);
 
   Future<void> _accept(LiveDriverOffer offer) async {
-    final advance = await showModalBottomSheet<bool>(
+    final advance = await showUdSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => _AdvancePaymentSheet(
         offer: offer,
         passengers: widget.passengers,
@@ -147,22 +146,21 @@ class _TourMapScreenState extends State<TourMapScreen> {
       return;
     }
 
-    final choice = await showModalBottomSheet<bool>(
+    final choice = await showUdSheet<bool>(
       context: context,
-      backgroundColor: AppColors.surfaceHigh,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => SafeArea(
+      builder: (sheetContext) => SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+          padding: EdgeInsets.zero,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 _t('Drivers are still being asked', 'ڈرائیوروں سے ابھی پوچھا جا رہا ہے'),
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                style: AppType.h3.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: AppText.primary,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
@@ -172,30 +170,18 @@ class _TourMapScreenState extends State<TourMapScreen> {
                   'آپ جا سکتے ہیں اور Trips سے دوبارہ اسی تلاش پر آ سکتے ہیں، یا ابھی '
                       'منسوخ کر دیں تاکہ نئی بکنگ کر سکیں۔',
                 ),
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  height: 1.45,
-                  color: AppColors.muted,
-                ),
+                style: AppType.body2.copyWith(color: AppText.secondary),
               ),
               const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(sheetContext, false),
-                  child: Text(_t('Keep searching', 'تلاش جاری رکھیں')),
-                ),
+              UdButton.primary(
+                label: _t('Keep searching', 'تلاش جاری رکھیں'),
+                onPressed: () => Navigator.pop(sheetContext, false),
               ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(sheetContext, true),
-                  child: Text(
-                    _t('Cancel this tour request', 'یہ ٹور درخواست منسوخ کریں'),
-                    style: const TextStyle(color: AppColors.danger),
-                  ),
-                ),
+              const SizedBox(height: 8),
+              UdButton(
+                label: _t('Cancel this tour request', 'یہ ٹور درخواست منسوخ کریں'),
+                variant: UdButtonVariant.danger,
+                onPressed: () => Navigator.pop(sheetContext, true),
               ),
               SizedBox(
                 width: double.infinity,
@@ -304,10 +290,9 @@ class _TourMapScreenState extends State<TourMapScreen> {
             snap: true,
             builder: (context, scrollController) => Container(
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(22)),
-                boxShadow: AppShadows.panel,
+                color: AppColors.surfaceHigh,
+                borderRadius: AppRadii.sheetTop(),
+                boxShadow: AppShadows.sheet,
               ),
               child: ListView(
                 controller: scrollController,
@@ -389,27 +374,12 @@ class _CircleBack extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Back',
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 38,
-          height: 38,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            shape: BoxShape.circle,
-            boxShadow: AppShadows.floating,
-          ),
-          child: const Icon(Icons.arrow_back_rounded,
-              size: 19, color: AppColors.navy),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => UdIconButton(
+        icon: Icons.arrow_back_rounded,
+        variant: UdIconButtonVariant.float,
+        tooltip: 'Back',
+        onPressed: onTap,
+      );
 }
 
 class _RoutePill extends StatelessWidget {
@@ -423,8 +393,8 @@ class _RoutePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .95),
-        borderRadius: AppRadii.all(AppRadii.row),
+        color: AppColors.background,
+        borderRadius: AppRadii.all(AppRadii.tile),
         boxShadow: AppShadows.floating,
       ),
       child: Column(
@@ -435,16 +405,15 @@ class _RoutePill extends StatelessWidget {
             '$pickup  →  $destination',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w800,
+            style: AppType.small.copyWith(
+              fontWeight: FontWeight.w700,
               color: AppText.primary,
             ),
           ),
           const SizedBox(height: 2),
-          const Text(
+          Text(
             'Showing nearby drivers on the map',
-            style: TextStyle(fontSize: 10.5, color: AppText.secondary),
+            style: AppType.caption.copyWith(color: AppText.secondary),
           ),
         ],
       ),
@@ -560,7 +529,7 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surfaceHigh,
           borderRadius: AppRadii.sheetTop(),
         ),
         child: SafeArea(
@@ -752,40 +721,16 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
                 ],
               ),
               const SizedBox(height: 16),
-              SizedBox(
-                height: 50,
-                child: Material(
-                  color: _valid ? AppColors.navy : AppColors.border,
-                  borderRadius: AppRadii.all(AppRadii.cta),
-                  child: InkWell(
-                    borderRadius: AppRadii.all(AppRadii.cta),
-                    onTap: !_valid || _paying
-                        ? null
-                        : () {
-                            setState(() => _paying = true);
-                            Navigator.pop(context, true);
-                          },
-                    child: Center(
-                      child: _paying
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white),
-                            )
-                          : Text(
-                              'Pay Advance & Confirm',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                                color: _valid
-                                    ? Colors.white
-                                    : AppText.disabled,
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
+              UdButton.primary(
+                label: 'Pay Advance & Confirm',
+                icon: Icons.lock_outline_rounded,
+                busy: _paying,
+                onPressed: !_valid
+                    ? null
+                    : () {
+                        setState(() => _paying = true);
+                        Navigator.pop(context, true);
+                      },
               ),
             ],
           ),
