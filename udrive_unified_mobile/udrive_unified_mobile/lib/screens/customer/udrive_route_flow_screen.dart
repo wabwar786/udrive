@@ -1245,8 +1245,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
   // It held this screen's loading and empty states, but nothing ever
   // called it from a reachable path, so none of it was shown. Its job is
   // now done by _availabilityBanner() above, which both live renderers
-  // include. An uncalled private method is an `unused_element` warning,
-  // and flutter analyze treats warnings as fatal.
+  // include. An uncalled private method is an `unused_element` warning:
+  // this repo's CI passes --no-fatal-warnings so it would not have broken
+  // the build, but a method nothing can call is still dead weight.
 
   double? _typedAmount(TextEditingController controller) {
     final clean = controller.text.replaceAll(',', '').trim();
@@ -2022,9 +2023,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     }
 
     // Everything that used to follow was unreachable: both branches of the
-    // try above return, so the compiler treated the remaining ~260 lines as
-    // dead code — a warning, and `flutter analyze` is fatal-on-warnings. It
-    // was an older full-page renderer, and it held the ONLY calls to
+    // try above return, so the analyzer treated the remaining ~260 lines as
+    // dead code. It was an older full-page renderer, and it held the ONLY
+    // calls to
     // the public vehicle-card builder, which is why its loading and empty
     // states never appeared on screen. The live renderers now show
     // _availabilityBanner() instead. Removed rather than left in place so the
@@ -2181,8 +2182,12 @@ class _VehicleChoiceData {
 // reads an underscored name followed by a bracket, inside a comment, as a
 // real constructor call and flags it as undeclared.)
 //
-// All twelve were reachable only from the unreachable renderer that build()
+// All thirteen were reachable only from the unreachable renderer that build()
 // could never run, and from the vehicle-card builder that renderer alone
-// called. With those gone, each of these is declared and never referenced,
-// which is an `unused_element` warning — and flutter analyze is
-// fatal-on-warnings, so leaving them would have failed the release build.
+// called. With those gone, each of these is declared and never referenced.
+//
+// That is an `unused_element` warning rather than an error, and this repo's
+// CI runs `flutter analyze --no-fatal-warnings`, so none of it would have
+// stopped a build — the reason to remove them is that they are code nothing
+// can reach, and the next person to read this file should not have to work
+// out which half of it runs.
