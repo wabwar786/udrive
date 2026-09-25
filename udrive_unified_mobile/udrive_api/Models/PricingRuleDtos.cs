@@ -24,7 +24,8 @@ public sealed record PricingRuleDto(
     double? AreaRadiusKm,
     int Priority,
     bool IsActive,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    decimal BaseFare = 0m);
 
 /// <summary>Create or update a pricing rule.</summary>
 public sealed record UpsertPricingRuleRequest(
@@ -40,7 +41,8 @@ public sealed record UpsertPricingRuleRequest(
     [Range(-180, 180)] double? AreaLongitude,
     [Range(0.1, 500)] double? AreaRadiusKm,
     [Range(-1000, 1000)] int Priority = 0,
-    bool IsActive = true);
+    bool IsActive = true,
+    [Range(0, 1000000)] decimal BaseFare = 0m);
 
 /// <summary>
 /// What a rule would charge for a given trip, so the admin can check a change
@@ -52,7 +54,8 @@ public sealed record PricingPreviewDto(
     decimal PerKmRate,
     decimal MinimumFare,
     decimal PerMinuteRate,
-    decimal Fare);
+    decimal Fare,
+    decimal BaseFare = 0m);
 
 /// <summary>A driver's own asking price for touring, per vehicle.</summary>
 /// <remarks>

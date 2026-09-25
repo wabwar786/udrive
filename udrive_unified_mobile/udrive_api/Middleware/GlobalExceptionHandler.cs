@@ -9,6 +9,22 @@ public sealed class GlobalExceptionHandler(
     ILogger<GlobalExceptionHandler> logger,
     IProblemDetailsService problemDetailsService) : IExceptionHandler
 {
+    /// <summary>
+    /// The same allowlist the CORS policy is built from, read once.
+    /// </summary>
+    /// <remarks>
+    /// This handler restores the CORS header that UseExceptionHandler clears,
+    /// and it used to restore it by echoing back whatever Origin the request
+    /// carried. That bypassed the allowlist completely on every 4xx and 5xx:
+    /// any website could read the body of any error response from this API
+    /// using a visitor's browser and a visitor's IP. Now the header comes back
+    /// only for an origin that was permitted in the first place.
+    /// </remarks>
+    private static readonly HashSet<string> allowedOrigins = new(
+        (Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        StringComparer.OrdinalIgnoreCase);
+
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
         Exception exception,
@@ -91,6 +107,7 @@ public sealed class GlobalExceptionHandler(
         // restoring.
         var origin = httpContext.Request.Headers.Origin.ToString();
         if (!string.IsNullOrWhiteSpace(origin)
+            && allowedOrigins.Contains(origin)
             && !httpContext.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
         {
             httpContext.Response.Headers["Access-Control-Allow-Origin"] = origin;

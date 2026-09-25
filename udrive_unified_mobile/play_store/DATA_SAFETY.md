@@ -26,14 +26,40 @@ Har type par: **Collected = Yes**, **Shared = No**, **Processed ephemerally = No
 | Personal info → Email address *(optional)* | Account management |
 | Personal info → Address *(drivers only)* | Account management; Fraud prevention, security and compliance |
 | Personal info → Other info (CNIC number, licence number, date of birth) | Fraud prevention, security and compliance; Account management |
+| Financial info → Payment info *(drivers only)* | App functionality |
 | Financial info → Other financial info (wallet top-ups, commission) | App functionality |
 | Messages → Other in-app messages (rider ↔ driver chat) | App functionality |
 | Photos and videos → Photos (driver documents, vehicle photos) | App functionality; Fraud prevention, security and compliance |
-| Audio → Voice or sound recordings *(optional — SOS only)* | App functionality |
-| App activity → Other user-generated content (trips, ratings) | App functionality; Analytics |
-| App info and performance → Crash logs | App functionality |
-| App info and performance → Diagnostics | App functionality |
+| App activity → Other user-generated content (trips, ratings) | App functionality |
+| Personal info → Other info (trusted contacts, emergency contacts, and tour passenger names) | App functionality; Fraud prevention, security and compliance |
 | Device or other IDs | Fraud prevention, security and compliance |
+
+**Do entries baad mein shaamil ki gayin** (release audit ke dauran — code inhein
+bhejta tha magar form mein declare nahi thin, aur kam declare karna bhee ghalat
+declare karne jitna he masla hai):
+
+- **Financial info → Payment info** — driver apna payout account deta hai:
+  account title, bank ka naam aur account number. Yeh "Other financial info"
+  se alag cheez hai.
+- **Personal info → Other info (doosre logon ka data)** — trusted contacts ka
+  naam aur number, booking ka emergency contact, aur tour passengers ke naam.
+  Yeh user ka apna data nahi, kisi aur ka hai, is liye alag entry chahiye.
+  (Play ka "Contacts" type sirf phone ki contact list parhne ke liye hai —
+  app woh nahi parhti, user khud likh kar deta hai.)
+
+**Teen entries jaan boojh kar hata di gayi hain.** Pehle yeh declare hoti thin,
+magar code mein mojood hi nahi thin — aur ghalat declaration bhee utni hi buri
+hai jitni kam declaration:
+
+- ~~Audio → Voice or sound recordings~~ — SOS ki recording us endpoint par jati
+  thi jo API mein kabhi bana hi nahi. Ab microphone poori tarah nikal diya gaya
+  hai (`RECORD_AUDIO` permission bhee).
+- ~~App info and performance → Crash logs~~ aur ~~→ Diagnostics~~ — poore
+  platform mein koi crash-reporting ya diagnostics SDK nahi. Flutter ki poori
+  dependency list mein Firebase, Sentry ya Crashlytics mein se kuch nahi.
+
+Isi tarah `App activity` se `Analytics` ka maqsad bhee hata diya — koi analytics
+tool mojood nahi hai, yeh data sirf app chalane ke liye hai.
 
 **"Shared" sab par No kyun:** rider aur driver ka ek doosre ko naam aur location
 dikhna user ke apne action se hota hai (Google is ko sharing nahi ginta), aur
@@ -64,19 +90,36 @@ nahi hain.
 
 ## 5. App access — reviewer ke liye login
 
-Admin portal → **Services & coming soon → WhatsApp OTP** mein:
-- "Google Play reviewer number" = ek number jo aap ke paas ho (jaise `03001234567`)
-- "Reviewer code" = 4 hindse (jaise `4417`)
+Admin portal → **Services → WhatsApp OTP** mein (SuperAdmin se login):
+- "Google Play reviewer number" = `03000000001`
+- "Reviewer code" = `5095`
 
-Yeh number kisi bhi provider mein us fixed code se login karta hai aur us par koi
-message nahi jata. Phir Play Console mein yeh instructions daalein:
+Yeh number kisi bhi provider mein usi fixed code se login karta hai aur us par koi
+message nahi jata.
+
+`03000000001` database mein pehle se mojood hai (`003_seed_catalog.sql`) — naam
+"Adeel Khan", **Approved Driver**, ek verified gaari `AJK-DEMO-01` ke sath. Login
+ke baad app **Customer mode** mein khulta hai, aur home par "Switch to Driver
+Mode" ka card se reviewer driver wala app bhee dekh leta hai. Is liye ek hi
+credential se dono taraf ka jaiza liya ja sakta hai.
+
+Play Console ke "App access" mein yeh instructions daalein:
 
 ```
-Username / phone: 03001234567
-Password / OTP:   4417
+Username / phone: 03000000001
+Password / OTP:   5095
 
-1. Open the app and choose Customer.
+1. Open the app. The first screen asks for a name and a mobile number.
 2. Enter the phone number above and tap "Send verification code".
-3. Enter the 4-digit code above. No SMS or WhatsApp message is needed for this
-   test number.
+3. Enter the 4-digit code above. No SMS or WhatsApp message is sent to this
+   number — the code above always works.
+4. The app opens in Customer mode: book a ride, browse Explore, view tours.
+5. To review the driver side, tap "Switch to Driver Mode" on the home screen.
+   The same account is an approved driver with a verified vehicle.
 ```
+
+**Har release se pehle check karein:** portal ke usi panel mein upar
+`Login codes: WhatsApp — live` likha hona chahiye. Agar `Development code
+(WhatsApp off)` likha hai to reviewer number bemaani hai — us halat mein har
+number ka code ek hi fixed code hota hai, yani koi bhi kisi ke account mein ja
+sakta hai.

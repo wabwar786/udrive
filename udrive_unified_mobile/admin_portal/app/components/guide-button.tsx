@@ -1,10 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { BookOpen, ChevronRight, Search, X } from 'lucide-react';
 
-import { guideGroups, type GuideSection } from '../lib/guide-content';
+import {
+  guideGroups,
+  haystack,
+  say,
+  type GuideLanguage,
+  type GuideSection,
+} from '../lib/guide-content';
+import { useGuideLanguage } from '../lib/guide-language';
 
 /**
  * The Guide button in the top bar, and the panel it opens.
@@ -20,38 +28,42 @@ import { guideGroups, type GuideSection } from '../lib/guide-content';
 export function GuideButton() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [language, setLanguage] = useGuideLanguage();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   // Escape closes it. A panel that covers the screen and can only be dismissed
-  // by finding a small × is a trap.
+  // by finding a small × is a trap. The page behind is frozen at the same
+  // time, so a scroll aimed at the guide does not silently move the form the
+  // reader is in the middle of.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false);
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
   }, [open]);
 
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return guideGroups;
 
-    // Searches the steps and cautions too, not just titles. Someone looking for
-    // help types the problem ("refund", "per km"), not the heading it sits
-    // under.
+    // Searches both languages, and the steps and cautions as well as the
+    // titles. Someone looking for help types the problem — "refund", "per km",
+    // "wapsi" — not the heading it sits under, and searching only the language
+    // on screen would hide a screen from someone who typed its English name.
     return guideGroups
       .map((group) => ({
         ...group,
         sections: group.sections.filter((section) =>
-          [
-            section.title,
-            section.purpose,
-            ...section.steps,
-            ...(section.cautions ?? []),
-          ]
-            .join(' ')
-            .toLowerCase()
-            .includes(needle),
+          haystack(section).includes(needle),
         ),
       }))
       .filter((group) => group.sections.length > 0);
@@ -68,7 +80,18 @@ export function GuideButton() {
         <span>Guide</span>
       </button>
 
-      {open && (
+      {/*
+        Rendered into <body> rather than here.
+
+        The button sits inside the top bar, and the top bar has a
+        backdrop-filter. A backdrop-filter makes its element the containing
+        block for every fixed-position descendant, so `position: fixed;
+        inset: 0` on the overlay was resolving against a 72-pixel-tall strip
+        instead of the viewport: the guide opened as a clipped band across the
+        top of the page with its body collapsed to nothing. A portal takes it
+        out of that subtree, and the same CSS then means what it says.
+      */}
+      {open && mounted && createPortal(
         <div className="guideOverlay" role="dialog" aria-label="Admin guide">
           <button
             className="guideScrim"
@@ -79,11 +102,18 @@ export function GuideButton() {
             <header className="guidePanelHead">
               <div>
                 <strong>Admin guide</strong>
-                <small>What each screen is for, and how to use it safely.</small>
+                <small>
+                  {language === 'ur'
+                    ? 'Har screen kis kaam ki hai, aur usay mehfooz tareeqe se kaise chalana hai.'
+                    : 'What each screen is for, and how to use it safely.'}
+                </small>
               </div>
-              <button className="iconButton" onClick={() => setOpen(false)}>
-                <X />
-              </button>
+              <div className="guideHeadTools">
+                <LanguageSwitch value={language} onChange={setLanguage} />
+                <button className="iconButton" onClick={() => setOpen(false)}>
+                  <X />
+                </button>
+              </div>
             </header>
 
             <div className="guideSearch">
@@ -91,7 +121,11 @@ export function GuideButton() {
               <input
                 autoFocus
                 value={query}
-                placeholder="Search the guide — refund, per km, verification…"
+                placeholder={
+                  language === 'ur'
+                    ? 'Guide mein dhoondein — refund, per km, verification…'
+                    : 'Search the guide — refund, per km, verification…'
+                }
                 onChange={(event) => setQuery(event.target.value)}
               />
             </div>
@@ -99,19 +133,27 @@ export function GuideButton() {
             <div className="guideBody">
               {results.length === 0 && (
                 <p className="guideEmpty">
-                  Nothing in the guide matches “{query}”. Try a shorter word, or
-                  open the full guide.
+                  {language === 'ur'
+                    ? `“${query}” se guide mein kuch nahi mila. Chhota lafz try karein, ya poori guide kholein.`
+                    : `Nothing in the guide matches “${query}”. Try a shorter word, or open the full guide.`}
                 </p>
               )}
 
               {results.map((group) => (
                 <section key={group.label} className="guideGroup">
                   <h3>{group.label}</h3>
-                  <p className="guideGroupBlurb">{group.blurb}</p>
+                  <p className="guideGroupBlurb">{say(group.blurb, language)}</p>
                   {group.sections.map((section) => (
+                    // The query is part of the key so each keystroke remounts
+                    // the entries. <details open> is uncontrolled: once the
+                    // reader collapses one by hand, React sees no prop change
+                    // on the next keystroke and never re-opens it, leaving a
+                    // search result whose matched words are hidden. Remounting
+                    // is the cheap fix at thirty-nine entries.
                     <GuideEntry
-                      key={`${group.label}-${section.title}`}
+                      key={`${group.label}-${section.title}-${query.trim()}`}
                       section={section}
+                      language={language}
                       expanded={query.trim().length > 0}
                       onNavigate={() => setOpen(false)}
                     />
@@ -122,23 +164,59 @@ export function GuideButton() {
 
             <footer className="guidePanelFoot">
               <Link href="/help" onClick={() => setOpen(false)}>
-                Open the full guide
+                {language === 'ur' ? 'Poori guide kholein' : 'Open the full guide'}
                 <ChevronRight size={14} />
               </Link>
             </footer>
           </aside>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
 }
 
+/**
+ * Roman / English.
+ *
+ * Labelled in each language's own words rather than with flags: a flag names a
+ * country, and neither of these is a country.
+ */
+export function LanguageSwitch({
+  value,
+  onChange,
+}: {
+  value: GuideLanguage;
+  onChange: (next: GuideLanguage) => void;
+}) {
+  return (
+    <div className="helpLanguageSwitch" role="group" aria-label="Guide language">
+      <button
+        type="button"
+        className={value === 'ur' ? 'active' : ''}
+        onClick={() => onChange('ur')}
+      >
+        Roman
+      </button>
+      <button
+        type="button"
+        className={value === 'en' ? 'active' : ''}
+        onClick={() => onChange('en')}
+      >
+        English
+      </button>
+    </div>
+  );
+}
+
 function GuideEntry({
   section,
+  language,
   expanded,
   onNavigate,
 }: {
   section: GuideSection;
+  language: GuideLanguage;
   expanded: boolean;
   onNavigate: () => void;
 }) {
@@ -148,27 +226,31 @@ function GuideEntry({
     <details className="guideEntry" open={expanded}>
       <summary>
         <strong>{section.title}</strong>
-        <small>{section.purpose}</small>
+        <small>{say(section.purpose, language)}</small>
       </summary>
 
       <ol>
-        {section.steps.map((step) => (
-          <li key={step}>{step}</li>
+        {section.steps.map((step, index) => (
+          <li key={`${section.path}-step-${index}`}>{say(step, language)}</li>
         ))}
       </ol>
 
       {section.cautions && section.cautions.length > 0 && (
         <ul className="guideCautions">
-          {section.cautions.map((caution) => (
-            <li key={caution}>{caution}</li>
+          {section.cautions.map((caution, index) => (
+            <li key={`${section.path}-caution-${index}`}>
+              {say(caution, language)}
+            </li>
           ))}
         </ul>
       )}
 
       <div className="guideEntryFoot">
-        {section.roles && <span className="guideRoles">{section.roles}</span>}
+        {section.roles && (
+          <span className="guideRoles">{say(section.roles, language)}</span>
+        )}
         <Link href={section.path} onClick={onNavigate}>
-          Go to screen
+          {language === 'ur' ? 'Screen kholein' : 'Go to screen'}
           <ChevronRight size={13} />
         </Link>
       </div>

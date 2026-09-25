@@ -15,14 +15,23 @@ namespace UDrive.Api.Services;
 ///    payout details are erased or replaced with placeholders;
 ///  * the phone number is released, so the same number can sign up again as a
 ///    brand-new account;
+///  * every uploaded identity document — CNIC, licence, selfie, selfie with
+///    CNIC, registration book, vehicle photographs, wallet top-up screenshots —
+///    is deleted from storage, along with the rows that point at it;
 ///  * trip, payment, wallet and audit rows are kept, now pointing at an
 ///    anonymous user, because finance, tax and safety investigations need them.
 ///    The privacy policy states this retention.
 ///
+/// The document deletion is the part that used to be missing. Numbers were
+/// nulled but the photographs of the CNIC and the licence stayed on the volume
+/// indefinitely, which is the opposite of what the deletion page promised — and
+/// an identity document is exactly the thing somebody deleting their account
+/// most wants gone.
+///
 /// A person with a live ride cannot delete mid-trip: the other party and the
 /// safety team still need to reach them.
 /// </summary>
-public sealed class AccountDeletionService(string connectionString)
+public sealed class AccountDeletionService(string connectionString, LocalFileStorageService files)
 {
     private static readonly string[] LiveTripStatuses =
         ["DriverAccepted", "DriverEnRoute", "DriverArrived", "TripStarted", "Emergency"];
@@ -110,16 +119,57 @@ public sealed class AccountDeletionService(string connectionString)
                SET is_online = false,
                    cnic_number = NULL,
                    cnic_number_hash = NULL,
+                   cnic_number_masked = NULL,
                    driving_licence_number = NULL,
                    driving_licence_number_hash = NULL,
+                   driving_licence_number_masked = NULL,
+                   driving_licence_expiry = NULL,
                    date_of_birth = NULL,
                    residential_address = NULL,
                    emergency_contact_name = NULL,
                    emergency_contact_phone = NULL,
                    bank_account_title = NULL,
+                   payout_method = NULL,
                    payout_account_masked = NULL,
                    updated_at = now()
              WHERE user_id = @u;
+            """,
+            // The document rows themselves. The files they point at are deleted
+            // from the volume after this transaction commits — see below.
+            """
+            DELETE FROM udrive.driver_documents
+             WHERE driver_profile_id IN (SELECT id FROM udrive.driver_profiles WHERE user_id = @u);
+            """,
+            """
+            DELETE FROM udrive.vehicle_documents
+             WHERE vehicle_id IN (
+                   SELECT v.id FROM udrive.vehicles v
+                    JOIN udrive.driver_profiles p ON p.id = v.driver_profile_id
+                   WHERE p.user_id = @u);
+            """,
+            // Bank details held separately from the driver profile.
+            """
+            DELETE FROM udrive.driver_payout_accounts
+             WHERE driver_profile_id IN (SELECT id FROM udrive.driver_profiles WHERE user_id = @u);
+            """,
+            // The top-up rows stay — they are money that moved — but the
+            // screenshot of somebody's payment app is personal, so the link
+            // goes and the image is deleted with the rest.
+            """
+            UPDATE udrive.driver_wallet_topups
+               SET screenshot_url = NULL, updated_at = now()
+             WHERE driver_profile_id IN (SELECT id FROM udrive.driver_profiles WHERE user_id = @u);
+            """,
+            // Last known position. Neither of these is covered by the 30-day
+            // purge that clears the trip trail, so without this a deleted
+            // driver's last location would sit in the database forever.
+            """
+            DELETE FROM udrive.driver_presence_locations
+             WHERE driver_profile_id IN (SELECT id FROM udrive.driver_profiles WHERE user_id = @u);
+            """,
+            """
+            DELETE FROM udrive.driver_latest_locations
+             WHERE driver_profile_id IN (SELECT id FROM udrive.driver_profiles WHERE user_id = @u);
             """,
             """
             UPDATE udrive.vehicles
@@ -135,6 +185,12 @@ public sealed class AccountDeletionService(string connectionString)
                  jsonb_build_object('reason', NULLIF(@reason, '')), now(), now());
             """
         ];
+
+        // Read the file paths before the rows that hold them are deleted, and
+        // delete the files themselves only after the transaction commits. The
+        // other order loses either the paths or the files: a rollback after
+        // erasing images would leave rows pointing at nothing.
+        var storedFiles = await CollectUploadedFilesAsync(connection, transaction, userId, cancellationToken);
 
         var cleanReason = (reason ?? string.Empty).Trim();
         if (cleanReason.Length > 500) cleanReason = cleanReason[..500];
@@ -154,6 +210,63 @@ public sealed class AccountDeletionService(string connectionString)
         }
 
         await transaction.CommitAsync(cancellationToken);
+
+        // Best effort, and deliberately after the commit. A file that cannot be
+        // removed — a permission problem, a volume that is not mounted — must
+        // not undo a deletion the person has already been told succeeded; it is
+        // an operational fault to fix, not a reason to give them their account
+        // back. DeleteProtectedFiles swallows per-file errors and reports a
+        // count.
+        files.DeleteProtectedFiles(storedFiles);
+
         return ServiceResult<bool>.Ok(true, "Your account has been deleted.");
+    }
+
+    /// <summary>
+    /// Every file this person uploaded, as the stored URLs the file service
+    /// understands.
+    /// </summary>
+    /// <remarks>
+    /// Dispute evidence is not in this list on purpose. It belongs to a case
+    /// that has another party to it, and removing one side's evidence would
+    /// quietly rewrite a dispute somebody else is still relying on.
+    /// </remarks>
+    private static async Task<List<string>> CollectUploadedFilesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT d.file_url
+              FROM udrive.driver_documents d
+              JOIN udrive.driver_profiles p ON p.id = d.driver_profile_id
+             WHERE p.user_id = @u AND d.file_url IS NOT NULL
+            UNION ALL
+            SELECT vd.file_url
+              FROM udrive.vehicle_documents vd
+              JOIN udrive.vehicles v ON v.id = vd.vehicle_id
+              JOIN udrive.driver_profiles p ON p.id = v.driver_profile_id
+             WHERE p.user_id = @u AND vd.file_url IS NOT NULL
+            UNION ALL
+            SELECT t.screenshot_url
+              FROM udrive.driver_wallet_topups t
+              JOIN udrive.driver_profiles p ON p.id = t.driver_profile_id
+             WHERE p.user_id = @u AND t.screenshot_url IS NOT NULL;
+            """;
+
+        var urls = new List<string>();
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("u", userId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (!reader.IsDBNull(0))
+            {
+                urls.Add(reader.GetString(0));
+            }
+        }
+
+        return urls;
     }
 }

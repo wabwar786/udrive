@@ -7,6 +7,7 @@ public static class ProductionConfigurationValidator
         "Development-Signing-Key",
         "Development-Otp-Hash-Secret",
         "Development-Identity-Hash-Secret",
+        "Development-Quote-Signing-Secret",
         "Change-Me"
     ];
 
@@ -39,6 +40,11 @@ public static class ProductionConfigurationValidator
             problems.Add("OTP_HASH_SECRET uses a development default.");
         if (DevelopmentSecretFragments.Any(options.IdentityHashSecret.Contains))
             problems.Add("IDENTITY_HASH_SECRET uses a development default.");
+        // A forged quote sets its own floor, so this key decides whether every
+        // fare in the platform means anything. Shipping without it set is the
+        // same class of mistake as shipping without a JWT key.
+        if (DevelopmentSecretFragments.Any(options.QuoteSigningSecret.Contains))
+            problems.Add("QUOTE_SIGNING_SECRET uses a development default.");
         if (options.ExposeDevelopmentOtp)
             problems.Add("EXPOSE_DEVELOPMENT_OTP must be false in production.");
         if (string.Equals(effectiveOtpProvider, "Development", StringComparison.OrdinalIgnoreCase))

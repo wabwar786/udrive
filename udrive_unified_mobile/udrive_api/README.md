@@ -49,11 +49,30 @@ Live authentication and verification backend for the Udrive Kashmir tourism appl
 
 ## Development test accounts
 
-- Approved Driver: `03000000001`, OTP `1234`
-- Admin: `03000000099`, OTP `1234`
-- New Customer: any valid Pakistani mobile number, OTP `1234`
+Seeded users (`003_seed_catalog.sql`, `004_phase8_authentication_and_verification.sql`):
 
-The fixed OTP provider is for staging/testing only. Configure a real SMS provider before a public launch.
+- Approved Driver: `03000000001` — "Adeel Khan", vehicle `AJK-DEMO-01`
+- SuperAdmin: `03000000099`
+- Any other valid Pakistani mobile number creates a Customer on first verify
+
+**Which code works depends on the provider, not on the account.**
+
+- Provider `Development` — *every* number on the platform accepts
+  `DEVELOPMENT_OTP_CODE` (default `1234`) and nothing is sent. This is a
+  staging-only mode: with it on, anyone who knows the code can sign in as
+  anyone. Never leave it on for a deployment real users can reach.
+- Provider `WhatsApp` — a random 4-digit code goes out over WA Engine, and only
+  the reviewer number below bypasses it.
+
+The reviewer number (`otp.test.phone` / `otp.test.code`, set under Services →
+WhatsApp OTP in the admin portal, SuperAdmin only) accepts its fixed code under
+*any* provider and sends nothing. For the Play Store submission it is set to
+`03000000001` / `5095`.
+
+Note that `OTP_PROVIDER_OVERRIDE` beats the database setting, and that an
+unrecognised provider value falls back to `Development` silently — so
+`OTP_PROVIDER=ProductionProvider` means the fixed code is live. Check the
+portal, which states the effective provider, rather than the variable.
 
 ## Required Railway variables
 

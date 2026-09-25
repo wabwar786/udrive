@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="UDrive - rides, tours and stays across Azad Kashmir.">
+  <meta name="theme-color" content="#FFFFFF">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="UDrive">
+  <link rel="apple-touch-icon" href="icons/Icon-192-v4.png">
+  <link rel="icon" type="image/png" href="favicon-v4.png?v=20260924"/>
+  <link rel="manifest" href="manifest.json">
+  <title>UDrive</title>
+
+  <!-- Google Maps JavaScript API.
+       Required for google_maps_flutter on the WEB build only. The Android APK
+       reads its key from AndroidManifest.xml instead; see REDESIGN_HANDOVER.md.
+
+       Replace YOUR_WEB_MAPS_API_KEY below with your Maps JavaScript API key,
+       then restrict that key in Google Cloud Console to your site's domains
+       (HTTP referrers) so nobody else can spend your quota.
+
+       Until the key is filled in, map screens fall back to the offline
+       OpenStreetMap layer rather than breaking. -->
+  <!--
+    Google Maps JS is deliberately not loaded.
+
+    The web build renders maps with flutter_map on Flutter's own canvas. Loading
+    the Maps JS API here achieved nothing except a download on every visit and,
+    when the key did not match the origin, an error overlay on a map that was
+    never Google's to begin with.
+
+    Android and iOS use the native Google Maps SDK; neither reads this file.
+  -->
+</head>
+<body>
+  <script>
+    // Clear old Udrive PWA caches after branding/release updates.
+    const release = 'udrive-20260730-v2';
+    if (localStorage.getItem('udrive_release') !== release) {
+      localStorage.setItem('udrive_release', release);
+      if ('caches' in window) caches.keys().then(keys => Promise.all(keys.map(key => caches.delete(key))));
+      if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(items => items.forEach(item => item.update()));
+    }
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

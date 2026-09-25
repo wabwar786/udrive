@@ -94,3 +94,52 @@
 /* Upload control on the vehicle pictures page */
 .uploadRow{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px dashed #cbd8d2;border-radius:10px;color:#0a7a58;font-size:12.5px;font-weight:600;cursor:pointer;width:fit-content}
 .uploadRow:hover{background:#f2f8f5;border-color:#0a7a58}
+
+/* Collapsible menu groups, guide language switch, help checklist, print */
+.navGroupHead{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:0;background:transparent;cursor:pointer;padding:0 12px;margin:0 0 8px;font-size:10px;letter-spacing:.15em;color:#5f8f7e;font-weight:800;text-align:left}
+.navGroupHead:hover{color:#9fd4c1}
+.navGroupHead svg{flex:0 0 auto;transition:transform .18s ease;opacity:.75}
+.navGroupHead.navGroupFolded svg{transform:rotate(-90deg)}
+.collapsed .sidebar nav .navGroupHead{display:none}
+.guideHeadTools{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.topActions .helpLanguageSwitch{flex:0 0 auto}
+.helpDaily .panelHeader{align-items:flex-start}
+.helpChecklist{list-style:none;margin:0;padding:6px 18px 18px;display:grid;gap:4px;counter-reset:none}
+.helpChecklist li{display:flex;align-items:flex-start;gap:12px;padding:9px 10px;border-radius:13px}
+.helpChecklist li:hover{background:#f4faf7}
+.helpChecklistStep{flex:0 0 24px;height:24px;border-radius:8px;display:grid;place-items:center;background:#e2f7ee;color:#087650;font-weight:900;font-size:11px}
+.helpChecklist a{font-weight:800;color:#0a7a58}
+.helpChecklist small{display:block;margin-top:3px;color:#6f817a;line-height:1.55}
+@media(max-width:650px){.helpPrintButton{display:none}}
+@media print{
+  .sidebar,.topbar,.drawerShade,.helpSearchPanel,.helpPrintButton,.guideEntryFoot,.guideOverlay{display:none!important}
+  .adminShell,.adminShell.collapsed{display:block}
+  .content{padding:0;max-width:none}
+  body{background:#fff}
+  /* Entries stay whole; the panels around them may split, or a group of ten
+     sections would push a page break before every heading and the guide would
+     print at twice the length. */
+  .panel{box-shadow:none;border-radius:0}
+  .guideEntry,.helpHero,.helpChecklist li{box-shadow:none;break-inside:avoid;page-break-inside:avoid}
+  .panelHeader{break-inside:avoid;break-after:avoid;page-break-inside:avoid;page-break-after:avoid}
+  .helpHero{color:#000;background:none;border:1px solid #ccc}
+  .helpHero span,.helpHero p{color:#333}
+  .guideEntry[open] summary{background:none}
+  a{color:#000}
+}
+
+/* Sidebar brand sizing, and the language switch on a phone */
+.sidebar .brand{flex:0 0 auto;min-height:0;padding-bottom:20px;overflow:hidden}
+.sidebar .brandText>img{max-height:56px}
+@media(max-width:650px){
+  .topActions .helpLanguageSwitch{display:none}
+  .guideHeadTools .helpLanguageSwitch{display:inline-flex}
+}
+
+/* The collapsed rail becomes a normal drawer below 900px, so the group
+   headings must come back with it — otherwise a window narrowed while the
+   rail is collapsed shows all 35 links as one flat list, and the Collapse
+   button that would undo it is itself hidden at this width. */
+@media(max-width:900px){
+  .collapsed .sidebar nav .navGroupHead{display:flex}
+}

@@ -29,8 +29,14 @@ public sealed class PublicVehicleImageController(
     [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Any)]
     public IActionResult Get(string owner, string fileName)
     {
+        // allowLegacyFallback: false is doing real work on an anonymous route.
+        // With the fallback on, a filename that does not exist under
+        // vehicle-images sends the resolver searching EVERY storage root
+        // recursively by name — so this endpoint, which needs no token at all,
+        // would hand out a driver's CNIC to anyone who learned the filename.
+        // Category imagery has no legacy layout to fall back to anyway.
         var file = fileStorage.ResolveProtectedFile(
-            "vehicle-images", owner, fileName);
+            "vehicle-images", owner, fileName, allowLegacyFallback: false);
 
         if (file is null) return NotFound();
 

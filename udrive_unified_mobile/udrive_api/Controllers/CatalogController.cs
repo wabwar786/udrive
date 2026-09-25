@@ -174,7 +174,11 @@ public sealed class CatalogController(CatalogService catalogService, LocalFileSt
     [ResponseCache(Duration = 3600, Location = ResponseCacheLocation.Client)]
     public IActionResult DestinationImage(string owner, string fileName)
     {
-        var file = fileStorage.ResolveProtectedFile("destinations", owner, fileName);
+        // Anonymous route: the legacy by-filename search across every storage
+        // root must not be reachable from here, or destination marketing
+        // imagery becomes a door to driver-documents. See the same note on
+        // PublicVehicleImageController.
+        var file = fileStorage.ResolveProtectedFile("destinations", owner, fileName, allowLegacyFallback: false);
         if (file is null) return NotFound();
         Response.Headers["X-Content-Type-Options"] = "nosniff";
         Response.Headers["Cross-Origin-Resource-Policy"] = "cross-origin";

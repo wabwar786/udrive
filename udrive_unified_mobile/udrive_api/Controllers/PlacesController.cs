@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Npgsql;
 using System.Text.Json;
 using UDrive.Api.Common;
@@ -26,6 +27,10 @@ namespace UDrive.Api.Controllers;
 /// </remarks>
 [ApiController]
 [Route("api/v1/places")]
+// Anonymous on purpose (address search happens before sign-in), so the cost
+// control is a per-caller rate limit rather than a token. The tile route
+// overrides this with its own, larger allowance.
+[EnableRateLimiting("places")]
 public sealed class PlacesController(
     IConfiguration configuration,
     IHttpClientFactory httpClientFactory) : ControllerBase
@@ -572,6 +577,7 @@ public sealed class PlacesController(
 
     [HttpGet("tiles/v{v:int}/{z:int}/{x:int}/{y:int}")]
     [HttpGet("tiles/{z:int}/{x:int}/{y:int}")]
+    [EnableRateLimiting("map-tiles")]
     [ResponseCache(Duration = 604800, Location = ResponseCacheLocation.Any)]
     public async Task<IActionResult> Tile(
         int z,

@@ -10,7 +10,8 @@ public sealed record AuthOptions(
     string IdentityHashSecret,
     string OtpProvider,
     string DevelopmentOtpCode,
-    bool ExposeDevelopmentOtp)
+    bool ExposeDevelopmentOtp,
+    string QuoteSigningSecret)
 {
     public static AuthOptions FromEnvironment()
     {
@@ -21,9 +22,24 @@ public sealed record AuthOptions(
         var identitySecret = Environment.GetEnvironmentVariable("IDENTITY_HASH_SECRET")
             ?? "UDrive-Phase8-Development-Identity-Hash-Secret-2026!";
 
+        // Signs fare quotes. Its own secret rather than reusing the JWT key,
+        // so rotating sign-in tokens does not invalidate every open quote and
+        // a leak of one is not a leak of the other.
+        //
+        // A rotation of this key makes quotes issued before it unusable. That
+        // is a few minutes of customers being asked to reload a fare, which is
+        // the correct trade for being able to rotate it at all.
+        var quoteSecret = Environment.GetEnvironmentVariable("QUOTE_SIGNING_SECRET")
+            ?? "UDrive-Phase20-Development-Quote-Signing-Secret-2026!";
+
         if (signingKey.Length < 32)
         {
             throw new InvalidOperationException("JWT_SIGNING_KEY must contain at least 32 characters.");
+        }
+
+        if (quoteSecret.Length < 32)
+        {
+            throw new InvalidOperationException("QUOTE_SIGNING_SECRET must contain at least 32 characters.");
         }
 
         return new AuthOptions(
@@ -39,7 +55,8 @@ public sealed record AuthOptions(
             string.Equals(
                 Environment.GetEnvironmentVariable("EXPOSE_DEVELOPMENT_OTP"),
                 "true",
-                StringComparison.OrdinalIgnoreCase));
+                StringComparison.OrdinalIgnoreCase),
+            quoteSecret);
     }
 
     private static int ParsePositiveInt(string key, int fallback)

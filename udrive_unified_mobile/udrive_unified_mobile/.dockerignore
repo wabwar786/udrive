@@ -1,0 +1,7 @@
+.git
+.github
+.dart_tool
+build
+android/.gradle
+ios/Pods
+README.md

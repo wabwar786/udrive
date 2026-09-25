@@ -1,13 +1,28 @@
 name: Print SHA-1 fingerprint
 
-# Run this by hand from the Actions tab when you need the SHA-1 for a Google
-# Maps Android API key restriction. It builds nothing and publishes nothing —
-# it only prints the signing fingerprint of the key the APK is signed with.
+# Run this by hand from the Actions tab when you need a SHA-1 for a Google Maps
+# Android API key restriction. It builds nothing and publishes nothing — it only
+# prints the fingerprint of whichever key this checkout can sign with.
 #
-# The release build currently uses the DEBUG signing key
-# (android/app/build.gradle.kts), so the debug SHA-1 below is the one Google
-# needs. When you move to a private upload keystore for Play Store, come back
-# and register that keystore's SHA-1 as well.
+# READ THIS BEFORE YOU COPY ANYTHING OUT OF THE LOG.
+#
+# An app published through Google Play is re-signed by Play App Signing. The
+# certificate that ends up on the user's phone is Google's, not the upload key
+# you built with, so the SHA-1 Maps has to trust is the one in
+#   Play Console → your app → Test and release → Setup → App signing
+#   → "App signing key certificate" → SHA-1.
+# That value cannot be printed from this repository. It exists only after the
+# first bundle has been uploaded.
+#
+# So, in the Maps key's Android restriction, add package com.wabwar.udrive with:
+#   1. the Play App Signing SHA-1  — REQUIRED, or the map is blank for every
+#      user who installs from Play;
+#   2. the upload key's SHA-1      — so an internal-testing build you sideload
+#      also shows the map;
+#   3. the debug SHA-1             — only if you want `flutter run` to show it
+#      on a development machine. Never on its own.
+#
+# This workflow prints 2 and 3. Get 1 from the Play Console.
 
 on:
   workflow_dispatch:
@@ -41,13 +56,21 @@ jobs:
 
       - name: SHA-1 fingerprint
         working-directory: udrive_unified_mobile/android
+        env:
+          UDRIVE_KEYSTORE_PATH: ${{ secrets.UDRIVE_KEYSTORE_PATH }}
+          UDRIVE_KEYSTORE_PASSWORD: ${{ secrets.UDRIVE_KEYSTORE_PASSWORD }}
+          UDRIVE_KEY_ALIAS: ${{ secrets.UDRIVE_KEY_ALIAS }}
+          UDRIVE_KEY_PASSWORD: ${{ secrets.UDRIVE_KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew || true
           ./gradlew signingReport --no-daemon | tee report.txt
           echo ""
           echo "=============================================="
-          echo "COPY THE SHA1 LINE UNDER 'Variant: debug':"
+          echo "Variant: release  → this is the UPLOAD key."
+          echo "Variant: debug    → development machines only."
+          echo ""
+          echo "The SHA-1 that Play-installed apps use is NOT here."
+          echo "Take it from Play Console → Setup → App signing."
           echo "=============================================="
-          grep -A 6 "Variant: debug" report.txt | grep "SHA1" || \
-            grep "SHA1" report.txt || \
-            echo "No SHA1 found - paste the full log to Claude."
+          grep -B 2 -A 6 "Variant: release" report.txt | grep -E "Variant|SHA1" || true
+          grep -B 2 -A 6 "Variant: debug" report.txt | grep -E "Variant|SHA1" || true

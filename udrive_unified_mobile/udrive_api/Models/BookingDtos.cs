@@ -23,7 +23,26 @@ public sealed record CreateRideRequestRequest(
     bool FamilyOnly,
     bool WomenOnly,
     [StringLength(1000)] string? Notes,
-    bool InstantRide = false);
+    bool InstantRide = false,
+    /// <summary>
+    /// The signed fare quote this offer was made against.
+    /// </summary>
+    /// <remarks>
+    /// Optional in the type so builds already in people's hands keep working;
+    /// whether it is optional in practice is
+    /// <c>pricing.quote.required</c>'s decision, not this record's.
+    /// </remarks>
+    [StringLength(2048)] string? QuoteToken = null,
+    /// <summary>
+    /// Which rate card this trip was quoted from.
+    /// </summary>
+    /// <remarks>
+    /// Compared against the signed quote rather than stored. The rate cards
+    /// differ by about twenty per cent between City and PrivateVehicle, so
+    /// without this a quote taken from the cheaper one could be spent on the
+    /// dearer — the band would be genuine, just for a different service.
+    /// </remarks>
+    [StringLength(40)] string ServiceType = "City");
 
 public sealed record RideRequestDto(
     Guid Id,
@@ -50,7 +69,17 @@ public sealed record RideRequestDto(
     Guid? SelectedOfferId,
     DateTimeOffset? ExpiresAt,
     DateTimeOffset CreatedAt,
-    string CustomerName);
+    string CustomerName,
+    /// <summary>
+    /// The floor the server quoted for this trip, if it quoted one.
+    /// </summary>
+    /// <remarks>
+    /// Sent to the driver so the app can show the lowest fare that will be
+    /// accepted before they type, rather than refusing the offer afterwards.
+    /// Null on requests created before fare authority shipped, and on requests
+    /// from an app build that does not send a quote.
+    /// </remarks>
+    decimal? QuotedMinimum = null);
 
 public sealed record DriverRideOfferStatusDto(
     Guid OfferId,

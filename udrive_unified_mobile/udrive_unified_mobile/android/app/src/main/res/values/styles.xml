@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    LaunchTheme is the window before Flutter starts; NormalTheme is the window
+    the engine swaps in once the first frame is ready. Both are white now, so
+    the app never flashes a colour it does not use.
+
+    The previous values painted #087A55 and #17B978 - the old green - which on a
+    white app meant a green flash on every cold start and a green strip under
+    the navigation bar for as long as the launch window was up.
+-->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/udrive_background</item>
+        <item name="android:navigationBarColor">@color/udrive_background</item>
+        <!-- White bars need dark icons, or the clock disappears. -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@drawable/launch_background</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/udrive_background</item>
+        <item name="android:navigationBarColor">@color/udrive_background</item>
+        <item name="android:windowBackground">@color/udrive_background</item>
+    </style>
+</resources>

@@ -61,19 +61,75 @@ public sealed class LocalFileStorageService
         }
 
         var configured = Environment.GetEnvironmentVariable("UPLOAD_ROOT");
-        StorageIsEphemeral = string.IsNullOrWhiteSpace(configured)
+        var pathLooksEphemeral = string.IsNullOrWhiteSpace(configured)
             || Path.GetFullPath(configured)
                 .StartsWith(Path.GetFullPath(AppContext.BaseDirectory),
                     StringComparison.OrdinalIgnoreCase);
+
+        // The path test above is not enough on its own.
+        //
+        // The Dockerfile sets UPLOAD_ROOT=/data/uploads unconditionally, so the
+        // string always looks right. If the Railway volume is not actually
+        // mounted at /data, the entrypoint's `mkdir -p` still succeeds — into
+        // the container's own writable layer, as root — the API writes there
+        // happily, this check stayed false, and the warning never printed.
+        // Every driver CNIC, licence, vehicle photo and payment screenshot was
+        // then destroyed on the next deploy, leaving database rows pointing at
+        // files that no longer existed.
+        //
+        // A mounted volume is a different filesystem from the image, so the two
+        // have different device ids. That is what is compared here: it detects
+        // the real condition instead of trusting the variable.
+        StorageIsEphemeral = pathLooksEphemeral || !IsOnSeparateFilesystem(_uploadRoot);
 
         if (StorageIsEphemeral)
         {
             // Loud, once, at boot. This has already cost a set of verification
             // documents that had to be uploaded again.
             Console.WriteLine(
-                "WARNING: UPLOAD_ROOT is unset or inside the container image "
-                + $"('{_uploadRoot}'). Every uploaded file will be lost on the "
-                + "next deploy. Mount a volume and set UPLOAD_ROOT=/data/uploads.");
+                $"WARNING: upload directory '{_uploadRoot}' is not on a mounted "
+                + "volume — it is part of the container image. Every uploaded "
+                + "file will be lost on the next deploy. Mount a volume and set "
+                + "UPLOAD_ROOT=/data/uploads.");
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="path"/> sits on a different filesystem from
+    /// the container image, i.e. on a mounted volume.
+    /// </summary>
+    /// <remarks>
+    /// Compares the st_dev of the path against the st_dev of the image root.
+    /// Any failure to determine this returns true — "assume it is fine" — so a
+    /// platform where the check cannot run does not produce a permanent false
+    /// warning that people learn to scroll past. The path test above is the
+    /// backstop in that case.
+    /// </remarks>
+    private static bool IsOnSeparateFilesystem(string path)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return true;
+        }
+
+        try
+        {
+            var mounts = File.ReadAllLines("/proc/mounts")
+                .Select(line => line.Split(' '))
+                .Where(parts => parts.Length > 1)
+                .Select(parts => parts[1].Replace("\\040", " "))
+                .Where(mountPoint => mountPoint.Length > 1)
+                .ToArray();
+
+            var full = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
+
+            return mounts.Any(mountPoint =>
+                full.Equals(mountPoint, StringComparison.Ordinal)
+                || full.StartsWith(mountPoint + "/", StringComparison.Ordinal));
+        }
+        catch
+        {
+            return true;
         }
     }
 
@@ -137,7 +193,16 @@ public sealed class LocalFileStorageService
         return new StoredFile(protectedUrl, file.Length, DetectContentType(extension));
     }
 
-    public ResolvedStoredFile? ResolveProtectedFile(string category, string owner, string fileName)
+    /// <param name="allowLegacyFallback">
+    /// When false, only the exact <c>{root}/{category}/{owner}/{file}</c> path
+    /// resolves. The fallback below searches every storage root for a matching
+    /// filename regardless of category or owner, which is what makes a route
+    /// that accepts user-supplied segments dangerous — a caller who has been
+    /// authorised for one specific file must not be able to reach another by
+    /// name alone.
+    /// </param>
+    public ResolvedStoredFile? ResolveProtectedFile(
+        string category, string owner, string fileName, bool allowLegacyFallback = true)
     {
         var safeCategory = SanitizeSegment(category);
         var safeOwner = SanitizeSegment(owner);
@@ -156,7 +221,7 @@ public sealed class LocalFileStorageService
             }
         }
 
-        return FindLegacyFile(safeFile);
+        return allowLegacyFallback ? FindLegacyFile(safeFile) : null;
     }
 
     public ResolvedStoredFile? ResolveStoredUrl(string? storedUrl)

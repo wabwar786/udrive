@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Dark mode. UDrive has one theme - the white one - so this file exists to
+    stop the system substituting a dark launch window and showing a black
+    rectangle for the half-second before a white app appears.
+
+    Same white, same pin, same bars as values/styles.xml. It is not an oversight
+    that this is a copy: the app genuinely looks the same either way, and the
+    file has to exist because the -night qualifier would otherwise fall through
+    to a platform default.
+-->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/udrive_background</item>
+        <item name="android:navigationBarColor">@color/udrive_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@drawable/launch_background</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/udrive_background</item>
+        <item name="android:navigationBarColor">@color/udrive_background</item>
+        <item name="android:windowBackground">@color/udrive_background</item>
+    </style>
+</resources>

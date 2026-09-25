@@ -93,8 +93,12 @@ public sealed class WhatsAppService(
             return ServiceResult<WhatsAppBulkSendResultDto>.Fail(400, "invalid_location", "The supplied location is invalid.");
         }
 
-        var numbers = request.Numbers
-            .Append(_safetyNumber)
+        // The safety number goes FIRST. It used to be appended, so the Take(12)
+        // below dropped it the moment somebody had twelve trusted contacts —
+        // the one recipient guaranteed to be staffed was the one cut, and
+        // nobody would have noticed until an emergency where it mattered.
+        var numbers = new[] { _safetyNumber }
+            .Concat(request.Numbers)
             .Select(NormalizePhone)
             .Where(number => number.Length is >= 10 and <= 15)
             .Distinct(StringComparer.Ordinal)
@@ -117,7 +121,11 @@ public sealed class WhatsAppService(
         var accuracy = request.AccuracyMeters is > 0 ? $" (accuracy about {request.AccuracyMeters.Value:F0} m)" : string.Empty;
         var message =
             $"🚨 UDRIVE EMERGENCY ALERT 🚨\n\n" +
-            $"{customer} has activated the emergency microphone/panic alert.\n" +
+            // No mention of a microphone. The app does not record audio, the
+            // privacy policy says so, and telling a trusted contact that a
+            // "microphone alert" was activated invites them to wait for a
+            // recording that is never coming.
+            $"{customer} has activated the emergency panic alert.\n" +
             $"Current location: {mapsUrl}\n" +
             $"Coordinates: {request.Latitude:F6}, {request.Longitude:F6}{accuracy}\n" +
             $"Alert time: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC\n\n" +

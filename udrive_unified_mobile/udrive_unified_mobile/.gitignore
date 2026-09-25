@@ -1,0 +1,24 @@
+.dart_tool/
+.packages
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea/
+.vscode/
+*.iml
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/upload-keystore.jks
+# Signing key material in any form. keystore.b64.txt is the upload keystore
+# base64-encoded for the GitHub secret - it is the key itself, not a copy of
+# something harmless. It must never be committed.
+*.jks
+*.keystore
+keystore.b64.txt
+*.b64.txt
+ios/Pods/
+ios/.symlinks/
+macos/Pods/
+.DS_Store

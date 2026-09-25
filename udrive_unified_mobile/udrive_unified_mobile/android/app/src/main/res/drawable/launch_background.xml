@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The window Android paints between the icon being tapped and Flutter's first
+    frame. It is deliberately the same as lib/screens/splash_screen.dart draws:
+    white ground, navy pin, centred. When the two match, the hand-off has
+    nothing to see.
+
+    Used on Android 11 and below; Android 12+ takes the splash from
+    values-v31/styles.xml instead, which the platform composes itself.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/udrive_background" />
+    <item>
+        <bitmap android:gravity="center" android:src="@drawable/launch_icon" />
+    </item>
+</layer-list>

@@ -25,5 +25,9 @@
   <ItemGroup>
     <EmbeddedResource Include="Infrastructure/Persistence/Migrations/*.sql" />
     <EmbeddedResource Include="Infrastructure/Persistence/Scripts/*.sql" />
+    <!-- The privacy policy, terms and account-deletion page. Embedded rather
+         than copied to disk so the pages Google Play points at cannot go
+         missing from a deployment. -->
+    <EmbeddedResource Include="Content/legal/*.md" />
   </ItemGroup>
 </Project>

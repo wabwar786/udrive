@@ -45,6 +45,24 @@ public sealed class AuthService(
         // code has actually been sent, so a failed send does not start the
         // 45-second wait.
         var plan = await otpDelivery.PlanAsync(phoneNumber, cancellationToken);
+
+        // "Unavailable" means production is running without WhatsApp switched
+        // on. The alternative to refusing here is issuing the fixed development
+        // code, which is the same code for every number on the platform.
+        if (plan.Provider == "Unavailable")
+        {
+            logger.LogError(
+                "Login refused for {PhoneNumber}: WhatsApp delivery is not configured and this is "
+                + "a production deployment, so the fixed development code is not issued. Configure "
+                + "WA Engine under Services in the admin portal.",
+                phoneNumber);
+
+            return ServiceResult<RequestOtpDto>.Fail(
+                StatusCodes.Status503ServiceUnavailable,
+                "otp_not_configured",
+                "Sign-in is temporarily unavailable. Please try again shortly.");
+        }
+
         if (plan.Send && !await otpDelivery.SendLoginCodeAsync(phoneNumber, plan.Code, cancellationToken))
         {
             return ServiceResult<RequestOtpDto>.Fail(

@@ -67,6 +67,43 @@ public sealed class OtpDeliveryService(
     IHttpClientFactory httpClientFactory,
     ILogger<OtpDeliveryService> logger)
 {
+    /// <summary>
+    /// True only when this process is explicitly running as Development.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The test is deliberately inverted. It used to ask whether
+    /// ASPNETCORE_ENVIRONMENT equalled "Production", which fails OPEN: unset,
+    /// blank, "Staging", "railway", or "Production " with the trailing space a
+    /// dashboard variable so easily carries, and the answer is "not
+    /// production", so the fixed development code — default "1234" — became
+    /// the live credential for every phone number on the platform, the
+    /// SuperAdmin included. ASP.NET Core itself treats an unset value as
+    /// Production, so <see cref="ProductionConfigurationValidator"/> would have
+    /// been running its production checks and logging success at the same
+    /// moment.
+    /// </para>
+    /// <para>
+    /// Asking the opposite question fails CLOSED. Anything that is not
+    /// literally "Development" — including nothing at all — refuses to issue a
+    /// fixed code. A misspelling now costs a developer their convenience code,
+    /// not the whole platform its authentication.
+    /// </para>
+    /// <para>
+    /// Read from the environment rather than injected so this class keeps its
+    /// four-argument shape, and read once because it cannot change while the
+    /// process runs. <c>DOTNET_ENVIRONMENT</c> is honoured too, because the
+    /// host reads it as a fallback and a developer who sets only that one
+    /// should still get the same answer here as the rest of the application.
+    /// </para>
+    /// </remarks>
+    private static readonly bool isDevelopment =
+        string.Equals(
+            (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT"))?.Trim(),
+            "Development",
+            StringComparison.OrdinalIgnoreCase);
+
     public const string HttpClientName = "wa-otp";
     public const string DefaultBaseUrl = "https://wa-engine-deploy-production.up.railway.app";
     public const string DefaultSendPath = "/api/send";
@@ -107,6 +144,30 @@ public sealed class OtpDeliveryService(
         {
             var code = RandomNumberGenerator.GetInt32(0, 10000).ToString("D4");
             return new OtpPlan("WhatsApp", code, Send: true, DevelopmentCodeToExpose: null);
+        }
+
+        // The fixed development code never applies in production.
+        //
+        // Until now, a deployment whose WhatsApp provider had not been switched
+        // on gave EVERY phone number the same code — DEVELOPMENT_OTP_CODE,
+        // default "1234". Anyone who knew it could sign in as anyone: a
+        // customer, a driver, or the SuperAdmin. The only thing standing in the
+        // way was a LogWarning at startup, which nobody reads twice.
+        //
+        // In production that path is now closed. Sign-in is refused with a
+        // plain message until WhatsApp is configured, which is the correct
+        // direction to fail: an app nobody can log into is a bad afternoon, and
+        // an app everybody can log into as anybody is the end of the product.
+        //
+        // The reviewer number above is checked first and is unaffected, so
+        // Google Play review keeps working while this is being set up.
+        //
+        // Note the direction of the test: the fixed code is issued only when
+        // the environment says Development in so many words. Every other value,
+        // and no value at all, lands here and refuses. See `isDevelopment`.
+        if (!isDevelopment)
+        {
+            return new OtpPlan("Unavailable", string.Empty, Send: false, DevelopmentCodeToExpose: null);
         }
 
         return new OtpPlan(
