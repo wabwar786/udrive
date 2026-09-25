@@ -576,9 +576,23 @@ class UdRouteBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    // IntrinsicHeight, and it is not optional.
+    //
+    // The rail has to be exactly as tall as the two stops beside it, which is
+    // what `CrossAxisAlignment.stretch` asks for — but stretch takes the row's
+    // height from its own constraints, and inside a scrolling column those are
+    // unbounded. In a debug build that trips an assertion; in a release build
+    // the assertions are gone, so the row simply becomes infinitely tall and
+    // every widget after it is pushed past the end of the scroll view. That is
+    // the "only the map shows, the rest is blank" screen: the card was there,
+    // a mile below the fold.
+    //
+    // IntrinsicHeight measures the children first and gives the row a real
+    // height, so stretch has something finite to stretch to.
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
         const SizedBox(width: 22, child: _RouteRail()),
         const SizedBox(width: 14),
         Expanded(
@@ -603,7 +617,8 @@ class UdRouteBlock extends StatelessWidget {
             ],
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 }

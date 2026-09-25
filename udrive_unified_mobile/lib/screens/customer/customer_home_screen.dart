@@ -2703,6 +2703,15 @@ class _QuickTile extends StatelessWidget {
         child: Opacity(
           opacity: closed ? .55 : 1,
           child: Stack(
+            // Passthrough, not the default.
+            //
+            // A Stack hands its non-positioned children *loose* constraints, so
+            // the card below was sizing to its own label — which is why the
+            // four tiles came out four different widths, "Car rental" wide and
+            // "Hotels" narrow, instead of each filling its equal share.
+            // Passthrough gives the card the tight width the Expanded above
+            // already worked out.
+            fit: StackFit.passthrough,
             clipBehavior: Clip.none,
             children: [
               AnimatedContainer(
