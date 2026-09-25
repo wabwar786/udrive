@@ -11,7 +11,12 @@ Each check exists because a specific mistake reached a build:
 import re, glob, os, sys
 
 theme = ''
-for f in ('lib/core/theme/app_tokens.dart', 'lib/core/theme/app_theme.dart'):
+# app_type.dart was added with design system v2: it holds AppType, AppRadii
+# and AppSizes, which moved out of app_tokens.dart so that the theme could
+# use the type scale without the two files importing each other. Without it
+# here, every AppRadii.* call site reads as an unknown token.
+for f in ('lib/core/theme/app_tokens.dart', 'lib/core/theme/app_theme.dart',
+          'lib/core/theme/app_type.dart'):
     theme += open(f, encoding='utf-8').read()
 TOKENS = set(re.findall(r'static (?:const )?(?:double |int |Color |BorderRadius |List<BoxShadow> )?(?:get )?(\w+)\s*[=({]', theme))
 

@@ -1,12 +1,25 @@
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
+import 'app_type.dart';
 
-/// Tint / surface colours introduced by the Home & Tour Booking redesign.
+/// Radii, sizes and the type scale come from `app_type.dart`, which names no
+/// colour so that the theme can use it without importing this file back.
+/// Re-exported here so every existing `import '../theme/app_tokens.dart'`
+/// keeps seeing [AppRadii] and friends exactly as it did before.
+export 'app_type.dart';
+
+/// Tint and surface colours for design system v2.
 ///
-/// The core brand colours stay in [AppColors]; this file only adds the
-/// supporting tints, radii, shadows and text colours the redesign specifies so
-/// that no widget hard-codes a hex value.
+/// The core brand colours stay in [AppColors]; this file adds the supporting
+/// tints, shadows and text colours so that no widget hard-codes a hex value.
+///
+/// Every status pairing below is a *pair* — a wash, the ink that goes on it,
+/// and a border — and the ink is chosen for that wash, not for white. Using
+/// [AppColors.danger] on [danger] is the combination that was measured
+/// (6.1:1); using it on white is a different number (6.6:1) and both are fine,
+/// but putting `successText` on a white card or `dangerText` on the brand wash
+/// is not something that has been checked.
 class AppTint {
   const AppTint._();
 
@@ -20,73 +33,133 @@ class AppTint {
   /// Secondary surface — inset rows such as the tour-booking toggle strip.
   static const surface = AppColors.surfaceAlt;
 
-  static const success = Color(0xFFEDF7D6);
+  // ------------------------------------------------------------- status
 
-  /// Ink on [success].
-  ///
-  /// A shade darker than [AppColors.secondary], which is the accent's value on
-  /// white. On this pale lime wash the accent measures 4.42:1 — under AA for
-  /// the "3 seats left" sized text it mostly carries. This is 5.84:1.
-  static const successText = Color(0xFF4E6600);
+  static const success = Color(0xFFF3FBD9);
+  static const successText = Color(0xFF3F5A00); // 7.3:1 on the wash
+  static const successBorder = Color(0xFFD9EE9A);
 
-  static const danger = Color(0xFFFFECEC);
-  static const dangerText = Color(0xFFB3272A);
+  static const danger = Color(0xFFFEF3F2);
+  static const dangerText = Color(0xFFB42318); // 6.1:1 on the wash
 
-  /// A danger outline. Written as a fixed alpha because `withValues` is not a
-  /// const expression and these sit inside `const BorderSide`.
-  static const dangerBorder = Color(0x33FF4D4F);
+  /// A danger outline. An opaque colour rather than an alpha over white,
+  /// because these sit inside `const BorderSide` and `withValues` is not a
+  /// const expression — which is what `tool/check_const_colours.py` enforces.
+  static const dangerBorder = Color(0xFFF6C7C2);
 
-  static const warning = Color(0xFFFCF0DF);
-  static const warningText = Color(0xFF8A5600);
+  static const warning = Color(0xFFFFF6E5);
+  static const warningText = Color(0xFF8A5600); // 5.7:1 on the wash
+  static const warningBorder = Color(0xFFF5D9A8);
 
-  static const info = Color(0xFFEAF2FF);
-  static const infoText = AppColors.info;
+  static const info = Color(0xFFEEF4FF);
+  static const infoText = Color(0xFF1B5FA8); // 5.9:1 on the wash
+  static const infoBorder = Color(0xFFC9DBF7);
 
   /// Rating stars. Gold, and nothing else in the app is this colour.
   static const star = Color(0xFFF5B942);
 
-  // Map semantics. These are not brand colours and do not follow the brand:
-  // green means "where you are", amber means "where you are going", and a
-  // rider reads those two before they read any label. Tokens so the two
-  // meanings stay one colour each across the map, the route sheet and the
-  // trip panel.
-  static const pickup = Color(0xFF16A34A);
-  static const dropoff = Color(0xFFF97316);
+  // ---------------------------------------------------------------- map
+
+  /// Where the trip starts.
+  ///
+  /// Navy, not the green this used to be. In v2 the route block tells the two
+  /// ends apart by *shape* — a ring for the start, a filled square for the
+  /// destination — and both are drawn in brand colours. Green and orange were
+  /// the only two hues left in the app that belonged to no part of the brand.
+  static const pickup = AppColors.navy;
+
+  /// Where the trip ends.
+  ///
+  /// Also navy, and deliberately the same value as [pickup]. The design's
+  /// destination marker is a lime square *with a navy border*, and the border
+  /// is what makes it legible — a bare lime icon on a white page is 1.3:1,
+  /// i.e. invisible. Anything that draws the real marker should use
+  /// [pinDropFill] with [pinDropBorder]; anything drawing a plain icon should
+  /// use this and let the icon's shape carry the meaning.
+  static const dropoff = AppColors.navy;
+
+  /// The start marker on the map: a navy dot inside a thick white ring.
+  static const pinPickupFill = AppColors.navy;
+  static const pinPickupRing = Color(0xFFFFFFFF);
+
+  /// The destination marker: a lime rounded square with a navy border.
+  static const pinDropFill = AppColors.brand;
+  static const pinDropBorder = AppColors.navy;
+
+  /// The chosen route, 6px.
+  static const routeActive = AppColors.navy;
+
+  /// The routes not chosen, 4px and behind.
+  static const routeAlternative = Color(0xFFA9B2BC);
+
+  /// Behind the map while tiles are still loading, and the land colour of the
+  /// design's own map artwork.
+  static const mapBackdrop = Color(0xFFEAEFE7);
+  static const mapPark = Color(0xFFDCE8D2);
+  static const mapWater = Color(0xFFCFE3F2);
+
+  // ------------------------------------------------------------ waiting
 
   /// Waiting on someone: a request out to drivers, an offer not yet answered.
-  /// Amber because it is neither done nor wrong, and it has to read at a
-  /// glance on the dark route sheet as well as on a white card.
-  static const pending = Color(0xFFF79009);
-  static const pendingBorder = Color(0x55F79009);
+  /// Amber because it is neither done nor wrong.
+  static const pending = Color(0xFF8A5600);
+  static const pendingBorder = Color(0xFFF5D9A8);
 
-  // Scrims and glass on the dark screens: navy at fixed opacities, for the
-  // same const reason as [dangerBorder].
+  /// The same amber at panel strength, for the body of a waiting or
+  /// "nothing available yet" card.
+  static const pendingSurface = Color(0xFFFFF6E5);
+
+  // ------------------------------------------------------- scrims & glass
+
+  /// Behind a sheet or a dialog. Navy at 45%, per `.scrim`.
+  static const scrim = Color(0x730B1B33);
+
+  // RETIRING with the dark screens — see the note in AppColors.
   static const inkScrim = Color(0xE80B1B33);
   static const inkVeil = Color(0xB80B1B33);
   static const inkGlass = Color(0xA80B1B33);
-  static const inkGlassSoft = Color(0x840B1B33);
 
-  /// Card and panel shadows, as a const colour.
-  static const shadow = Color(0x1F0B1B33);
-  static const shadowSoft = Color(0x140B1B33);
+  // ------------------------------------------------------------ shadows
 
-  /// Behind the map while tiles are still loading.
-  static const mapBackdrop = Color(0xFFEEF1F4);
+  /// Card and panel shadow colours, as const values.
+  ///
+  /// All three are navy, and all three are fainter than they were. On a white
+  /// page a shadow is not how a card separates from the background — the
+  /// hairline border is — so the shadow only has to stop the card looking
+  /// painted on.
+  static const shadowSoft = Color(0x0D0B1B33); // 5%  — cards at rest
+  static const shadow = Color(0x140B1B33); // 8%  — raised cards
+  static const shadowStrong = Color(0x240B1B33); // 14% — dialogs
 }
 
 class AppText {
   const AppText._();
 
   static const primary = AppColors.navy;
+
+  /// Secondary copy. 7.0:1 on white, 6.5:1 on a grey inset.
   static const secondary = AppColors.muted;
 
-  /// Disabled labels and unselected icons.
-  static const disabled = Color(0xFF9AA3AF);
+  /// Captions of 13px and up, **on white only**. 4.9:1 — it passes, but with
+  /// no margin, so it does not go on a grey inset and it never carries
+  /// anything the reader has to have.
+  static const caption = AppColors.caption;
+
+  /// Disabled labels. 3.1:1 on white, which fails AA — allowed *only* on a
+  /// disabled button, where the whole control is meant to read as unavailable
+  /// and the text is not information the reader needs.
+  static const disabled = Color(0xFF8A94A1);
 
   /// Text placed ON the brand lime.
   ///
   /// Navy, always. White on lime is 1.28:1 — not dim, not marginal; invisible.
   static const onBrand = AppColors.onBrand;
+
+  /// Text on navy: a dark button, a navy hero card, a dark screen.
+  static const onInk = Colors.white;
+
+  /// Secondary text on navy. 10.8:1.
+  static const onInkMuted = AppColors.onInkMuted;
 }
 
 /// Per-product colours.
@@ -96,28 +169,12 @@ class AppText {
 /// gradients: a gradient per card looks striking on a monitor but reads as busy
 /// on a phone outdoors, and four of them compete with the map behind.
 ///
-/// Each product carries a surface, an accent for its icon and border, a title
-/// ink and a subdued ink. Colour means something here, so the same hue follows
-/// a product wherever it appears.
+/// Ride is the brand's own tile and takes the brand's own colour; the others
+/// are neutral, with their hue carried by the icon rather than the whole block.
+/// Four saturated blocks beside a lime button was three colours too many, and
+/// it is the brand tile that should win.
 class AppProduct {
   const AppProduct._();
-
-  // Product tiles on the home screen.
-  //
-  // Deeper than the near-white washes these started as. On a white page a 4%
-  // tint is not a colour, it is a smudge — the tiles read as empty space with
-  // words in it rather than as blocks you press. These are saturated enough to
-  // hold an edge without a border.
-  //
-  // Still not full-strength brand colour: four saturated blocks side by side
-  // compete with each other and with the one button on the screen. The ink
-  // stays near-black on all of them, which is what keeps them readable at this
-  // depth and is the reason the depth is safe.
-
-  // Ride is the brand's own tile and takes the brand's own colour; the others
-  // are neutral, with their hue carried by the icon rather than the whole
-  // block. Four saturated blocks beside a lime button was three colours too
-  // many, and it is the brand tile that should win.
 
   // Ride — brand lime.
   static const rideSurface = AppColors.brand;
@@ -126,82 +183,83 @@ class AppProduct {
   static const rideSub = Color(0xFF2E3C52);
   static const rideInk = AppColors.onBrand;
 
-  // Tour — neutral block, warm icon.
-  static const tourSurface = Color(0xFFF4F6F8);
+  // Tour — white block with a border, warm icon.
+  //
+  // These were grey blocks. In v2 the secondary service tiles are white cards
+  // like everything else, and grey is reserved for insets, so the tile is
+  // separated by its border instead of its fill.
+  static const tourSurface = AppColors.surfaceHigh;
   static const tourAccent = Color(0xFF8A5600);
   static const tourTitle = AppColors.navy;
   static const tourSub = AppColors.muted;
 
-  // Hotel — neutral block, blue icon.
-  static const hotelSurface = Color(0xFFEEF1F4);
+  // Hotel — white block, blue icon.
+  static const hotelSurface = AppColors.surfaceHigh;
   static const hotelAccent = Color(0xFF16497F);
   static const hotelTitle = AppColors.navy;
   static const hotelSub = AppColors.muted;
 
-  // Seats — used by the per-seat control rather than a card.
-  static const seatsAccent = Color(0xFF5E7A00);
+  /// Used by the per-seat control rather than a card.
+  static const seatsAccent = AppColors.brandInk;
 }
 
-class AppRadii {
-  const AppRadii._();
-
-  static const double field = 13;
-  static const double row = 14;
-  static const double cta = 15;
-  static const double tile = 15;
-  static const double card = 18;
-  static const double largeCard = 20;
-  static const double panel = 24;
-  static const double sheet = 24;
-
-  static BorderRadius all(double value) => BorderRadius.circular(value);
-  static BorderRadius sheetTop() =>
-      const BorderRadius.vertical(top: Radius.circular(sheet));
-}
-
-/// Soft-only shadows. The redesign explicitly rules out hard drop shadows.
+/// The three elevations of design system v2, plus the two that have a shape of
+/// their own.
+///
+/// `sh-1`, `sh-2` and `sh-3` in `ud.css`. Softer than the v1 set, and far
+/// softer than the black 35–50% shadows this started as when the whole app was
+/// dark — on white those printed as grey smudges under every card, visible as
+/// haloes around the header icons, which is not depth, it is dirt.
 class AppShadows {
   const AppShadows._();
 
-  /// Shadows tuned for a white page.
-  ///
-  /// These were black at 35–50% opacity, which is what a dark theme needs to
-  /// lift a panel off a near-black page. On white the same values print as grey
-  /// smudges under every card and button — visible as haloes around the header
-  /// icons, which is not depth, it is dirt.
-  ///
-  /// A white page separates surfaces with a hairline border and a very faint
-  /// shadow, or with nothing at all.
+  /// sh-1 — a card at rest. Barely there on purpose; the border does the work.
+  static const List<BoxShadow> card = [
+    BoxShadow(
+      color: AppTint.shadowSoft,
+      blurRadius: 2,
+      offset: Offset(0, 1),
+    ),
+  ];
 
-  static List<BoxShadow> get card => [
-        BoxShadow(
-          color: AppColors.navy.withValues(alpha: .06),
-          blurRadius: 12,
-          offset: const Offset(0, 3),
-        ),
-      ];
-
-  static List<BoxShadow> get panel => [
-        BoxShadow(
-          color: AppColors.navy.withValues(alpha: .08),
-          blurRadius: 20,
-          offset: const Offset(0, 6),
-        ),
-      ];
+  /// sh-2 — a raised card, a floating map button, the active segment of a
+  /// segmented control.
+  static const List<BoxShadow> panel = [
+    BoxShadow(
+      color: AppTint.shadow,
+      blurRadius: 20,
+      offset: Offset(0, 6),
+    ),
+  ];
 
   /// Controls that sit on top of the map.
   ///
-  /// Empty. On a light map these had nothing to lift off, and the shadow read
-  /// as a ring of dirt around each icon. A white button on a light map is
-  /// already distinct; its own edge does the work.
-  static List<BoxShadow> get floating => const <BoxShadow>[];
+  /// These are sh-2 now, where they used to be empty. On the v1 light map a
+  /// white button had nothing to lift off and the shadow read as a ring of
+  /// dirt; the v2 map artwork is a green-grey that a white chip does need
+  /// separating from.
+  static const List<BoxShadow> floating = panel;
 
-  /// The bottom navigation bar, shadowed upward.
-  static List<BoxShadow> get navBar => [
-        BoxShadow(
-          color: AppColors.navy.withValues(alpha: .06),
-          blurRadius: 14,
-          offset: const Offset(0, -3),
-        ),
-      ];
+  /// sh-3 — dialogs.
+  static const List<BoxShadow> dialog = [
+    BoxShadow(
+      color: AppTint.shadowStrong,
+      blurRadius: 32,
+      offset: Offset(0, 12),
+    ),
+  ];
+
+  /// A bottom sheet, shadowed upward.
+  static const List<BoxShadow> sheet = [
+    BoxShadow(
+      color: Color(0x1F0B1B33), // 12%
+      blurRadius: 34,
+      offset: Offset(0, -10),
+    ),
+  ];
+
+  /// The bottom navigation bar. Nothing — v2 separates it with a 1px top
+  /// border, and a shadow under a bar that is already against the screen edge
+  /// only muddies the row of labels above it.
+  static const List<BoxShadow> navBar = <BoxShadow>[];
 }
