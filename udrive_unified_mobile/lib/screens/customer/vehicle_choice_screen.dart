@@ -10,6 +10,7 @@ import '../../core/routing/route_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../core/maps/ud_map.dart';
 import '../../core/pricing/fare_quote.dart';
 import '../../core/pricing/fare_quote_repository.dart';
@@ -844,22 +845,23 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _RouteHeader(
-              pickup: widget.pickupLabel,
-              destination: widget.destinationLabel,
-              route: _route,
-              onBack: () => Navigator.pop(context),
-            ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _buildBody(),
-            ),
-          ],
-        ),
+      // No outer SafeArea: the header draws its own top inset and the fare
+      // panel its own bottom one, so wrapping the pair would inset twice.
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _RouteHeader(
+            pickup: widget.pickupLabel,
+            destination: widget.destinationLabel,
+            route: _route,
+            onBack: () => Navigator.pop(context),
+          ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _buildBody(),
+          ),
+        ],
       ),
     );
   }
@@ -875,6 +877,11 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         (MediaQuery.sizeOf(context).height * .38).clamp(230.0, 400.0);
 
     return Column(
+      // Stretch, so the fare panel and the rows above it span the screen
+      // whatever constraints this column is handed. A Column's default is
+      // centre, which gives its children loose width — and a child that sizes
+      // itself from its constraints then collapses.
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Route options, when there is more than one.
         //
@@ -884,9 +891,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         // which one is chosen; the chips are how it is chosen.
         if (_routes.length > 1)
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+            padding: const EdgeInsets.fromLTRB(
+                AppSizes.sidePadding, 12, AppSizes.sidePadding, 0),
             child: SizedBox(
-              height: 54,
+              height: 62,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: _routes.length,
@@ -911,7 +919,8 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         // glance, and the row still fits without scrolling because the labels
         // are short.
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+          padding: const EdgeInsets.fromLTRB(
+              AppSizes.sidePadding, 12, AppSizes.sidePadding, 0),
           child: Row(
             children: [
               for (final option in _options) ...[
@@ -924,7 +933,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                     onTap: () => _select(option),
                   ),
                 ),
-                if (option != _options.last) const SizedBox(width: 6),
+                if (option != _options.last) const SizedBox(width: 8),
               ],
             ],
           ),
@@ -944,7 +953,8 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                 height: heroHeight,
                 child: _showMap
                     ? Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: AppSizes.sidePadding),
                         child: ClipRRect(
                           borderRadius: AppRadii.all(AppRadii.largeCard),
                           child: UdMap(
@@ -1013,8 +1023,8 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                             itemBuilder: (context, index) {
                               final option = _options[index];
                               return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 16),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSizes.sidePadding),
                                 child: _VehiclePhoto(
                                   option: option,
                                   imageUrl: _images[
@@ -1030,8 +1040,8 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                           // the photograph told the customer less than a number
                           // and a figure on top of it.
                           Positioned(
-                            left: 26,
-                            bottom: 12,
+                            left: 32,
+                            bottom: 14,
                             child: _PhotoBadge(
                               icon: Icons.people_alt_rounded,
                               label: '${selected.seats}',
@@ -1044,8 +1054,8 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                           // does not need a tab. Tapping swaps the photograph
                           // for the map rather than opening another screen.
                           Positioned(
-                            right: 26,
-                            bottom: 12,
+                            right: 32,
+                            bottom: 14,
                             child: _PhotoBadge(
                               icon: Icons.my_location_rounded,
                               label: '${_nearby.length} nearby',
@@ -1064,10 +1074,12 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                 // The way back from the map. A view you can enter and not leave
                 // is a trap, and the badge that opened it is now covered by it.
                 Center(
-                  child: TextButton.icon(
+                  child: UdButton.ghost(
+                    label: 'Show the vehicle',
+                    icon: Icons.photo_outlined,
+                    size: UdButtonSize.small,
+                    expand: false,
                     onPressed: () => setState(() => _showMap = false),
-                    icon: const Icon(Icons.photo_outlined, size: 16),
-                    label: const Text('Show the vehicle'),
                   ),
                 ),
 
@@ -1078,7 +1090,8 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
               if (selected.allowsPerSeat) ...[
                 const SizedBox(height: 18),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSizes.sidePadding),
                   child: _BookingTypeToggle(
                     value: _bookingType,
                     onChanged: _setBookingType,
@@ -1087,7 +1100,8 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
                 if (_perSeat) ...[
                   const SizedBox(height: 10),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSizes.sidePadding),
                     child: _SeatStepper(
                       seats: _seats,
                       maximum: selected.seats,
@@ -1099,33 +1113,14 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
               ],
 
               if (_error != null) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppTint.warning,
-                      borderRadius: AppRadii.all(AppRadii.row),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline_rounded,
-                            size: 16, color: AppTint.warningText),
-                        const SizedBox(width: 9),
-                        Expanded(
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              height: 1.4,
-                              color: AppTint.warningText,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSizes.sidePadding),
+                  child: UdBanner(
+                    tone: UdTone.warn,
+                    icon: Icons.error_outline_rounded,
+                    text: _error!,
                   ),
                 ),
               ],
@@ -1147,6 +1142,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
           perSeat: _perSeat,
           seats: _seats,
           submitting: _submitting,
+          vehicleLabel: selected.label,
           onDecrease: () => _nudge(-1),
           onIncrease: () => _nudge(1),
           onEdit: _editFare,
@@ -1179,109 +1175,107 @@ class _RouteHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(6, 6, 16, 16),
       decoration: const BoxDecoration(
         color: AppColors.background,
-        border: Border(
-          bottom: BorderSide(color: AppColors.border, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          IconButton(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_rounded),
-            color: AppText.primary,
-            tooltip: 'Back',
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 12),
-                // Both ends on one line.
-                //
-                // Two stacked From/To blocks spent about ninety pixels of a
-                // phone screen saying what an arrow says. The destination is
-                // the part that matters and keeps its weight; the pickup is
-                // where the customer is standing, and they know that already.
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        pickup,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13.5,
-                          color: AppText.secondary,
-                        ),
-                      ),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 7),
-                      child: Icon(Icons.arrow_forward_rounded,
-                          size: 14, color: AppText.disabled),
-                    ),
-                    Flexible(
-                      flex: 2,
-                      child: Text(
-                        destination,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppText.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                if (route != null) ...[
-                  const SizedBox(height: 9),
+      padding: const EdgeInsets.fromLTRB(
+          AppSizes.sidePadding, 12, AppSizes.sidePadding, 14),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            UdIconButton(
+              icon: Icons.arrow_back_rounded,
+              onPressed: onBack,
+              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 2),
+                  // Both ends on one line.
+                  //
+                  // Two stacked From/To blocks spent about ninety pixels of a
+                  // phone screen saying what an arrow says. The destination is
+                  // the part that matters and keeps its weight; the pickup is
+                  // where the customer is standing, and they know that already.
                   Row(
                     children: [
-                      Icon(Icons.schedule_rounded,
-                          size: 14, color: AppColors.secondary),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${route!.durationLabel}  ·  ${route!.distanceLabel}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.secondary,
+                      Flexible(
+                        child: Text(
+                          pickup,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.small.copyWith(
+                            fontSize: 13.5,
+                            color: AppText.secondary,
+                          ),
                         ),
                       ),
-                      if (route!.summary.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        Expanded(
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 7),
+                        child: Icon(Icons.arrow_forward_rounded,
+                            size: 15, color: AppText.caption),
+                      ),
+                      Flexible(
+                        flex: 2,
+                        child: Text(
+                          destination,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.listTitle.copyWith(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppText.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (route != null) ...[
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        const Icon(Icons.schedule_rounded,
+                            size: 16, color: AppColors.brandInk),
+                        const SizedBox(width: 7),
+                        Flexible(
                           child: Text(
-                            'via ${route!.summary.split('/').first.trim()}',
+                            '${route!.durationLabel}  ·  '
+                            '${route!.distanceLabel}'
+                            '${route!.summary.isEmpty ? '' : '  ·  via '
+                                '${route!.summary.split('/').first.trim()}'}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppText.secondary,
+                            style: AppType.small.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.brandInk,
                             ),
                           ),
                         ),
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 /// A vehicle type in the pill row.
+///
+/// Selected is navy with a lime icon tile and a lime price. Not lime on lime,
+/// and never white on lime — the only ink that goes on the brand colour is
+/// navy, and the only ink that goes on navy is white or lime.
 class _VehiclePill extends StatelessWidget {
   const _VehiclePill({
     required this.option,
@@ -1310,33 +1304,42 @@ class _VehiclePill extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 170),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           decoration: BoxDecoration(
-            color: selected ? AppColors.secondary : AppColors.surfaceAlt,
-            borderRadius: BorderRadius.circular(14),
+            color: selected ? AppColors.navy : AppColors.surfaceHigh,
+            borderRadius: AppRadii.all(AppRadii.tile),
+            border: Border.all(
+              color: selected ? AppColors.navy : AppColors.border,
+            ),
+            boxShadow: AppShadows.card,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              UdIconTile(
+                icon: option.icon,
+                tone: selected ? UdIconTone.lime : UdIconTone.neutral,
+                size: UdIconTileSize.sm,
+              ),
+              const SizedBox(height: 7),
               Text(
                 option.label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: selected ? AppText.onBrand : AppText.secondary,
+                style: AppType.overline.copyWith(
+                  letterSpacing: 0,
+                  color: selected ? AppText.onInkMuted : AppText.secondary,
                 ),
               ),
-              const SizedBox(height: 1),
+              const SizedBox(height: 2),
               Text(
                 Money.amount(fare),
                 maxLines: 1,
-                style: TextStyle(
+                style: AppType.caption.copyWith(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: -.2,
-                  color: selected ? AppText.onBrand : AppText.primary,
+                  letterSpacing: -0.2,
+                  color: selected ? AppColors.brand : AppText.primary,
                 ),
               ),
             ],
@@ -1386,36 +1389,38 @@ class _RouteChip extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: selected ? 13 : 14,
+            vertical: selected ? 7 : 8,
+          ),
           decoration: BoxDecoration(
-            color: selected ? AppTint.brand : AppColors.surfaceAlt,
-            borderRadius: BorderRadius.circular(14),
+            color: selected ? AppColors.brandWash : AppColors.surfaceHigh,
+            borderRadius: AppRadii.all(AppRadii.tile),
             border: Border.all(
-              color: selected ? AppColors.secondary : Colors.transparent,
-              width: 1.5,
+              color: selected ? AppColors.navy : AppColors.border,
+              width: selected ? 2 : 1,
             ),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                shortest ? 'Shortest' : 'Alternative',
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: .3,
-                  color: selected ? AppColors.secondary : AppText.disabled,
+                shortest ? 'SHORTEST' : 'ALTERNATIVE',
+                style: AppType.overline.copyWith(
+                  fontSize: 11,
+                  color: selected ? AppColors.brandInk : AppText.secondary,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 '${route.distanceKm.toStringAsFixed(route.distanceKm < 10 ? 1 : 0)} km'
                 '  ·  $minutes min',
-                style: TextStyle(
-                  fontSize: 13,
+                style: AppType.small.copyWith(
+                  fontSize: 14.5,
                   fontWeight: FontWeight.w700,
-                  color: selected ? AppText.primary : AppText.secondary,
+                  color: AppText.primary,
                 ),
               ),
             ],
@@ -1449,30 +1454,36 @@ class _PhotoBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ink = highlight ? AppColors.secondary : AppText.secondary;
+    final ink = highlight ? AppColors.brandInk : AppText.primary;
 
     return Material(
-      color: AppColors.surface.withValues(alpha: .92),
-      borderRadius: BorderRadius.circular(99),
+      color: AppColors.background,
+      borderRadius: AppRadii.all(AppRadii.tile),
+      elevation: 0,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(99),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 14, color: ink),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: ink,
+        borderRadius: AppRadii.all(AppRadii.tile),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: AppRadii.all(AppRadii.tile),
+            boxShadow: AppShadows.floating,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: ink),
+                const SizedBox(width: 7),
+                Text(
+                  label,
+                  style: AppType.small.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: ink,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1538,16 +1549,11 @@ class _VehiclePhoto extends StatelessWidget {
         child: Icon(
           option.icon,
           size: 104,
-          color: AppColors.secondary.withValues(alpha: .55),
+          color: AppColors.borderStrong,
         ),
       );
 }
 
-/// Which photograph of how many.
-///
-/// Swiping is not visible the way a button is, so the dots are there to say the
-/// gesture exists — and to show that there is more than one vehicle without
-/// making the customer count the pills.
 class _PageDots extends StatelessWidget {
   const _PageDots({required this.count, required this.index});
 
@@ -1568,8 +1574,8 @@ class _PageDots extends StatelessWidget {
             width: i == index ? 18 : 6,
             height: 6,
             decoration: BoxDecoration(
-              color: i == index ? AppColors.secondary : AppColors.border,
-              borderRadius: BorderRadius.circular(99),
+              color: i == index ? AppColors.navy : AppColors.borderStrong,
+              borderRadius: AppRadii.all(3),
             ),
           ),
       ],
@@ -1578,6 +1584,9 @@ class _PageDots extends StatelessWidget {
 }
 
 /// Per seat or whole vehicle. Only shown for vehicles with seats to spare.
+///
+/// The icons that used to sit beside each label are gone: the design's
+/// segmented control carries words only, and "Whole vehicle" needs no picture.
 class _BookingTypeToggle extends StatelessWidget {
   const _BookingTypeToggle({required this.value, required this.onChanged});
 
@@ -1585,61 +1594,13 @@ class _BookingTypeToggle extends StatelessWidget {
   final ValueChanged<BookingType> onChanged;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: BookingType.values.map((type) {
-          final selected = type == value;
-          return Expanded(
-            child: Semantics(
-              button: true,
-              selected: selected,
-              label: type.label,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onChanged(type),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 170),
-                  padding: const EdgeInsets.symmetric(vertical: 11),
-                  decoration: BoxDecoration(
-                    color:
-                        selected ? AppColors.secondary : Colors.transparent,
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        type.icon,
-                        size: 17,
-                        color: selected ? AppText.onBrand : AppText.disabled,
-                      ),
-                      const SizedBox(width: 7),
-                      Text(
-                        type.label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight:
-                              selected ? FontWeight.w700 : FontWeight.w500,
-                          color:
-                              selected ? AppText.onBrand : AppText.secondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(growable: false),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => UdSegmented(
+        options: BookingType.values
+            .map((type) => type.label)
+            .toList(growable: false),
+        index: BookingType.values.indexOf(value),
+        onChanged: (index) => onChanged(BookingType.values[index]),
+      );
 }
 
 class _SeatStepper extends StatelessWidget {
@@ -1657,12 +1618,10 @@ class _SeatStepper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return UdCard(
+      tone: UdCardTone.tint,
+      radius: AppRadii.tile,
       padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(14),
-      ),
       child: Row(
         children: [
           Expanded(
@@ -1672,68 +1631,33 @@ class _SeatStepper extends StatelessWidget {
               children: [
                 Text(
                   '$seats ${seats == 1 ? 'seat' : 'seats'}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                  style: AppType.listTitle.copyWith(
+                    fontSize: 16,
                     color: AppText.primary,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'About PKR $perSeatFare each',
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    color: AppText.secondary,
-                  ),
+                  style: AppType.small.copyWith(color: AppText.secondary),
                 ),
               ],
             ),
           ),
-          _SmallStep(
+          UdIconButton(
             icon: Icons.remove_rounded,
-            enabled: seats > 1,
-            onTap: () => onChanged(seats - 1),
+            small: true,
+            tooltip: 'One seat fewer',
+            onPressed: seats > 1 ? () => onChanged(seats - 1) : null,
           ),
-          const SizedBox(width: 8),
-          _SmallStep(
+          const SizedBox(width: 4),
+          UdIconButton(
             icon: Icons.add_rounded,
-            enabled: seats < maximum,
-            onTap: () => onChanged(seats + 1),
+            small: true,
+            tooltip: 'One seat more',
+            onPressed: seats < maximum ? () => onChanged(seats + 1) : null,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SmallStep extends StatelessWidget {
-  const _SmallStep({
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surfaceHigh,
-      shape: const CircleBorder(),
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 38,
-          height: 38,
-          child: Icon(
-            icon,
-            size: 19,
-            color: enabled ? AppText.primary : AppText.disabled,
-          ),
-        ),
       ),
     );
   }
@@ -1756,6 +1680,7 @@ class _FarePanel extends StatelessWidget {
     required this.perSeat,
     required this.seats,
     required this.submitting,
+    required this.vehicleLabel,
     required this.onDecrease,
     required this.onIncrease,
     required this.onEdit,
@@ -1779,6 +1704,11 @@ class _FarePanel extends StatelessWidget {
   final bool perSeat;
   final int seats;
   final bool submitting;
+
+  /// Named on the button, so the customer can see which vehicle they are about
+  /// to send the request for without looking back up the screen.
+  final String vehicleLabel;
+
   final VoidCallback onDecrease;
   final VoidCallback onIncrease;
   final VoidCallback onEdit;
@@ -1815,54 +1745,33 @@ class _FarePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+        color: AppColors.background,
+        border: Border(top: BorderSide(color: AppColors.border)),
       ),
+      padding: const EdgeInsets.fromLTRB(
+          AppSizes.sidePadding, 12, AppSizes.sidePadding, 14),
       child: SafeArea(
         top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Directly above the amount, because it is a caveat about the
-            // amount. Sitting at the bottom of a scrolling list it was reached
-            // only by customers who happened to scroll — and never by the ones
-            // who went straight to the fare, who are exactly the ones it is
-            // for.
             // Surge, said out loud.
             //
             // A fare that is higher than usual and does not say why is the
             // thing that makes people distrust a ride app. The reason comes
             // from the server with the quote and is shown as it was given.
             if (quote?.hasSurge == true) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppTint.warning,
-                  borderRadius: BorderRadius.circular(AppRadii.row),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.trending_up_rounded,
-                        size: 15, color: AppTint.warningText),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
-                        'Busy right now — fares are ${quote!.surge.toStringAsFixed(2)}×'
-                        '${quote!.breakdown?.surgeReason == null ? '' : ' · ${quote!.breakdown!.surgeReason}'}',
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppTint.warningText,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              UdBanner(
+                tone: UdTone.warn,
+                icon: Icons.trending_up_rounded,
+                text: 'Busy right now — fares are '
+                    '${quote!.surge.toStringAsFixed(2)}×'
+                    '${quote!.breakdown?.surgeReason == null ? '' : ' · '
+                        '${quote!.breakdown!.surgeReason}'}',
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
             ],
 
             // The fare could not be checked.
@@ -1872,55 +1781,35 @@ class _FarePanel extends StatelessWidget {
             // pricing formulas that disagreed with the admin's rates and with
             // each other.
             if (quoteError != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                decoration: BoxDecoration(
-                  color: AppTint.danger,
-                  borderRadius: BorderRadius.circular(AppRadii.row),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline_rounded,
-                        size: 15, color: AppTint.dangerText),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
-                        quoteError!,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppTint.dangerText,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: quoting ? null : onRetryQuote,
-                      child: const Text('Retry'),
-                    ),
-                  ],
+              UdBanner(
+                tone: UdTone.err,
+                icon: Icons.error_outline_rounded,
+                text: quoteError!,
+                trailing: UdButton(
+                  label: 'Retry',
+                  variant: UdButtonVariant.ghost,
+                  size: UdButtonSize.xs,
+                  expand: false,
+                  busy: quoting,
+                  onPressed: onRetryQuote,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
             ],
 
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Icon(Icons.info_outline_rounded,
-                    size: 13, color: AppText.disabled),
-                const SizedBox(width: 6),
+                    size: 15, color: AppText.caption),
+                const SizedBox(width: 7),
                 Flexible(
                   child: Text(
                     _isFixed
                         ? 'Set fare for this route · not negotiable'
                         : 'Tolls, parking and entry fees are not included',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      height: 1.35,
-                      color: AppText.disabled,
-                    ),
+                    style: AppType.caption.copyWith(color: AppText.caption),
                   ),
                 ),
               ],
@@ -1947,19 +1836,18 @@ class _FarePanel extends StatelessWidget {
                       children: [
                         Text(
                           Money.amount(fare),
-                          style: const TextStyle(
-                            fontSize: 46,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -1.4,
+                          maxLines: 1,
+                          style: AppType.price.copyWith(
                             color: AppText.primary,
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 3),
                         Text(
                           _caption,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 11.5,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.caption.copyWith(
                             color: AppText.secondary,
                           ),
                         ),
@@ -1968,40 +1856,21 @@ class _FarePanel extends StatelessWidget {
                   ),
                 ),
                 if (!_isFixed)
-                  _StepButton(icon: Icons.add_rounded, onTap: onIncrease),
+                  _StepButton(
+                    icon: Icons.add_rounded,
+                    dark: true,
+                    onTap: onIncrease,
+                  ),
               ],
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 52,
-              width: double.infinity,
-              child: Material(
-                color: AppColors.secondary,
-                borderRadius: AppRadii.all(AppRadii.cta),
-                child: InkWell(
-                  onTap: submitting ? null : onSubmit,
-                  borderRadius: AppRadii.all(AppRadii.cta),
-                  child: Center(
-                    child: submitting
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppText.onBrand,
-                            ),
-                          )
-                        : Text(
-                            'Find offers',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: AppText.onBrand,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
+            const SizedBox(height: 14),
+            UdButton.primary(
+              label: vehicleLabel.isEmpty
+                  ? 'Find offers'
+                  : 'Find offers · $vehicleLabel',
+              trailingIcon: Icons.chevron_right_rounded,
+              busy: submitting,
+              onPressed: onSubmit,
             ),
           ],
         ),
@@ -2010,34 +1879,51 @@ class _FarePanel extends StatelessWidget {
   }
 }
 
-/// The large circular buttons either side of the fare.
+/// The large round buttons either side of the fare.
+///
+/// The plus is navy and the minus is a plain outline: raising an offer is the
+/// action that gets a driver, and the two should not look like the same button
+/// mirrored.
 class _StepButton extends StatelessWidget {
   const _StepButton({
     required this.icon,
     required this.onTap,
     this.enabled = true,
+    this.dark = false,
   });
 
   final IconData icon;
   final VoidCallback onTap;
   final bool enabled;
+  final bool dark;
 
   @override
   Widget build(BuildContext context) {
+    final Color background = !enabled
+        ? AppColors.surfaceAlt
+        : dark
+            ? AppColors.navy
+            : AppColors.background;
+    final Color ink = !enabled
+        ? AppText.disabled
+        : dark
+            ? AppText.onInk
+            : AppColors.navy;
+
     return Material(
-      color: AppColors.surfaceAlt,
-      shape: const CircleBorder(),
+      color: background,
+      shape: dark || !enabled
+          ? const CircleBorder()
+          : const CircleBorder(
+              side: BorderSide(color: AppColors.borderStrong, width: 1.5),
+            ),
       child: InkWell(
         onTap: enabled ? onTap : null,
         customBorder: const CircleBorder(),
         child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Icon(
-            icon,
-            size: 22,
-            color: enabled ? AppText.primary : AppText.disabled,
-          ),
+          width: 50,
+          height: 50,
+          child: Icon(icon, size: 24, color: ink),
         ),
       ),
     );

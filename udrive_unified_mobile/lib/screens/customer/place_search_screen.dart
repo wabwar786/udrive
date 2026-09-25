@@ -5,6 +5,7 @@ import '../../core/services/place_search_service.dart';
 import '../../core/places/place_name.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 
 /// What the search screen hands back when the customer picks somewhere.
 class PlacePickResult {
@@ -27,7 +28,7 @@ class PlacePickResult {
   final bool forPickup;
 }
 
-/// Full-screen address entry.
+/// Full-screen address entry — screen C-02.
 ///
 /// A dedicated screen rather than a dropdown squeezed between a text field and
 /// a map: suggestions get room to breathe, and the keyboard does not cover the
@@ -185,369 +186,428 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
     );
   }
 
-  Widget _endRow({
-    required String caption,
-    required bool editable,
-    required String staticValue,
-    required String hint,
-    required VoidCallback onSwitch,
-  }) {
-    if (!editable) {
-      return InkWell(
-        onTap: onSwitch,
-        child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              caption,
-              style: const TextStyle(fontSize: 11, color: AppText.disabled),
+  @override
+  Widget build(BuildContext context) {
+    final typed = _query.text.trim();
+    final busy = _resolving || _searching;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UdTopBar(
+            title: widget.title,
+            divider: true,
+            onBack: () => Navigator.pop(context),
+          ),
+
+          // Both ends stay visible while typing, so the customer can see the
+          // route they are building rather than one field in isolation.
+          // Whichever end is being edited becomes the input; the other is
+          // read-only but still tappable to switch.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSizes.sidePadding, 14, AppSizes.sidePadding, 6),
+            child: UdCard(
+              tone: UdCardTone.tint,
+              radius: 18,
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(width: 22, child: UdRouteRail()),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _EndRow(
+                            caption: 'From',
+                            editable: _editingPickup,
+                            // The place name, not the postal address.
+                            //
+                            // This showed "MV62+76W, Rd B, Margalla View Block
+                            // B D-17, Islama…" — a Plus Code, three qualifiers
+                            // and an ellipsis, in a row whose whole job is to
+                            // confirm where the customer is standing. The home
+                            // screen already shortened it; this screen did not.
+                            staticValue: shortPlaceName(widget.pickupLabel),
+                            hint: 'Search a pickup point',
+                            controller: _query,
+                            focusNode: _focus,
+                            onChanged: _run,
+                            onSubmitted: _useTyped,
+                            onClear: () {
+                              _query.clear();
+                              _run('');
+                            },
+                            onSwitch: () => _switchTo(true),
+                          ),
+                          const SizedBox(height: 4),
+                          _EndRow(
+                            caption: 'To',
+                            editable: !_editingPickup,
+                            staticValue: widget.destinationLabel,
+                            hint: 'Search any address or landmark',
+                            controller: _query,
+                            focusNode: _focus,
+                            onChanged: _run,
+                            onSubmitted: _useTyped,
+                            onClear: () {
+                              _query.clear();
+                              _run('');
+                            },
+                            onSwitch: () => _switchTo(false),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 2),
-            Row(
+          ),
+
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSizes.sidePadding, 8, AppSizes.sidePadding, 24),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
-                Expanded(
-                  child: Text(
-                    staticValue.isEmpty ? 'Tap to set' : staticValue,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: staticValue.isEmpty
-                          ? AppText.disabled
-                          : AppText.primary,
+                if (busy)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 26),
+                    child: Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     ),
                   ),
-                ),
-                const Icon(Icons.edit_rounded,
-                    size: 15, color: AppText.disabled),
+
+                if (_results.isNotEmpty) ...[
+                  UdSectionHeader(
+                    title: 'Results',
+                    caption: _results.length == 1
+                        ? '1 place'
+                        : '${_results.length} places',
+                  ),
+                  const SizedBox(height: 10),
+                  UdListGroup(
+                    children: [
+                      for (var i = 0; i < _results.length; i++)
+                        UdListRow(
+                          // The top match gets the lime tile. It is the one the
+                          // geocoder is most confident about, and on a list of
+                          // near-identical village names that is the only
+                          // signal the customer has.
+                          leading: UdIconTile(
+                            icon: Icons.place_outlined,
+                            tone: i == 0
+                                ? UdIconTone.soft
+                                : UdIconTone.neutral,
+                            size: UdIconTileSize.sm,
+                          ),
+                          title: _results[i].title,
+                          subtitle: _results[i].subtitle.isEmpty
+                              ? null
+                              : _results[i].subtitle,
+                          onTap: () => _pick(_results[i]),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                ],
+
+                if (_searched && _results.isEmpty && !_searching)
+                  UdEmptyState(
+                    icon: Icons.search_off_rounded,
+                    title: 'Nothing found for "$typed"',
+                    text: 'Small villages are often unmapped. Use the typed '
+                        'name or pick the spot on the map.',
+                  ),
+
+                // The ways forward when the list cannot help. A lime-tinted
+                // group, because on this screen these are not a footnote —
+                // for an unmapped village they are the whole route through.
+                if (_actions(typed).isNotEmpty)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppTint.success,
+                      borderRadius: AppRadii.all(AppRadii.card),
+                      border: Border.all(color: AppTint.successBorder),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: _actions(typed),
+                    ),
+                  ),
               ],
             ),
-          ],
-        ),
-      ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            caption,
-            style: TextStyle(fontSize: 11, color: AppColors.secondary),
           ),
-          TextField(
-            controller: _query,
-            focusNode: _focus,
-            onChanged: _run,
-            onSubmitted: (_) => _useTyped(),
-            textInputAction: TextInputAction.search,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: AppText.primary,
-            ),
-            decoration: InputDecoration(
-              isDense: true,
-              filled: false,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 4),
-              hintText: hint,
-              hintStyle: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: AppText.disabled,
-              ),
-              suffixIcon: _query.text.isEmpty
-                  ? null
-                  : IconButton(
-                      onPressed: () {
-                        _query.clear();
-                        _run('');
-                      },
-                      icon: const Icon(Icons.close_rounded, size: 18),
-                      color: AppText.disabled,
-                      tooltip: 'Clear',
-                    ),
-            ),
-          ),
-          Container(height: 1.6, color: AppColors.secondary),
         ],
       ),
     );
   }
 
+  /// The action rows, in the order the design puts them: what the customer
+  /// typed first, because that is the one they most often mean.
+  List<Widget> _actions(String typed) {
+    final rows = <Widget>[];
+
+    void add(Widget row) {
+      if (rows.isNotEmpty) {
+        rows.add(const UdDashedDivider(color: AppTint.successBorder));
+      }
+      rows.add(row);
+    }
+
+    if (typed.isNotEmpty) {
+      add(_ActionRow(
+        icon: Icons.edit_location_alt_outlined,
+        label: 'Use "$typed"',
+        onTap: _useTyped,
+      ));
+    }
+
+    if (_editingPickup) {
+      add(_ActionRow(
+        icon: Icons.my_location_rounded,
+        label: 'Use my current location',
+        onTap: () => Navigator.pop(
+          context,
+          const PlacePickResult(
+            label: '',
+            point: null,
+            useCurrentLocation: true,
+            forPickup: true,
+          ),
+        ),
+      ));
+    }
+
+    if (widget.onChooseOnMap != null) {
+      add(_ActionRow(
+        icon: Icons.map_outlined,
+        label: 'Choose on map',
+        subtitle: 'Pin a spot with no address',
+        onTap: () async {
+          final result = await widget.onChooseOnMap!();
+          if (result != null && mounted) {
+            Navigator.pop(context, result);
+          }
+        },
+      ));
+    }
+
+    return rows;
+  }
+}
+
+/// One end of the route: either a static line you tap to switch to, or the
+/// live field.
+class _EndRow extends StatelessWidget {
+  const _EndRow({
+    required this.caption,
+    required this.editable,
+    required this.staticValue,
+    required this.hint,
+    required this.controller,
+    required this.focusNode,
+    required this.onChanged,
+    required this.onSubmitted,
+    required this.onClear,
+    required this.onSwitch,
+  });
+
+  final String caption;
+  final bool editable;
+  final String staticValue;
+  final String hint;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onSubmitted;
+  final VoidCallback onClear;
+  final VoidCallback onSwitch;
+
   @override
   Widget build(BuildContext context) {
-    final typed = _query.text.trim();
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 16, 6),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    color: AppText.primary,
-                  ),
-                  Expanded(
-                    child: Text(
-                      widget.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: AppText.primary,
+    if (!editable) {
+      return Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onSwitch,
+          borderRadius: AppRadii.all(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  caption.toUpperCase(),
+                  style: AppType.overline.copyWith(color: AppText.secondary),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        staticValue.isEmpty ? 'Tap to set' : staticValue,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.listTitle.copyWith(
+                          fontSize: 16.5,
+                          color: staticValue.isEmpty
+                              ? AppText.caption
+                              : AppText.primary,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.edit_outlined,
+                        size: 18, color: AppText.secondary),
+                  ],
+                ),
+              ],
             ),
-
-            // Both ends stay visible while typing, so the customer can see
-            // the route they are building rather than one field in isolation.
-            // Whichever end is being edited becomes the input; the other is
-            // read-only but still tappable to switch.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 18),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 9,
-                          height: 9,
-                          decoration: BoxDecoration(
-                            color: AppColors.secondary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        Container(
-                          width: 1.5,
-                          height: 34,
-                          margin: const EdgeInsets.symmetric(vertical: 5),
-                          color: AppColors.border,
-                        ),
-                        Container(
-                          width: 8,
-                          height: 8,
-                          color: AppText.primary,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _endRow(
-                          caption: 'From',
-                          editable: _editingPickup,
-                          // The place name, not the postal address.
-                          //
-                          // This showed "MV62+76W, Rd B, Margalla View Block B
-                          // D-17, Islama…" — a Plus Code, three qualifiers and
-                          // an ellipsis, in a row whose whole job is to confirm
-                          // where the customer is standing. The home screen
-                          // already shortened it; this screen did not.
-                          staticValue: shortPlaceName(widget.pickupLabel),
-                          hint: 'Search a pickup point',
-                          onSwitch: () => _switchTo(true),
-                        ),
-                        Container(height: 1, color: AppColors.border),
-                        _endRow(
-                          caption: 'To',
-                          editable: !_editingPickup,
-                          staticValue: widget.destinationLabel,
-                          hint: 'Search any address or landmark',
-                          onSwitch: () => _switchTo(false),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                children: [
-                  if (_resolving)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 26),
-                      child: Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    )
-                  else if (_searching)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 26),
-                      child: Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    ),
-
-                  ..._results.map(
-                    (place) => _ResultRow(
-                      title: place.title,
-                      subtitle: place.subtitle,
-                      onTap: () => _pick(place),
-                    ),
-                  ),
-
-                  if (_searched && _results.isEmpty && !_searching)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 22),
-                      child: Column(
-                        children: [
-                          const Icon(Icons.search_off_rounded,
-                              size: 28, color: AppText.disabled),
-                          const SizedBox(height: 10),
-                          Text(
-                            'Nothing found for "$typed"',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              color: AppText.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          const Text(
-                            'Small villages are often unmapped. Use the typed '
-                            'name or pick the spot on the map.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 12,
-                              height: 1.45,
-                              color: AppText.secondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  if (_editingPickup)
-                    _ActionRow(
-                      icon: Icons.my_location_rounded,
-                      label: 'Use my current location',
-                      onTap: () => Navigator.pop(
-                        context,
-                        const PlacePickResult(
-                          label: '',
-                          point: null,
-                          useCurrentLocation: true,
-                          forPickup: true,
-                        ),
-                      ),
-                    ),
-
-                  if (typed.isNotEmpty)
-                    _ActionRow(
-                      icon: Icons.edit_location_alt_outlined,
-                      label: 'Use "$typed"',
-                      onTap: _useTyped,
-                    ),
-
-                  if (widget.onChooseOnMap != null)
-                    _ActionRow(
-                      icon: Icons.map_outlined,
-                      label: 'Choose on map',
-                      onTap: () async {
-                        final result = await widget.onChooseOnMap!();
-                        if (result != null && context.mounted) {
-                          Navigator.pop(context, result);
-                        }
-                      },
-                    ),
-
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            caption.toUpperCase(),
+            // The active end's key is lime ink, so which field the keyboard is
+            // pointed at is readable without watching the cursor.
+            style: AppType.overline.copyWith(color: AppColors.brandInk),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            height: 52,
+            padding: const EdgeInsets.only(left: 14, right: 6),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: AppRadii.all(AppRadii.field),
+              border: Border.all(color: AppColors.navy, width: 2),
+              boxShadow: const [
+                BoxShadow(color: AppColors.limeGlow, spreadRadius: 3),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    onChanged: onChanged,
+                    onSubmitted: (_) => onSubmitted(),
+                    textInputAction: TextInputAction.search,
+                    cursorColor: AppColors.navy,
+                    style: AppType.listTitle.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      height: 1.25,
+                      color: AppText.primary,
+                    ),
+                    decoration: InputDecoration(
+                      isCollapsed: true,
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                      hintText: hint,
+                      hintStyle: AppType.body2.copyWith(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w500,
+                        height: 1.25,
+                        color: AppText.caption,
+                      ),
+                    ),
+                  ),
+                ),
+                if (controller.text.isNotEmpty)
+                  UdIconButton(
+                    icon: Icons.close_rounded,
+                    variant: UdIconButtonVariant.soft,
+                    small: true,
+                    tooltip: 'Clear',
+                    onPressed: onClear,
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ResultRow extends StatelessWidget {
-  const _ResultRow({
-    required this.title,
-    required this.subtitle,
+/// A way forward that is not one of the search results.
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({
+    required this.icon,
+    required this.label,
     required this.onTap,
+    this.subtitle,
   });
 
-  final String title;
-  final String subtitle;
+  final IconData icon;
+  final String label;
+  final String? subtitle;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 13),
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppSizes.listRow),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                const Icon(Icons.place_outlined,
-                    size: 20, color: AppText.secondary),
-                const SizedBox(width: 13),
+                Icon(icon, size: 22, color: AppColors.brandInk),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        title,
+                        label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: AppText.primary,
+                        style: AppType.listTitle.copyWith(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.brandInk,
                         ),
                       ),
-                      if (subtitle.isNotEmpty) ...[
+                      if (subtitle != null) ...[
                         const SizedBox(height: 2),
                         Text(
-                          subtitle,
+                          subtitle!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppText.secondary,
+                          style: AppType.small.copyWith(
+                            color: AppTint.successText,
                           ),
                         ),
                       ],
@@ -557,47 +617,6 @@ class _ResultRow extends StatelessWidget {
               ],
             ),
           ),
-          Container(height: 1, color: AppColors.surfaceAlt),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActionRow extends StatelessWidget {
-  const _ActionRow({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: AppColors.secondary),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.secondary,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

@@ -593,7 +593,7 @@ class UdRouteBlock extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-        const SizedBox(width: 22, child: _RouteRail()),
+        const SizedBox(width: 22, child: UdRouteRail()),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
@@ -623,8 +623,14 @@ class UdRouteBlock extends StatelessWidget {
   }
 }
 
-class _RouteRail extends StatelessWidget {
-  const _RouteRail();
+/// The rail beside a from/to pair: a navy ring, a line, a lime square.
+///
+/// Public because two screens draw their own stops beside it — the place
+/// search, where one end is a live text field, and the route flow. It must be
+/// given a bounded height, which in practice means an [IntrinsicHeight] around
+/// the row it sits in.
+class UdRouteRail extends StatelessWidget {
+  const UdRouteRail({super.key});
 
   @override
   Widget build(BuildContext context) => Padding(

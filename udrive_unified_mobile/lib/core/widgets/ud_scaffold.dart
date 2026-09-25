@@ -167,12 +167,18 @@ class UdHeroTitle extends StatelessWidget {
 class UdSectionHeader extends StatelessWidget {
   const UdSectionHeader({
     required this.title,
+    this.caption,
     this.actionLabel,
     this.onAction,
     super.key,
   });
 
   final String title;
+
+  /// A quiet count or note on the right — "12 places", "updated just now".
+  /// Not a link, and not tappable; use [actionLabel] for something to press.
+  final String? caption;
+
   final String? actionLabel;
   final VoidCallback? onAction;
 
@@ -189,6 +195,14 @@ class UdSectionHeader extends StatelessWidget {
               ),
             ),
           ),
+          if (caption != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(
+                caption!,
+                style: AppType.caption.copyWith(color: AppText.caption),
+              ),
+            ),
           if (actionLabel != null)
             GestureDetector(
               onTap: onAction,
