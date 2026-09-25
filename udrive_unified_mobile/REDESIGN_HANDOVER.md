@@ -1922,24 +1922,33 @@ For CI, put the key in a repository secret and pass it the same way.
 
 ---
 
-## 3. Maps: online Google, offline PMTiles
+## 3. Maps: online Google, OSM fallback
+
+> **Superseded (rev 136).** The PMTiles offline-map system described below was
+> removed at the product owner's decision: UDrive is online-only. Everything
+> under `lib/core/offline_maps/`, `models/offline_map_models.dart`, the Settings
+> "Offline Maps" screen and the `/api/v1/offline-maps/*` endpoints are gone, as
+> are the `flutter_map_pmtiles`, `disk_space_plus`, `crypto` and `path_provider`
+> packages. The `udrive.offline_map_packs` table is left in place, unused.
+> The section is kept as a record of why the dual renderer exists.
 
 `lib/core/maps/ud_map.dart` is the single map surface used everywhere.
 
 ```
 Connected      →  Google Maps
-No connection  →  flutter_map + downloaded PMTiles pack for the route
-No connection
-  + no pack    →  flutter_map + cached OSM tiles, with an "Offline map" badge
+No Maps key
+  or offline   →  flutter_map + OpenStreetMap tiles, with a
+                  "No internet connection" badge when the network is down
 ```
 
-The switch is automatic, driven by `connectivity_plus`. The existing offline
-download system under `lib/core/offline_maps/` was **not** touched — `UdMap`
-just consumes it.
+The switch is automatic, driven by `connectivity_plus`. Both renderers need a
+network; the app carries no map data of its own, so with no signal the map shows
+only what the phone already cached.
 
-Worth knowing: Google's Maps SDK has no offline API of any kind. Google's
-consumer "download this area" feature is not exposed to developers. Keeping
-PMTiles is the only way the app works in Neelum, Kel or Leepa when signal drops.
+Worth knowing: Google's Maps SDK has no offline API of any kind, and Google's
+consumer "download this area" feature is not exposed to developers. That is why
+PMTiles existed here at all — if genuine offline coverage for Neelum, Kel or
+Leepa is ever wanted again, it has to be rebuilt, not switched back on.
 
 Callers use renderer-agnostic types (`UdMarker`, `UdPolyline`,
 `UdMapController`) so no screen has to care which engine is active.
@@ -1975,7 +1984,7 @@ suggestion rows with a pin icon.
 | --- | --- |
 | `core/config/app_config.dart` | Advance %, cancellation window, radii, timeouts, map defaults |
 | `core/theme/app_tokens.dart` | Tints, radii, soft shadows, text colours from the handoff |
-| `core/maps/ud_map.dart` | Google + offline map wrapper |
+| `core/maps/ud_map.dart` | Google + OpenStreetMap wrapper |
 | `core/services/place_search_service.dart` | Autocomplete + reverse geocoding |
 | `core/widgets/service_selector.dart` | 4-column Coaster/Car/Bike/Hotel picker |
 | `core/widgets/route_fields.dart` | Editable pickup/destination + connector + suggestions |

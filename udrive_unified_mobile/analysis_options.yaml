@@ -29,7 +29,6 @@ analyzer:
     - lib/screens/driver/driver_profile_screen.dart
     - lib/screens/driver/driver_requests_screen.dart
     - lib/screens/explore/explore_screen.dart
-    - lib/screens/feedback/feedback_center_screen.dart
     - lib/screens/home/home_screen.dart
     - lib/screens/operations/customer_operations_screen.dart
     - lib/screens/operations/driver_operations_hub_screen.dart

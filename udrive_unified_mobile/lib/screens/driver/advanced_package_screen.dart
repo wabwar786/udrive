@@ -172,7 +172,7 @@ class _AdvancedCreatePackageScreenState extends State<AdvancedCreatePackageScree
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 4, 18, 30),
         children: [
-          UploadTile(label: 'Package cover image', uploaded: true, icon: Icons.image_rounded, onTap: () => _notice('Dummy cover image selected.')),
+          UploadTile(label: 'Package cover image', uploaded: false, icon: Icons.image_rounded, onTap: () => _notice('Cover image upload is not available yet.')),
           const SizedBox(height: 12),
           TextFormField(controller: _title, decoration: InputDecoration(labelText: context.tr('packageTitle')), validator: _required),
           const SizedBox(height: 12),

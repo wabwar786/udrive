@@ -92,14 +92,9 @@ const destinations = [
   ),
 ];
 
-const vehicleCategories = [
-  VehicleCategory(name: 'Economy', icon: Icons.directions_car_rounded, seats: 4, luggage: 2, baseFare: 2600, description: 'Affordable city and highway travel'),
-  VehicleCategory(name: 'Comfort', icon: Icons.airline_seat_recline_extra_rounded, seats: 4, luggage: 3, baseFare: 3400, description: 'Newer cars with added comfort'),
-  VehicleCategory(name: 'SUV', icon: Icons.directions_car_filled_rounded, seats: 6, luggage: 4, baseFare: 5200, description: 'Families and mountain routes'),
-  VehicleCategory(name: '4×4 Jeep', icon: Icons.terrain_rounded, seats: 5, luggage: 3, baseFare: 6800, description: 'Rough roads and remote valleys'),
-  VehicleCategory(name: 'Hiace', icon: Icons.airport_shuttle_rounded, seats: 14, luggage: 8, baseFare: 11000, description: 'Groups and tour parties'),
-  VehicleCategory(name: 'Coaster', icon: Icons.directions_bus_rounded, seats: 28, luggage: 18, baseFare: 22000, description: 'Large family and corporate groups'),
-];
+// vehicleCategories was here: six invented categories with invented fares.
+// The real list is core/vehicles/vehicle_catalogue.dart, and it carries no
+// price, because nothing in the app is entitled to invent one.
 
 const driverOffers = [
   DriverOffer(id: 'd1', name: 'Adeel Khan', vehicle: 'Toyota Corolla 2022', registration: 'AJK-4821', rating: 4.9, trips: 846, eta: 4, price: 5200, verified: true, routeExperience: 42, safetyScore: 96),

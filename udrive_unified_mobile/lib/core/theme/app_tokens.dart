@@ -119,6 +119,20 @@ class AppTint {
   static const inkVeil = Color(0xB80B1B33);
   static const inkGlass = Color(0xA80B1B33);
 
+  /// The lightest of the glass fills.
+  ///
+  /// Kept even though nothing in this tree references it any more. It was
+  /// deleted once, on the grounds that it was unused — which was true here and
+  /// false in the repository this ships to, where an older copy of
+  /// `udrive_route_flow_screen.dart` still calls it and the build stopped with
+  /// "Member not found: 'inkGlassSoft'".
+  ///
+  /// A token costs one line. Removing one breaks every file that has not been
+  /// updated yet, and a theme file is the wrong place to find out that two
+  /// trees have drifted. These go when the dark screens go, together, in one
+  /// change that can see all the call sites.
+  static const inkGlassSoft = Color(0x840B1B33);
+
   // ------------------------------------------------------------ shadows
 
   /// Card and panel shadow colours, as const values.

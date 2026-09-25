@@ -14,7 +14,16 @@ public sealed class VerificationFilesController(
     [HttpGet("files/{category}/{owner}/{fileName}")]
     public IActionResult DownloadLegacy(string category, string owner, string fileName)
     {
-        return Serve(fileStorage.ResolveProtectedFile(category, owner, fileName));
+        // allowLegacyFallback: false.
+        //
+        // The default is true, which makes ResolveProtectedFile search EVERY
+        // storage root recursively for a matching filename when the exact path
+        // misses. This was the last route where a caller-supplied filename
+        // still reached that search. The roles on this controller can see
+        // driver documents anyway, so it was not a live leak — but "the caller
+        // happens to be trusted" is the wrong reason for a path to be safe,
+        // and a role added to that list later would inherit the hole silently.
+        return Serve(fileStorage.ResolveProtectedFile(category, owner, fileName, allowLegacyFallback: false));
     }
 
     [HttpGet("driver-documents/{documentId:guid}/file")]

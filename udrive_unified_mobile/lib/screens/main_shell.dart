@@ -9,8 +9,13 @@ import 'common/common_pages.dart';
 import 'common/help_guide_screen.dart';
 import 'customer/customer_home_screen.dart';
 import 'customer/customer_pages.dart';
-import 'customer/family_tour_planner_screen.dart';
-import 'customer/join_tour_screen.dart';
+// family_tour_planner_screen.dart and join_tour_screen.dart were deleted before
+// release. Neither was reachable — no navigation call ever passed
+// 'familyPlanner', and 'joinTour' routes to LiveTourInterestScreen — and both
+// still referenced `vehicleCategories`, the invented six-category list that was
+// removed from dummy_data.dart, so they no longer compiled. The planner also
+// invented a "safety score out of 100" and a total cost from arithmetic on the
+// user's own inputs and presented them as a recommendation.
 import 'customer/live_bookings_screen.dart';
 import 'customer/live_explore_screen.dart';
 import 'customer/near_me_screen.dart';
@@ -25,6 +30,7 @@ import 'driver/live_driver_requests_screen.dart';
 import 'customer/tourism_booking_screen.dart';
 import 'driver/driver_home_screen.dart';
 import 'driver/driver_earnings_screen.dart';
+import 'feedback/feedback_center_screen.dart';
 import 'driver/driver_pages.dart' hide DriverEarningsScreen;
 import 'driver/advanced_package_screen.dart';
 import 'driver/driver_tourism_tools.dart';
@@ -37,7 +43,6 @@ import 'driver/onboarding/driver_verification_status_screen.dart';
 import 'driver/driver_wallet_screen.dart';
 import 'driver/live_vehicle_list_screen.dart';
 import 'driver/onboarding/driver_verification_screen.dart';
-import 'maps/live_tracking_screen.dart';
 import 'safety/safety_hub_screen.dart';
 import 'safety/customer_sos_sheet.dart';
 import 'hotel_owner/hotel_owner_shell.dart';
@@ -502,15 +507,12 @@ class _MainShellState extends State<MainShell> {
       'home': 'home',
       'bookRide': 'bookRide',
       'joinTour': 'joinTour',
-      'familyPlanner': 'familyTourPlanner',
       'explore': 'explore',
       'nearMe': 'nearMe',
       'myBusiness': 'myBusiness',
       'packages': 'packages',
       'trips': 'trips',
-      'saved': 'savedPlaces',
       'safety': 'safety',
-      'liveTracking': 'liveTracking',
       'trustedContacts': 'trustedContacts',
       'tourGuardian': 'tourGuardian',
       'offlineCard': 'offlineTravelCard',
@@ -521,14 +523,12 @@ class _MainShellState extends State<MainShell> {
       'profile': 'profile',
       'dashboard': 'driverDashboard',
       'requests': 'rideRequests',
-      'activeTrip': 'activeTrip',
       'driverPackages': 'myPackages',
       'createPackage': 'createPackage',
       'packageBookings': 'packageBookings',
       'vehicleSuitability': 'vehicleSuitability',
       'roadReports': 'roadReports',
       'driverSafety': 'safety',
-      'driverLiveTracking': 'liveTracking',
       'earnings': 'earnings',
       'payouts': 'payouts',
       'vehicles': 'vehicles',
@@ -574,21 +574,30 @@ class _MainShellState extends State<MainShell> {
           ),
         'bookRide' => const TourismBookingScreen(),
         'joinTour' => const LiveTourInterestScreen(),
-        'familyPlanner' => const FamilyTourPlannerScreen(),
         'explore' => const LiveExploreScreen(),
         'nearMe' => const NearMeScreen(),
         'myBusiness' => const BusinessOwnerDashboard(),
         'packages' => const LivePackagesScreen(),
         'trips' => const LiveBookingsScreen(),
-        'saved' => const SavedPlacesScreen(),
         'safety' => const SafetyHubScreen(),
-        'liveTracking' => const LiveTrackingScreen(),
+        // 'liveTracking' and 'driverLiveTracking' were routed here to a
+        // screen driven by SimulatedLocationService — a moving dot with a
+        // hardcoded driver phone number, +92 300 901 2204, and a "Dummy
+        // driver call opened" snackbar behind it. Nothing navigated to
+        // either key. Real tracking is LiveTripNavigationScreen, opened from
+        // Home and from the offers screen once a booking actually exists.
         'trustedContacts' => const SafetyHubScreen(),
         'tourGuardian' => const SafetyHubScreen(),
         'offlineCard' => const SafetyHubScreen(),
         'notifications' => const NotificationsScreen(),
         'help' => const HelpGuideScreen(driverMode: false),
-        'support' => const SupportScreen(),
+        // Support opens the real ratings-and-complaints centre, which lists
+        // trips awaiting a rating and the cases this person has opened, and
+        // can open a new one. It replaced a screen that said "Dummy chat,
+        // ticket and emergency help options are active" on the customer's
+        // own display and auto-replied "a demo support ticket has been
+        // created" to anything typed into it.
+        'support' => const FeedbackCenterScreen(),
         'settings' => const SettingsScreen(),
         // The customer drawer has always offered "Clear cached data", but this
         // switch had no case for it, so the entry dropped through to the
@@ -602,14 +611,12 @@ class _MainShellState extends State<MainShell> {
         'driverVerification' => const DriverVerificationScreen(),
         'dashboard' => DriverHomeScreen(onNavigate: _driverNavigate),
         'requests' => const LiveDriverRequestsScreen(),
-        'activeTrip' => const ActiveDriverTripScreen(),
         'driverPackages' => const LiveDriverPackagesScreen(),
         'createPackage' => const LiveCreatePackageScreen(),
         'packageBookings' => const TourOperationsScreen(),
         'vehicleSuitability' => const VehicleSuitabilityScreen(),
         'roadReports' => const DriverRoadReportsScreen(),
         'driverSafety' => const SafetyHubScreen(),
-        'driverLiveTracking' => const LiveTrackingScreen(),
         'earnings' => const DriverEarningsScreen(),
         'payouts' => const DriverEarningsScreen(),
         'vehicles' => const LiveVehicleListScreen(),
@@ -621,11 +628,20 @@ class _MainShellState extends State<MainShell> {
         // That one asked for four photographs and nothing else on one screen,
         // and people abandoned it. Same work, split into four subjects with a
         // progress bar, so it looks finishable.
-        'documents' => const DriverVehicleTypeScreen(),
+        // 'documents' comes from Driver Profile. It used to open
+        // DriverVehicleTypeScreen — the "How do you want to earn?"
+        // chooser from sign-up — so an already-approved driver tapping
+        // "Documents" was dropped back into registration. It now opens
+        // the same screen as the drawer's "My documents".
+        'documents' => const DriverDocumentsScreen(),
         'availability' => const DriverAvailabilityScreen(),
-        'reviews' => const DriverReviewsScreen(),
+        // Earnings already shows the driver's real rating, rating count and
+        // recent reviews. The screen this used to open showed every driver an
+        // identical hardcoded "4.9" over "846 trips", with three invented
+        // passengers praising them by name.
+        'reviews' => const DriverEarningsScreen(),
         'help' => const HelpGuideScreen(driverMode: true),
-        'support' => const SupportScreen(),
+        'support' => const FeedbackCenterScreen(),
         'settings' => const SettingsScreen(),
         'driverProfile' => DriverProfileScreen(onNavigate: _driverNavigate),
         _ => DriverHomeScreen(onNavigate: _driverNavigate),
@@ -854,7 +870,6 @@ class _PremiumDrawer extends StatelessWidget {
         ('trips', Icons.history_rounded, 'Request history'),
         ('explore', Icons.landscape_outlined, 'Explore Kashmir'),
         ('packages', Icons.luggage_outlined, 'Tour packages'),
-        ('saved', Icons.bookmark_border_rounded, 'Saved places'),
         ('myBusiness', Icons.storefront_outlined, 'My business'),
         ('notifications', Icons.notifications_none_rounded, 'Notifications'),
         ('safety', Icons.health_and_safety_outlined, 'Safety'),

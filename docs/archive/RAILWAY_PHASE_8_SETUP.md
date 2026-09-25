@@ -38,12 +38,10 @@ UPLOAD_ROOT=/data/uploads
 
 Generate three independent random secrets. Do not reuse the database password.
 
-PowerShell example:
+Git Bash / macOS / Linux example:
 
-```powershell
-$bytes = New-Object byte[] 64
-[Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-[Convert]::ToBase64String($bytes)
+```bash
+openssl rand -base64 48
 ```
 
 Run the command separately for each secret.

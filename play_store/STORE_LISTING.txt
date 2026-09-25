@@ -13,13 +13,19 @@ SHORT DESCRIPTION (max 80 characters)
 Book rides, tours and hotels across Azad Kashmir with verified local drivers.
 
 FULL DESCRIPTION (max 4000 characters)
+
+  Every line below was checked against the shipped code before release. Do not
+  add a feature to this text without confirming a user can reach it — Google
+  rejects listings that promise more than the app does, and four claims were
+  removed here for exactly that reason (see NOTES at the end of this file).
+
 ----------------------------------------------------------------
 UDrive is the local ride and travel app for Azad Jammu & Kashmir. Book a car,
-motorcycle, rickshaw or coaster in minutes, agree the fare before the trip
-starts, and travel with drivers whose documents have been checked.
+bike or coster in minutes, agree the fare before the trip starts, and travel
+with drivers whose documents have been checked.
 
 BOOK A RIDE
-• City rides, city-to-city trips and multi-day tours in one app
+• City rides and multi-day tours in one app
 • See the recommended fare first, or offer your own price
 • Compare offers from nearby drivers and accept the one you like
 • Pay the driver directly — no card needed
@@ -31,17 +37,18 @@ TRAVEL SAFELY
 • SOS button and trusted contacts for emergencies
 
 EXPLORE KASHMIR
-• Tours to Neelum, Arang Kel, Leepa, Rawalakot, Banjosa and Pir Chinasi
+• Tours to Neelum, Sharda, Rawalakot, Banjosa Lake and Pir Chinasi
 • Whole-vehicle or per-seat booking for groups and families
 • Hotel bookings with local partners
-• Offline maps for valleys with weak signal
+• Route maps and fare estimates before you book
 
 DRIVE WITH UDRIVE
 • Register your vehicle, upload your documents and get approved
 • Receive ride requests near you and send your own fare offer
 • Track earnings, commission and wallet balance in the app
 
-UDrive is built in Azad Kashmir, for Azad Kashmir. Available in English and Urdu.
+UDrive is built in Azad Kashmir, for Azad Kashmir. The app is available in
+English, with Urdu across the menus and account screens.
 ----------------------------------------------------------------
 
 CATEGORY
@@ -49,8 +56,12 @@ App category: Maps & Navigation   (alternative: Travel & Local)
 Tags: Taxi, Travel, Tourism
 
 CONTACT DETAILS
-Email:   (your support inbox — must match PublicPages__SupportEmail on the API)
-Phone:   (optional)
+Email:   techgenichat@gmail.com
+         Play requires an email here and shows it publicly on the listing.
+         This is the Play developer account's own address; change it if you
+         open a dedicated support inbox, and put the same address in the
+         legal documents (udrive_api/Content/legal/) if you do.
+Phone:   0335-6823975   (the WhatsApp number in the Privacy Policy; optional here)
 Website: https://udrive-api-production.up.railway.app/privacy   (or your own site)
 
 PRIVACY POLICY URL
@@ -65,6 +76,33 @@ GRAPHICS IN THIS FOLDER (graphics/)
 03_phone_screenshot_1..5_1080x1920  Phone screenshots (upload 4–8)
 
 WHAT'S NEW (release notes, max 500 characters)
-First release of UDrive: book city rides, city-to-city trips and tours across
-Azad Kashmir, compare driver offers, track your trip live, and use the SOS
-button if you need help.
+First release of UDrive: book city rides and tours across Azad Kashmir, compare
+driver offers, track your trip live, and use the SOS button if you need help.
+
+================================================================
+NOTES — claims removed from the full description, and why
+================================================================
+Keep these out unless the app changes. Each was checked in code.
+
+1. "rickshaw"  — removed.
+   The bookable catalogue is Car, Bike, Coster and Hiace. Rickshaws are
+   explicitly excluded from the Home flow (core/vehicles/nearby_vehicle.dart).
+   A reviewer looking for a rickshaw finds no way to book one.
+
+2. "Arang Kel" and "Leepa" — removed.
+   Leepa appears in no reachable tour surface at all. Arang Kel is a tour chip
+   but is not in the server destination catalogue that Explore renders
+   (migration 003 seeds Muzaffarabad, Neelum Valley, Sharda, Rawalakot,
+   Banjosa Lake, Pir Chinasi). The list now names only those.
+
+3. "city-to-city trips" as a separate product — removed.
+   The City-to-city tile runs the identical city flow and every request is
+   posted with serviceType 'City'. There is no distinct intercity product.
+
+4. "Available in English and Urdu" — softened.
+   The language toggle is real and Urdu covers the menus, settings and account
+   screens, but Home, vehicle selection, live tracking, SOS and hotels are
+   hard-coded English. Restore the original wording once those are localised.
+
+5. "coaster" spelling — the app and the server both say "Coster". The listing
+   now matches, so a search for the word in the app finds it.

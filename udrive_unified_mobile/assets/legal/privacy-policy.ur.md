@@ -106,8 +106,8 @@ Hissa 3 ki har woh cheez jo aap par lagti hai, aur uske alawa:
 
 **Aap ko paisa dene ke liye**
 
-- Bank account ka naam, payout ka tareeqa, aur adhoora chhupaya hua account
-  number.
+- Bank account ka naam, bank ka naam, payout ka tareeqa, aur adhoora chhupaya
+  hua account number.
 - Jab aap commission balance daalte hain: raqam, aap ki apni receipt ka
   reference number, aur jo screenshot aap bhejte hain.
 
@@ -219,11 +219,6 @@ liye us lamhe Google aap ka IP address dekhta hai.
 **Apple** — iPhone par ek screen (tour ka pickup chunna) coordinates ka pata
 banane ke liye phone ka apna geocoder istemal karti hai, jo Apple ka hai.
 Android par wohi screen Google ka istemal karti hai.
-
-**Unsplash** — jab hamari hotel listings load na ho sakein to app namoone ki
-listings dikhati hai jin ki tasweerein Unsplash par hain. Woh tasweerein khulne
-par Unsplash aap ka IP address dekh leta hai. Aap ya aap ke safar ke baare mein
-kuch nahi jata.
 
 **Railway** — hamare servers, database aur aap ki bheji hui files yahan rehti
 hain.

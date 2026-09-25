@@ -19,7 +19,6 @@ import '../../models/booking_models.dart';
 import 'driver_offers_screen.dart';
 
 const _ink = AppColors.inkSurface;
-const _panel = AppColors.inkPanel;
 const _tile = AppColors.inkTile;
 const _lime = AppColors.brand;
 const _muted = AppColors.onInkMuted;
@@ -723,130 +722,21 @@ class UDriveVehicleSelectionScreen extends StatefulWidget {
 }
 
 class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScreen> {
-  static const List<_PublicVehicle> _fallbackDemoVehicles = [
-    _PublicVehicle(
-      id: 'demo-bike-1',
-      driverProfileId: 'demo-driver-bike',
-      driverName: 'Usman Bike Rider',
-      driverRating: 4.8,
-      completedTrips: 186,
-      safetyScore: 94,
-      isOnline: true,
-      category: 'Bike',
-      bookingMode: VehicleBookingMode.wholeVehicle,
-      make: 'Honda',
-      model: 'CB 150F',
-      year: 2025,
-      registrationNumber: 'AJK-BK-101',
-      colour: 'Black',
-      passengerCapacity: 1,
-      luggageCapacity: 1,
-      hasAirConditioning: false,
-      hasHeating: false,
-      isFourByFour: false,
-      mountainReadinessScore: 72,
-      imageUrl: '',
-      serviceAreas: ['Muzaffarabad', 'Mirpur'],
-      isDemo: true,
-    ),
-    _PublicVehicle(
-      id: 'demo-car-1',
-      driverProfileId: 'demo-driver-car',
-      driverName: 'Adeel Khan',
-      driverRating: 4.9,
-      completedTrips: 342,
-      safetyScore: 97,
-      isOnline: true,
-      category: 'Car',
-      make: 'Toyota',
-      model: 'Corolla',
-      year: 2024,
-      registrationNumber: 'AJK-UD-201',
-      colour: 'White',
-      passengerCapacity: 4,
-      luggageCapacity: 3,
-      hasAirConditioning: true,
-      hasHeating: true,
-      isFourByFour: false,
-      mountainReadinessScore: 82,
-      imageUrl: '',
-      serviceAreas: ['Muzaffarabad', 'Neelum Valley'],
-      isDemo: true,
-    ),
-    _PublicVehicle(
-      id: 'demo-rickshaw-1',
-      driverProfileId: 'demo-driver-rickshaw',
-      driverName: 'Bilal Local Ride',
-      driverRating: 4.7,
-      completedTrips: 221,
-      safetyScore: 91,
-      isOnline: true,
-      category: 'Rickshaw',
-      make: 'Sazgar',
-      model: 'Royal',
-      year: 2025,
-      registrationNumber: 'AJK-RK-301',
-      colour: 'Green',
-      passengerCapacity: 3,
-      luggageCapacity: 1,
-      hasAirConditioning: false,
-      hasHeating: false,
-      isFourByFour: false,
-      mountainReadinessScore: 65,
-      imageUrl: '',
-      serviceAreas: ['Muzaffarabad City'],
-      isDemo: true,
-    ),
-    _PublicVehicle(
-      id: 'demo-coaster-1',
-      driverProfileId: 'demo-driver-coaster',
-      driverName: 'Kashmir Group Transport',
-      driverRating: 4.9,
-      completedTrips: 128,
-      safetyScore: 98,
-      isOnline: true,
-      category: 'Coaster',
-      bookingMode: VehicleBookingMode.both,
-      make: 'Toyota',
-      model: 'Coaster',
-      year: 2023,
-      registrationNumber: 'AJK-CT-401',
-      colour: 'Silver',
-      passengerCapacity: 22,
-      luggageCapacity: 18,
-      hasAirConditioning: true,
-      hasHeating: true,
-      isFourByFour: false,
-      mountainReadinessScore: 88,
-      imageUrl: '',
-      serviceAreas: ['Muzaffarabad', 'Rawalakot', 'Neelum Valley'],
-      isDemo: true,
-    ),
-    _PublicVehicle(
-      id: 'demo-suv-1',
-      driverProfileId: 'demo-driver-suv',
-      driverName: 'Hamza Mountain Tours',
-      driverRating: 4.9,
-      completedTrips: 274,
-      safetyScore: 98,
-      isOnline: true,
-      category: 'Car',
-      make: 'Toyota',
-      model: 'Fortuner 4x4',
-      year: 2024,
-      registrationNumber: 'AJK-SUV-501',
-      colour: 'Black',
-      passengerCapacity: 6,
-      luggageCapacity: 5,
-      hasAirConditioning: true,
-      hasHeating: true,
-      isFourByFour: true,
-      mountainReadinessScore: 99,
-      imageUrl: '',
-      serviceAreas: ['Neelum Valley', 'Leepa Valley', 'Toli Pir'],
-      isDemo: true,
-    ),
-  ];
+  // _fallbackDemoVehicles was here: five invented vehicles with invented
+  // driver names ("Adeel Khan", "Kashmir Group Transport"), ratings, trip
+  // counts and registration plates, seeded in initState BEFORE any network
+  // call and again whenever the catalogue came back empty or threw.
+  //
+  // They were selectable and bookable. This screen is entered from Home
+  // whenever a typed destination cannot be geocoded, and from both hotel
+  // screens, so a customer on a slow connection could send a real booking
+  // request naming a driver who does not exist. One of them also carried the
+  // category 'Coaster', which is not a category the server has — see
+  // core/vehicles/vehicle_catalogue.dart.
+  //
+  // The screen already had a loading state and an empty state. Those now do
+  // the job: nothing is shown until the server answers, and if it has nothing
+  // to offer the customer is told so and can retry.
 
   int _selected = 0;
   bool _submitting = false;
@@ -911,22 +801,14 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       _bookingMode = _FareBookingMode.wholeVehicle;
     }
 
-    // Every route service must have renderable data on the very first frame.
-    // Do not wait for AppController, marketplace data or a network request; on
-    // Flutter Web a first-frame exception can otherwise look like a blank page.
-    _ensureFallbackRates();
-    _availableVehicles = _interleaveVehicleCategories(_fallbackVehiclesForService());
-    _loadingVehicles = false;
-    _loadingRates = false;
-    if (_availableVehicles.isNotEmpty) {
-      _selectPublicVehicle(_availableVehicles.first, notify: false);
-    }
-    final initialChoice = _choices[_selected];
-    final initialRate = _dbRates[_normaliseVehicle(initialChoice.name)];
-    final initialSeat = _perSeatEstimate(initialChoice, initialRate);
-    final initialWhole = _wholeVehicleEstimate(initialChoice, initialRate);
-    if (initialSeat > 0) _perSeatOffer.text = initialSeat.round().toString();
-    if (initialWhole > 0) _wholeVehicleOffer.text = initialWhole.round().toString();
+    // The screen opens in its loading state and stays there until the server
+    // answers. It previously seeded invented vehicles and invented rates here,
+    // before any network call, so the first frame showed drivers who did not
+    // exist and an offer box pre-filled with a made-up number — on a good
+    // connection as much as a bad one. The loading and empty states below are
+    // renderable on the first frame, which is what that seeding was for.
+    _loadingVehicles = true;
+    _loadingRates = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _loadRates();
@@ -984,11 +866,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       }
 
       if (!mounted) return;
-      _ensureFallbackRates();
-      final sourceVehicles = vehicles.isEmpty
-          ? _fallbackVehiclesForService()
-          : vehicles;
-      final displayVehicles = _interleaveVehicleCategories(sourceVehicles);
+      // An empty catalogue is an answer, not a failure: it means no approved
+      // vehicle of this kind is available right now. The empty state says so.
+      final displayVehicles = _interleaveVehicleCategories(vehicles);
       setState(() {
         _availableVehicles = displayVehicles;
         _loadingVehicles = false;
@@ -1018,49 +898,28 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       _applySelectedDefaultRates();
     } catch (_) {
       if (!mounted) return;
-      _ensureFallbackRates();
-      final fallback = _interleaveVehicleCategories(
-        _fallbackVehiclesForService(),
-      );
+      // Show the failure. Substituting invented vehicles here hid every outage
+      // behind a working-looking screen, and the customer's booking request
+      // then named a driver the server had never heard of.
       setState(() {
-        _availableVehicles = fallback;
+        _availableVehicles = const [];
+        _selectedVehicleId = null;
         _loadingVehicles = false;
-        _vehicleLoadError = null;
+        _vehicleLoadError =
+            'We could not reach UDrive just now. Check your connection and try again.';
       });
-      if (fallback.isNotEmpty) {
-        _selectPublicVehicle(fallback.first, notify: false);
-        _applySelectedDefaultRates();
-      }
     } finally {
       if (mounted) setState(() => _loadingRates = false);
     }
   }
 
-  List<_PublicVehicle> _fallbackVehiclesForService() {
-    return switch (widget.serviceType) {
-      UDriveServiceType.city => _fallbackDemoVehicles,
-      UDriveServiceType.tours => _fallbackDemoVehicles
-          .where((vehicle) => vehicle.passengerCapacity >= 4)
-          .toList(growable: false),
-      UDriveServiceType.privateVehicle => _fallbackDemoVehicles
-          .where((vehicle) =>
-              _normaliseVehicle(vehicle.category) != 'rickshaw')
-          .toList(growable: false),
-    };
-  }
-
-  void _ensureFallbackRates() {
-    if (widget.serviceType == UDriveServiceType.tours) {
-      _dbRates.putIfAbsent('car', () => const _DbRate(2800, 16500, 95));
-      _dbRates.putIfAbsent('coster', () => const _DbRate(2200, 42000, 180));
-      return;
-    }
-
-    _dbRates.putIfAbsent('bike', () => const _DbRate(450, 1200, 32));
-    _dbRates.putIfAbsent('car', () => const _DbRate(1200, 4800, 65));
-    _dbRates.putIfAbsent('rickshaw', () => const _DbRate(650, 2200, 40));
-    _dbRates.putIfAbsent('coster', () => const _DbRate(900, 18000, 160));
-  }
+  // The per-service fallback list and the hard-coded default rate table were
+  // removed with the demo vehicles above. The rates they invented — a 1,200 base and 65/km
+  // for a Car, 42,000 for a Coster tour — were quoted to the customer as the
+  // suggested fare and pre-filled into the offer box whenever the rate card
+  // could not be fetched. A price the platform made up is worse than no price:
+  // the customer offers it, a driver accepts it, and neither of them agreed to
+  // anything the business set. Rates now come from the server or not at all.
 
   List<_PublicVehicle> _interleaveVehicleCategories(
     List<_PublicVehicle> vehicles,
@@ -1125,43 +984,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     }
   }
 
-  String _publicVehicleAsset(_PublicVehicle vehicle) {
-    final type = _normaliseVehicle('${vehicle.category} ${vehicle.make} ${vehicle.model}');
-    if (type == 'coster') return 'assets/vehicles_photo/coaster_clean.png';
-    if (type == 'bike') return 'assets/vehicles_photo/bike_clean.png';
-    if (type == 'rickshaw') return 'assets/vehicles_photo/rickshaw_clean.png';
-    return widget.serviceType == UDriveServiceType.privateVehicle
-        ? 'assets/vehicles_photo/private_car_clean.png'
-        : 'assets/vehicles_photo/car_clean.png';
-  }
+  // _publicVehicleAsset was removed with _publicVehicleImage, its only
+  // caller. Both belonged to the unreachable renderer.
 
-  Widget _publicVehicleImage(_PublicVehicle vehicle) {
-    final fallback = Image.asset(
-      _publicVehicleAsset(vehicle),
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-    );
-    if (vehicle.imageUrl.isEmpty) return fallback;
-    return Image.network(
-      vehicle.imageUrl,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-      errorBuilder: (_, __, ___) => fallback,
-      loadingBuilder: (context, child, progress) => progress == null
-          ? child
-          : Stack(
-              alignment: Alignment.center,
-              children: [
-                fallback,
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: _lime),
-                ),
-              ],
-            ),
-    );
-  }
 
   void _applySelectedDefaultRates() {
     final choice = _choices[_selected];
@@ -1292,22 +1117,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     return package.bookableSeats > 0 && minutes > 10;
   }
 
-  String _packageTiming(LiveTourPackage package) {
-    final minutes = package.departureAt.difference(DateTime.now()).inMinutes;
-    if (minutes <= 10) return 'Pickup closed';
-    if (minutes < 60) return 'Reaches pickup in about $minutes min';
-    if (minutes < 180) return 'Reaches pickup in about ${(minutes / 60).toStringAsFixed(1)} hr';
-    final d = package.departureAt;
-    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}  ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-  }
 
-  String _packageImage(LiveTourPackage package) {
-    final type = _normaliseVehicle(package.vehicle);
-    if (type == 'coster') return 'assets/vehicles_photo/coaster_clean.png';
-    if (type == 'bike') return 'assets/vehicles_photo/bike_clean.png';
-    if (type == 'rickshaw') return 'assets/vehicles_photo/rickshaw_clean.png';
-    return 'assets/vehicles_photo/car_clean.png';
-  }
 
   double get _routeDistanceKm {
     final direct = const Distance().as(
@@ -1333,214 +1143,111 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     return calculated > rate.perSeatRate ? calculated : rate.perSeatRate;
   }
 
-  double _estimatedAmountForChoice(_VehicleChoiceData choice, {required bool wholeVehicle}) {
-    final rate = _dbRates[_normaliseVehicle(choice.name)];
-    return wholeVehicle ? _wholeVehicleEstimate(choice, rate) : _perSeatEstimate(choice, rate);
-  }
 
-  List<Widget> _publicVehicleCards() {
-    if (_loadingVehicles) {
-      return [
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: AppColors.inkPanel,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: const Row(
-            children: [
-              SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2.2, color: _lime),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Loading approved vehicles from the UDrive server…',
-                  style: TextStyle(color: AppColors.onInkMuted, fontSize: 11.5),
-                ),
-              ),
-            ],
-          ),
+
+  /// The one place this screen tells the truth about availability.
+  ///
+  /// It exists because the loading and empty states in the old public
+  /// vehicle-card builder were unreachable: `build` returns from inside
+  /// its own try/catch, so every line after that — including the only two
+  /// calls to that builder — was dead code. The two renderers that run,
+  /// `_buildCityMinimalResultsScreen` and `_buildSafeRouteResultsScreen`, map
+  /// over the fixed `_choices` list and read `_dbRates`, so with no rates and
+  /// no vehicles they draw a full page of rows whose buttons are disabled and
+  /// whose labels say "Seat fare loading" for ever, with no spinner and no
+  /// explanation. Before the invented fallback vehicles and rates were taken
+  /// out, that state was hidden; it is a real state now, so it needs to say so.
+  List<Widget> _availabilityBanner() {
+    if (_loadingVehicles || _loadingRates) {
+      return [Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
         ),
-      ];
-    }
-
-    if (_availableVehicles.isEmpty) {
-      return [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.inkPanel,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppTint.pendingBorder),
-          ),
-          child: Column(
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.directions_car_filled_rounded, color: AppTint.pending),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'No customer vehicles were returned by the API.',
-                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _vehicleLoadError ?? 'Add demo data from Admin → Data Management, then retry.',
-                style: const TextStyle(color: AppColors.onInkMuted, fontSize: 10.5, height: 1.35),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _loadingVehicles = true;
-                      _vehicleLoadError = null;
-                    });
-                    _loadRates();
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.onInk,
-                    side: const BorderSide(color: AppColors.inkTile),
-                  ),
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Retry vehicles'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ];
-    }
-
-    return _availableVehicles.map((vehicle) {
-      final active = vehicle.id == _selectedVehicleId;
-      final type = _normaliseVehicle('${vehicle.category} ${vehicle.make} ${vehicle.model}');
-      final rate = _dbRates[type];
-      final areas = vehicle.serviceAreas.take(2).join(', ');
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Material(
-          color: active ? AppColors.inkTile : AppColors.inkPanel,
-          borderRadius: BorderRadius.circular(18),
-          child: InkWell(
-            onTap: vehicle.isOnline ? () => _selectPublicVehicle(vehicle) : null,
-            borderRadius: BorderRadius.circular(18),
-            child: Container(
-              padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: active ? _lime.withValues(alpha: .75) : Colors.white10,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 88,
-                    height: 66,
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: active ? .07 : .035),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: _publicVehicleImage(vehicle),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '${vehicle.make} ${vehicle.model} ${vehicle.year}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                            _StatusBadge(
-                              label: vehicle.isOnline ? 'Online' : 'Offline',
-                              color: vehicle.isOnline
-                                  ? AppColors.secondary
-                                  : AppTint.pending,
-                            ),
-                            if (vehicle.isDemo) ...[
-                              const SizedBox(width: 4),
-                              const _StatusBadge(label: 'Demo', color: Color(0xFF75B8FF)),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '${vehicle.driverName} • ★ ${vehicle.driverRating.toStringAsFixed(1)} • ${vehicle.completedTrips} trips',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: AppColors.onInkMuted, fontSize: 10),
-                        ),
-                        const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 5,
-                          runSpacing: 4,
-                          children: [
-                            _RatePill(label: 'Type', value: vehicle.category),
-                            _RatePill(label: 'Seats', value: '${vehicle.passengerCapacity}'),
-                            _RatePill(label: '/ km', value: _money(rate?.perKmRate ?? 0)),
-                            _RatePill(
-                              label: _bookingMode == _FareBookingMode.wholeVehicle ? 'Est. full' : 'Est. seat',
-                              value: _money(
-                                _bookingMode == _FareBookingMode.wholeVehicle
-                                    ? _wholeVehicleEstimate(_choices.firstWhere((c) => _normaliseVehicle(c.name) == type, orElse: () => _choices.first), rate)
-                                    : _perSeatEstimate(_choices.firstWhere((c) => _normaliseVehicle(c.name) == type, orElse: () => _choices.first), rate),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${vehicle.registrationNumber}${areas.isEmpty ? '' : ' • $areas'}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: _muted, fontSize: 9.5),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  Icon(
-                    active
-                        ? Icons.radio_button_checked_rounded
-                        : vehicle.isOnline
-                            ? Icons.radio_button_off_rounded
-                            : Icons.lock_clock_rounded,
-                    color: active
-                        ? _lime
-                        : vehicle.isOnline
-                            ? Colors.white30
-                            : AppTint.pending,
-                    size: 23,
-                  ),
-                ],
-              ),
+        child: const Row(children: [
+          SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2)),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Checking which drivers are available and what the fare is…',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppText.secondary),
             ),
           ),
+        ]),
+      )];
+    }
+
+    // Two separate ways this screen can be unusable, and the banner has to
+    // catch both. Gating on _availableVehicles alone was not enough: the
+    // vehicles and the rate card are fetched together, but the rates response
+    // is parsed defensively, so a 200 whose payload is the wrong shape — or
+    // simply omits a category — leaves _dbRates empty or partial with NO
+    // error and a perfectly good vehicle list. Every row then renders
+    // 'Seat fare loading' with both buttons disabled, for ever, which is the
+    // exact dead end this method exists to remove.
+    final noRate = _choices
+        .every((choice) => _dbRates[_normaliseVehicle(choice.name)] == null);
+
+    if (_vehicleLoadError == null && _availableVehicles.isNotEmpty && !noRate) {
+      return const [];
+    }
+
+    final message = _vehicleLoadError ??
+        (noRate
+            ? 'We could not load current fares for this route. Try again in a moment.'
+            : 'No approved driver is offering this service near you at the moment. '
+                'You can still send a request, or try again in a few minutes.');
+
+    return [Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTint.pendingSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTint.pendingBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.info_outline_rounded, size: 19, color: AppTint.pending),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, height: 1.35),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              setState(() {
+                _loadingVehicles = true;
+                _loadingRates = true;
+                _vehicleLoadError = null;
+              });
+              _loadRates();
+            },
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Try again'),
+          ),
         ),
-      );
-    }).toList();
+      ]),
+    )];
   }
+
+  // The public vehicle-card builder was removed with the dead renderer in
+  // build().
+  // It held this screen's loading and empty states, but nothing ever
+  // called it from a reachable path, so none of it was shown. Its job is
+  // now done by _availabilityBanner() above, which both live renderers
+  // include. An uncalled private method is an `unused_element` warning:
+  // this repo's CI passes --no-fatal-warnings so it would not have broken
+  // the build, but a method nothing can call is still dead weight.
 
   double? _typedAmount(TextEditingController controller) {
     final clean = controller.text.replaceAll(',', '').trim();
@@ -1870,6 +1577,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
             const SizedBox(height: 8),
             Text('${_routeDistanceKm.toStringAsFixed(1)} km estimated route', style: const TextStyle(color: AppText.secondary, fontSize: 11, fontWeight: FontWeight.w600)),
             const SizedBox(height: 15),
+            ..._availabilityBanner(),
             ...choices.asMap().entries.map((entry) {
               final index = entry.key;
               final choice = entry.value;
@@ -1922,15 +1630,10 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                 ),
               );
             }),
-            if (_loadingRates || _loadingVehicles)
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 8),
-                  Text('Refreshing live availability…', style: TextStyle(color: AppText.secondary, fontSize: 11)),
-                ]),
-              ),
+            // The "Refreshing live availability…" spinner that used to sit here
+            // was removed: _availabilityBanner() at the top of this list shows
+            // the same thing for the same condition, and two spinners saying
+            // one thing on one screen reads like two things are happening.
           ],
         ),
       ),
@@ -1979,6 +1682,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
           children: [
+            ..._availabilityBanner(),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -2216,18 +1920,8 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               ),
             ),
             const SizedBox(height: 12),
-            if (_loadingRates || _loadingVehicles)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                    SizedBox(width: 8),
-                    Text('Refreshing live rates and vehicles…', style: TextStyle(color: AppText.secondary, fontSize: 11)),
-                  ],
-                ),
-              ),
+            // Second spinner removed for the same reason as the one on the city
+            // screen: _availabilityBanner() above already covers this state.
             SizedBox(
               height: 54,
               child: FilledButton.icon(
@@ -2328,346 +2022,21 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       return _buildRouteRenderRecovery(context, error);
     }
 
-    final app = AppControllerScope.of(context);
-    final tourPackages = _matchingPackages(app);
-    final selected = _choices[_selected];
-    final selectedVehicle = _selectedPublicVehicle;
-    final selectedPackage = _matchingPackage(app, selected);
-    final effectiveCapacity = selectedPackage?.totalSeats ??
-        selectedVehicle?.passengerCapacity ??
-        selected.capacity;
-    final selectedPackageBookable = selectedPackage == null || _packageBookable(selectedPackage);
-    final selectedDbRate = _dbRates[_normaliseVehicle(selected.name)];
-    final perSeatAmount = _typedAmount(_perSeatOffer) ?? selectedPackage?.pricePerSeat ?? _perSeatEstimate(selected, selectedDbRate);
-    final wholeAmount = _typedAmount(_wholeVehicleOffer) ?? selectedPackage?.wholeVehiclePrice ?? _wholeVehicleEstimate(selected, selectedDbRate);
-
-    return Scaffold(
-      backgroundColor: AppColors.inkSurface,
-      body: Stack(
-        children: [
-          const Positioned.fill(child: ColoredBox(color: AppColors.inkSurface)),
-          Positioned.fill(
-            child: SafeArea(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 76, 16, 24),
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.inkPanel,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.my_location_rounded, color: _lime, size: 20),
-                        const SizedBox(width: 9),
-                        Expanded(
-                          child: Text(
-                            '${widget.pickupLabel}  →  ${widget.destination.title}',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: [
-                      _RatePill(label: 'Distance', value: '${_routeDistanceKm.toStringAsFixed(1)} km'),
-                      if (selectedDbRate != null) _RatePill(label: 'Rate', value: '${_money(selectedDbRate.perKmRate)} / km'),
-                      _RatePill(
-                        label: 'Estimated fare',
-                        value: _money(_bookingMode == _FareBookingMode.wholeVehicle ? wholeAmount : perSeatAmount * _seats),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(widget.serviceType.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 2),
-                        Text(widget.serviceType == UDriveServiceType.tours ? 'Published tour rates are shown when available' : 'Choose a ride, review the fare and book', style: const TextStyle(color: _muted, fontSize: 10.5)),
-                      ])),
-                      if (widget.serviceType == UDriveServiceType.tours)
-                        TextButton.icon(onPressed: _pickDate, icon: const Icon(Icons.calendar_month_rounded, size: 17), label: Text('${_tourDate.day}/${_tourDate.month}', style: const TextStyle(fontSize: 11))),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  if (_showBookingModeToggle)
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14)),
-                      child: Row(children: [
-                        Expanded(child: _ModeButton(label: 'Per seat', selected: _bookingMode == _FareBookingMode.perSeat, onTap: () => setState(() => _bookingMode = _FareBookingMode.perSeat))),
-                        Expanded(child: _ModeButton(label: 'Whole vehicle', selected: _bookingMode == _FareBookingMode.wholeVehicle, onTap: () => setState(() => _bookingMode = _FareBookingMode.wholeVehicle))),
-                      ]),
-                    )
-                  else
-                    Text(
-                      _bookingModeNotice ?? '',
-                      style: const TextStyle(color: AppText.secondary, fontSize: 11.5, fontWeight: FontWeight.w600),
-                    ),
-                  if (_bookingMode == _FareBookingMode.perSeat) ...[
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      const Text('Seats', style: TextStyle(color: AppText.secondary, fontSize: 11.5, fontWeight: FontWeight.w700)),
-                      const Spacer(),
-                      _RoundMiniButton(icon: Icons.remove, onTap: _seats > 1 ? () => setState(() => _seats--) : null),
-                      Padding(padding: const EdgeInsets.symmetric(horizontal: 13), child: Text('$_seats', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900))),
-                      _RoundMiniButton(icon: Icons.add, onTap: _seats < effectiveCapacity ? () => setState(() => _seats++) : null),
-                    ]),
-                  ],
-                  const SizedBox(height: 10),
-                  if (widget.serviceType == UDriveServiceType.tours && tourPackages.isEmpty) ...[
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: AppColors.inkPanel, borderRadius: BorderRadius.circular(18)),
-                      child: const Row(children: [
-                        Icon(Icons.directions_bus_filled_rounded, color: _lime),
-                        SizedBox(width: 10),
-                        Expanded(child: Text('No fixed tour package is scheduled for this destination in the next 30 days. Choose an approved tour-capable vehicle below and submit your offer.', style: TextStyle(color: AppColors.onInkMuted, fontSize: 11.5, height: 1.35))),
-                      ]),
-                    ),
-                    const SizedBox(height: 8),
-                    ..._publicVehicleCards(),
-                  ] else if (widget.serviceType == UDriveServiceType.tours)
-                    ...tourPackages.map((package) {
-                      final active = package.id == (_selectedPackageId ?? tourPackages.first.id);
-                      final bookable = _packageBookable(package);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Material(
-                          color: active ? AppColors.inkTile : AppColors.inkPanel,
-                          borderRadius: BorderRadius.circular(18),
-                          child: InkWell(
-                            onTap: bookable ? () {
-                              setState(() {
-                                _selectedPackageId = package.id;
-                                final vehicleIndex = _choices.indexWhere((choice) => _normaliseVehicle(choice.name) == _normaliseVehicle(package.vehicle));
-                                if (vehicleIndex >= 0) _selected = vehicleIndex;
-                                _seats = _seats.clamp(1, package.bookableSeats.clamp(1, package.totalSeats)).toInt();
-                              });
-                              _applySelectedDefaultRates();
-                            } : null,
-                            borderRadius: BorderRadius.circular(18),
-                            child: Container(
-                              padding: const EdgeInsets.all(11),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: active ? _lime.withValues(alpha: .75) : Colors.white10),
-                              ),
-                              child: Row(children: [
-                                Container(
-                                  width: 84,
-                                  height: 62,
-                                  padding: const EdgeInsets.fromLTRB(6, 5, 6, 5),
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .045), borderRadius: BorderRadius.circular(14)),
-                                  child: Image.asset(_packageImage(package), fit: BoxFit.contain, filterQuality: FilterQuality.high),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Row(children: [
-                                    Expanded(child: Text('${package.vehicle} • ${package.driverName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w900))),
-                                    if (!bookable) const _StatusBadge(label: 'Closed', color: AppColors.danger),
-                                  ]),
-                                  const SizedBox(height: 3),
-                                  Text(_packageTiming(package), style: TextStyle(color: bookable ? _lime : Colors.white38, fontSize: 10.5, fontWeight: FontWeight.w800)),
-                                  const SizedBox(height: 5),
-                                  Wrap(spacing: 5, runSpacing: 4, children: [
-                                    _RatePill(label: 'Seats left', value: '${package.bookableSeats}'),
-                                    _RatePill(label: 'Seat', value: _money(package.pricePerSeat)),
-                                    _RatePill(label: 'Full', value: _money(package.wholeVehiclePrice)),
-                                  ]),
-                                  const SizedBox(height: 4),
-                                  Text('${package.pickupPoint} • ${package.registrationNumber}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 9.5)),
-                                ])),
-                                const SizedBox(width: 5),
-                                Icon(active ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, color: active ? _lime : Colors.white30),
-                              ]),
-                            ),
-                          ),
-                        ),
-                      );
-                    })
-                  else
-                    ..._publicVehicleCards(),
-                  const SizedBox(height: 3),
-                  if (selectedPackage == null)
-                    TextField(
-                      controller: _bookingMode == _FareBookingMode.perSeat ? _perSeatOffer : _wholeVehicleOffer,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      onChanged: (_) => setState(() {}),
-                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
-                      decoration: InputDecoration(
-                        labelText: _bookingMode == _FareBookingMode.perSeat ? 'Your offer per seat (PKR)' : 'Your whole vehicle offer (PKR)',
-                        labelStyle: const TextStyle(color: _muted, fontSize: 11),
-                        prefixIcon: const Icon(Icons.payments_outlined, color: _lime, size: 20),
-                        filled: true,
-                        fillColor: AppColors.inkTile,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      ),
-                    )
-                  else
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: AppColors.inkTile, borderRadius: BorderRadius.circular(14)),
-                      child: Row(children: [
-                        const Icon(Icons.verified_rounded, color: _lime, size: 20),
-                        const SizedBox(width: 9),
-                        Expanded(child: Text('Published by ${selectedPackage.driverName} • ${selectedPackage.availableSeats} seats available', style: const TextStyle(color: AppColors.onInkMuted, fontSize: 10.5))),
-                      ]),
-                    ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(color: AppColors.inkPanel, borderRadius: BorderRadius.circular(14)),
-                    child: Row(children: [
-                      const Icon(Icons.info_outline_rounded, color: AppText.disabled, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(
-                        selectedPackage == null
-                            ? 'Fare is calculated from the database per-km rate and estimated route distance. You can keep this fare or adjust your offer before booking.'
-                            : 'Per-seat and whole-vehicle prices come directly from the selected tour package.',
-                        style: const TextStyle(color: AppColors.onInkMuted, fontSize: 10.5, height: 1.35),
-                      )),
-                    ]),
-                  ),
-                  SwitchListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-                    value: _autoAccept,
-                    activeThumbColor: _lime,
-                    onChanged: (value) => setState(() => _autoAccept = value),
-                    secondary: const Icon(Icons.send_rounded, color: AppText.secondary, size: 19),
-                    title: Text('Auto-accept offers up to ${_money(_bookingMode == _FareBookingMode.perSeat ? (selectedPackage == null ? perSeatAmount : perSeatAmount * _seats) : wholeAmount)}', style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700)),
-                  ),
-                  SizedBox(
-                    height: 52,
-                    child: FilledButton(
-                      onPressed: _submitting ||
-                              (widget.serviceType == UDriveServiceType.tours &&
-                                  selectedPackage != null &&
-                                  !selectedPackageBookable)
-                          ? null
-                          : _submit,
-                      style: FilledButton.styleFrom(backgroundColor: _lime, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                      child: _submitting
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black))
-                          : Text(widget.serviceType == UDriveServiceType.tours ? 'Find tour vehicle' : 'Book selected ride', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
-              child: Row(
-                children: [
-                  IconButton.filled(
-                    onPressed: () => Navigator.pop(context),
-                    style: IconButton.styleFrom(backgroundColor: AppTint.inkGlassSoft),
-                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
-                  ),
-                  const Spacer(),
-                  IconButton.filled(
-                    onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-                    style: IconButton.styleFrom(backgroundColor: AppTint.inkGlassSoft),
-                    icon: const Icon(Icons.home_rounded, color: Colors.white, size: 20),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    // Everything that used to follow was unreachable: both branches of the
+    // try above return, so the analyzer treated the remaining ~260 lines as
+    // dead code. It was an older full-page renderer, and it held the ONLY
+    // calls to
+    // the public vehicle-card builder, which is why its loading and empty
+    // states never appeared on screen. The live renderers now show
+    // _availabilityBanner() instead. Removed rather than left in place so the
+    // next person does not fix a bug in code that cannot run.
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.label, required this.color});
-  final String label;
-  final Color color;
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-        decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(99)),
-        child: Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w900)),
-      );
-}
 
-class _ModeButton extends StatelessWidget {
-  const _ModeButton({required this.label, required this.selected, required this.onTap});
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(11),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          decoration: BoxDecoration(color: selected ? _lime : Colors.transparent, borderRadius: BorderRadius.circular(11)),
-          alignment: Alignment.center,
-          child: Text(label, style: TextStyle(color: selected ? Colors.black : AppText.secondary, fontSize: 11.5, fontWeight: FontWeight.w900)),
-        ),
-      );
-}
 
-class _RoundMiniButton extends StatelessWidget {
-  const _RoundMiniButton({required this.icon, this.onTap});
-  final IconData icon;
-  final VoidCallback? onTap;
-  @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(99),
-        child: Container(width: 30, height: 30, decoration: BoxDecoration(color: Colors.white.withValues(alpha: onTap == null ? .03 : .08), shape: BoxShape.circle), child: Icon(icon, color: onTap == null ? Colors.white24 : Colors.white, size: 17)),
-      );
-}
 
-class _RatePill extends StatelessWidget {
-  const _RatePill({required this.label, required this.value});
-  final String label;
-  final String value;
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-        decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
-        child: Text('$label: $value', style: const TextStyle(color: AppColors.onInkMuted, fontSize: 9.5, fontWeight: FontWeight.w700)),
-      );
-}
 
-class _RouteField extends StatelessWidget {
-  const _RouteField({required this.label, required this.value, required this.icon, this.readOnly = false});
-  final String label;
-  final String value;
-  final IconData icon;
-  final bool readOnly;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(14)),
-        child: Row(children: [
-          Icon(icon, color: Colors.white, size: 29),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: const TextStyle(color: _muted, fontSize: 12)),
-            Text(value, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w800)),
-          ])),
-        ]),
-      );
-}
 
 class _FilterChip extends StatelessWidget {
   const _FilterChip({required this.label, required this.selected});
@@ -2682,22 +2051,6 @@ class _FilterChip extends StatelessWidget {
       );
 }
 
-class _RouteSummary extends StatelessWidget {
-  const _RouteSummary({required this.pickup, required this.destination});
-  final String pickup;
-  final String destination;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: AppTint.inkScrim, borderRadius: BorderRadius.circular(18), boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 12)]),
-        child: Column(children: [
-          Row(children: [const Icon(Icons.circle, size: 12, color: _lime), const SizedBox(width: 10), Expanded(child: Text(pickup, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)))]),
-          const SizedBox(height: 8),
-          Row(children: [const Icon(Icons.flag_rounded, color: Colors.white, size: 18), const SizedBox(width: 8), Expanded(child: Text(destination, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)))]),
-        ]),
-      );
-}
 
 
 class _DbRate {
@@ -2816,32 +2169,25 @@ class _VehicleChoiceData {
   final String imageAsset;
 }
 
-class _RouteModeChoice extends StatelessWidget {
-  const _RouteModeChoice({required this.label, required this.selected, required this.onTap});
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
 
-  @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(11),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? _lime : Colors.transparent,
-            borderRadius: BorderRadius.circular(11),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? Colors.black : AppText.secondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-      );
-}
+
+// Thirteen private declarations were removed here in the release audit.
+//
+// Widget classes: ModeButton, RatePill, RoundMiniButton, RouteField,
+// RouteModeChoice, RouteSummary, StatusBadge.
+// Methods: estimatedAmountForChoice, packageImage, packageTiming,
+// publicVehicleImage, publicVehicleAsset.
+// Plus the top-level const panel.
+// (Written without their leading underscores on purpose: audit_structure.py
+// reads an underscored name followed by a bracket, inside a comment, as a
+// real constructor call and flags it as undeclared.)
+//
+// All thirteen were reachable only from the unreachable renderer that build()
+// could never run, and from the vehicle-card builder that renderer alone
+// called. With those gone, each of these is declared and never referenced.
+//
+// That is an `unused_element` warning rather than an error, and this repo's
+// CI runs `flutter analyze --no-fatal-warnings`, so none of it would have
+// stopped a build — the reason to remove them is that they are code nothing
+// can reach, and the next person to read this file should not have to work
+// out which half of it runs.

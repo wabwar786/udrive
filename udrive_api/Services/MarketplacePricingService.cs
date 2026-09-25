@@ -239,8 +239,12 @@ public sealed class MarketplacePricingService(string connectionString)
                                       array_to_string(dp.service_areas, ' '))
                        ILIKE '%' || @query || '%'
                   )
+            -- The second sort key used to be
+            --   COALESCE(u.email LIKE 'demo.%@udrive.local', false) DESC
+            -- which put seeded demo accounts AHEAD of every real driver in the
+            -- list a customer sees. Ranking is now online first, then the
+            -- driver's own rating.
             ORDER BY dp.is_online DESC,
-                     COALESCE(u.email LIKE 'demo.%@udrive.local', false) DESC,
                      dp.average_rating DESC,
                      v.mountain_readiness_score DESC,
                      v.updated_at DESC

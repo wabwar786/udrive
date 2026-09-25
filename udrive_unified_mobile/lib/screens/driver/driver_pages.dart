@@ -52,22 +52,11 @@ class _RouteLine extends StatelessWidget {
   Widget build(BuildContext context) => Row(children: [Icon(icon, color: color, size: 20), const SizedBox(width: 9), Expanded(child: Text(text, style: const TextStyle(fontWeight: FontWeight.w800)))]);
 }
 
-class ActiveDriverTripScreen extends StatelessWidget {
-  const ActiveDriverTripScreen({super.key});
-  @override
-  Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(18), children: [
-    const MapPreview(height: 270),
-    const SizedBox(height: 16),
-    PremiumCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [StatusPill(label: 'Driving to pickup', color: AppColors.info), Spacer(), Text('18 min · 12.4 km', style: TextStyle(fontWeight: FontWeight.w900))]), SizedBox(height: 15), _RouteLine(icon: Icons.trip_origin_rounded, color: AppColors.primary, text: 'F-8 Markaz, Islamabad'), SizedBox(height: 9), _RouteLine(icon: Icons.location_on_rounded, color: AppColors.secondary, text: 'Muzaffarabad, Azad Kashmir'), Divider(height: 26), ListTile(contentPadding: EdgeInsets.zero, leading: CircleAvatar(child: Icon(Icons.person_rounded)), title: Text('Hassan Ali', style: TextStyle(fontWeight: FontWeight.w900)), subtitle: Text('3 passengers · 2 bags'), trailing: Icon(Icons.call_rounded, color: AppColors.primaryDark))])),
-    const SizedBox(height: 14),
-    Row(children: [Expanded(child: OutlinedButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dummy customer chat opened.'))), icon: const Icon(Icons.chat_rounded), label: const Text('Message'))), const SizedBox(width: 9), Expanded(child: FilledButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Arrival notification sent to customer.'))), icon: const Icon(Icons.notifications_active_rounded), label: const Text('I have arrived')))]),
-    const SizedBox(height: 12),
-    FilledButton.icon(onPressed: () => _otp(context), icon: const Icon(Icons.pin_rounded), label: const Text('Start trip with OTP')),
-    const SizedBox(height: 10),
-    OutlinedButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Driver safety alert demo activated.'))), icon: const Icon(Icons.sos_rounded, color: AppColors.danger), label: const Text('Driver emergency support')),
-  ]);
-  void _otp(BuildContext context) { final c = TextEditingController(text: '6421'); showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Enter customer OTP'), content: TextField(controller: c, keyboardType: TextInputType.number, maxLength: 4), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), FilledButton(onPressed: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Trip started successfully.'))); }, child: const Text('Start trip'))])); }
-}
+// ActiveDriverTripScreen was here. Hardcoded "18 min · 12.4 km", a Message
+// button that opened nothing, an "I have arrived" button that notified
+// nobody, and an emergency button whose entire behaviour was a snackbar
+// reading "Driver safety alert demo activated". The real one is
+// LiveTripNavigationScreen, reached from the driver dashboard.
 
 class DriverPackagesScreen extends StatelessWidget {
   const DriverPackagesScreen({required this.onNavigate, super.key});
@@ -88,42 +77,9 @@ class _MiniStat extends StatelessWidget {
   @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12)), child: Column(children: [Text(value, style: const TextStyle(fontWeight: FontWeight.w900)), Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 10))]));
 }
 
-class CreatePackageScreen extends StatefulWidget {
-  const CreatePackageScreen({super.key});
-  @override State<CreatePackageScreen> createState() => _CreatePackageScreenState();
-}
-class _CreatePackageScreenState extends State<CreatePackageScreen> {
-  final _form = GlobalKey<FormState>();
-  final _title = TextEditingController(text: 'Neelum Valley Family Adventure');
-  final _route = TextEditingController(text: 'Islamabad · Muzaffarabad · Keran · Sharda');
-  final _price = TextEditingController(text: '62000');
-  final _seatPrice = TextEditingController(text: '12000');
-  final _pickupPoint = TextEditingController(text: 'Ghari Pan, Muzaffarabad');
-  final _description = TextEditingController(text: 'A private, flexible family tour with scenic stops and a verified tourism driver.');
-  int _days = 3; int _guests = 6; bool _offers = true; bool _familyOnly = true; String _vehicle = 'Honda BR-V';
-  @override void dispose() { _title.dispose(); _route.dispose(); _price.dispose(); _seatPrice.dispose(); _pickupPoint.dispose(); _description.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) => Form(key: _form, child: ListView(padding: const EdgeInsets.fromLTRB(18, 4, 18, 30), children: [
-    UploadTile(label: 'Package cover image', uploaded: true, icon: Icons.image_rounded, onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dummy cover image selected.')))), const SizedBox(height: 12),
-    TextFormField(controller: _title, decoration: InputDecoration(labelText: context.tr('packageTitle')), validator: _required), const SizedBox(height: 12),
-    TextFormField(controller: _route, maxLines: 2, decoration: InputDecoration(labelText: context.tr('startLocation')), validator: _required), const SizedBox(height: 12),
-    DropdownButtonFormField<String>(value: _vehicle, decoration: InputDecoration(labelText: context.tr('vehicle')), items: const ['Honda BR-V', 'Toyota Corolla', 'Toyota Prado', 'Hiace Grand Cabin'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (value) => setState(() => _vehicle = value!)), const SizedBox(height: 12),
-    Row(children: [Expanded(child: _NumberField(label: context.tr('duration'), value: _days, suffix: 'days', onChanged: (v) => setState(() => _days = v))), const SizedBox(width: 10), Expanded(child: _NumberField(label: context.tr('maxGuests'), value: _guests, suffix: 'guests', onChanged: (v) => setState(() => _guests = v)))]), const SizedBox(height: 12),
-    TextFormField(controller: _pickupPoint, decoration: InputDecoration(labelText: context.tr('pickupCity'), prefixIcon: const Icon(Icons.trip_origin_rounded)), validator: _required), const SizedBox(height: 12),
-    Row(children: [Expanded(child: TextFormField(controller: _seatPrice, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('perSeat'), prefixText: 'PKR '), validator: _required)), const SizedBox(width: 10), Expanded(child: TextFormField(controller: _price, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('wholeVehicle'), prefixText: 'PKR '), validator: _required))]), const SizedBox(height: 12),
-    TextFormField(controller: _description, maxLines: 4, decoration: InputDecoration(labelText: context.tr('description')), validator: _required), const SizedBox(height: 12),
-    SwitchListTile(value: _offers, onChanged: (v) => setState(() => _offers = v), contentPadding: const EdgeInsets.symmetric(horizontal: 4), title: Text(context.tr('allowOffers'), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: const Text('Customers can send a different package price.')),
-    SwitchListTile(value: _familyOnly, onChanged: (v) => setState(() => _familyOnly = v), contentPadding: const EdgeInsets.symmetric(horizontal: 4), title: Text(context.tr('familyOnlyPreference'), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: const Text('Package will be highlighted for family travellers.')), const SizedBox(height: 12),
-    PremiumCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(context.tr('itinerary'), style: const TextStyle(fontWeight: FontWeight.w900)), const SizedBox(height: 10), for (final day in ['Day 1: Islamabad to Keran', 'Day 2: Sharda and Upper Neelum', 'Day 3: Return via Muzaffarabad']) Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [const Icon(Icons.drag_indicator_rounded, color: AppColors.muted), const SizedBox(width: 6), Expanded(child: Text(day, style: const TextStyle(fontWeight: FontWeight.w700))), const Icon(Icons.edit_outlined, size: 18)])), OutlinedButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('New itinerary day added in demo mode.'))), icon: const Icon(Icons.add_rounded), label: const Text('Add itinerary day'))])), const SizedBox(height: 16),
-    Row(children: [Expanded(child: OutlinedButton(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Package saved as draft.'))), child: Text(context.tr('saveDraft')))), const SizedBox(width: 10), Expanded(flex: 2, child: FilledButton(onPressed: _submit, child: Text(context.tr('submitApproval'))))]),
-  ]));
-  String? _required(String? v) => (v ?? '').trim().isEmpty ? context.tr('required') : null;
-  void _submit() { if (!_form.currentState!.validate()) return; AppControllerScope.of(context).addPackage(TourPackage(id: 'P-${DateTime.now().millisecondsSinceEpoch}', title: _title.text, route: _route.text, days: _days, price: int.parse(_price.text), image: 'assets/images/neelum.png', driver: 'Shahzad Ahmad', rating: 4.9, maxGuests: _guests, vehicle: _vehicle, description: _description.text, inclusions: const ['Private vehicle', 'Fuel and tolls', 'Driver services'], itinerary: const ['Day 1: Islamabad to Keran', 'Day 2: Sharda sightseeing', 'Day 3: Return'], allowOffers: _offers, status: 'Pending', pricePerSeat: int.parse(_seatPrice.text), wholeVehiclePrice: int.parse(_price.text), availableSeats: _guests, pickupPoint: _pickupPoint.text, familyOnly: _familyOnly)); showDialog(context: context, builder: (_) => AlertDialog(icon: const Icon(Icons.hourglass_top_rounded, color: AppColors.warning, size: 48), title: const Text('Submitted for approval'), content: const Text('The package is now visible in your dashboard with Pending status.'), actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))])); }
-}
-
-class _NumberField extends StatelessWidget {
-  const _NumberField({required this.label, required this.value, required this.suffix, required this.onChanged}); final String label; final int value; final String suffix; final ValueChanged<int> onChanged;
-  @override Widget build(BuildContext context) => PremiumCard(padding: const EdgeInsets.all(12), child: Column(children: [Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)), const SizedBox(height: 9), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [IconButton.filledTonal(onPressed: value > 1 ? () => onChanged(value - 1) : null, icon: const Icon(Icons.remove, size: 17)), Text('$value\n$suffix', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)), IconButton.filledTonal(onPressed: () => onChanged(value + 1), icon: const Icon(Icons.add, size: 17))]) ]));
-}
+// The older CreatePackageScreen was here, superseded by
+// live_create_package_screen.dart. It duplicated the class name declared in
+// create_package_screen.dart and carried "Dummy cover image selected".
 
 class DriverEarningsScreen extends StatelessWidget {
   const DriverEarningsScreen({super.key});
@@ -229,6 +185,8 @@ class _DriverAvailabilityScreenState extends State<DriverAvailabilityScreen> {
       );
 }
 
-class DriverReviewsScreen extends StatelessWidget { const DriverReviewsScreen({super.key}); @override Widget build(BuildContext context)=>ListView(padding:EdgeInsets.all(18),children:[Row(children:[MetricTile(icon:Icons.star_rounded,label:'Overall rating',value:'4.9',color:AppColors.accent),SizedBox(width:10),MetricTile(icon:Icons.route_rounded,label:'Total trips',value:'846',color:AppColors.primary)]),SizedBox(height:18),for(final r in [('Ayesha Noor','Excellent safe driver and very clean vehicle.','5.0'),('Hassan Ali','Punctual and knows the Kashmir routes very well.','4.9'),('Waqar Ahmed','Great family trip and flexible stops.','4.8')]) Padding(padding:EdgeInsets.only(bottom:11),child:PremiumCard(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Row(children:[CircleAvatar(child:Icon(Icons.person_rounded)),SizedBox(width:10),Expanded(child:Text(r.$1,style:TextStyle(fontWeight:FontWeight.w900))),StatusPill(label:'${r.$3} ★',color:AppColors.accent)]),SizedBox(height:10),Text(r.$2,style:TextStyle(color:AppColors.muted,height:1.4))]))) ]); }
+// DriverReviewsScreen was here. It showed every driver the same invented
+// "4.9" over "846 trips" and three fabricated passenger reviews. The real
+// figures live on DriverEarningsScreen.
 
 class DriverProfileScreen extends StatelessWidget { const DriverProfileScreen({required this.onNavigate,super.key}); final ValueChanged<String> onNavigate; @override Widget build(BuildContext context){final c=AppControllerScope.of(context);return ListView(padding:const EdgeInsets.all(18),children:[PremiumCard(color:AppColors.navy,child:Column(children:[const CircleAvatar(radius:38,backgroundColor:Colors.white,child:Icon(Icons.person_rounded,size:42,color:AppColors.primaryDark)),const SizedBox(height:12),Text(c.currentUserName,style:const TextStyle(color:Colors.white,fontSize:19,fontWeight:FontWeight.w900)),const SizedBox(height:4),Text(c.currentUserPhone,style:const TextStyle(color:Colors.white70,fontSize:11)),const SizedBox(height:13),StatusPill(label:c.driverVerificationStatus,color:c.driverApproved?AppColors.success:AppColors.warning)])),const SizedBox(height:15),FilledButton.icon(onPressed:()=>c.switchMode(UserMode.customer),icon:const Icon(Icons.person_rounded),label:Text(context.tr('switchCustomer'))),const SizedBox(height:13),for(final item in [('vehicles',Icons.directions_car_filled_rounded,context.tr('vehicles')),('documents',Icons.fact_check_rounded,context.tr('documents')),('availability',Icons.calendar_month_rounded,context.tr('availability')),('reviews',Icons.star_rounded,context.tr('reviews')),('settings',Icons.settings_rounded,context.tr('settings'))]) Padding(padding:const EdgeInsets.only(bottom:9),child:PremiumCard(onTap:()=>onNavigate(item.$1),child:Row(children:[Icon(item.$2,color:AppColors.primaryDark),const SizedBox(width:13),Expanded(child:Text(item.$3,style:const TextStyle(fontWeight:FontWeight.w900))),const Icon(Icons.chevron_right_rounded)]))) ]);}}

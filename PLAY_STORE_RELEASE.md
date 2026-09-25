@@ -129,7 +129,7 @@ Email se deletion request aaye to: Admin portal → **System settings → Delete
 ## 4. Play Console — Create app
 
 Play Console → **Create app**
-- App name: `UDrive – Rides & Tours Kashmir`
+- App name: `UDrive – Rides & Tours`  (wahi jo `play_store/STORE_LISTING.txt` mein hai — dono jagah aik jaisa rakhein)
 - Default language: English (United States) — baad mein Urdu listing bhi add kar sakte hain
 - App or game: App · Free or paid: Free
 - Declarations tick karein → Create
@@ -158,6 +158,10 @@ Play Console → **Create app**
 
 **Data types** (har aik: Collected = Yes, Shared = No*, Processed ephemerally = No, Required)
 
+> **Form yahan se nahi, `play_store/DATA_SAFETY.md` se bharein.** Woh file is
+> jawab ki asal jagah hai; neeche wali table sirf uski naql hai. Agar kabhi dono
+> mein farq nazar aaye to `DATA_SAFETY.md` durust hai.
+
 | Data type | Purpose |
 |---|---|
 | Location → Precise location | App functionality, Fraud prevention/security |
@@ -165,15 +169,27 @@ Play Console → **Create app**
 | Personal info → Name | App functionality, Account management |
 | Personal info → Phone number | App functionality, Account management, Fraud prevention |
 | Personal info → Email address (optional) | Account management |
-| Personal info → Address (drivers) | Fraud prevention/security, Account management |
-| Personal info → Other info (CNIC, licence, date of birth) | Fraud prevention/security |
-| Financial info → Purchase history / Other financial info (wallet top-ups, commission) | App functionality |
+| Personal info → Address (drivers) | Account management, Fraud prevention/security |
+| Personal info → Other info (CNIC, licence, date of birth) | Fraud prevention/security, Account management |
+| Financial info → Payment info (driver payout account) | App functionality |
+| Financial info → Other financial info (wallet top-ups, commission) | App functionality |
 | Messages → Other in-app messages (rider–driver chat) | App functionality |
 | Photos and videos → Photos (driver documents, vehicle photos) | App functionality, Fraud prevention |
-| Audio → Voice or sound recordings (SOS, optional) | App functionality (safety) |
-| App activity → Other actions (trips, ratings) | App functionality, Analytics |
-| App info and performance → Crash logs, Diagnostics | App functionality |
+| App activity → Other user-generated content (trips, ratings) | App functionality |
+| Personal info → Other info (trusted contacts, emergency contacts, tour passenger names) | App functionality, Fraud prevention/security |
 | Device or other IDs | Fraud prevention/security |
+
+**Yeh chaar declare NAHI karni** — pehle is file mein likhi hui thin, magar code
+mein mojood hi nahi. Over-declaration bhee Play par utni hi bari ghalti hai
+jitni under-declaration:
+
+- ~~Audio → Voice or sound recordings~~ — microphone aur `RECORD_AUDIO` app se
+  nikal diye gaye hain.
+- ~~App info and performance → Crash logs / Diagnostics~~ — poore platform mein
+  koi crash-reporting ya diagnostics SDK nahi (na Firebase, na Sentry, na Crashlytics).
+- ~~App activity ka "Analytics" maqsad~~ — koi analytics tool mojood nahi.
+- ~~Financial info → Purchase history~~ — app mein koi purchase nahi hoti; sirf
+  wallet top-up aur commission ka record hai, jo "Other financial info" hai.
 
 \* "Shared" = No, kyunke rider/driver ko ek doosre ka naam/location dikhana app ka hissa hai aur
 service providers (hosting, maps) Google ki definition mein "sharing" nahi.
@@ -183,20 +199,24 @@ service providers (hosting, maps) Google ki definition mein "sharing" nahi.
 **Short description (80):**
 `Book rides, tours and hotels across Azad Kashmir with verified local drivers.`
 
-**Full description:**
+**Full description:** — **`play_store/STORE_LISTING.txt` se copy karein, yahan se nahi.**
+Woh file asal jagah hai aur us ke aakhir mein likha hai kaun se daawe nikale
+gaye aur kyun (rickshaw, Leepa, Arang Kel, city-to-city, "English aur Urdu").
+Play aisi listing reject karta hai jo app se zyada waada kare.
+
 ```
 UDrive is the local ride and travel app for Azad Jammu & Kashmir.
 
-• Book a ride: car, motorcycle, rickshaw or coaster — see the fare before you go.
+• Book a ride: car, bike or coster — see the fare before you go.
 • Offer your own fare and choose from nearby drivers' offers.
 • Verified drivers: every driver and vehicle is checked with CNIC, licence and vehicle documents.
 • Live trip tracking, in-app chat and trip OTP for a safe pickup.
 • SOS button and trusted contacts for emergencies.
-• Tours and packages to Neelum, Leepa, Rawalakot, Banjosa and more.
+• Tours and packages to Neelum, Sharda, Rawalakot, Banjosa Lake and Pir Chinasi.
 • Hotel bookings with local partners.
 • Drive with UDrive: register your vehicle, get ride requests near you and track your earnings.
 
-Available in English and Urdu.
+Available in English, with Urdu across the menus and account screens.
 ```
 
 **Sab text aur graphics tayyar hain:** `play_store/` folder mein —
@@ -222,8 +242,8 @@ feature graphic 1024×500, 5 phone screenshots 1080×1920), aur `DATA_SAFETY.md`
 ## 9. App mein kya badla (is release mein)
 
 - Package `com.wabwar.udrive`, target API 36 (Android 16), release signing via upload key
-- Permissions: sirf Internet, Location (app khuli ho tab), Notifications, Microphone (SOS recording).
-  Background location, foreground service aur CALL_PHONE hata diye.
+- Permissions: sirf Internet, Location (app khuli ho tab), Notifications.
+  Background location, foreground service, CALL_PHONE aur Microphone (`RECORD_AUDIO`) hata diye.
 - Settings → **Delete account** (DELETE type kar ke) — server par naam, number, CNIC/licence data mitata
   hai, tamam sessions band, number dobara register ho sakta hai. Live ride ke dauran allowed nahi.
 - Settings → Privacy / Terms ab asal pages kholte hain, About mein build number.

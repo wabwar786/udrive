@@ -56,10 +56,56 @@
         </activity>
         <meta-data android:name="flutterEmbedding" android:value="2" />
     </application>
+    <!--
+        Package visibility (Android 11 / API 30 and above, which this app targets
+        at API 36). Without an <intent> entry here, canLaunchUrl() returns false
+        for that scheme and the app cannot see the app that would handle it —
+        url_launcher does not add these itself.
+
+        Every entry below corresponds to a button that exists in the app:
+          tel     SOS emergency call, and the call buttons between rider and
+                  driver during a trip. These were silently dead: three of the
+                  call sites check canLaunchUrl with no else branch, so the
+                  button did nothing at all, with no message. The SOS one is the
+                  reason this block is not optional.
+          https   the "open online" button on the Privacy and Terms reader.
+          geo /
+          google.navigation
+                  "Navigate" on the driver's live trip screen, which hands the
+                  pickup or drop-off to a maps app.
+          mailto  support contact links.
+
+        These grant no permission and collect nothing. They only let the app ask
+        the system whether a handler exists before offering the button.
+    -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="google.navigation" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
         </intent>
     </queries>
 </manifest>

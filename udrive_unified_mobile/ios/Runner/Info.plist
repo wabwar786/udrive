@@ -14,7 +14,6 @@
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 <key>UISupportedInterfaceOrientations~ipad</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 <key>NSLocationWhenInUseUsageDescription</key><string>Udrive uses your location to select pickup points and show live trips.</string>
-<key>NSCameraUsageDescription</key><string>Udrive uses the camera to upload driver and vehicle documents.</string>
 <key>CADisableMinimumFrameDurationOnPhone</key><true/>
 <key>UIApplicationSupportsIndirectInputEvents</key><true/>
 <!-- No NSLocationAlwaysAndWhenInUseUsageDescription. It used to claim UDrive

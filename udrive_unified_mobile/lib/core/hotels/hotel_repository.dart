@@ -6,53 +6,19 @@ class HotelRepository {
 
   final ApiClient api;
 
-  static const List<HotelSummary> _demoHotels = [
-    HotelSummary(
-      id: '52000000-0000-0000-0000-000000000001',
-      name: 'Neelum Riverside Lodge',
-      address: 'Main Neelum Road, Keran',
-      city: 'Keran',
-      latitude: 34.6501,
-      longitude: 73.9479,
-      rating: 4.7,
-      mainImageUrl:
-          'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1400&q=80',
-      startingRate: 14500,
-      availableRooms: 9,
-      transportAvailable: true,
-      approvalStatus: 'Approved',
-    ),
-    HotelSummary(
-      id: '52000000-0000-0000-0000-000000000002',
-      name: 'Muzaffarabad Grand Stay',
-      address: 'Near Domel Bridge, Muzaffarabad',
-      city: 'Muzaffarabad',
-      latitude: 34.3714,
-      longitude: 73.4718,
-      rating: 4.5,
-      mainImageUrl:
-          'https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&w=1400&q=80',
-      startingRate: 12000,
-      availableRooms: 10,
-      transportAvailable: true,
-      approvalStatus: 'Approved',
-    ),
-    HotelSummary(
-      id: '52000000-0000-0000-0000-000000000003',
-      name: 'Rawalakot Pine View Hotel',
-      address: 'Banjosa Road, Rawalakot',
-      city: 'Rawalakot',
-      latitude: 33.8578,
-      longitude: 73.7604,
-      rating: 4.6,
-      mainImageUrl:
-          'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1400&q=80',
-      startingRate: 13500,
-      availableRooms: 5,
-      transportAvailable: true,
-      approvalStatus: 'Approved',
-    ),
-  ];
+  // _demoHotels / _filterDemoHotels / _demoDetails were here: three invented
+  // businesses — "Neelum Riverside Lodge", "Muzaffarabad Grand Stay",
+  // "Rawalakot Pine View Hotel" — with invented addresses in real towns, real
+  // GPS coordinates, ratings, nightly rates and hotlinked stock photographs.
+  //
+  // They were not a debug aid. search() returned them whenever the API threw
+  // AND whenever it returned an empty list, so they were the default result
+  // for every customer, three taps from Home. The rooms carried fixed ids the
+  // server has never issued, so "Book" posted to /api/v1/hotels/{id}/bookings
+  // for a hotel that does not exist and failed silently.
+  //
+  // Presenting named accommodation businesses that we have no relationship
+  // with, at prices we invented, is not something a fallback path may do.
 
   dynamic _data(Map<String, dynamic> json) => json['data'] ?? json;
 
@@ -90,13 +56,13 @@ class HotelRepository {
                 Map<String, dynamic>.from(item),
               ))
           .toList(growable: false);
-      if (items.isNotEmpty) return items;
+      // An empty list is a real answer — no approved hotel matched — and the
+      // caller shows its empty state for it. It is not a reason to substitute
+      // anything.
+      return items;
     } catch (_) {
-      // Keep the approved demo catalogue usable while a new API deployment is
-      // propagating. Live approved hotels automatically replace this list.
+      rethrow;
     }
-
-    return _filterDemoHotels(query);
   }
 
   Future<HotelDetails> details(
@@ -136,8 +102,6 @@ class HotelRepository {
             .toList(growable: false),
       );
     } catch (_) {
-      final fallback = _demoDetails(id);
-      if (fallback != null) return fallback;
       rethrow;
     }
   }
@@ -179,93 +143,4 @@ class HotelRepository {
     );
   }
 
-  List<HotelSummary> _filterDemoHotels(String query) {
-    final needle = query.trim().toLowerCase();
-    if (needle.isEmpty) return _demoHotels;
-    return _demoHotels.where((hotel) {
-      final searchable = '${hotel.name} ${hotel.city} ${hotel.address}'
-          .toLowerCase();
-      return searchable.contains(needle);
-    }).toList(growable: false);
-  }
-
-  HotelDetails? _demoDetails(String id) {
-    HotelSummary? hotel;
-    for (final item in _demoHotels) {
-      if (item.id == id) {
-        hotel = item;
-        break;
-      }
-    }
-    if (hotel == null) return null;
-
-    final rooms = switch (id) {
-      '52000000-0000-0000-0000-000000000001' => const [
-          HotelRoom(
-            id: '53000000-0000-0000-0000-000000000001',
-            roomType: 'Deluxe River View',
-            capacity: 2,
-            availableRooms: 6,
-            rate: 14500,
-            imageUrl:
-                'https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1200&q=80',
-            amenities: ['King bed', 'Balcony', 'Heating', 'Private bathroom'],
-          ),
-          HotelRoom(
-            id: '53000000-0000-0000-0000-000000000002',
-            roomType: 'Family Suite',
-            capacity: 5,
-            availableRooms: 3,
-            rate: 22500,
-            imageUrl:
-                'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80',
-            amenities: ['Two rooms', 'Family seating', 'Heating', 'River view'],
-          ),
-        ],
-      '52000000-0000-0000-0000-000000000002' => const [
-          HotelRoom(
-            id: '53000000-0000-0000-0000-000000000003',
-            roomType: 'Executive Double',
-            capacity: 2,
-            availableRooms: 10,
-            rate: 12000,
-            imageUrl:
-                'https://images.unsplash.com/photo-1598928636135-d146006ff4be?auto=format&fit=crop&w=1200&q=80',
-            amenities: ['Double bed', 'WiFi', 'Breakfast', 'Air conditioning'],
-          ),
-        ],
-      _ => const [
-          HotelRoom(
-            id: '53000000-0000-0000-0000-000000000004',
-            roomType: 'Pine View Family Room',
-            capacity: 4,
-            availableRooms: 5,
-            rate: 13500,
-            imageUrl:
-                'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?auto=format&fit=crop&w=1200&q=80',
-            amenities: ['Family beds', 'Heating', 'Mountain view', 'Hot water'],
-          ),
-        ],
-    };
-
-    return HotelDetails(
-      hotel: hotel,
-      rooms: rooms,
-      description: switch (id) {
-        '52000000-0000-0000-0000-000000000001' =>
-          'A comfortable riverside stay for families visiting Keran and Upper Neelum.',
-        '52000000-0000-0000-0000-000000000002' =>
-          'Central city hotel with easy access to transport, markets and tourism routes.',
-        _ =>
-          'Quiet hill stay near Rawalakot with family rooms and mountain views.',
-      },
-      amenities: const [
-        'Free WiFi',
-        'Family rooms',
-        'Parking',
-        'Restaurant',
-        'Transport available',
-      ],
-    );
-  }
 }

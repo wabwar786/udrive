@@ -101,7 +101,8 @@ Everything in section 3 that applies to you, and in addition:
 
 **To pay you**
 
-- Bank account title, payout method, and a partly hidden account number.
+- Bank account title, the name of the bank, payout method, and a partly
+  hidden account number.
 - When you top up your commission balance: the amount, the reference number from
   your own payment receipt, and the screenshot you upload.
 
@@ -206,10 +207,6 @@ Google sees your IP address at that moment.
 **Apple** — on an iPhone, one screen (picking up for a tour) turns coordinates
 into an address using the phone's own geocoder, which is Apple's. On Android the
 same screen uses Google's.
-
-**Unsplash** — when our hotel listings cannot be loaded, the app falls back to
-sample listings whose photographs are hosted by Unsplash. Loading those images
-shows Unsplash your IP address. Nothing about you or your trip is sent.
 
 **Railway** — hosts our servers, our database and the files you upload.
 

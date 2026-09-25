@@ -140,7 +140,7 @@ class MapPreview extends StatelessWidget {
                   children: [
                     Icon(Icons.route_rounded, size: 18, color: AppColors.primary),
                     SizedBox(width: 8),
-                    Expanded(child: Text('Live route preview · Dummy map data', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
+                    Expanded(child: Text('Route preview', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
                   ],
                 ),
               ),

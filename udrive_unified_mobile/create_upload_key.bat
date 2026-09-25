@@ -89,9 +89,11 @@ echo ============================================================
 echo.
 "%KEYTOOL%" -list -v -keystore "android\app\upload-keystore.jks" -alias upload -storepass %KSPASS% | findstr "SHA1 SHA256"
 echo.
-echo For the GitHub secret UDRIVE_KEYSTORE_BASE64, run this in PowerShell from
-echo this folder:
-echo   [Convert]::ToBase64String([IO.File]::ReadAllBytes("android\app\upload-keystore.jks")) ^| Set-Clipboard
+echo For the GitHub secret UDRIVE_KEYSTORE_BASE64, open Git Bash in this folder
+echo and run:
+echo   base64 -w0 android/app/upload-keystore.jks ^> keystore.b64.txt
+echo Then open keystore.b64.txt, copy everything, and paste it into the secret.
+echo Delete keystore.b64.txt afterwards.
 echo.
 pause
 exit /b 0

@@ -1,12 +1,21 @@
-# Railway Deployment
+# Railway Web Deployment
 
-1. Keep PostGIS volume mounted at `/var/lib/postgresql/data`.
-2. Keep API upload volume mounted separately at `/app/uploads`.
-3. Keep `UPLOAD_ROOT=/app/uploads` on the API service.
-4. Deploy API first.
-5. Verify `/health/live` and `/health/ready` return HTTP 200.
-6. Confirm migration `009_phase13_finance_wallets.sql` in logs/database.
-7. Confirm Finance endpoints in Swagger.
-8. Deploy Admin portal.
-9. Hard refresh Admin portal and open **Finance & settlements**.
-10. Deploy Flutter web only when required. Do not create APK/AAB.
+Use the existing GitHub repository and Mobile Railway service.
+
+## Service settings
+
+```text
+Repository: wabwar786/udrive
+Branch: main
+Root directory: /udrive_unified_mobile
+```
+
+Do not configure:
+
+- Custom build command
+- Custom start command
+- Manual PORT variable
+
+Deploy the latest commit. The Dockerfile uses a cached Flutter dependency layer, builds the release web application and serves it through Nginx.
+
+After deployment, hard-refresh the browser if an older Flutter web version is cached.

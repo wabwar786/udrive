@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Npgsql;
 using System.Text.Json;
 using UDrive.Api.Common;
@@ -26,6 +27,10 @@ namespace UDrive.Api.Controllers;
 /// </remarks>
 [ApiController]
 [Route("api/v1/places")]
+// Anonymous on purpose (address search happens before sign-in), so the cost
+// control is a per-caller rate limit rather than a token. The tile route
+// overrides this with its own, larger allowance.
+[EnableRateLimiting("places")]
 public sealed class PlacesController(
     IConfiguration configuration,
     IHttpClientFactory httpClientFactory) : ControllerBase
@@ -250,12 +255,23 @@ public sealed class PlacesController(
                 }));
             }
 
-            foreach (var route in items.EnumerateArray().Take(3))
-            {
-                var distanceMetres =
+            // A route we cannot measure must not be passed on as one of zero
+            // length. The customer's fare is distance x rate, so a zero here
+            // quotes every vehicle at its minimum fare — and the client sorts
+            // by distance, so the unmeasurable route is the one it picks.
+            //
+            // Filtered before Take(3), not inside the loop: otherwise one
+            // unmeasurable route costs a real alternative Google returned.
+            var usable = items
+                .EnumerateArray()
+                .Where(route =>
                     route.TryGetProperty("distanceMeters", out var dm)
-                        ? dm.GetInt32()
-                        : 0;
+                    && dm.GetInt32() > 0)
+                .Take(3);
+
+            foreach (var route in usable)
+            {
+                var distanceMetres = route.GetProperty("distanceMeters").GetInt32();
 
                 // Routes returns duration as a protobuf string like "1234s".
                 var seconds = 0;
@@ -290,7 +306,12 @@ public sealed class PlacesController(
             }));
         }
 
-        return Ok(ApiResponse<object>.Ok(new { routes, reason = "ok" }));
+        // "ok" with nothing in it is not ok. The client shows `reason` under
+        // "Could not work out the route", so an empty list with reason "ok"
+        // printed the literal word "ok" at the customer.
+        return routes.Count == 0
+            ? Ok(ApiResponse<object>.Ok(new { routes, reason = "ZERO_RESULTS" }))
+            : Ok(ApiResponse<object>.Ok(new { routes, reason = "ok" }));
     }
 
     /// <summary>
@@ -556,6 +577,7 @@ public sealed class PlacesController(
 
     [HttpGet("tiles/v{v:int}/{z:int}/{x:int}/{y:int}")]
     [HttpGet("tiles/{z:int}/{x:int}/{y:int}")]
+    [EnableRateLimiting("map-tiles")]
     [ResponseCache(Duration = 604800, Location = ResponseCacheLocation.Any)]
     public async Task<IActionResult> Tile(
         int z,

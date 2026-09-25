@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/hotels/hotel_repository.dart';
 import '../../core/state/app_controller.dart';
+import '../../models/auth_models.dart';
 import '../../models/hotel_models.dart';
 import '../customer/udrive_route_flow_screen.dart';
 import '../hotel_owner/hotel_owner_add_screen.dart';
@@ -99,7 +100,15 @@ class _HotelListScreenState extends State<HotelListScreen> {
       if (!mounted) return;
       setState(() {
         _items = const [];
-        _loadError = '$error'.replaceFirst('Exception: ', '');
+        // Not '$error'. Now that the repository rethrows instead of falling
+        // back to a demo list, everything reaches here — including a cast
+        // failure on an unexpected payload, which would have shown the
+        // customer "type 'List<dynamic>' is not a subtype of type
+        // 'Map<dynamic, dynamic>' in type cast". An ApiException carries a
+        // message written for a person; anything else gets a plain sentence.
+        _loadError = error is ApiException
+            ? error.message
+            : 'Hotels could not be loaded just now. Please try again.';
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -538,7 +547,7 @@ class _EmptyHotels extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 hasError
-                    ? 'Hotels are temporarily unavailable. Use Retry after the updated API is deployed.'
+                    ? 'Hotels could not be loaded just now. Check your connection and tap Retry.'
                     : 'No approved hotels match this search. Clear the destination and search again.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: _muted, fontSize: 12.5, height: 1.35),

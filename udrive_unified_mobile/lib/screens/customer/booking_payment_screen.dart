@@ -100,10 +100,15 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(controller: amountController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Amount (PKR)')),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(value: method, decoration: const InputDecoration(labelText: 'Payment method'), items: const ['Cash','BankTransfer','Card','Easypaisa','JazzCash'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setLocal(() => method = v ?? method)),
+          // 'Card' was in this list. There is no card gateway anywhere in the
+          // platform, so choosing it recorded a payment that nothing could
+          // ever confirm — and the store listing says no card is needed. The
+          // remaining methods are all ones the customer genuinely completes
+          // outside the app and the office reconciles.
+          DropdownButtonFormField<String>(value: method, decoration: const InputDecoration(labelText: 'Payment method'), items: const ['Cash','BankTransfer','Easypaisa','JazzCash'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setLocal(() => method = v ?? method)),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(value: type, decoration: const InputDecoration(labelText: 'Payment type'), items: const ['Advance','Partial','Balance','Full'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setLocal(() => type = v ?? type)),
-          if (method != 'Cash') const Padding(padding: EdgeInsets.only(top: 12), child: Text('Online provider confirmation will complete this payment after gateway credentials are configured.', style: TextStyle(fontSize: 12, color: AppColors.muted))),
+          if (method != 'Cash') const Padding(padding: EdgeInsets.only(top: 12), child: Text('Send the amount using this method, then record it here. UDrive marks it confirmed once the transfer is checked.', style: TextStyle(fontSize: 12, color: AppColors.muted))),
         ]),
         actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(ctx, {'amount': double.tryParse(amountController.text), 'method': method, 'type': type}), child: const Text('Continue'))],
       )),

@@ -53,13 +53,17 @@ class DestinationItem {
   final int safetyScore;
 }
 
+/// A vehicle category the platform runs. See `core/vehicles/vehicle_catalogue.dart`.
+///
+/// `baseFare` used to be a field here, and it was always fiction: the app is
+/// not the authority on price. Ride fares come from the server's quote
+/// endpoint, tour fares from the driver.
 class VehicleCategory {
-  const VehicleCategory({required this.name, required this.icon, required this.seats, required this.luggage, required this.baseFare, required this.description});
+  const VehicleCategory({required this.name, required this.icon, required this.seats, required this.luggage, required this.description});
   final String name;
   final IconData icon;
   final int seats;
   final int luggage;
-  final int baseFare;
   final String description;
 }
 

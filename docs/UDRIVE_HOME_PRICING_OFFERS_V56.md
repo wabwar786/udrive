@@ -3015,10 +3015,13 @@ whole job is to collect a name and a number.
 reads as a splash screen; a form's question belongs at the left margin where the
 eye returns on every line.
 
-**"Powered by Wabwar"** at the foot of both, quiet: a maker's mark is not a call
-to action, and full contrast there would compete with the button directly above
-it. Only on these two screens — once somebody is using the app, who built it is
-not information they need on every page.
+~~**"Powered by Wabwar"** at the foot of both.~~ **Removed before release.** The
+Play listing is published under Tech Geni Ltd., and a second company's name at
+the foot of the sign-in screen contradicts the developer name on the store
+entry — which is exactly the kind of mismatch a reviewer stops on. The widget
+(`core/widgets/powered_by.dart`) has been deleted, not just unmounted, so it
+cannot come back by accident. Nothing replaces it: both screens now end at the
+button.
 
 ## 101. The home tiles were washes, not blocks
 

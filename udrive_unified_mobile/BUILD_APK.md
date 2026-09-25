@@ -35,4 +35,12 @@ build/app/outputs/flutter-apk/app-release.apk
 build/app/outputs/bundle/release/app-release.aab
 ```
 
-The current release build uses debug signing for test installation. Configure a private upload keystore before Google Play production publishing.
+Release signing uses your private upload keystore. `android/app/build.gradle.kts`
+reads it from `android/key.properties` locally, or from `UDRIVE_KEYSTORE_PATH`,
+`UDRIVE_KEYSTORE_PASSWORD`, `UDRIVE_KEY_ALIAS` and `UDRIVE_KEY_PASSWORD` in CI.
+Neither the keystore nor `key.properties` is in the repository, and neither may
+ever be committed.
+
+If no upload key is configured, `flutter build apk --release` falls back to the
+debug key so a tester can still install the file, but `flutter build appbundle`
+fails on purpose — Google Play will not accept a debug-signed bundle.

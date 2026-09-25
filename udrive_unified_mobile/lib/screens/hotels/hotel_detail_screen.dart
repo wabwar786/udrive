@@ -25,18 +25,54 @@ class HotelDetailScreen extends StatefulWidget {
 class _HotelDetailScreenState extends State<HotelDetailScreen> {
   HotelDetails? _details;
   bool _busy = true;
+  String? _error;
+  /// The room id a booking is currently in flight for, and whether that
+  /// booking asked for a ride as well. Null when nothing is in flight.
+  ///
+  /// A plain bool put a spinner on every room card at once, including rooms
+  /// the customer had not touched.
+  /// (room id, whether a ride was asked for as well).
+  (String, bool)? _booking;
   late HotelRepository _repo;
 
+  bool _loadStarted = false;
+
+  // The guard is _loadStarted, not `_details == null`.
+  //
+  // AppControllerScope is an InheritedNotifier, and AppControllerScope.of makes
+  // this State a dependent, so didChangeDependencies runs again on EVERY
+  // notifyListeners() anywhere in the app. That was survivable only because
+  // details() used to fall back to a demo object, which made _details non-null
+  // on the first call and closed the guard for good. Now that it can fail and
+  // leave _details null, the old guard never closes: booking a ride from this
+  // screen notifies the controller, which silently re-fires the request, and a
+  // late failure can overwrite a _details that had already arrived.
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _repo = HotelRepository(AppControllerScope.of(context).apiClient);
-    if (_details == null) _load();
+    if (!_loadStarted) {
+      _loadStarted = true;
+      _load();
+    }
   }
 
+  // This had a try/finally with no catch. When details() threw — which it does
+  // whenever the request fails, and now also for any id the server does not
+  // have — _details stayed null while `finally` cleared _busy, so build() went
+  // straight to `_details!.rooms` and the screen crashed with a null-check
+  // error. The failure is shown instead.
   Future<void> _load() async {
     try {
-      _details = await _repo.details(widget.hotel.id, checkIn: widget.checkIn, checkOut: widget.checkOut);
+      final details = await _repo.details(widget.hotel.id, checkIn: widget.checkIn, checkOut: widget.checkOut);
+      if (!mounted) return;
+      setState(() {
+        _details = details;
+        _error = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'This hotel\'s rooms could not be loaded. Check your connection and try again.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -58,15 +94,30 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
       );
 
   Future<void> _book(HotelRoom room, bool transport) async {
-    await _repo.book(widget.hotel.id, {
-      'roomId': room.id,
-      'checkIn': widget.checkIn.toIso8601String().substring(0, 10),
-      'checkOut': widget.checkOut.toIso8601String().substring(0, 10),
-      'guests': 2,
-      'rooms': 1,
-      'includeTransport': transport,
-    });
+    if (_booking != null) return;
+    setState(() => _booking = (room.id, transport));
+    try {
+      await _repo.book(widget.hotel.id, {
+        'roomId': room.id,
+        'checkIn': widget.checkIn.toIso8601String().substring(0, 10),
+        'checkOut': widget.checkOut.toIso8601String().substring(0, 10),
+        'guests': 2,
+        'rooms': 1,
+        'includeTransport': transport,
+      });
+    } catch (_) {
+      // Unhandled before: a failed booking left the button doing nothing at
+      // all — no error, no confirmation — and the customer had no way to tell
+      // whether they had a room.
+      if (!mounted) return;
+      setState(() => _booking = null);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('We could not complete this booking. Please try again.'),
+      ));
+      return;
+    }
     if (!mounted) return;
+    setState(() => _booking = null);
     if (!transport) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Hotel booking confirmed.')));
       Navigator.pop(context);
@@ -154,12 +205,39 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                 const SizedBox(height: 18),
                 const Text('Available rooms', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 10),
-                for (final room in _details!.rooms) _RoomCard(room: room, onBook: _book),
-                if (_details!.rooms.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Text('No rooms available for these dates.', style: TextStyle(color: _muted, fontSize: 12)),
+                if (_error != null) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Column(children: [
+                      Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: _muted, fontSize: 12, height: 1.4)),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          if (_busy) return;
+                          setState(() {
+                            _busy = true;
+                            _error = null;
+                          });
+                          _load();
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('Try again'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white24),
+                        ),
+                      ),
+                    ]),
                   ),
+                ] else ...[
+                  for (final room in _details?.rooms ?? const <HotelRoom>[])
+                    _RoomCard(room: room, onBook: _book, booking: _booking),
+                  if ((_details?.rooms ?? const <HotelRoom>[]).isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Text('No rooms available for these dates.', style: TextStyle(color: _muted, fontSize: 12)),
+                    ),
+                ],
               ],
             ),
     );
@@ -177,9 +255,20 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
 }
 
 class _RoomCard extends StatelessWidget {
-  const _RoomCard({required this.room, required this.onBook});
+  const _RoomCard({required this.room, required this.onBook, required this.booking});
   final HotelRoom room;
   final Future<void> Function(HotelRoom room, bool transport) onBook;
+
+  /// Which room a booking is in flight for, and whether it included a ride.
+  ///
+  /// Without any of this, a slow first tap looked like nothing had happened:
+  /// the screen gave no feedback, so the customer tapped the other button,
+  /// which returned immediately on the re-entry guard. The first request then
+  /// completed, said "Hotel booking confirmed" and popped the screen — so
+  /// somebody who asked for a room AND a ride got a room, and the screen was
+  /// gone before they could tell. The spinner now marks the button they
+  /// actually pressed; the rest are disabled but unchanged.
+  final (String, bool)? booking;
 
   @override
   Widget build(BuildContext context) {
@@ -222,27 +311,31 @@ class _RoomCard extends StatelessWidget {
           Row(children: [
             Expanded(
               child: OutlinedButton(
-                onPressed: soldOut ? null : () => onBook(room, false),
+                onPressed: soldOut || booking != null ? null : () => onBook(room, false),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
                   minimumSize: const Size.fromHeight(42),
                   side: const BorderSide(color: Colors.white24),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('Room only', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                child: booking == (room.id, false)
+                    ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2.1))
+                    : const Text('Room only', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
               ),
             ),
             const SizedBox(width: 9),
             Expanded(
               child: FilledButton(
-                onPressed: soldOut ? null : () => onBook(room, true),
+                onPressed: soldOut || booking != null ? null : () => onBook(room, true),
                 style: FilledButton.styleFrom(
                   backgroundColor: _lime,
                   foregroundColor: Colors.black,
                   minimumSize: const Size.fromHeight(42),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('Room + ride', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
+                child: booking == (room.id, true)
+                    ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2.1, color: Colors.black))
+                    : const Text('Room + ride', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
               ),
             ),
           ]),

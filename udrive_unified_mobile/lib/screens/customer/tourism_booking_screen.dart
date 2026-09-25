@@ -8,7 +8,7 @@ import '../../core/state/app_controller.dart';
 import '../../models/auth_models.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common_widgets.dart';
-import '../../data/dummy_data.dart';
+import '../../core/vehicles/vehicle_catalogue.dart';
 import '../../data/models.dart';
 import '../../models/booking_models.dart';
 import 'driver_offers_screen.dart';
@@ -41,7 +41,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
   int _adults = 2;
   int _children = 1;
   int _luggage = 2;
-  VehicleCategory _vehicle = vehicleCategories[2];
+  VehicleCategory _vehicle = recommendedVehicleFor(3);
   bool _submitting = false;
   bool _locatingPickup = false;
   double? _pickupLatitude;
@@ -52,7 +52,10 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
     super.initState();
     _bookingType = widget.initialType ?? BookingType.perSeat;
     _destination = TextEditingController(text: widget.initialDestination ?? '');
-    _customerOffer = TextEditingController(text: _estimate.toString());
+    // Empty on purpose. This field used to open pre-filled with a figure
+    // derived from an invented baseFare, which meant most customers sent
+    // back a number the app had written for them and called it their offer.
+    _customerOffer = TextEditingController();
     _destination.addListener(_refreshSearchResults);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -84,13 +87,10 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
   }
 
   int get _travellers => _adults + _children;
-  int get _estimate => _bookingType == BookingType.perSeat
-      ? (_vehicle.baseFare * .55 * _travellers).round()
-      : (_vehicle.baseFare * 2.8).round();
 
   int get _effectiveCustomerOffer {
     final parsed = int.tryParse(_customerOffer.text.trim().replaceAll(',', ''));
-    return parsed != null && parsed > 0 ? parsed : _estimate;
+    return parsed != null && parsed > 0 ? parsed : 0;
   }
 
   @override
@@ -386,13 +386,30 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
     );
   }
 
+  /// Typeahead hints only, on top of whatever the live packages offer.
+  ///
+  /// These are the six destinations the server's catalogue actually carries
+  /// (migration 003). They replaced `destinations` from `data/dummy_data.dart`,
+  /// which listed the same sort of places but attached invented ratings,
+  /// travel times, road conditions and a "safety score out of 100" to each —
+  /// numbers nobody measured. Only the names were ever used here, but a list
+  /// carrying fabricated metadata had no business being imported at all.
+  static const List<String> _knownDestinations = [
+    'Muzaffarabad',
+    'Neelum Valley',
+    'Sharda',
+    'Rawalakot',
+    'Banjosa Lake',
+    'Pir Chinasi',
+  ];
+
   List<String> _destinationSuggestions(List<LiveTourPackage> source) {
     final query = _destination.text.trim().toLowerCase();
     if (query.isEmpty) return const [];
 
     final values = <String>{
       ...source.map((package) => package.destination.trim()),
-      ...destinations.map((item) => item.name.trim()),
+      ..._knownDestinations,
     }..removeWhere((value) => value.isEmpty);
 
     if (values.any((value) => value.toLowerCase() == query)) {
@@ -520,7 +537,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
         children: [
           _StepIntro(icon: Icons.directions_car_filled_rounded, title: context.tr('selectVehicle'), subtitle: context.tr('bookingStepThreeHelp')),
           const SizedBox(height: 18),
-          ...vehicleCategories.map(
+          ...vehicleCatalogue.map(
             (vehicle) {
               final enabled = vehicle.seats >= _travellers;
               return Padding(
@@ -581,7 +598,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
                   decoration: InputDecoration(
                     labelText: 'Customer offered fare (PKR)',
                     prefixIcon: const Icon(Icons.payments_rounded),
-                    helperText: 'Suggested fare: PKR ${NumberFormat('#,###').format(_estimate)}',
+                    helperText: 'A driver will answer with their own price.',
                   ),
                   validator: (value) {
                     final amount = int.tryParse((value ?? '').trim().replaceAll(',', ''));
@@ -772,16 +789,14 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
       return vehicle.name == '4×4 Jeep';
     }
     if (_travellers > 14) return vehicle.name == 'Coaster';
-    if (_travellers > 6) return vehicle.name == 'Hiace';
-    if (_travellers > 4 || _partyType == TripPartyType.family) return vehicle.name == 'SUV';
-    return vehicle.name == 'Comfort';
+    return vehicle.name == recommendedVehicleFor(_travellers).name;
   }
 
   void _syncRecommendedVehicle() {
-    final candidates = vehicleCategories.where((vehicle) => vehicle.seats >= _travellers).toList();
-    if (candidates.isEmpty) return;
-    final preferred = candidates.where(_recommended).toList();
-    final recommended = preferred.isNotEmpty ? preferred.first : candidates.first;
+    // Smallest vehicle everybody fits in. The old version picked between
+    // "Comfort", "SUV" and "Hiace" — two of which the server has never heard
+    // of — and a family of three was steered to a category that did not exist.
+    final recommended = recommendedVehicleFor(_travellers);
     if (_vehicle.name != recommended.name && mounted) {
       setState(() => _vehicle = recommended);
     }

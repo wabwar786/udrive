@@ -26,11 +26,26 @@ Har type par: **Collected = Yes**, **Shared = No**, **Processed ephemerally = No
 | Personal info → Email address *(optional)* | Account management |
 | Personal info → Address *(drivers only)* | Account management; Fraud prevention, security and compliance |
 | Personal info → Other info (CNIC number, licence number, date of birth) | Fraud prevention, security and compliance; Account management |
+| Financial info → Payment info *(drivers only)* | App functionality |
 | Financial info → Other financial info (wallet top-ups, commission) | App functionality |
 | Messages → Other in-app messages (rider ↔ driver chat) | App functionality |
 | Photos and videos → Photos (driver documents, vehicle photos) | App functionality; Fraud prevention, security and compliance |
 | App activity → Other user-generated content (trips, ratings) | App functionality |
+| Personal info → Other info (trusted contacts, emergency contacts, and tour passenger names) | App functionality; Fraud prevention, security and compliance |
 | Device or other IDs | Fraud prevention, security and compliance |
+
+**Do entries baad mein shaamil ki gayin** (release audit ke dauran — code inhein
+bhejta tha magar form mein declare nahi thin, aur kam declare karna bhee ghalat
+declare karne jitna he masla hai):
+
+- **Financial info → Payment info** — driver apna payout account deta hai:
+  account title, bank ka naam aur account number. Yeh "Other financial info"
+  se alag cheez hai.
+- **Personal info → Other info (doosre logon ka data)** — trusted contacts ka
+  naam aur number, booking ka emergency contact, aur tour passengers ke naam.
+  Yeh user ka apna data nahi, kisi aur ka hai, is liye alag entry chahiye.
+  (Play ka "Contacts" type sirf phone ki contact list parhne ke liye hai —
+  app woh nahi parhti, user khud likh kar deta hai.)
 
 **Teen entries jaan boojh kar hata di gayi hain.** Pehle yeh declare hoti thin,
 magar code mein mojood hi nahi thin — aur ghalat declaration bhee utni hi buri

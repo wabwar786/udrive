@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/widgets/powered_by.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -34,7 +33,12 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _phone = TextEditingController(text: '03001234567');
+  // Empty, deliberately. This used to open with '03001234567' already typed in.
+  // It is not a hint — it is a real value in the field, so the first thing a
+  // new user could do is tap "Send verification code" and post an OTP request
+  // for a number that is not theirs. The hint text on the field is what tells
+  // them the expected format.
+  final _phone = TextEditingController();
   bool _accepted = true;
   String? _error;
 
@@ -122,7 +126,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           onContinue: _continue,
                           onDemo: _demoLogin,
                         ),
-                        const PoweredByWabwar(),
                       ],
                     ),
                   ),
