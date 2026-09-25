@@ -2,40 +2,48 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   BadgeCheck,
-  ToggleLeft,
+  BarChart3,
   BookOpenCheck,
+  Building2,
   Car,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
-  ClipboardList,
-  BarChart3,
-  Building2,
-  Database,
-  Stethoscope,
-  Compass,
-  Headphones,
   CircleHelp,
-  Image as ImageIcon,
+  ClipboardList,
+  Compass,
+  Database,
+  Fuel,
+  Headphones,
+  Landmark,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   MapPinned,
   Megaphone,
-  MessageSquareWarning,
   Menu,
-  Fuel,
+  MessageSquareWarning,
   Mountain,
-  TrendingUp,
+  Navigation,
   PackageCheck,
+  Radar,
   Route,
+  Search,
   Settings,
   ShieldAlert,
+  Stethoscope,
+  ToggleLeft,
+  TrendingUp,
+  TriangleAlert,
   Users,
   UsersRound,
+  Wallet,
+  Workflow,
   X,
 } from 'lucide-react';
 import {
@@ -46,68 +54,99 @@ import {
 import { BrandMark, BrandWordmark } from './brand';
 import { GuideButton } from './guide-button';
 
+/**
+ * The menu, in seven groups.
+ *
+ * Ordered by how often a screen is opened rather than by which table it reads.
+ * DAILY OPERATIONS comes first and holds exactly the screens an admin works
+ * every morning, in the order the queues should be cleared; everything that is
+ * configured once and left alone is at the bottom under SETUP. Before this,
+ * twenty of the thirty-five screens sat in one group called CONTROL CENTRE,
+ * which meant the two screens somebody needs daily were nineteen rows apart
+ * from each other.
+ *
+ * Labels are English on purpose — the portal is English, the guide is Roman
+ * Urdu — and every label here is repeated word for word in
+ * `app/lib/guide-content.ts`, so the guide can be read as a map of this menu.
+ * Renaming a group or an item means renaming it in both files in one edit.
+ *
+ * Each route appears exactly once. `/vehicles` used to be listed twice, under
+ * two names, and both rows highlighted as active at the same time.
+ */
 const groups = [
   {
-    label: 'OPERATIONS',
+    label: 'DAILY OPERATIONS',
     items: [
       ['/', 'Overview', LayoutDashboard],
-      ['/bookings', 'Bookings', BookOpenCheck],
-      ['/operations', 'Operations & dispatch', Activity],
-      ['/executive-operations', 'Executive operations', Activity],
-      ['/live-tracking', 'Live tracking', MapPinned],
       ['/ride-requests', 'Ride requests', Activity],
-      ['/packages', 'Tour packages', PackageCheck],
+      ['/bookings', 'Bookings', BookOpenCheck],
+      ['/operations', 'Operations & dispatch', Workflow],
+      ['/live-tracking', 'Live tracking', Navigation],
+      ['/verification', 'Verification', BadgeCheck],
+      ['/wallet-topups', 'Driver top-ups', Wallet],
     ],
   },
   {
     label: 'PEOPLE & FLEET',
     items: [
-      ['/verification', 'Verification', BadgeCheck],
-      ['/customers', 'Users & access', Users],
       ['/drivers', 'Drivers', UsersRound],
+      ['/customers', 'Customers', Users],
       ['/vehicles', 'Vehicles', Car],
     ],
   },
   {
     label: 'TOURISM',
     items: [
+      ['/packages', 'Tour packages', PackageCheck],
       ['/destinations', 'Destinations', Compass],
       ['/hotels', 'Hotels & approvals', Building2],
       ['/routes', 'Routes', Route],
-      ['/advisories', 'Road advisories', MapPinned],
+      ['/advisories', 'Road advisories', TriangleAlert],
     ],
   },
   {
-    label: 'CONTROL CENTRE',
+    label: 'PRICING & MONEY',
     items: [
-      ['/safety', 'Safety incidents', ShieldAlert],
-      ['/disputes', 'Complaints & disputes', MessageSquareWarning],
-      // Named for what an admin is looking for, not for what the table is
-      // called. "Services" under Control Centre is where you land only if you
-      // already know it is there — and the thing people come here to do is
-      // mark something coming soon.
-      ['/services', 'Services & coming soon', ToggleLeft],
       ['/pricing', 'Pricing & fares', CircleDollarSign],
       ['/fare-zones', 'Fare zones', Mountain],
       ['/fuel-prices', 'Fuel prices', Fuel],
       ['/rate-insights', 'Route insights', TrendingUp],
-      ['/wallet-topups', 'Driver top-ups', CircleDollarSign],
-      ['/finance', 'Finance & settlements', CircleDollarSign],
-      ['/payments', 'Legacy payments', CircleDollarSign],
+      ['/finance', 'Finance & settlements', Landmark],
+      ['/payments', 'Legacy payments', ClipboardList],
+    ],
+  },
+  {
+    label: 'TRUST & SAFETY',
+    items: [
+      ['/safety', 'Safety incidents', ShieldAlert],
+      ['/disputes', 'Complaints & disputes', MessageSquareWarning],
       ['/support', 'Support tickets', Headphones],
-      ['/notifications', 'Notifications', Megaphone],
+    ],
+  },
+  {
+    label: 'REPORTS',
+    items: [
+      ['/executive-operations', 'Executive operations', Radar],
       ['/reports', 'Reports & reconciliation', BarChart3],
-      ['/audit', 'Audit log', ClipboardList],
+      ['/audit', 'Audit log', ListChecks],
+    ],
+  },
+  {
+    label: 'SETUP',
+    items: [
+      ['/services', 'Services', ToggleLeft],
+      ['/notifications', 'Notifications', Megaphone],
+      ['/settings', 'Settings', Settings],
+      ['/places', 'Map places', MapPinned],
+      ['/appearance', 'Address search', Search],
+      ['/data-management', 'Data management', Database],
       ['/diagnostics', 'Diagnostics', Stethoscope],
       ['/help', 'Help / How to use', CircleHelp],
-      ['/appearance', 'Address search', ImageIcon],
-      ['/places', 'Map places', MapPinned],
-      ['/vehicles', 'Vehicle pictures', ImageIcon],
-      ['/settings', 'Settings', Settings],
-      ['/data-management', 'Data management', Database],
     ],
   },
 ] as const;
+
+const FOLDED_KEY = 'udrive.nav.folded';
 
 export function AdminFrame({
   children,
@@ -125,6 +164,7 @@ export function AdminFrame({
   const [session, setSession] = useState<AdminSession | null>(null);
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [folded, setFolded] = useState<string[]>([]);
 
   useEffect(() => {
     const value = readSession();
@@ -134,6 +174,66 @@ export function AdminFrame({
     }
     setSession(value);
   }, [router]);
+
+  // Read after mount rather than in the initial state, so the server-rendered
+  // markup and the first client render agree. Reading localStorage during
+  // render makes them differ and React replaces the whole menu.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(FOLDED_KEY) ?? 'null');
+      // Checked rather than cast. Anything else under this key — a stray
+      // value, an older format — would otherwise reach `folded.includes` on
+      // the next render and throw, and since AdminFrame wraps every page that
+      // is a blank portal that survives a reload.
+      if (Array.isArray(saved)) {
+        setFolded(saved.filter((entry): entry is string => typeof entry === 'string'));
+      }
+    } catch {
+      // A blocked or full localStorage is not a reason to fail to draw a menu.
+    }
+  }, []);
+
+  const applyFolded = useCallback((next: string[]) => {
+    setFolded(next);
+    try {
+      window.localStorage.setItem(FOLDED_KEY, JSON.stringify(next));
+    } catch {
+      // Folding still works for this visit; it just will not be remembered.
+    }
+  }, []);
+
+  const toggleGroup = useCallback(
+    (label: string) => {
+      applyFolded(
+        folded.includes(label)
+          ? folded.filter((entry) => entry !== label)
+          : [...folded, label],
+      );
+    },
+    [applyFolded, folded],
+  );
+
+  // Opening a page inside a folded group unfolds it, so you can always see
+  // where you are. Keyed on the path alone: re-running this when `folded`
+  // changes would make folding the group you are standing in impossible —
+  // the effect would undo the click immediately.
+  useEffect(() => {
+    const owner = groups.find((group) =>
+      group.items.some(([href]) => href === path),
+    );
+    if (!owner) return;
+    setFolded((current) => {
+      if (!current.includes(owner.label)) return current;
+      const next = current.filter((entry) => entry !== owner.label);
+      try {
+        window.localStorage.setItem(FOLDED_KEY, JSON.stringify(next));
+      } catch {
+        // As above.
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
 
   const initials = useMemo(
     () =>
@@ -176,22 +276,42 @@ export function AdminFrame({
           </button>
         </div>
         <nav>
-          {groups.map((group) => (
-            <section key={group.label}>
-              <p>{group.label}</p>
-              {group.items.map(([href, label, Icon]) => (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setOpen(false)}
-                  className={path === href ? 'active' : ''}
+          {groups.map((group) => {
+            // Never fold anything while the rail is collapsed to icons: there
+            // the headings are hidden, so a folded group would be a menu with
+            // rows missing and nothing on screen to explain why. Otherwise the
+            // fold state is the only thing that decides, so a click on a
+            // heading always does what it appears to do. The group holding the
+            // current page is kept visible by the effect above, which unfolds
+            // it on arrival rather than by overriding it here.
+            const isOpen = collapsed || !folded.includes(group.label);
+
+            return (
+              <section key={group.label}>
+                <button
+                  type="button"
+                  className={`navGroupHead ${isOpen ? '' : 'navGroupFolded'}`}
+                  onClick={() => toggleGroup(group.label)}
+                  aria-expanded={isOpen}
                 >
-                  <Icon size={17} />
-                  <span>{label}</span>
-                </Link>
-              ))}
-            </section>
-          ))}
+                  <span>{group.label}</span>
+                  <ChevronDown size={13} />
+                </button>
+                {isOpen &&
+                  group.items.map(([href, label, Icon]) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={() => setOpen(false)}
+                      className={path === href ? 'active' : ''}
+                    >
+                      <Icon size={17} />
+                      <span>{label}</span>
+                    </Link>
+                  ))}
+              </section>
+            );
+          })}
         </nav>
         <button
           className="collapseButton"
