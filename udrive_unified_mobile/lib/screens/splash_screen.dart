@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/app_theme.dart';
+import '../core/theme/app_tokens.dart';
 
 /// The first thing the app shows while it restores the session.
 ///
@@ -53,6 +54,12 @@ class _SplashScreenState extends State<SplashScreen>
     // small phone to a tablet, with a ceiling so it does not become a poster.
     final logoWidth = (size.width * .46).clamp(150.0, 240.0);
 
+    // Measured once: the progress bar is placed against the top of the ridge,
+    // where the design puts it. It used to be positioned as its own fraction of
+    // the screen height, so on a short phone it sat halfway up the mountains
+    // and on a tall one it floated well above them.
+    final ridgeHeight = (size.height * .22).clamp(120.0, 260.0);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
@@ -61,7 +68,7 @@ class _SplashScreenState extends State<SplashScreen>
             left: 0,
             right: 0,
             bottom: 0,
-            height: (size.height * .22).clamp(120.0, 260.0),
+            height: ridgeHeight,
             child: const _MountainRidge(),
           ),
           Positioned.fill(
@@ -82,14 +89,14 @@ class _SplashScreenState extends State<SplashScreen>
                         gaplessPlayback: true,
                       ),
                       const SizedBox(height: 18),
-                      const Text(
+                      Text(
                         'DISCOVER KASHMIR',
-                        style: TextStyle(
-                          fontSize: 14,
+                        style: AppType.small.copyWith(
                           fontWeight: FontWeight.w500,
                           // Wide tracking is what makes a short line of caps
-                          // read as a mark rather than as a sentence.
-                          letterSpacing: 4.2,
+                          // read as a mark rather than as a sentence. .28em at
+                          // 14px, which is the design's figure.
+                          letterSpacing: 3.92,
                           color: AppColors.muted,
                         ),
                       ),
@@ -99,11 +106,11 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
           ),
-          // Sits over the mountains, where the kit puts it.
+          // Just above the ridge line, where the kit puts it.
           Positioned(
             left: 0,
             right: 0,
-            bottom: (size.height * .085).clamp(48.0, 110.0),
+            bottom: ridgeHeight + 20,
             child: const Center(child: _SplashProgress()),
           ),
         ],

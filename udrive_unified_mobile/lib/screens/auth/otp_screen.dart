@@ -7,9 +7,10 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/brand.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/auth_models.dart';
 
-/// Verification code entry.
+/// Verification code entry. Design system v2, screen G-03.
 ///
 /// Four separate boxes rather than one wide field with letter-spacing: the
 /// customer can see exactly how many digits are expected and which one they are
@@ -175,237 +176,160 @@ class _OtpScreenState extends State<OtpScreen> with WidgetsBindingObserver {
       // code, which UDrive does not send today, but it costs nothing and is
       // correct the day a second channel is added.
       body: AutofillGroup(
-        child: Stack(
-        fit: StackFit.expand,
-        children: [
-          const _Backdrop(),
-          SafeArea(
-            child: Column(
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 6, 0, 0),
-                    child: IconButton(
-                      onPressed: () => Navigator.maybePop(context),
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      color: AppText.primary,
-                      tooltip: 'Back',
+        child: Column(
+          children: [
+            UdTopBar(onBack: () => Navigator.maybePop(context)),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSizes.sidePadding, 4, AppSizes.sidePadding, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: UDriveMark(size: 46),
                     ),
-                  ),
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(22, 10, 22, 28),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: UDriveMark(size: 54),
-                        ),
-                        const SizedBox(height: 26),
+                    const SizedBox(height: 24),
 
-                        // Left-aligned, and large.
-                        //
-                        // Centred type reads as a splash screen. This is a
-                        // form, and a form's question belongs at the left
-                        // margin where the eye returns on every line — which
-                        // matters more here than anywhere, because the next
-                        // thing the person does is copy four digits across
-                        // from a text message.
-                        Text(
-                          urdu
-                              ? 'تصدیقی کوڈ درج کریں'
-                              : 'Enter your\nverification code',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            height: 1.2,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -.8,
-                            color: AppText.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          urdu
-                              ? 'کوڈ اس نمبر پر بھیجا گیا ہے'
-                              : 'We sent a code to',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: AppText.secondary,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          widget.phone,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: AppText.primary,
-                          ),
-                        ),
+                    // Left-aligned, and large.
+                    //
+                    // Centred type reads as a splash screen. This is a form,
+                    // and a form's question belongs at the left margin where
+                    // the eye returns on every line — which matters more here
+                    // than anywhere, because the next thing the person does is
+                    // copy four digits across from a text message.
+                    Text(
+                      urdu
+                          ? 'تصدیقی کوڈ درج کریں'
+                          : 'Enter your\nverification code',
+                      style: AppType.h1.copyWith(
+                        fontSize: 30,
+                        letterSpacing: -0.75,
+                        height: 1.18,
+                        color: AppText.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      urdu
+                          ? 'کوڈ اس نمبر پر بھیجا گیا ہے'
+                          : 'We sent a code to',
+                      style: AppType.body2.copyWith(color: AppText.secondary),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      widget.phone,
+                      style: AppType.h3.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppText.primary,
+                      ),
+                    ),
 
-                        // Pushes the code boxes and the button to the bottom
-                        // of the screen, under the thumb rather than under the
-                        // eye. On a tall phone they sat in the middle with
-                        // dead space beneath.
-                        const SizedBox(height: 44),
-                        _CodeBoxes(
-                          value: _otp.text,
-                          length: _length,
-                          hasError: _error != null,
-                          onTap: _focusInput,
+                    // Pushes the code boxes and the button to the bottom of the
+                    // screen, under the thumb rather than under the eye. On a
+                    // tall phone they sat in the middle with dead space
+                    // beneath.
+                    const SizedBox(height: 40),
+                    _CodeBoxes(
+                      value: _otp.text,
+                      length: _length,
+                      hasError: _error != null,
+                      onTap: _focusInput,
+                    ),
+                    const SizedBox(height: 10),
+                    // The code arrives in WhatsApp, which neither Android nor
+                    // iOS will let an app read. Copy-and-paste is the whole of
+                    // what the platforms allow, so it gets a button rather than
+                    // a long-press on a field that is deliberately off-screen.
+                    Center(
+                      child: UdButton.ghost(
+                        label: urdu ? 'کوڈ پیسٹ کریں' : 'Paste code',
+                        icon: Icons.content_paste_rounded,
+                        size: UdButtonSize.small,
+                        expand: false,
+                        onPressed: _pasteCode,
+                      ),
+                    ),
+                    // Real input, kept off-screen so autofill and paste work
+                    // while the boxes above do the presentation.
+                    SizedBox(
+                      height: 0,
+                      child: Offstage(
+                        child: TextField(
+                          controller: _otp,
+                          focusNode: _focus,
+                          autofocus: true,
+                          keyboardType: TextInputType.number,
+                          maxLength: _length,
+                          autofillHints: const [AutofillHints.oneTimeCode],
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          onChanged: (value) {
+                            if (_error != null) {
+                              setState(() => _error = null);
+                            }
+                            if (value.length == _length) _verify();
+                          },
                         ),
-                        const SizedBox(height: 10),
-                        // The code arrives in WhatsApp, which neither Android
-                        // nor iOS will let an app read. Copy-and-paste is the
-                        // whole of what the platforms allow, so it gets a
-                        // button rather than a long-press on a field that is
-                        // deliberately off-screen.
-                        Align(
-                          alignment: Alignment.center,
-                          child: TextButton.icon(
-                            onPressed: _pasteCode,
-                            icon: const Icon(Icons.content_paste_rounded, size: 17),
-                            label: const Text('Paste code'),
-                          ),
-                        ),
-                        // Real input, kept off-screen so autofill and paste work
-                        // while the boxes above do the presentation.
-                        SizedBox(
-                          height: 0,
-                          child: Offstage(
-                            child: TextField(
-                              controller: _otp,
-                              focusNode: _focus,
-                              autofocus: true,
-                              keyboardType: TextInputType.number,
-                              maxLength: _length,
-                              autofillHints: const [AutofillHints.oneTimeCode],
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                              ],
-                              onChanged: (value) {
-                                if (_error != null) {
-                                  setState(() => _error = null);
-                                }
-                                if (value.length == _length) _verify();
-                              },
-                            ),
-                          ),
-                        ),
-                        if (_error != null) ...[
-                          const SizedBox(height: 14),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: AppTint.danger,
-                              borderRadius: AppRadii.all(AppRadii.field),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.error_outline_rounded,
-                                    size: 16, color: AppTint.dangerText),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    _error!,
-                                    style: const TextStyle(
-                                      color: AppTint.dangerText,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 26),
-                        FilledButton.icon(
-                          onPressed: controller.authBusy || !complete
-                              ? null
-                              : _verify,
-                          icon: controller.authBusy
-                              ? SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: AppText.onBrand),
-                                )
-                              : const Icon(Icons.verified_rounded),
-                          label:
-                              Text(urdu ? 'تصدیق کریں' : 'Verify and continue'),
-                        ),
-                        const SizedBox(height: 14),
-                        Center(
-                          child: _secondsLeft > 0
-                              ? Text(
-                                  urdu
-                                      ? 'دوبارہ بھیجیں ${_secondsLeft}s میں'
-                                      : 'Resend in ${_secondsLeft}s',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppText.disabled,
-                                  ),
-                                )
-                              : TextButton(
-                                  onPressed:
-                                      controller.authBusy ? null : _resend,
-                                  child: Text(urdu
-                                      ? 'کوڈ دوبارہ بھیجیں'
-                                      : 'Request a new code'),
-                                ),
-                        ),
-                        const SizedBox(height: 18),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 13, vertical: 11),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: AppRadii.all(AppRadii.card),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.info_outline_rounded,
-                                  size: 15, color: AppText.disabled),
-                              const SizedBox(width: 9),
-                              // This panel has no build-mode guard — it renders
-                              // in release Android too. It must therefore never
-                              // name a code. Saying "use 1234" here handed
-                              // every reader a working key to somebody else's
-                              // account for as long as the Development provider
-                              // was on, and it shipped to the Play Store.
-                              Expanded(
-                                child: Text(
-                                  urdu
-                                      ? 'کوڈ واٹس ایپ پر بھیجا جاتا ہے اور 5 منٹ میں ختم ہو جاتا ہے۔'
-                                      : 'The code is sent on WhatsApp and expires in 5 minutes.',
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    height: 1.4,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppText.secondary,
-                                  ),
-                                ),
+                      ),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 14),
+                      UdBanner(
+                        tone: UdTone.err,
+                        icon: Icons.error_outline_rounded,
+                        text: _error!,
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    UdButton.primary(
+                      label: urdu ? 'تصدیق کریں' : 'Verify and continue',
+                      icon: Icons.verified_outlined,
+                      busy: controller.authBusy,
+                      onPressed: complete ? _verify : null,
+                    ),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: _secondsLeft > 0
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              child: Text(
+                                urdu
+                                    ? 'دوبارہ بھیجیں ${_secondsLeft}s میں'
+                                    : 'Resend in ${_secondsLeft}s',
+                                style: AppType.caption
+                                    .copyWith(color: AppText.caption),
                               ),
-                            ],
-                          ),
-                        ),
-                      ],
+                            )
+                          : UdButton.ghost(
+                              label: urdu
+                                  ? 'کوڈ دوبارہ بھیجیں'
+                                  : 'Request a new code',
+                              size: UdButtonSize.small,
+                              expand: false,
+                              onPressed: controller.authBusy ? null : _resend,
+                            ),
                     ),
-                  ),
+                    const SizedBox(height: 14),
+                    // This panel has no build-mode guard — it renders in
+                    // release Android too. It must therefore never name a code.
+                    // Saying "use 1234" here handed every reader a working key
+                    // to somebody else's account for as long as the Development
+                    // provider was on, and it shipped to the Play Store.
+                    UdBanner(
+                      icon: Icons.info_outline_rounded,
+                      text: urdu
+                          ? 'کوڈ واٹس ایپ پر بھیجا جاتا ہے اور 5 منٹ میں ختم ہو جاتا ہے۔'
+                          : 'The code is sent on WhatsApp and expires in 5 minutes.',
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -461,7 +385,11 @@ class _OtpScreenState extends State<OtpScreen> with WidgetsBindingObserver {
   }
 }
 
-/// One box per digit. The box being typed into is outlined in brand green.
+/// One box per digit, 60×68 on the surface grey.
+///
+/// The box being typed into takes the field's focus treatment — a 2px navy
+/// border with the pale lime ring outside it — so the active box matches every
+/// other focused input in the app rather than having a rule of its own.
 class _CodeBoxes extends StatelessWidget {
   const _CodeBoxes({
     required this.value,
@@ -486,6 +414,12 @@ class _CodeBoxes extends StatelessWidget {
           final filled = index < value.length;
           final active = index == value.length;
 
+          final Color border = hasError
+              ? AppColors.danger
+              : active
+                  ? AppColors.navy
+                  : AppColors.borderStrong;
+
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: AnimatedContainer(
@@ -495,21 +429,25 @@ class _CodeBoxes extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: AppRadii.all(AppRadii.field),
                 border: Border.all(
-                  color: hasError
-                      ? AppColors.danger
-                      : active
-                          ? AppColors.secondary
-                          : AppColors.border,
-                  width: active || hasError ? 1.8 : 1,
+                  color: border,
+                  width: active || hasError ? 2 : 1.5,
                 ),
+                boxShadow: active && !hasError
+                    ? const [
+                        BoxShadow(
+                          color: AppColors.limeGlow,
+                          spreadRadius: 4,
+                        ),
+                      ]
+                    : const <BoxShadow>[],
               ),
               child: Text(
                 filled ? value[index] : '',
-                style: const TextStyle(
+                style: AppType.display.copyWith(
                   fontSize: 27,
-                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
                   color: AppText.primary,
                 ),
               ),
@@ -519,17 +457,4 @@ class _CodeBoxes extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Plain white behind the sign-in screens.
-///
-/// This used to paint a dark green gradient, which was right when the app was
-/// dark and is a stain on it now — the first screen anyone sees, and the only
-/// one still wearing the old palette.
-class _Backdrop extends StatelessWidget {
-  const _Backdrop();
-
-  @override
-  Widget build(BuildContext context) =>
-      const ColoredBox(color: AppColors.background, child: SizedBox.expand());
 }

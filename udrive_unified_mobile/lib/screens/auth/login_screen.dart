@@ -7,6 +7,7 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/brand.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/auth_models.dart';
 import '../common/legal_screen.dart';
 import 'otp_screen.dart';
@@ -19,10 +20,12 @@ import 'otp_screen.dart';
 /// the OTP screen's copy of that hint had no guard at all and shipped.
 const bool _showTestingHelpers = kIsWeb || kDebugMode;
 
-/// Sign-in.
+/// Sign-in. Design system v2, screen G-02.
 ///
-/// Logo centred, form directly beneath it, drawn shapes behind. One thing to
-/// look at, then one thing to do.
+/// White page, the mark small in the top-left corner, the question at the left
+/// margin, and one grey sheet holding the two fields and the button. Nothing
+/// here changed but the presentation: the same two controllers, the same
+/// validators, the same `requestOtp` call and the same push to [OtpScreen].
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -37,7 +40,8 @@ class _LoginScreenState extends State<LoginScreen> {
   // It is not a hint — it is a real value in the field, so the first thing a
   // new user could do is tap "Send verification code" and post an OTP request
   // for a number that is not theirs. The hint text on the field is what tells
-  // them the expected format.
+  // them the expected format. The design PNG shows that number in the box; on
+  // data, the code wins.
   final _phone = TextEditingController();
   bool _accepted = true;
   String? _error;
@@ -56,84 +60,77 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          const _BackdropArtwork(),
-          SafeArea(
-            child: Column(
-              children: [
-                // The mark, small, top left. Nothing else up here.
-                //
-                // The language switch was the only thing in this row, and it is
-                // a setting somebody changes once — on the first screen of the
-                // app it was the most prominent control on a page whose whole
-                // job is to collect a name and a number.
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 14, 16, 0),
-                  child: Row(
-                    children: [
-                      UDriveMark(size: 44),
-                      Spacer(),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Left-aligned, and no second logo.
-                        //
-                        // The mark was repeated here at 72px under the one in
-                        // the header — two logos on one screen, neither of
-                        // which then reads as the mark. This is a form, so it
-                        // opens with its question rather than with branding.
-                        const SizedBox(height: 26),
-                        Text(
-                          urdu ? 'خوش آمدید' : 'Welcome',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            height: 1.15,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -.8,
-                            color: AppText.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          urdu
-                              ? 'کشمیر کا محفوظ اور آسان سفر'
-                              : 'Your safer way to explore Kashmir',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            height: 1.5,
-                            color: AppText.secondary,
-                          ),
-                        ),
-                        const SizedBox(height: 26),
-                        _FormSheet(
-                          formKey: _formKey,
-                          name: _name,
-                          phone: _phone,
-                          urdu: urdu,
-                          error: _error,
-                          accepted: _accepted,
-                          busy: controller.authBusy,
-                          onAcceptedChanged: (value) =>
-                              setState(() => _accepted = value),
-                          onContinue: _continue,
-                          onDemo: _demoLogin,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            // The mark, small, top left. Nothing else up here.
+            //
+            // The language switch was the only thing in this row, and it is a
+            // setting somebody changes once — on the first screen of the app it
+            // was the most prominent control on a page whose whole job is to
+            // collect a name and a number.
+            const Padding(
+              padding: EdgeInsets.fromLTRB(AppSizes.sidePadding, 14, 16, 0),
+              child: Row(
+                children: [
+                  UDriveMark(size: 40),
+                  Spacer(),
+                ],
+              ),
             ),
-          ),
-        ],
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSizes.sidePadding, 8, AppSizes.sidePadding, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Left-aligned, and no second logo.
+                    //
+                    // The mark was repeated here at 72px under the one in the
+                    // header — two logos on one screen, neither of which then
+                    // reads as the mark. This is a form, so it opens with its
+                    // question rather than with branding.
+                    const SizedBox(height: 26),
+                    Text(
+                      urdu ? 'خوش آمدید' : 'Welcome',
+                      style: AppType.h1.copyWith(
+                        fontSize: 32,
+                        letterSpacing: -0.8,
+                        height: 1.15,
+                        color: AppText.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      urdu
+                          ? 'کشمیر کا محفوظ اور آسان سفر'
+                          : 'Your safer way to explore Kashmir',
+                      style: AppType.body2.copyWith(
+                        height: 1.5,
+                        color: AppText.secondary,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    _FormSheet(
+                      formKey: _formKey,
+                      name: _name,
+                      phone: _phone,
+                      urdu: urdu,
+                      error: _error,
+                      accepted: _accepted,
+                      busy: controller.authBusy,
+                      onAcceptedChanged: (value) =>
+                          setState(() => _accepted = value),
+                      onContinue: _continue,
+                      onDemo: _demoLogin,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -172,54 +169,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-/// Full-screen vehicle artwork behind a scrim.
+/// The grey sheet holding the form.
 ///
-/// Uses the same vector illustration the home hero does, so the car is sharp at
-/// any screen size and needs no bundled photograph.
-/// The background behind the sign-in form.
-///
-/// No photograph. The car illustration used to sit in the upper third and the
-/// form sheet rode over the top of it, so the vehicle was cut in half by a
-/// panel edge on almost every screen size — the artwork and the form were each
-/// laid out as though the other were not there.
-///
-/// What replaces it is drawn rather than placed: a vertical wash and two soft
-/// brand circles, all of it out at the edges. Shapes have no fixed proportions
-/// to protect, so nothing can be cropped through the middle no matter how tall
-/// the phone or how far the keyboard pushes the form up.
-/// Plain white behind the sign-in form.
-///
-/// This painted a dark green gradient with soft shapes over it — the app's old
-/// palette, on the first screen anyone sees. A person's first impression of the
-/// app was a colour scheme the rest of it no longer uses.
-///
-/// White, and nothing else. The green belongs on the button they are about to
-/// press, not behind the fields they are about to fill.
-class _BackdropArtwork extends StatelessWidget {
-  const _BackdropArtwork();
-
-  @override
-  Widget build(BuildContext context) =>
-      const ColoredBox(color: AppColors.background, child: SizedBox.expand());
-}
-
-class _Glow extends StatelessWidget {
-  const _Glow({required this.diameter, required this.opacity});
-
-  final double diameter;
-  final double opacity;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: diameter,
-        height: diameter,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: AppColors.secondary.withValues(alpha: opacity),
-        ),
-      );
-}
-
+/// `.card.tint`: the surface grey, no border and no shadow. The separation from
+/// the page comes from the white fields inside it, which is the inversion v2
+/// makes everywhere — grey marks what is recessed, not what is raised.
 class _FormSheet extends StatelessWidget {
   const _FormSheet({
     required this.formKey,
@@ -247,14 +201,10 @@ class _FormSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return UdCard(
+      tone: UdCardTone.tint,
+      radius: 22,
       padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.panel),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppShadows.panel,
-      ),
       child: Form(
         key: formKey,
         child: Column(
@@ -262,135 +212,82 @@ class _FormSheet extends StatelessWidget {
           children: [
             Text(
               urdu ? 'اپنا موبائل نمبر درج کریں' : 'Continue with mobile',
-              style: const TextStyle(
+              style: AppType.h3.copyWith(
                 fontSize: 17,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w800,
                 color: AppText.primary,
               ),
             ),
-            const SizedBox(height: 16),
-            TextFormField(
+            const SizedBox(height: 18),
+            UdTextField(
               controller: name,
+              label: urdu ? 'پورا نام' : 'Full name',
+              labelSuffix: urdu ? '(نئے صارف کے لیے)' : '(for a new account)',
+              hint: urdu ? 'علی رضا' : 'Ali Raza',
+              icon: Icons.person_outline_rounded,
               textCapitalization: TextCapitalization.words,
-              decoration: InputDecoration(
-                labelText: urdu
-                    ? 'پورا نام (نئے صارف کے لیے)'
-                    : 'Full name (for a new account)',
-                prefixIcon: const Icon(Icons.person_outline_rounded),
-              ),
-              validator: (value) => value != null && value.length > 160
-                  ? 'Maximum 160 characters.'
-                  : null,
+              textInputAction: TextInputAction.next,
+              validator: (value) =>
+                  value != null && value.length > 160
+                      ? 'Maximum 160 characters.'
+                      : null,
             ),
-            const SizedBox(height: 12),
-            TextFormField(
+            const SizedBox(height: 16),
+            UdTextField(
               controller: phone,
+              label: urdu ? 'پاکستانی موبائل نمبر' : 'Mobile number',
+              hint: '03001234567',
+              icon: Icons.phone_iphone_rounded,
               keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[0-9+\- ]')),
               ],
-              decoration: InputDecoration(
-                labelText: urdu ? 'پاکستانی موبائل نمبر' : 'Mobile number',
-                hintText: '03001234567',
-                prefixIcon: const Icon(Icons.phone_iphone_rounded),
-              ),
               validator: (value) {
                 final digits = (value ?? '').replaceAll(RegExp(r'\D'), '');
                 return digits.length < 10 ? context.tr('invalidPhone') : null;
               },
             ),
             if (error != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppTint.danger,
-                  borderRadius: AppRadii.all(AppRadii.field),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline_rounded,
-                        size: 16, color: AppTint.dangerText),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        error!,
-                        style: const TextStyle(
-                          color: AppTint.dangerText,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 14),
+              UdBanner(
+                tone: UdTone.err,
+                icon: Icons.error_outline_rounded,
+                text: error!,
               ),
             ],
             const SizedBox(height: 6),
-            InkWell(
-              onTap: () => onAcceptedChanged(!accepted),
-              borderRadius: BorderRadius.circular(10),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: Checkbox(
-                        value: accepted,
-                        onChanged: (value) =>
-                            onAcceptedChanged(value ?? false),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize:
-                            MaterialTapTargetSize.shrinkWrap,
-                      ),
-                    ),
-                    const SizedBox(width: 11),
-                    // Both halves open the document. This is the moment the
-                    // customer is agreeing to them, so it is the one place they
-                    // must be reachable — it used to be plain text you could
-                    // tap all day without anything happening.
-                    Expanded(
-                      child: Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          _LegalLink(
-                            label: context.tr('terms'),
-                            document: 'terms',
-                          ),
-                          const Text(
-                            '  ·  ',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppText.secondary,
-                            ),
-                          ),
-                          _LegalLink(
-                            label: context.tr('privacy'),
-                            document: 'privacy-policy',
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+            UdCheckboxRow(
+              value: accepted,
+              onChanged: onAcceptedChanged,
+              semanticLabel: urdu
+                  ? 'شرائط و ضوابط سے اتفاق'
+                  : 'Agree to the terms and the privacy policy',
+              // Both halves open the document. This is the moment the customer
+              // is agreeing to them, so it is the one place they must be
+              // reachable — it used to be plain text you could tap all day
+              // without anything happening.
+              child: Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _LegalLink(label: context.tr('terms'), document: 'terms'),
+                  Text(
+                    '  ·  ',
+                    style: AppType.caption.copyWith(color: AppText.secondary),
+                  ),
+                  _LegalLink(
+                    label: context.tr('privacy'),
+                    document: 'privacy-policy',
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            FilledButton.icon(
-              onPressed: !accepted || busy ? null : onContinue,
-              icon: busy
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppText.onBrand),
-                    )
-                  : const Icon(Icons.sms_outlined),
-              label: Text(urdu ? 'او ٹی پی بھیجیں' : 'Send verification code'),
+            const SizedBox(height: 12),
+            UdButton.primary(
+              label: urdu ? 'او ٹی پی بھیجیں' : 'Send verification code',
+              icon: Icons.sms_outlined,
+              busy: busy,
+              onPressed: accepted ? onContinue : null,
             ),
             // The demo account and the fixed testing code exist for our own
             // browser testing. A published Android build must not offer either:
@@ -398,35 +295,36 @@ class _FormSheet extends StatelessWidget {
             // way into somebody else's account while the old provider is on.
             if (_showTestingHelpers) ...[
               const SizedBox(height: 10),
-              OutlinedButton.icon(
+              UdButton.outline(
+                label:
+                    urdu ? 'منظور شدہ ڈرائیور ڈیمو' : 'Use approved driver demo',
+                icon: Icons.verified_user_outlined,
                 onPressed: busy ? null : onDemo,
-                icon: const Icon(Icons.verified_user_outlined),
-                label: Text(
-                    urdu ? 'منظور شدہ ڈرائیور ڈیمو' : 'Use approved driver demo'),
               ),
             ],
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Icon(Icons.lock_outline_rounded,
-                    size: 15, color: AppText.disabled),
-                const SizedBox(width: 8),
+                    size: 17, color: AppText.caption),
+                const SizedBox(width: 9),
                 // One line in every build. The test-build variant used to name
                 // the code, which meant a screen recording, a screenshot in a
                 // bug report or a shared web build gave it away — and the code
                 // it named worked on every phone number on the platform, not
                 // just a test one.
+                //
+                // 13px, up from 11.5. Nothing in v2 goes below 12.5, and this
+                // is the line that tells somebody which app to go and look in.
                 Expanded(
                   child: Text(
                     urdu
                         ? 'کوڈ آپ کے واٹس ایپ نمبر پر بھیجا جائے گا۔'
                         : 'A 4-digit code is sent to this number on WhatsApp.',
-                    style: const TextStyle(
-                      color: AppText.disabled,
-                      fontSize: 11.5,
-                      height: 1.45,
-                      fontWeight: FontWeight.w500,
+                    style: AppType.caption.copyWith(
+                      height: 1.4,
+                      color: AppText.caption,
                     ),
                   ),
                 ),
@@ -456,12 +354,11 @@ class _LegalLink extends StatelessWidget {
       onTap: () => LegalScreen.open(context, document),
       child: Text(
         label,
-        style: const TextStyle(
-          fontSize: 12.5,
+        style: AppType.caption.copyWith(
           fontWeight: FontWeight.w800,
-          color: AppColors.secondary,
+          color: AppColors.brandInk,
           decoration: TextDecoration.underline,
-          decorationColor: AppColors.secondary,
+          decorationColor: AppColors.brandInk,
         ),
       ),
     );
