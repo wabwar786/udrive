@@ -98,6 +98,13 @@ class AppColors {
   static const primaryDark = Color(0xFF0B1B33);
   static const navy = Color(0xFF0B1B33);
 
+  /// `--navy-2` — one step lighter than [navy].
+  ///
+  /// For a rule or a division *inside* a navy card, where [border] would be a
+  /// bright grey line across a dark panel and white at any opacity would read
+  /// as a second piece of content.
+  static const navyLine = Color(0xFF1B2A44);
+
   /// Body copy.
   static const text = Color(0xFF0B1B33);
 

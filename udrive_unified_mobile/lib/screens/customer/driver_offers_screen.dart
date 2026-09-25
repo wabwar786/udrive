@@ -18,6 +18,7 @@ import '../../core/maps/ud_map.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../core/vehicles/nearby_repository.dart';
 import '../../core/vehicles/nearby_vehicle.dart';
 import '../../models/booking_models.dart';
@@ -208,16 +209,10 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
             : 50;
     var proposed = _offer + step;
 
-    final confirmed = await showModalBottomSheet<int>(
+    final confirmed = await showUdSheet<int>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
       builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheet) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+        builder: (context, setSheet) => SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -281,26 +276,18 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                   'موجودہ پیشکش PKR ${NumberFormat('#,###').format(_offer)}',
                 ),
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11.5, color: AppText.disabled),
+                style: AppType.caption.copyWith(color: AppText.caption),
               ),
               const SizedBox(height: 20),
-              FilledButton(
+              UdButton.primary(
+                label: _t('Find offers again', 'دوبارہ آفرز تلاش کریں'),
                 onPressed: () => Navigator.pop(sheetContext, proposed),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                ),
-                child: Text(
-                  _t('Find offers again', 'دوبارہ آفرز تلاش کریں'),
-                  style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w900),
-                ),
               ),
-              const SizedBox(height: 6),
-              TextButton(
+              const SizedBox(height: 8),
+              UdButton.ghost(
+                label: _t('Keep waiting at this fare', 'اسی کرایے پر انتظار کریں'),
+                size: UdButtonSize.small,
                 onPressed: () => Navigator.pop(sheetContext),
-                child: Text(
-                  _t('Keep waiting at this fare', 'اسی کرایے پر انتظار کریں'),
-                ),
               ),
             ],
           ),
@@ -673,15 +660,11 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       return;
     }
 
-    final choice = await showModalBottomSheet<_LeaveSearchChoice>(
+    final choice = await showUdSheet<_LeaveSearchChoice>(
       context: context,
-      backgroundColor: AppColors.surfaceHigh,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => SafeArea(
+      builder: (sheetContext) => SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+          padding: EdgeInsets.zero,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -701,32 +684,23 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                 style: const TextStyle(fontSize: 12.5, height: 1.45, color: AppColors.muted),
               ),
               const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () =>
-                      Navigator.pop(sheetContext, _LeaveSearchChoice.keepSearching),
-                  child: Text(_t('Keep searching', 'تلاش جاری رکھیں')),
-                ),
+              UdButton.primary(
+                label: _t('Keep searching', 'تلاش جاری رکھیں'),
+                onPressed: () => Navigator.pop(
+                    sheetContext, _LeaveSearchChoice.keepSearching),
               ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () =>
-                      Navigator.pop(sheetContext, _LeaveSearchChoice.cancelRide),
-                  child: Text(
-                    _t('Cancel this ride', 'یہ رائیڈ منسوخ کریں'),
-                    style: const TextStyle(color: AppColors.danger),
-                  ),
-                ),
+              const SizedBox(height: 8),
+              UdButton(
+                label: _t('Cancel this ride', 'یہ رائیڈ منسوخ کریں'),
+                variant: UdButtonVariant.danger,
+                onPressed: () =>
+                    Navigator.pop(sheetContext, _LeaveSearchChoice.cancelRide),
               ),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(sheetContext),
-                  child: Text(_t('Stay here', 'یہیں رہیں')),
-                ),
+              const SizedBox(height: 8),
+              UdButton.ghost(
+                label: _t('Stay here', 'یہیں رہیں'),
+                size: UdButtonSize.small,
+                onPressed: () => Navigator.pop(sheetContext),
               ),
             ],
           ),
@@ -753,32 +727,28 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     if (_cancelling || _resolved) return;
 
     if (confirm) {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showUdDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: AppColors.surfaceHigh,
-          title: Text(_t('Cancel this request?', 'یہ درخواست منسوخ کریں؟')),
-          content: Text(
-            _t(
-              'Drivers will stop sending offers and you will go back to choosing a vehicle.',
-              'ڈرائیور آفر بھیجنا بند کر دیں گے اور آپ دوبارہ گاڑی منتخب کرنے پر واپس چلے جائیں گے۔',
-            ),
-            style: const TextStyle(fontSize: 12.5, height: 1.45),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(_t('Keep waiting', 'انتظار جاری رکھیں')),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(
-                _t('Cancel request', 'درخواست منسوخ کریں'),
-                style: const TextStyle(color: AppColors.danger),
-              ),
-            ),
-          ],
+        title: _t('Cancel this request?', 'یہ درخواست منسوخ کریں؟'),
+        message: _t(
+          'Drivers will stop sending offers and you will go back to choosing a vehicle.',
+          'ڈرائیور آفر بھیجنا بند کر دیں گے اور آپ دوبارہ گاڑی منتخب کرنے پر واپس چلے جائیں گے۔',
         ),
+        actions: [
+          Builder(
+            builder: (dialogContext) => UdButton.outline(
+              label: _t('Keep waiting', 'انتظار جاری رکھیں'),
+              onPressed: () => Navigator.pop(dialogContext, false),
+            ),
+          ),
+          Builder(
+            builder: (dialogContext) => UdButton(
+              label: _t('Cancel request', 'درخواست منسوخ کریں'),
+              variant: UdButtonVariant.danger,
+              onPressed: () => Navigator.pop(dialogContext, true),
+            ),
+          ),
+        ],
       );
 
       if (confirmed != true) return;
@@ -850,19 +820,20 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 6, 16, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSizes.sidePadding, 6, AppSizes.sidePadding, 12),
                   child: Row(
                     children: [
                       // This screen is where five different booking flows end
                       // up, and it had no visible way back at all — the only
                       // exit was the system gesture, which silently abandoned
                       // the search.
-                      IconButton(
-                        onPressed: _cancelling ? null : _handleBack,
-                        icon: const Icon(Icons.arrow_back_rounded),
-                        color: AppColors.primaryDark,
+                      UdIconButton(
+                        icon: Icons.arrow_back_rounded,
                         tooltip: _t('Back', 'واپس'),
+                        onPressed: _cancelling ? null : _handleBack,
                       ),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: _CancelPill(
                           busy: _cancelling,
@@ -874,29 +845,25 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSizes.sidePadding, 0, AppSizes.sidePadding, 8),
                   child: Text(
                     _t('Choose a driver', 'ڈرائیور منتخب کریں'),
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -.4,
-                      color: AppText.primary,
-                    ),
+                    style: AppType.h1.copyWith(color: AppText.primary),
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSizes.sidePadding, 0, AppSizes.sidePadding, 12),
                   child: Row(
                     children: [
-                      const Icon(Icons.verified_user_rounded,
-                          size: 17, color: AppColors.info),
-                      const SizedBox(width: 7),
+                      const Icon(Icons.verified_user_outlined,
+                          size: 20, color: AppTint.infoText),
+                      const SizedBox(width: 9),
                       Text(
                         _t('All drivers verified', 'تمام ڈرائیور تصدیق شدہ'),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
+                        style: AppType.listTitle.copyWith(
+                          fontSize: 16,
                           color: AppText.primary,
                         ),
                       ),
@@ -906,7 +873,8 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                 Flexible(
                   child: ListView(
                     shrinkWrap: true,
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSizes.sidePadding, 0, AppSizes.sidePadding, 20),
                     children: offers.isEmpty
                         ? [_waitingCard()]
                         : offers.map(_offerCard).toList(growable: false),
@@ -1000,66 +968,127 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     final drivers = _nearby.length;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 15, 16, 16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.panel),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppShadows.card,
+        color: AppColors.surfaceHigh,
+        borderRadius: AppRadii.all(AppRadii.largeCard),
+        boxShadow: AppShadows.panel,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
+              const UdIconTile(
+                icon: Icons.search_rounded,
+                tone: UdIconTone.lime,
+              ),
+              const SizedBox(width: 14),
               Expanded(
-                child: Text(
-                  _t('Searching for drivers', 'ڈرائیورز تلاش کیے جا رہے ہیں'),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppText.primary,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _t('Searching for drivers',
+                          'ڈرائیورز تلاش کیے جا رہے ہیں'),
+                      style: AppType.listTitle.copyWith(
+                        fontSize: 16.5,
+                        color: AppText.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      drivers > 0
+                          ? '$drivers ${_t('drivers nearby', 'ڈرائیور قریب ہیں')}'
+                          : _t('You choose your driver',
+                              'ڈرائیور آپ خود چنیں گے'),
+                      style: AppType.caption.copyWith(color: AppText.secondary),
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(width: 10),
+              // Counting up, not down. The request stays open for an hour; a
+              // bar or a clock draining towards zero would say it is about to
+              // expire, which is the one thing it is not doing.
               Text(
                 _elapsed,
-                style: const TextStyle(
+                style: AppType.listTitle.copyWith(
                   fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: [FontFeature.tabularFigures()],
+                  fontFeatures: const [FontFeature.tabularFigures()],
                   color: AppText.secondary,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            drivers > 0
-                ? '$drivers ${_t('drivers nearby', 'ڈرائیور قریب ہیں')}'
-                : _t('You choose your driver', 'ڈرائیور آپ خود چنیں گے'),
-            style: const TextStyle(fontSize: 12.5, color: AppText.secondary),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              minHeight: 3,
+            borderRadius: AppRadii.all(4),
+            child: const LinearProgressIndicator(
+              minHeight: 8,
               backgroundColor: AppColors.surfaceAlt,
-              color: AppColors.secondary,
+              color: AppColors.limeLine,
+            ),
+          ),
+          const SizedBox(height: 16),
+          UdCard(
+            tone: UdCardTone.tint,
+            radius: AppRadii.field,
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${_t('YOUR OFFER', 'آپ کی پیشکش')}  ·  '
+                        '${widget.vehicleName}',
+                        style: AppType.overline
+                            .copyWith(color: AppText.secondary),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'PKR ${NumberFormat('#,###').format(_offer)}',
+                        style: AppType.priceMd.copyWith(
+                          color: AppText.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    _t('Sent to drivers around you',
+                        'قریبی ڈرائیورز کو بھیج دیا گیا'),
+                    textAlign: TextAlign.right,
+                    style: AppType.caption.copyWith(color: AppText.secondary),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 14),
-          Text(
-            _t(
-              'Offering PKR ${NumberFormat('#,###').format(_offer)} · sent to the drivers around you. Offers appear here as they answer.',
-              'آپ کا کرایہ قریبی ڈرائیورز کو بھیج دیا گیا ہے۔ جواب آتے ہی آفرز یہاں ظاہر ہوں گی۔',
-            ),
-            style: const TextStyle(
-              color: AppText.secondary,
-              fontSize: 12,
-              height: 1.45,
-            ),
+          const UdDashedDivider(),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              const Icon(Icons.groups_outlined,
+                  size: 20, color: AppText.caption),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _t('Driver offers will appear here as they answer.',
+                      'جواب آتے ہی آفرز یہاں ظاہر ہوں گی۔'),
+                  style: AppType.small.copyWith(color: AppText.secondary),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1083,13 +1112,12 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     final fields = OfferCardFields.current;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: AppRadii.all(AppRadii.panel),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppShadows.card,
+        color: AppColors.surfaceHigh,
+        borderRadius: AppRadii.all(AppRadii.largeCard),
+        boxShadow: AppShadows.panel,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1120,20 +1148,17 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                               Text(
                                 NumberFormat('#,###')
                                     .format(offer.finalAmount.round()),
-                                style: const TextStyle(
+                                style: AppType.price.copyWith(
                                   fontSize: 30,
-                                  height: 1.05,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -1,
+                                  letterSpacing: -0.9,
                                   color: AppText.primary,
                                 ),
                               ),
-                              const SizedBox(height: 1),
+                              const SizedBox(height: 2),
                               Text(
                                 'PKR  ·  arrives in '
                                 '${offer.estimatedArrivalMinutes} min',
-                                style: const TextStyle(
-                                  fontSize: 11.5,
+                                style: AppType.caption.copyWith(
                                   color: AppText.secondary,
                                 ),
                               ),
@@ -1150,18 +1175,17 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                       offer.driverName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
+                      style: AppType.listTitle.copyWith(
+                        fontSize: 15,
                         color: AppText.primary,
                       ),
                     ),
+                    const SizedBox(height: 1),
                     Text(
                       offer.vehicle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11.5,
+                      style: AppType.caption.copyWith(
                         color: AppText.secondary,
                       ),
                     ),
@@ -1172,24 +1196,22 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                       Row(
                         children: [
                           if (fields.rating) ...[
-                            Icon(Icons.star_rounded,
-                                size: 14, color: AppColors.secondary),
-                            const SizedBox(width: 3),
+                            const Icon(Icons.star_rounded,
+                                size: 16, color: AppTint.star),
+                            const SizedBox(width: 4),
                             Text(
                               offer.driverRating.toStringAsFixed(1),
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                                color: AppText.secondary,
+                              style: AppType.caption.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: AppText.primary,
                               ),
                             ),
-                            const SizedBox(width: 9),
+                            const SizedBox(width: 10),
                           ],
                           if (fields.rides)
                             Text(
                               '${offer.completedTrips} rides',
-                              style: const TextStyle(
-                                fontSize: 11.5,
+                              style: AppType.caption.copyWith(
                                 color: AppText.secondary,
                               ),
                             ),
@@ -1208,11 +1230,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
               offer.message!,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12.5,
-                height: 1.4,
-                color: AppText.secondary,
-              ),
+              style: AppType.small.copyWith(color: AppText.secondary),
             ),
           ],
 
@@ -1225,31 +1243,31 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
               // 16 — a seventeenth of the row, which is how "Decline" ended up
               // printed one letter per line. A ratio needs both numbers; giving
               // one and leaving the other implicit is not a ratio.
+              // Decline stays live after the window closes: an offer the
+              // customer no longer wants should still be dismissable.
               Expanded(
                 flex: 10,
-                child: OutlinedButton(
-                  onPressed: blocked ? null : () => _declineOffer(offer.id),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
-                  ),
-                  child: const Text('Decline'),
+                child: _DeclineButton(
+                  label: _t('Decline', 'مسترد'),
+                  onTap: busy ? null : () => _declineOffer(offer.id),
                 ),
               ),
-              const SizedBox(width: 9),
+              const SizedBox(width: 10),
               Expanded(
                 flex: 14,
-                child: FilledButton(
-                  onPressed: blocked ? null : () => _approveOffer(offer),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
-                  ),
-                  child: busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(seconds > 0 ? 'Accept' : 'Expired'),
+                // The decision window, drawn along the bottom edge of Accept.
+                //
+                // This widget has been in the file all along with nothing
+                // building it — the card used a plain FilledButton, so the
+                // ten seconds ran down with nothing on screen saying so, and
+                // the button simply turned into "Expired".
+                child: _AcceptButton(
+                  label: seconds > 0
+                      ? _t('Accept', 'قبول کریں')
+                      : _t('Expired', 'وقت ختم'),
+                  busy: busy,
+                  remaining: seconds / _decisionSeconds,
+                  onTap: blocked ? null : () => _approveOffer(offer),
                 ),
               ),
             ],
@@ -1275,14 +1293,14 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     // nothing at all.
     if (await _openTracking(controller, booking)) return;
     if (!mounted) return;
-    await showModalBottomSheet<void>(
+    await showUdSheet<void>(
       context: context,
-      isScrollControlled: true,
       isDismissible: false,
       enableDrag: false,
-      builder: (_) => SafeArea(
+      showHandle: false,
+      builder: (_) => SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(22),
+          padding: EdgeInsets.zero,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1364,18 +1382,22 @@ class _StepCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surfaceAlt,
-      shape: const CircleBorder(),
+      color: enabled ? AppColors.background : AppColors.surfaceAlt,
+      shape: enabled
+          ? const CircleBorder(
+              side: BorderSide(color: AppColors.borderStrong, width: 1.5),
+            )
+          : const CircleBorder(),
       child: InkWell(
         onTap: enabled ? onTap : null,
         customBorder: const CircleBorder(),
         child: SizedBox(
-          width: 52,
-          height: 52,
+          width: 50,
+          height: 50,
           child: Icon(
             icon,
             size: 24,
-            color: enabled ? AppText.primary : AppText.disabled,
+            color: enabled ? AppColors.navy : AppText.disabled,
           ),
         ),
       ),
@@ -1383,6 +1405,11 @@ class _StepCircle extends StatelessWidget {
   }
 }
 
+/// The way out of a search that is still running.
+///
+/// Full width beside the back arrow, not a small icon in the corner: leaving
+/// this screen without cancelling leaves a request open on the server, and the
+/// customer needs the deliberate action to be the obvious one.
 class _CancelPill extends StatelessWidget {
   const _CancelPill({
     required this.label,
@@ -1395,84 +1422,14 @@ class _CancelPill extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Material(
-        color: AppTint.danger,
-        borderRadius: BorderRadius.circular(99),
-        child: InkWell(
-          onTap: busy ? null : onTap,
-          borderRadius: BorderRadius.circular(99),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (busy)
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTint.dangerText,
-                    ),
-                  )
-                else
-                  const Icon(Icons.close_rounded,
-                      size: 18, color: AppTint.dangerText),
-                const SizedBox(width: 9),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.danger,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Initials on a tinted circle.
-///
-/// The offers endpoint exposes no photograph, and a generic silhouette on every
-/// card tells the customer nothing. Initials at least distinguish one driver
-/// from the next.
-class _DriverAvatar extends StatelessWidget {
-  const _DriverAvatar({required this.name});
-
-  final String name;
-
-  @override
-  Widget build(BuildContext context) {
-    final trimmed = name.trim();
-    final initial =
-        trimmed.isEmpty ? 'D' : trimmed.characters.first.toUpperCase();
-
-    return Container(
-      width: 44,
-      height: 44,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: AppTint.brand,
-        shape: BoxShape.circle,
-      ),
-      child: Text(
-        initial,
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w900,
-          color: AppColors.secondary,
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => UdButton(
+        label: label,
+        icon: Icons.close_rounded,
+        variant: UdButtonVariant.danger,
+        size: UdButtonSize.small,
+        busy: busy,
+        onPressed: onTap,
+      );
 }
 
 class _DeclineButton extends StatelessWidget {
@@ -1482,29 +1439,11 @@ class _DeclineButton extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surfaceAlt,
-      borderRadius: AppRadii.all(AppRadii.cta),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: AppRadii.all(AppRadii.cta),
-        child: SizedBox(
-          height: 48,
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: onTap == null ? AppText.disabled : AppText.primary,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => UdButton.outline(
+        label: label,
+        size: UdButtonSize.small,
+        onPressed: onTap,
+      );
 }
 
 /// Accept, with the decision window draining across it.
@@ -1525,20 +1464,22 @@ class _AcceptButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fraction = remaining.clamp(0.0, 1.0);
+    final fraction = remaining.isNaN ? 0.0 : remaining.clamp(0.0, 1.0);
 
     return ClipRRect(
       borderRadius: AppRadii.all(AppRadii.cta),
       child: Stack(
         children: [
-          // The button is solid brand green, full width, always.
+          // The button is solid lime, full width, always.
           //
           // It used to drain from full colour to 38% opacity as the window ran
           // down, which meant the main action on the screen spent most of its
           // life washed out — and a half-faded button reads as disabled, which
           // is the opposite of what it is.
           Positioned.fill(
-            child: ColoredBox(color: AppColors.secondary),
+            child: ColoredBox(
+              color: onTap == null ? AppColors.surfaceAlt : AppColors.brand,
+            ),
           ),
 
           // The countdown is a thin bar along the bottom edge instead. It still
@@ -1548,18 +1489,16 @@ class _AcceptButton extends StatelessWidget {
             left: 0,
             right: 0,
             bottom: 0,
-            height: 3,
+            height: 4,
             child: Row(
               children: [
                 Expanded(
                   flex: (fraction * 1000).round().clamp(1, 1000),
-                  child: ColoredBox(color: AppText.onBrand),
+                  child: const ColoredBox(color: AppColors.navy),
                 ),
                 Expanded(
                   flex: ((1 - fraction) * 1000).round().clamp(1, 1000),
-                  child: ColoredBox(
-                    color: AppText.onBrand.withValues(alpha: .25),
-                  ),
+                  child: const ColoredBox(color: AppColors.limeLine),
                 ),
               ],
             ),
@@ -1569,11 +1508,11 @@ class _AcceptButton extends StatelessWidget {
             child: InkWell(
               onTap: onTap,
               child: SizedBox(
-                height: 48,
+                height: AppSizes.buttonSmall,
                 width: double.infinity,
                 child: Center(
                   child: busy
-                      ? SizedBox(
+                      ? const SizedBox(
                           width: 19,
                           height: 19,
                           child: CircularProgressIndicator(
@@ -1583,10 +1522,10 @@ class _AcceptButton extends StatelessWidget {
                         )
                       : Text(
                           label,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: AppText.onBrand,
+                          style: AppType.buttonSm.copyWith(
+                            color: onTap == null
+                                ? AppText.disabled
+                                : AppText.onBrand,
                           ),
                         ),
                 ),
@@ -1605,16 +1544,7 @@ class _ResultLine extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 12))),
-            const SizedBox(width: 12),
-            Flexible(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5))),
-          ],
-        ),
-      );
+  Widget build(BuildContext context) => UdKeyValue(label: label, value: value);
 }
 
 /// The vehicle on an offer card.
