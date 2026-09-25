@@ -11,10 +11,12 @@ import '../../core/widgets/brand.dart';
 import '../../models/auth_models.dart';
 import 'otp_screen.dart';
 
-/// Whether the browser-testing helpers (demo account, fixed-code hint) show.
+/// Whether the one-tap demo sign-in button shows.
 ///
-/// Debug builds and the web build keep them; a release Android build — the one
-/// that goes to Google Play — never does.
+/// Debug builds and the web build keep it; a release Android build — the one
+/// that goes to Google Play — never does. It used to guard a second thing, a
+/// line of text naming the fixed code, but no screen names a code any more:
+/// the OTP screen's copy of that hint had no guard at all and shipped.
 const bool _showTestingHelpers = kIsWeb || kDebugMode;
 
 /// Sign-in.
@@ -389,15 +391,16 @@ class _FormSheet extends StatelessWidget {
                 const Icon(Icons.lock_outline_rounded,
                     size: 15, color: AppText.disabled),
                 const SizedBox(width: 8),
+                // One line in every build. The test-build variant used to name
+                // the code, which meant a screen recording, a screenshot in a
+                // bug report or a shared web build gave it away — and the code
+                // it named worked on every phone number on the platform, not
+                // just a test one.
                 Expanded(
                   child: Text(
-                    _showTestingHelpers
-                        ? (urdu
-                            ? 'ٹیسٹنگ او ٹی پی 1234 ہے۔'
-                            : 'Testing code is 1234 on test builds.')
-                        : (urdu
-                            ? 'کوڈ آپ کے واٹس ایپ نمبر پر بھیجا جائے گا۔'
-                            : 'A 4-digit code is sent to this number on WhatsApp.'),
+                    urdu
+                        ? 'کوڈ آپ کے واٹس ایپ نمبر پر بھیجا جائے گا۔'
+                        : 'A 4-digit code is sent to this number on WhatsApp.',
                     style: const TextStyle(
                       color: AppText.disabled,
                       fontSize: 11.5,

@@ -64,19 +64,36 @@ nahi hain.
 
 ## 5. App access — reviewer ke liye login
 
-Admin portal → **Services & coming soon → WhatsApp OTP** mein:
-- "Google Play reviewer number" = ek number jo aap ke paas ho (jaise `03001234567`)
-- "Reviewer code" = 4 hindse (jaise `4417`)
+Admin portal → **Services → WhatsApp OTP** mein (SuperAdmin se login):
+- "Google Play reviewer number" = `03000000001`
+- "Reviewer code" = `5095`
 
-Yeh number kisi bhi provider mein us fixed code se login karta hai aur us par koi
-message nahi jata. Phir Play Console mein yeh instructions daalein:
+Yeh number kisi bhi provider mein usi fixed code se login karta hai aur us par koi
+message nahi jata.
+
+`03000000001` database mein pehle se mojood hai (`003_seed_catalog.sql`) — naam
+"Adeel Khan", **Approved Driver**, ek verified gaari `AJK-DEMO-01` ke sath. Login
+ke baad app **Customer mode** mein khulta hai, aur home par "Switch to Driver
+Mode" ka card se reviewer driver wala app bhee dekh leta hai. Is liye ek hi
+credential se dono taraf ka jaiza liya ja sakta hai.
+
+Play Console ke "App access" mein yeh instructions daalein:
 
 ```
-Username / phone: 03001234567
-Password / OTP:   4417
+Username / phone: 03000000001
+Password / OTP:   5095
 
-1. Open the app and choose Customer.
+1. Open the app. The first screen asks for a name and a mobile number.
 2. Enter the phone number above and tap "Send verification code".
-3. Enter the 4-digit code above. No SMS or WhatsApp message is needed for this
-   test number.
+3. Enter the 4-digit code above. No SMS or WhatsApp message is sent to this
+   number — the code above always works.
+4. The app opens in Customer mode: book a ride, browse Explore, view tours.
+5. To review the driver side, tap "Switch to Driver Mode" on the home screen.
+   The same account is an approved driver with a verified vehicle.
 ```
+
+**Har release se pehle check karein:** portal ke usi panel mein upar
+`Login codes: WhatsApp — live` likha hona chahiye. Agar `Development code
+(WhatsApp off)` likha hai to reviewer number bemaani hai — us halat mein har
+number ka code ek hi fixed code hota hai, yani koi bhi kisi ke account mein ja
+sakta hai.

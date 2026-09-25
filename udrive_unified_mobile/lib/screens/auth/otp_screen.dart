@@ -376,11 +376,17 @@ class _OtpScreenState extends State<OtpScreen> with WidgetsBindingObserver {
                               const Icon(Icons.info_outline_rounded,
                                   size: 15, color: AppText.disabled),
                               const SizedBox(width: 9),
+                              // This panel has no build-mode guard — it renders
+                              // in release Android too. It must therefore never
+                              // name a code. Saying "use 1234" here handed
+                              // every reader a working key to somebody else's
+                              // account for as long as the Development provider
+                              // was on, and it shipped to the Play Store.
                               Expanded(
                                 child: Text(
                                   urdu
-                                      ? 'ٹیسٹنگ کے لیے کوڈ 1234 استعمال کریں۔'
-                                      : 'Use code 1234 during testing.',
+                                      ? 'کوڈ واٹس ایپ پر بھیجا جاتا ہے اور 5 منٹ میں ختم ہو جاتا ہے۔'
+                                      : 'The code is sent on WhatsApp and expires in 5 minutes.',
                                   style: const TextStyle(
                                     fontSize: 11.5,
                                     height: 1.4,

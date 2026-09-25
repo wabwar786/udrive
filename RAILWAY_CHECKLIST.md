@@ -14,12 +14,12 @@ The API service must have a persistent volume mounted at:
 /data/uploads
 ```
 
-After API deployment, log out and back in with:
-
-```text
-03000000099
-OTP 1234
-```
+After API deployment, log out and back in as `03000000099`. The code depends on
+the OTP provider: with `Development` it is `DEVELOPMENT_OTP_CODE` (default
+`1234`); with `WhatsApp` a real code arrives on that number. If `03000000099` is
+not reachable on WhatsApp, set it as the reviewer number under Services →
+WhatsApp OTP first, or sign in to the portal with a username and password
+instead (`ADMIN_LOGIN.md`).
 
 The JWT must then contain `SuperAdmin`.
 

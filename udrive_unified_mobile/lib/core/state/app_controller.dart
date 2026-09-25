@@ -376,11 +376,25 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// The one-tap demo sign-in behind the login screen's test-build button.
+  ///
+  /// Not a back door: it drives the ordinary OTP endpoints with the seeded
+  /// demo driver's number and the reviewer code configured under Services →
+  /// OTP settings. If that code is changed in the portal without being changed
+  /// here, this button stops working — which is the right failure, because the
+  /// alternative is a second code living in the app that nobody can revoke.
+  ///
+  /// The account is an Approved driver, so it lands in Customer mode and can
+  /// switch to Driver Mode from the home card. That is what a Play reviewer
+  /// needs from one sign-in.
+  static const String demoPhoneNumber = '03000000001';
+  static const String demoReviewerCode = '5095';
+
   Future<void> login() async {
-    await requestOtp('03000000001');
+    await requestOtp(demoPhoneNumber);
     await verifyOtp(
-      phoneNumber: '03000000001',
-      code: '1234',
+      phoneNumber: demoPhoneNumber,
+      code: demoReviewerCode,
       fullName: 'Udrive Demo Driver',
     );
   }

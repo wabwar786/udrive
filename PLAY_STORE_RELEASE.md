@@ -50,6 +50,25 @@ Yeh bante hain:
 - `android/app/upload-keystore.jks`
 - `android/key.properties`
 
+Script khud `keytool` dhoondh leta hai (PATH, `JAVA_HOME`, Android Studio ka bundled JDK
+`jbr\bin`, aur installed JDKs). Phir bhi na milay to Android Studio ya Temurin JDK 17
+install karein aur naya terminal khol kar dobara chalayein.
+
+**Agar script ke baghair haath se banana ho** (`udrive_unified_mobile` folder mein, ek line):
+
+```
+"C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" -genkeypair -v -keystore "android\app\upload-keystore.jks" -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 10000 -alias upload -dname "CN=UDrive, O=Tech Geni Ltd., L=Muzaffarabad, C=PK"
+```
+
+Password do dafa poochay ga (dono jagah wohi likhein). Phir `android\key.properties` banayein:
+
+```
+storePassword=WOHI_PASSWORD
+keyPassword=WOHI_PASSWORD
+keyAlias=upload
+storeFile=upload-keystore.jks
+```
+
 **In dono files aur password ka backup lazmi rakhein** (Google Drive + USB). Yeh kho gaye to update
 upload nahi ho sakay ga (Play support se key reset karwani paray gi). Git mein commit **na** karein —
 `android/.gitignore` inhein pehle se ignore karta hai.
@@ -209,5 +228,13 @@ feature graphic 1024×500, 5 phone screenshots 1080×1920), aur `DATA_SAFETY.md`
   hai, tamam sessions band, number dobara register ho sakta hai. Live ride ke dauran allowed nahi.
 - Settings → Privacy / Terms ab asal pages kholte hain, About mein build number.
 - Login code WhatsApp (WA Engine) se jata hai; admin portal se provider, key, path aur message set hote hain.
-- Play build mein "Use approved driver demo" button aur "Testing code 1234" wali line nahi dikhti
-  (web aur debug builds mein pehle ki tarah mojood hain).
+- App ki kisi bhi screen par ab koi OTP likha hua nahi hai. Pehle yeh dawa sirf login screen ke
+  liye durust tha: OTP wali screen ka info panel (`otp_screen.dart`) bina kisi build-guard ke
+  "Use code 1234 during testing." dikhata tha, yani release Android build mein bhee. Ab dono
+  screens sirf itna kehti hain ke code WhatsApp par jata hai aur 5 minute mein khatam hota hai,
+  aur `app_strings.dart` se woh teen purani keys bhee nikal di gayi hain jin mein 1234 likha tha
+  (koi widget unhein parhta nahi tha, magar woh APK ke andr string ban kar jati thin).
+- "Use approved driver demo" button sirf web aur debug builds mein hai; release mein nahi. Woh ab
+  reviewer code (`5095`) istemal karta hai, 1234 nahi.
+- Reviewer ka demo account: `03000000001` / `5095` — tafseel `play_store/DATA_SAFETY.md` section 5
+  mein. Yeh ek hi account Customer aur Driver dono modes deta hai.
