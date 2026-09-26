@@ -6,6 +6,7 @@ import '../../core/network/api_config.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 
 /// The privacy policy, terms and account-deletion page, read inside the app.
 ///
@@ -103,57 +104,67 @@ class _LegalScreenState extends State<LegalScreen> {
     final document = _parsed;
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(document?.title ?? 'UDrive'),
+      // A pushed page, so it keeps its own Scaffold and draws its own bar.
+      appBar: UdTopBar(
+        title: document?.title ?? 'UDrive',
+        onBack: () => Navigator.maybePop(context),
+        divider: true,
         actions: [
-          IconButton(
+          UdIconButton(
+            icon: Icons.open_in_new_rounded,
+            variant: UdIconButtonVariant.soft,
             tooltip: 'Open online',
             onPressed: _openOnline,
-            icon: const Icon(Icons.open_in_new_rounded, size: 20),
           ),
         ],
       ),
       body: _error != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(28),
-                child: Text(_error!, textAlign: TextAlign.center),
+          ? Padding(
+              padding: const EdgeInsets.all(AppSizes.sidePadding),
+              child: Center(
+                child: UdEmptyState(
+                  icon: Icons.description_outlined,
+                  title: 'Document unavailable',
+                  text: _error!,
+                ),
               ),
             )
           : document == null
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.navy),
+                )
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 40),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSizes.sidePadding, 16, AppSizes.sidePadding, 40),
                   children: [
                     _LanguageToggle(language: _language ?? 'en', onChanged: _switchTo),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 18),
                     Text(
                       document.title,
-                      style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, height: 1.2),
+                      style: AppType.h1.copyWith(
+                        fontSize: 24,
+                        color: AppText.primary,
+                      ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 6),
                     Text(
                       document.effective.isEmpty
                           ? 'Version ${document.version}'
                           : 'Version ${document.version} · ${document.effective}',
-                      style: const TextStyle(color: AppText.secondary, fontSize: 12.5),
+                      style: AppType.small.copyWith(color: AppText.secondary),
                     ),
+                    // Only on a translation — the English text is the one that
+                    // governs, and this says so.
                     if (!document.governing) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: AppRadii.all(AppRadii.card),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: const Text(
-                          'This translation is for convenience. The English version governs.',
-                          style: TextStyle(color: AppText.secondary, fontSize: 12, height: 1.4),
-                        ),
+                      const SizedBox(height: 14),
+                      const UdBanner(
+                        tone: UdTone.gray,
+                        icon: Icons.translate_rounded,
+                        text: 'This translation is for convenience. The '
+                            'English version governs.',
                       ),
                     ],
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     ...document.blocks.map((block) => block.build()),
                   ],
                 ),

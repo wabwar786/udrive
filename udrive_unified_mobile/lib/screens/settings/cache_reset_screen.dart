@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/state/app_controller.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 
 /// Clears the data the app keeps on the phone between sessions.
 ///
@@ -85,117 +85,52 @@ class _CacheResetScreenState extends State<CacheResetScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Clear cached data')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 30),
-        children: [
-          const Text(
-            'Seeing something out of date?',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: AppText.primary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'The app keeps copies of things that rarely change — vehicle '
-            'photographs, place searches, map tiles — so screens open without '
-            'waiting. Clearing them makes the app fetch everything again.',
-            style: TextStyle(
-              fontSize: 13.5,
-              height: 1.6,
-              color: AppText.secondary,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: AppRadii.all(AppRadii.panel),
-            ),
-            child: const Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.lock_outline_rounded,
-                    size: 18, color: AppText.disabled),
-                SizedBox(width: 11),
-                Expanded(
-                  child: Text(
-                    'You stay signed in. Your language and colour choice are '
-                    'kept too — only cached copies are removed.',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      height: 1.5,
-                      color: AppText.secondary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_result != null) ...[
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppTint.success,
-                borderRadius: AppRadii.all(AppRadii.row),
-              ),
-              child: Text(
-                _result!,
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  height: 1.5,
-                  color: AppTint.successText,
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 26),
-          const SizedBox(height: 26),
-          FilledButton(
-            onPressed: _busy ? null : _clear,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
-            ),
-            child: _busy
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Clear cached data'),
+    // No Scaffold and no AppBar: this screen is rendered inside `main_shell`,
+    // which already draws a white bar for it. With its own bar as well, the
+    // screen showed two stacked bars — the same thing Explore was doing.
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+          AppSizes.sidePadding, 12, AppSizes.sidePadding, 34),
+      children: [
+        const UdIconTile(
+          icon: Icons.cleaning_services_rounded,
+          size: UdIconTileSize.lg,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Seeing something out of date?',
+          style: AppType.h2.copyWith(color: AppText.primary),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'The app keeps copies of things that rarely change — vehicle '
+          'photographs, place searches, map tiles — so screens open without '
+          'waiting. Clearing them makes the app fetch everything again.',
+          style: AppType.body2.copyWith(color: AppText.secondary),
+        ),
+        const SizedBox(height: 20),
+        const UdBanner(
+          tone: UdTone.gray,
+          icon: Icons.lock_outline_rounded,
+          text: 'You stay signed in. Your language and colour choice are kept '
+              'too — only cached copies are removed.',
+        ),
+        if (_result != null) ...[
+          const SizedBox(height: 14),
+          UdBanner(
+            tone: UdTone.ok,
+            icon: Icons.check_circle_outline_rounded,
+            text: _result!,
           ),
         ],
-      ),
+        const SizedBox(height: 26),
+        UdButton.primary(
+          label: 'Clear cached data',
+          icon: Icons.cleaning_services_rounded,
+          busy: _busy,
+          onPressed: _clear,
+        ),
+      ],
     );
   }
 }
-
-/// Lets the customer choose the app's accent colour.
-///
-/// Moved here off the home screen. It is a personalisation someone sets once,
-/// and it was sitting above the thing they open the app to do.
-///
-/// Three swatches, not a colour wheel. A free picker lets someone land on a
-/// colour that fails contrast against the dark surfaces, or one that collides
-/// with the red used for danger and the green used for success — and then every
-/// warning in the app quietly stops reading as a warning.
-/// A rounded block on the page.
-///
-/// The sheet is two of these — what you are booking, then where you are going.
-/// Grouping them this way is what makes the screen readable at a glance: one
-/// long column of controls all on the same surface gave the eye nowhere to
-/// stop.
-/// What tour drivers around here charge per day.
-///
-/// Shown instead of a recommended fare, because there is no recommendation to
-/// make: tourism is priced by each driver for their own vehicle, and the
-/// platform quoting a figure would be inventing a price nobody set.
-///
-/// The range is the honest shape of that. A single average would read as an
-/// official rate and hide that a Coster and a car are different propositions.

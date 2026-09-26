@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/auth_models.dart';
 import 'legal_screen.dart';
 
@@ -67,119 +69,139 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Delete account', style: TextStyle(fontWeight: FontWeight.w800)),
+      // A pushed page, so it keeps its own Scaffold and draws its own bar.
+      appBar: UdTopBar(
+        title: 'Delete account',
+        onBack: () => Navigator.maybePop(context),
+        divider: true,
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-          children: [
-            const Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 44),
-            const SizedBox(height: 10),
-            const Text(
-              'This permanently deletes your UDrive account.',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.text),
-            ),
-            const SizedBox(height: 14),
-            const _Point(
-              icon: Icons.delete_outline_rounded,
-              text: 'Deleted now: your name, phone number, email, profile photo, trusted contacts, '
-                  'and for drivers the CNIC and licence numbers, date of birth, address and payout details.',
-            ),
-            const _Point(
-              icon: Icons.logout_rounded,
-              text: 'You are signed out on every device. Your vehicles are removed and you stop receiving rides.',
-            ),
-            const _Point(
-              icon: Icons.receipt_long_outlined,
-              text: 'Kept without your name: past trips, payments, wallet and commission records, '
-                  'as required for tax, accounting and safety investigations.',
-            ),
-            const _Point(
-              icon: Icons.account_balance_wallet_outlined,
-              text: 'Any remaining wallet balance or welcome credit is lost and cannot be restored.',
-            ),
-            const SizedBox(height: 18),
-            TextField(
-              controller: _reason,
-              maxLength: 500,
-              maxLines: 3,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Why are you leaving? (optional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _confirm,
-              enabled: !_busy,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: 'Type DELETE to confirm',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700)),
-            ],
-            const SizedBox(height: 18),
-            SizedBox(
-              height: 52,
-              child: FilledButton(
-                onPressed: _confirmed && !_busy ? _delete : null,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.danger,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 18, AppSizes.sidePadding, 30),
+        children: [
+          const UdIconTile(
+            icon: Icons.warning_amber_rounded,
+            tone: UdIconTone.red,
+            size: UdIconTileSize.lg,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'This permanently deletes your UDrive account.',
+            style: AppType.h2.copyWith(color: AppText.primary),
+          ),
+          const SizedBox(height: 18),
+          // What goes and what stays, before the decision rather than after.
+          const UdCard(
+            tone: UdCardTone.tint,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Point(
+                  icon: Icons.delete_outline_rounded,
+                  text: 'Deleted now: your name, phone number, email, profile '
+                      'photo, trusted contacts, and for drivers the CNIC and '
+                      'licence numbers, date of birth, address and payout '
+                      'details.',
                 ),
-                child: _busy
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
-                      )
-                    : const Text('Delete my account',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-              ),
+                _Point(
+                  icon: Icons.logout_rounded,
+                  text: 'You are signed out on every device. Your vehicles are '
+                      'removed and you stop receiving rides.',
+                ),
+                _Point(
+                  icon: Icons.receipt_long_outlined,
+                  text: 'Kept without your name: past trips, payments, wallet '
+                      'and commission records, as required for tax, accounting '
+                      'and safety investigations.',
+                ),
+                _Point(
+                  icon: Icons.account_balance_wallet_outlined,
+                  text: 'Any remaining wallet balance or welcome credit is lost '
+                      'and cannot be restored.',
+                  last: true,
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: _busy ? null : () => Navigator.pop(context),
-              child: const Text('Keep my account'),
-            ),
-            // Exactly what survives deletion and why, before the decision
-            // rather than after it. Opens from the copy bundled with the app,
-            // so it works on the roadside with no signal.
-            TextButton(
-              onPressed: () => LegalScreen.open(context, 'account-deletion'),
-              child: const Text('What happens to my data?'),
+          ),
+          const SizedBox(height: 22),
+          UdTextField(
+            controller: _reason,
+            label: 'Why are you leaving?',
+            labelSuffix: '(optional)',
+            icon: Icons.chat_bubble_outline_rounded,
+            enabled: !_busy,
+            maxLength: 500,
+            minLines: 2,
+            maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          const SizedBox(height: 16),
+          UdTextField(
+            controller: _confirm,
+            label: 'Type DELETE to confirm',
+            icon: Icons.lock_outline_rounded,
+            enabled: !_busy,
+            hint: 'DELETE',
+            textCapitalization: TextCapitalization.characters,
+            helper: 'Typed in capitals, so this cannot happen by a stray tap.',
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            UdBanner(
+              tone: UdTone.err,
+              icon: Icons.error_outline_rounded,
+              text: _error!,
             ),
           ],
-        ),
+          const SizedBox(height: 22),
+          UdButton(
+            label: 'Delete my account',
+            variant: UdButtonVariant.dangerSolid,
+            busy: _busy,
+            // Stays disabled until DELETE is typed — unchanged.
+            onPressed: _confirmed ? _delete : null,
+          ),
+          const SizedBox(height: 10),
+          UdButton.ghost(
+            label: 'Keep my account',
+            onPressed: _busy ? null : () => Navigator.pop(context),
+          ),
+          const SizedBox(height: 4),
+          // Exactly what survives deletion and why. Opens from the copy
+          // bundled with the app, so it works on the roadside with no signal.
+          UdButton.ghost(
+            label: 'What happens to my data?',
+            size: UdButtonSize.small,
+            onPressed: () => LegalScreen.open(context, 'account-deletion'),
+          ),
+        ],
       ),
     );
   }
 }
 
+/// One thing that happens when the account goes.
 class _Point extends StatelessWidget {
-  const _Point({required this.icon, required this.text});
+  const _Point({required this.icon, required this.text, this.last = false});
 
   final IconData icon;
   final String text;
+  final bool last;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.only(bottom: last ? 0 : 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: AppColors.muted),
-          const SizedBox(width: 10),
+          Icon(icon, size: 20, color: AppText.secondary),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(text, style: const TextStyle(fontSize: 14, height: 1.4, color: AppColors.text)),
+            child: Text(
+              text,
+              style: AppType.body2.copyWith(color: AppText.primary),
+            ),
           ),
         ],
       ),

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_tokens.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 
+/// G-13 — Help guide, in both modes and both languages.
+///
+/// Rendered inside `main_shell`, which draws the bar, so there is no
+/// `Scaffold` here.
 class HelpGuideScreen extends StatefulWidget {
   const HelpGuideScreen({required this.driverMode, super.key});
 
@@ -16,154 +21,289 @@ class HelpGuideScreen extends StatefulWidget {
 class _HelpGuideScreenState extends State<HelpGuideScreen> {
   bool _urdu = false;
 
+  /// Which section is open. Null means all closed — and only one is open at a
+  /// time, so a long guide does not turn into one unbroken page of steps.
+  int? _open;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _urdu = AppControllerScope.of(context).locale.languageCode == 'ur';
   }
 
+  TextDirection get _dir => _urdu ? TextDirection.rtl : TextDirection.ltr;
+
   @override
   Widget build(BuildContext context) {
     final sections = widget.driverMode ? _driverSections : _customerSections;
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      padding: const EdgeInsets.fromLTRB(
+          AppSizes.sidePadding, 6, AppSizes.sidePadding, 34),
       children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: const LinearGradient(
-              colors: [AppColors.inkDeep, AppColors.primary],
-            ),
-          ),
+        UdCard(
+          tone: UdCardTone.navy,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.help_center_rounded, color: Colors.white, size: 34),
+                  const UdIconTile(
+                    icon: Icons.help_center_rounded,
+                    tone: UdIconTone.lime,
+                  ),
                   const Spacer(),
-                  SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment(value: false, label: Text('English')),
-                      ButtonSegment(value: true, label: Text('اردو')),
-                    ],
-                    selected: {_urdu},
-                    onSelectionChanged: (value) => setState(() => _urdu = value.first),
-                    style: ButtonStyle(
-                      backgroundColor: WidgetStateProperty.resolveWith(
-                        (states) => states.contains(WidgetState.selected) ? Colors.white : Colors.white12,
-                      ),
-                      foregroundColor: WidgetStateProperty.resolveWith(
-                        (states) => states.contains(WidgetState.selected) ? AppColors.primaryDark : Colors.white,
-                      ),
-                    ),
+                  // Was a Material SegmentedButton with a white/white12 style
+                  // resolver. Two chips say the same thing in the kit's own
+                  // shapes, and the unselected one is readable on navy.
+                  _LangChip(
+                    label: 'English',
+                    selected: !_urdu,
+                    onTap: () => setState(() => _urdu = false),
+                  ),
+                  const SizedBox(width: 8),
+                  _LangChip(
+                    label: 'اردو',
+                    selected: _urdu,
+                    onTap: () => setState(() => _urdu = true),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 18),
               Text(
                 _urdu
-                    ? (widget.driverMode ? 'ڈرائیور موڈ استعمال کرنے کا مکمل طریقہ' : 'کسٹمر موڈ استعمال کرنے کا مکمل طریقہ')
-                    : (widget.driverMode ? 'How to use Driver mode' : 'How to use Customer mode'),
-                textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
-                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
+                    ? (widget.driverMode
+                        ? 'ڈرائیور موڈ استعمال کرنے کا مکمل طریقہ'
+                        : 'کسٹمر موڈ استعمال کرنے کا مکمل طریقہ')
+                    : (widget.driverMode
+                        ? 'How to use Driver mode'
+                        : 'How to use Customer mode'),
+                textDirection: _dir,
+                style: AppType.h2.copyWith(color: AppText.onInk),
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 8),
               Text(
                 _urdu
                     ? 'ہر اہم کام آسان مراحل میں سمجھایا گیا ہے۔ جس سیکشن کی ضرورت ہو اسے کھولیں۔'
-                    : 'Every important task is explained in simple steps. Open the section you need.',
-                textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
-                style: const TextStyle(color: AppColors.onInkMuted, height: 1.5),
+                    : 'Every important task is explained in simple steps. Open '
+                        'the section you need.',
+                textDirection: _dir,
+                style: AppType.body2.copyWith(color: AppText.onInkMuted),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 14),
-        ...sections.map(
-          (section) => Card(
-            margin: const EdgeInsets.only(bottom: 10),
-            child: ExpansionTile(
-              leading: CircleAvatar(
-                backgroundColor: AppColors.primary.withValues(alpha: .12),
-                child: Icon(section.icon, color: AppColors.primaryDark),
-              ),
-              title: Text(
-                _urdu ? section.titleUr : section.titleEn,
-                textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-              subtitle: Text(
-                _urdu ? section.summaryUr : section.summaryEn,
-                textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-                  child: Column(
-                    children: [
-                      for (var i = 0; i < section.stepsEn.length; i++)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
-                            children: [
-                              Container(
-                                width: 28,
-                                height: 28,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(9),
-                                ),
-                                child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  _urdu ? section.stepsUr[i] : section.stepsEn[i],
-                                  textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
-                                  style: const TextStyle(height: 1.5),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
+        const SizedBox(height: 20),
+        for (var i = 0; i < sections.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _GuideTile(
+              section: sections[i],
+              urdu: _urdu,
+              expanded: _open == i,
+              onTap: () => setState(() => _open = _open == i ? null : i),
             ),
           ),
-        ),
-        Card(
-          color: AppTint.warning,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
-              children: [
-                const Icon(Icons.support_agent_rounded, color: AppTint.warningText),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _urdu
-                        ? 'اگر مسئلہ حل نہ ہو تو مینو سے Support کھولیں۔ ایمرجنسی کی صورت میں Safety Hub سے SOS استعمال کریں اور مقامی ایمرجنسی سروس سے رابطہ کریں۔'
-                        : 'If the issue is not resolved, open Support from the menu. In an emergency, use SOS from Safety Hub and contact local emergency services.',
-                    textDirection: _urdu ? TextDirection.rtl : TextDirection.ltr,
-                    style: const TextStyle(height: 1.5, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
+        const SizedBox(height: 6),
+        UdBanner(
+          tone: UdTone.warn,
+          icon: Icons.support_agent_rounded,
+          child: Text(
+            _urdu
+                ? 'اگر مسئلہ حل نہ ہو تو مینو سے Support کھولیں۔ ایمرجنسی کی صورت میں Safety Hub سے SOS استعمال کریں اور مقامی ایمرجنسی سروس سے رابطہ کریں۔'
+                : 'If the issue is not resolved, open Support from the menu. In '
+                    'an emergency, use SOS from Safety Hub and contact local '
+                    'emergency services.',
+            textDirection: _dir,
+            style: AppType.body2.copyWith(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w600,
+              color: AppTint.warningText,
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The two language chips on the navy hero.
+class _LangChip extends StatelessWidget {
+  const _LangChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: AppRadii.all(AppRadii.chip),
+          child: Container(
+            height: AppSizes.buttonXs,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.brand : Colors.transparent,
+              borderRadius: AppRadii.all(AppRadii.chip),
+              border: Border.all(
+                // Lime when selected, and the muted ink otherwise — white at
+                // 12% was a line nobody could see on a phone outdoors.
+                color: selected ? AppColors.brand : AppText.onInkMuted,
+                width: 1.5,
+              ),
+            ),
+            child: Text(
+              label,
+              style: AppType.buttonSm.copyWith(
+                fontSize: 14,
+                color: selected ? AppText.onBrand : AppText.onInk,
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// One guide section: a row you tap, and the numbered steps under it.
+class _GuideTile extends StatelessWidget {
+  const _GuideTile({
+    required this.section,
+    required this.urdu,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  final _GuideSection section;
+  final bool urdu;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final dir = urdu ? TextDirection.rtl : TextDirection.ltr;
+    final steps = urdu ? section.stepsUr : section.stepsEn;
+
+    return UdCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: AppRadii.all(AppRadii.card),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  textDirection: dir,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    UdIconTile(
+                      icon: section.icon,
+                      tone: expanded ? UdIconTone.lime : UdIconTone.neutral,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            urdu ? section.titleUr : section.titleEn,
+                            textDirection: dir,
+                            style: AppType.listTitle.copyWith(
+                              fontSize: 16,
+                              color: AppText.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            urdu ? section.summaryUr : section.summaryEn,
+                            textDirection: dir,
+                            style: AppType.small
+                                .copyWith(color: AppText.secondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    AnimatedRotation(
+                      turns: expanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: const Icon(Icons.expand_more_rounded,
+                          size: 24, color: AppText.secondary),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 180),
+            sizeCurve: Curves.easeOut,
+            crossFadeState: expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            firstChild: const SizedBox(width: double.infinity),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Divider(
+                      height: 1, thickness: 1, color: AppColors.border),
+                  const SizedBox(height: 14),
+                  for (var i = 0; i < steps.length; i++)
+                    Padding(
+                      padding:
+                          EdgeInsets.only(bottom: i == steps.length - 1 ? 0 : 12),
+                      child: Row(
+                        textDirection: dir,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 28,
+                            height: 28,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              color: AppColors.navy,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '${i + 1}',
+                              style: AppType.caption.copyWith(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: AppText.onInk,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              steps[i],
+                              textDirection: dir,
+                              style: AppType.body2
+                                  .copyWith(color: AppText.primary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
