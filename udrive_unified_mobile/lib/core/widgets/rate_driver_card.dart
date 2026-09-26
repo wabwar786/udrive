@@ -153,7 +153,7 @@ class RateDriverCard extends StatelessWidget {
                           const Text(
                             '  ·  ',
                             style: TextStyle(
-                                fontSize: 12, color: AppText.secondary),
+                                fontSize: 13, color: AppText.secondary),
                           ),
                         if (rideCount != null)
                           Text(

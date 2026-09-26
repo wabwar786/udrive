@@ -10,7 +10,7 @@ import '../../core/widgets/ud_kit.dart';
 import '../../models/booking_models.dart';
 import 'booking_payment_screen.dart';
 import 'driver_offers_screen.dart';
-import '../common/booking_chat_screen.dart';
+import '../operations/trip_chat_screen.dart';
 
 String _t(BuildContext context, String en, String ur) =>
     AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
@@ -396,9 +396,18 @@ class _BookingCard extends StatelessWidget {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => BookingChatScreen(
+                  // TripChatScreen, not the old BookingChatScreen.
+                  //
+                  // The two were separate screens on separate API endpoints
+                  // writing to separate tables, so a customer messaging from
+                  // here landed in `booking_messages` while the driver's trip
+                  // screen read `trip_messages`. Two people on one trip, two
+                  // inboxes, neither aware of the other.
+                  builder: (_) => TripChatScreen(
                     bookingId: booking.id,
-                    bookingReference: booking.bookingReference,
+                    myRole: 'Customer',
+                    otherPartyName: booking.driverName ??
+                        _t(context, 'Driver', 'ڈرائیور'),
                   ),
                 ),
               ),

@@ -11,7 +11,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/booking_models.dart';
-import '../common/booking_chat_screen.dart';
+import '../operations/trip_chat_screen.dart';
 
 /// Confirmation screen shown once a tour driver is booked and the advance paid.
 ///
@@ -94,9 +94,16 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => BookingChatScreen(
+        // TripChatScreen, not the old BookingChatScreen — one chat per trip
+        // now, on the endpoint the driver's own screen reads.
+        //
+        // The name comes from the offer rather than the booking: the offer is
+        // what this screen was opened with and its driverName is always
+        // present, while the booking's is nullable until the server fills it.
+        builder: (_) => TripChatScreen(
           bookingId: widget.booking.id,
-          bookingReference: widget.booking.bookingReference,
+          myRole: 'Customer',
+          otherPartyName: widget.offer.driverName,
         ),
       ),
     );
@@ -216,7 +223,7 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
                             Text(
                               'Verified',
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 12.5,
                                 fontWeight: FontWeight.w800,
                                 color: AppColors.info,
                               ),
@@ -244,7 +251,7 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
                   Text(
                     widget.offer.registrationNumber,
                     style: const TextStyle(
-                        fontSize: 12, color: AppText.secondary),
+                        fontSize: 13, color: AppText.secondary),
                   ),
                 ],
                 const SizedBox(height: 14),
@@ -403,7 +410,7 @@ class _KeyValue extends StatelessWidget {
             child: Text(
               label,
               style: const TextStyle(
-                  fontSize: 12, color: AppText.secondary),
+                  fontSize: 13, color: AppText.secondary),
             ),
           ),
           Expanded(

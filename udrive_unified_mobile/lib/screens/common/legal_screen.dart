@@ -508,7 +508,7 @@ class _Table implements _Block {
                             Text(
                               header[c],
                               style: const TextStyle(
-                                fontSize: 10.5,
+                                fontSize: 12.5,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: .07,
                                 color: AppText.secondary,

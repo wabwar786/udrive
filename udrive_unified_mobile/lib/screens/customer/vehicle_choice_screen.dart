@@ -804,32 +804,45 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     if (_fareIsFixed) return;
 
     final controller = TextEditingController(text: '$_fare');
-    final value = await showDialog<int>(
+    final value = await showUdDialog<int>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Your offer'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: const InputDecoration(prefixText: 'PKR '),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(
-              context,
-              int.tryParse(controller.text.trim()),
-            ),
-            child: const Text('Set'),
-          ),
-        ],
+      title: 'Your offer',
+      // The band is stated here rather than only enforced below. A customer
+      // typing 40 and getting 50 back without a word looks like the app
+      // ignoring them; the same number with the floor on screen does not.
+      message: _minimum > 0
+          ? 'Between PKR ${_minimum.round()} and PKR ${_maximum.round()}.'
+          : null,
+      content: UdTextField(
+        controller: controller,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        label: 'Fare (PKR)',
+        icon: Icons.payments_rounded,
       ),
+      actions: [
+        // Builder, so the buttons pop the dialog's own route rather than
+        // whatever sits under this screen's context. Same shape as every other
+        // showUdDialog in the app.
+        Builder(
+          builder: (dialogContext) => UdButtonRow(
+            children: [
+              UdButton.outline(
+                label: 'Cancel',
+                onPressed: () => Navigator.pop(dialogContext),
+              ),
+              UdButton.primary(
+                label: 'Set',
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  int.tryParse(controller.text.trim()),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
 
     if (value != null && value > 0 && mounted) {
@@ -1408,8 +1421,10 @@ class _RouteChip extends StatelessWidget {
             children: [
               Text(
                 shortest ? 'SHORTEST' : 'ALTERNATIVE',
+                // AppType.overline's own 12.5, not 11: this label sits on a
+                // route chip over a map, which is the worst reading condition
+                // in the app, not a reason to make it smaller.
                 style: AppType.overline.copyWith(
-                  fontSize: 11,
                   color: selected ? AppColors.brandInk : AppText.secondary,
                 ),
               ),

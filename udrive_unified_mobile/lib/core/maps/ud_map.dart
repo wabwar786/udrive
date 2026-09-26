@@ -800,8 +800,10 @@ class _UdMapState extends State<UdMap> {
               padding: EdgeInsets.only(left: 7, bottom: 3),
               child: Text(
                 'Google',
+                // The attribution Google's terms require. 9px met the
+                // letter of that and not the point of it.
                 style: TextStyle(
-                  fontSize: 9,
+                  fontSize: 12.5,
                   letterSpacing: .2,
                   color: AppText.disabled,
                 ),
@@ -935,7 +937,7 @@ class _NoConnectionBadge extends StatelessWidget {
             Text(
               'No internet connection',
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 13,
                 fontWeight: FontWeight.w800,
                 color: AppTint.warningText,
               ),

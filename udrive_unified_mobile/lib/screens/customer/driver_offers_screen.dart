@@ -1315,43 +1315,42 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
               _ResultLine(label: _t('Total fare', 'کل کرایہ'), value: 'PKR ${NumberFormat('#,###').format(booking.totalAmount)}'),
               _ResultLine(label: _t('Trip OTP', 'ٹرپ او ٹی پی'), value: booking.tripOtp ?? '-'),
               const SizedBox(height: 16),
-              Row(
+              UdButtonRow(
                 children: [
                   if ((booking.driverPhone ?? '').trim().isNotEmpty)
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final uri = Uri(scheme: 'tel', path: booking.driverPhone!.trim());
-                          if (await canLaunchUrl(uri)) await launchUrl(uri);
-                        },
-                        icon: const Icon(Icons.call_rounded),
-                        label: Text(_t('Call Driver', 'ڈرائیور کو کال کریں')),
-                      ),
-                    ),
-                  if ((booking.driverPhone ?? '').trim().isNotEmpty) const SizedBox(width: 8),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton.icon(
+                    UdButton.outline(
+                      label: _t('Call Driver', 'ڈرائیور کو کال کریں'),
+                      icon: Icons.call_rounded,
                       onPressed: () async {
-                        final navigator = Navigator.of(context);
-                        final repo = TripOperationsRepository(controller.apiClient);
-                        try {
-                          final trips = await repo.customerTrips();
-                          final trip = trips.firstWhere((x) => x.bookingId == booking.id);
-                          if (!context.mounted) return;
-                          navigator.pop();
-                          navigator.pushReplacement(MaterialPageRoute(
-                            builder: (_) => CustomerFullScreenTrackingScreen(trip: trip, repository: repo, tripOtp: booking.tripOtp),
-                          ));
-                        } catch (_) {
-                          if (!context.mounted) return;
-                          navigator.pop();
-                          navigator.popUntil((route) => route.isFirst);
-                        }
+                        final uri = Uri(scheme: 'tel', path: booking.driverPhone!.trim());
+                        if (await canLaunchUrl(uri)) await launchUrl(uri);
                       },
-                      icon: const Icon(Icons.navigation_rounded),
-                      label: Text(_t('Track Driver', 'ڈرائیور کو ٹریک کریں')),
                     ),
+                  UdButton.primary(
+                    label: _t('Track Driver', 'ڈرائیور کو ٹریک کریں'),
+                    icon: Icons.navigation_rounded,
+                    onPressed: () async {
+                      final navigator = Navigator.of(context);
+                      final repo = TripOperationsRepository(controller.apiClient);
+                      try {
+                        final trips = await repo.customerTrips();
+                        final trip =
+                            trips.firstWhere((x) => x.bookingId == booking.id);
+                        if (!context.mounted) return;
+                        navigator.pop();
+                        navigator.pushReplacement(MaterialPageRoute(
+                          builder: (_) => CustomerFullScreenTrackingScreen(
+                            trip: trip,
+                            repository: repo,
+                            tripOtp: booking.tripOtp,
+                          ),
+                        ));
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        navigator.pop();
+                        navigator.popUntil((route) => route.isFirst);
+                      }
+                    },
                   ),
                 ],
               ),
@@ -1622,11 +1621,9 @@ class _OfferVehiclePhoto extends StatelessWidget {
                 ),
                 child: Text(
                   offer.registrationNumber,
-                  style: const TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppText.primary,
-                  ),
+                  // A number plate the customer has to match against a real car
+                  // at a kerb. 9.5px was the smallest type in the app.
+                  style: AppType.overline.copyWith(color: AppText.primary),
                 ),
               ),
             ),

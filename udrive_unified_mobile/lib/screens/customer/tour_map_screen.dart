@@ -183,12 +183,10 @@ class _TourMapScreenState extends State<TourMapScreen> {
                 variant: UdButtonVariant.danger,
                 onPressed: () => Navigator.pop(sheetContext, true),
               ),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(sheetContext),
-                  child: Text(_t('Stay here', 'یہیں رہیں')),
-                ),
+              const SizedBox(height: 8),
+              UdButton.ghost(
+                label: _t('Stay here', 'یہیں رہیں'),
+                onPressed: () => Navigator.pop(sheetContext),
               ),
             ],
           ),
@@ -461,7 +459,7 @@ class _WaitingPanel extends StatelessWidget {
             'open.',
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: 11, height: 1.4, color: AppText.disabled),
+                fontSize: 13, height: 1.4, color: AppText.disabled),
           ),
         ],
       ),
@@ -589,8 +587,7 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
                             widget.offer.vehicle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 11,
+                            style: AppType.caption.copyWith(
                               color: AppText.secondary,
                             ),
                           ),
@@ -629,7 +626,7 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
                         'on arrival. The balance is settled directly with the '
                         'driver.',
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 13,
                           height: 1.4,
                           fontWeight: FontWeight.w600,
                           color: AppTint.successText,
@@ -643,11 +640,7 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
 
               Text(
                 'Advance  ·  $percentLabel',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppText.secondary,
-                ),
+                style: AppType.overline.copyWith(color: AppText.secondary),
               ),
               const SizedBox(height: 5),
               Row(
@@ -694,21 +687,16 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
                   child: Text(
                     'Enter between PKR ${_money.format(_minimum)} and '
                     'PKR ${_money.format(fare)}.',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.danger,
-                    ),
+                    style: AppType.caption.copyWith(color: AppColors.danger),
                   ),
                 ),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Balance on arrival',
-                    style: TextStyle(
-                        fontSize: 12, color: AppText.secondary),
+                    style: AppType.caption.copyWith(color: AppText.secondary),
                   ),
                   Text(
                     'PKR ${_money.format(balance)}',

@@ -115,7 +115,7 @@ class UdStepper extends StatelessWidget {
                   Text(
                     caption!,
                     style: const TextStyle(
-                      fontSize: 11.5,
+                      fontSize: 13,
                       color: AppText.disabled,
                     ),
                   ),

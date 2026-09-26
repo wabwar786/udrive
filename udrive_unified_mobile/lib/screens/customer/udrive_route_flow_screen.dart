@@ -36,6 +36,36 @@ extension UDriveServiceTypeLabel on UDriveServiceType {
       };
 }
 
+/// Secondary copy. The design system's floor is 12.5px; this file used to set
+/// 9.5, 10, 10.5, 11, 11.5 and 12 by hand in twelve places.
+const _caption = TextStyle(
+  fontSize: 13,
+  fontWeight: FontWeight.w600,
+  color: AppText.secondary,
+  height: 1.35,
+);
+
+/// The same weight, in ink rather than grey.
+const _captionInk = TextStyle(
+  fontSize: 13,
+  fontWeight: FontWeight.w700,
+  color: AppColors.text,
+);
+
+/// Small caps above a value — PICKUP, DESTINATION, a tile's label.
+const _overline = TextStyle(
+  fontSize: 12.5,
+  fontWeight: FontWeight.w800,
+  color: AppText.secondary,
+);
+
+/// The number under one of those labels.
+const _tileValue = TextStyle(
+  fontSize: 13,
+  fontWeight: FontWeight.w900,
+  color: AppColors.text,
+);
+
 class UDriveRouteFlowScreen extends StatefulWidget {
   const UDriveRouteFlowScreen({
     required this.serviceType,
@@ -1465,7 +1495,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   const SizedBox(height: 14),
                   const Text('Confirm your ride', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: AppColors.text)),
                   const SizedBox(height: 6),
-                  Text('${widget.pickupLabel}  →  ${widget.destination.title}', style: const TextStyle(color: AppText.secondary, fontSize: 12, height: 1.35)),
+                  Text('${widget.pickupLabel}  →  ${widget.destination.title}', style: _caption),
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(14),
@@ -1480,14 +1510,14 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         ]),
                         const Divider(height: 24),
                         Row(children: [
-                          const Text('Booking', style: TextStyle(color: AppText.secondary, fontSize: 12)),
+                          const Text('Booking', style: _caption),
                           const Spacer(),
                           Text(mode == _FareBookingMode.wholeVehicle ? 'Full vehicle' : '$seats seat${seats == 1 ? '' : 's'}', style: const TextStyle(fontWeight: FontWeight.w800)),
                         ]),
                         if (mode == _FareBookingMode.perSeat) ...[
                           const SizedBox(height: 10),
                           Row(children: [
-                            const Text('Seats', style: TextStyle(color: AppText.secondary, fontSize: 12)),
+                            const Text('Seats', style: _caption),
                             const Spacer(),
                             IconButton.filledTonal(
                               onPressed: seats > 1 ? () => setSheetState(() => seats--) : null,
@@ -1502,7 +1532,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         ],
                         const SizedBox(height: 8),
                         const Row(children: [
-                          Text('Payment', style: TextStyle(color: AppText.secondary, fontSize: 12)),
+                          Text('Payment', style: _caption),
                           Spacer(),
                           Icon(Icons.payments_outlined, size: 17, color: AppColors.text),
                           SizedBox(width: 5),
@@ -1774,13 +1804,8 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   AppSizes.sidePadding, 16, AppSizes.sidePadding, 28),
           children: [
             ..._availabilityBanner(),
-            Container(
+            UdCard(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.border),
-              ),
               child: Column(
                 children: [
                   Row(
@@ -1792,7 +1817,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('PICKUP', style: TextStyle(color: AppText.secondary, fontSize: 10, fontWeight: FontWeight.w800)),
+                            const Text('PICKUP', style: _overline),
                             const SizedBox(height: 2),
                             Text(widget.pickupLabel, style: const TextStyle(color: AppColors.text, fontSize: 13, fontWeight: FontWeight.w800)),
                           ],
@@ -1816,13 +1841,13 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('DESTINATION', style: TextStyle(color: AppText.secondary, fontSize: 10, fontWeight: FontWeight.w800)),
+                            const Text('DESTINATION', style: _overline),
                             const SizedBox(height: 2),
                             Text(widget.destination.title, style: const TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w900)),
                             if (widget.destination.subtitle.trim().isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2),
-                                child: Text(widget.destination.subtitle, style: const TextStyle(color: AppText.secondary, fontSize: 11)),
+                                child: Text(widget.destination.subtitle, style: _caption),
                               ),
                           ],
                         ),
@@ -1882,13 +1907,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     });
                     _applySelectedDefaultRates();
                   },
-                  child: Container(
+                  child: UdCard(
+                    selected: active,
                     padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: active ? AppColors.secondary : AppColors.border, width: active ? 2 : 1),
-                    ),
                     child: Row(
                       children: [
                         Container(
@@ -1904,11 +1925,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                             children: [
                               Text(choice.name, style: const TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w900)),
                               const SizedBox(height: 3),
-                              Text('${choice.meta} • ${choice.note}', style: const TextStyle(color: AppText.secondary, fontSize: 10.5)),
+                              Text('${choice.meta} • ${choice.note}', style: _caption),
                               const SizedBox(height: 5),
                               Text(
                                 'Seat ${seatEstimate <= 0 ? 'rate loading' : _money(seatEstimate)}  •  Full ${wholeEstimate <= 0 ? 'rate loading' : _money(wholeEstimate)}',
-                                style: const TextStyle(color: AppColors.text, fontSize: 10.5, fontWeight: FontWeight.w700),
+                                style: _captionInk,
                               ),
                             ],
                           ),
@@ -1937,7 +1958,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   Expanded(
                     child: Text(
                       _bookingModeNotice ?? '',
-                      style: const TextStyle(fontSize: 11.5, color: AppText.secondary, fontWeight: FontWeight.w600),
+                      style: _caption,
                     ),
                   ),
                 ]),
@@ -1975,17 +1996,16 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               ),
             ],
             const SizedBox(height: 12),
-            TextField(
-              controller: _bookingMode == _FareBookingMode.perSeat ? _perSeatOffer : _wholeVehicleOffer,
+            UdTextField(
+              controller: _bookingMode == _FareBookingMode.perSeat
+                  ? _perSeatOffer
+                  : _wholeVehicleOffer,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: _bookingMode == _FareBookingMode.perSeat ? 'Fare per seat (PKR)' : 'Whole vehicle fare (PKR)',
-                prefixIcon: const Icon(Icons.payments_outlined),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-              ),
+              icon: Icons.payments_outlined,
+              label: _bookingMode == _FareBookingMode.perSeat
+                  ? 'Fare per seat (PKR)'
+                  : 'Whole vehicle fare (PKR)',
             ),
             const SizedBox(height: 12),
             // Second spinner removed for the same reason as the one on the city
@@ -2012,9 +2032,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       decoration: BoxDecoration(color: AppColors.surface, borderRadius: AppRadii.all(AppRadii.tile)),
       child: Column(
         children: [
-          Text(label, textAlign: TextAlign.center, style: const TextStyle(color: AppText.secondary, fontSize: 9.5, fontWeight: FontWeight.w700)),
+          Text(label, textAlign: TextAlign.center, style: _overline),
           const SizedBox(height: 4),
-          Text(value, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.text, fontSize: 11, fontWeight: FontWeight.w900)),
+          Text(value, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: _tileValue),
         ],
       ),
     );

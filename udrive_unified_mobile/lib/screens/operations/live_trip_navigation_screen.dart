@@ -803,7 +803,7 @@ class _DriverLiveNavigationScreenState
                                 '  ·  ${widget.trip.paymentStatus}',
                                 style: const TextStyle(
                                   color: AppText.secondary,
-                                  fontSize: 11.5,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -830,7 +830,7 @@ class _DriverLiveNavigationScreenState
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                      fontSize: 11.5,
+                                      fontSize: 13,
                                       height: 1.35,
                                       color: AppTint.warningText,
                                       fontWeight: FontWeight.w700,
@@ -874,7 +874,7 @@ class _DriverLiveNavigationScreenState
                       '${_etaMinutes == null ? '' : ' · ~$_etaMinutes min'}'
                       ' to ${_headingToPickup ? 'pickup' : 'destination'}'
                       ' · ${widget.trip.passengerCount} passenger(s)',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
                     // Turn-by-turn is handed to the phone's own navigation app.
@@ -2318,7 +2318,7 @@ class _ReviewCard extends StatelessWidget {
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 11.5,
+                fontSize: 13,
                 height: 1.35,
                 fontStyle:
                     review.text == null ? FontStyle.italic : FontStyle.normal,
@@ -2435,7 +2435,7 @@ class _FloatingMessage extends StatelessWidget {
                 const SizedBox(height: 3),
                 const Text(
                   'Tap to reply',
-                  style: TextStyle(fontSize: 10, color: AppText.disabled),
+                  style: TextStyle(fontSize: 12.5, color: AppText.disabled),
                 ),
               ],
             ),

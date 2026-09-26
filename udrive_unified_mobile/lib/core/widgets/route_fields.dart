@@ -90,7 +90,7 @@ class RouteFields extends StatelessWidget {
             padding: EdgeInsets.only(top: 6, left: 4),
             child: Text(
               'Suggestions are optional — you can type any address.',
-              style: TextStyle(fontSize: 11.5, color: AppText.disabled),
+              style: TextStyle(fontSize: 13, color: AppText.disabled),
             ),
           ),
         ],
@@ -176,7 +176,7 @@ class _Field extends StatelessWidget {
           Text(
             caption,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
               color: AppText.secondary,
             ),
