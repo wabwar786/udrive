@@ -27,7 +27,10 @@
     <EmbeddedResource Include="Infrastructure/Persistence/Scripts/*.sql" />
     <!-- The privacy policy, terms and account-deletion page. Embedded rather
          than copied to disk so the pages Google Play points at cannot go
-         missing from a deployment. -->
-    <EmbeddedResource Include="Content/legal/*.md" />
+         missing from a deployment.
+         WithCulture="false": without it MSBuild reads ".en" / ".ur" in the
+         file names as a culture and moves these files into satellite
+         assemblies, so the main assembly never contains them. -->
+    <EmbeddedResource Include="Content/legal/*.md" WithCulture="false" />
   </ItemGroup>
 </Project>
