@@ -677,6 +677,7 @@ class _PremiumDrawer extends StatelessWidget {
   // before that Scaffold exists.
   @override
   Widget build(BuildContext context) {
+    final controller = AppControllerScope.of(context);
     final driver = mode == UserMode.driver;
     final entries = driver ? _driverEntries(context) : _customerEntries(context);
 
