@@ -55,6 +55,14 @@ class AppTint {
   static const infoText = Color(0xFF1B5FA8); // 5.9:1 on the wash
   static const infoBorder = Color(0xFFC9DBF7);
 
+  /// The deep end of the emergency gradient, under [AppColors.danger].
+  ///
+  /// The safety centre's SOS card is the one place in v2 that is not white,
+  /// navy or lime: a status colour keeps its own palette, and that card must
+  /// not be mistaken for an ordinary one. This is its darker stop, named so
+  /// the screen does not carry a hex of its own.
+  static const dangerDeep = Color(0xFF8C1D18);
+
   /// Rating stars. Gold, and nothing else in the app is this colour.
   static const star = Color(0xFFF5B942);
 

@@ -5,12 +5,22 @@ import 'package:latlong2/latlong.dart';
 import '../../core/format/money.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/common_widgets.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/booking_models.dart';
 import 'booking_payment_screen.dart';
 import 'driver_offers_screen.dart';
 import '../common/booking_chat_screen.dart';
 
+String _t(BuildContext context, String en, String ur) =>
+    AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
+
+/// C-51 — My trips.
+///
+/// Open searches and bookings in one continuous list. There is no tab or
+/// filter here, in the code or in the design: a customer with an open search
+/// cannot book anything else, so hiding it behind a tab would hide the one
+/// thing blocking them.
 class LiveBookingsScreen extends StatefulWidget {
   const LiveBookingsScreen({super.key});
 
@@ -46,51 +56,33 @@ class _LiveBookingsScreenState extends State<LiveBookingsScreen> {
 
     return RefreshIndicator(
       onRefresh: _refresh,
+      color: AppColors.navy,
       child: bookings.isEmpty && searches.isEmpty
           ? ListView(
-              padding: const EdgeInsets.all(22),
+              padding: const EdgeInsets.fromLTRB(
+                  AppSizes.sidePadding, 60, AppSizes.sidePadding, 34),
               children: [
-                const SizedBox(height: 90),
-                const Icon(
-                  Icons.route_rounded,
-                  size: 70,
-                  color: AppColors.primary,
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  _t(
+                UdEmptyState(
+                  icon: Icons.route_rounded,
+                  title: _t(context, 'No live bookings yet',
+                      'ابھی کوئی لائیو بکنگ نہیں'),
+                  text: _t(
                     context,
-                    'No live bookings yet',
-                    'ابھی کوئی لائیو بکنگ نہیں',
-                  ),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 20,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _t(
-                    context,
-                    'Book a verified Driver or reserve a tourism package. Your confirmed trips will appear here.',
+                    'Book a verified Driver or reserve a tourism package. Your '
+                        'confirmed trips will appear here.',
                     'تصدیق شدہ ڈرائیور یا ٹورزم پیکج بک کریں۔ تصدیق شدہ سفر یہاں نظر آئیں گے۔',
-                  ),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppColors.muted,
-                    height: 1.45,
                   ),
                 ),
               ],
             )
           : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
+              padding: const EdgeInsets.fromLTRB(
+                  AppSizes.sidePadding, 6, AppSizes.sidePadding, 90),
               // Open searches first: they are the only thing on this screen
               // that blocks the customer from booking anything else.
               itemCount: searches.length + bookings.length,
               itemBuilder: (_, index) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: 16),
                 child: index < searches.length
                     ? _OpenSearchCard(
                         request: searches[index],
@@ -104,9 +96,6 @@ class _LiveBookingsScreenState extends State<LiveBookingsScreen> {
             ),
     );
   }
-
-  String _t(BuildContext context, String en, String ur) =>
-      AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
 }
 
 /// A ride request that is still looking for a driver.
@@ -122,9 +111,6 @@ class _OpenSearchCard extends StatelessWidget {
 
   final LiveRideRequest request;
   final Future<void> Function() onChanged;
-
-  String _t(BuildContext context, String en, String ur) =>
-      AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
 
   Future<void> _resume(BuildContext context) async {
     await Navigator.of(context).push(
@@ -169,56 +155,60 @@ class _OpenSearchCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final waiting = request.offersCount == 0;
 
-    return PremiumCard(
+    return UdCard(
+      tone: UdCardTone.raised,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Text(
-                  _t(context, 'Looking for a driver', 'ڈرائیور تلاش کیا جا رہا ہے'),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.primaryDark,
+                  _t(context, 'Looking for a driver',
+                      'ڈرائیور تلاش کیا جا رہا ہے'),
+                  style: AppType.h3.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.brandInk,
                   ),
-                ),
-              ),
-              StatusPill(
-                label: waiting
-                    ? _t(context, 'Searching', 'تلاش جاری')
-                    : _t(context, '${request.offersCount} offers', '${request.offersCount} آفرز'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${request.pickupLabel} → ${request.destinationLabel}',
-            style: const TextStyle(height: 1.4),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${request.vehicleCategory} · PKR ${request.customerOffer.round()}',
-            style: const TextStyle(color: AppColors.muted, fontSize: 12.5),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => _resume(context),
-                  child: Text(_t(context, 'Resume search', 'تلاش پر واپس جائیں')),
                 ),
               ),
               const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _cancel(context),
-                  child: Text(
-                    _t(context, 'Cancel', 'منسوخ کریں'),
-                    style: const TextStyle(color: AppColors.danger),
-                  ),
-                ),
+              UdBadge(
+                label: waiting
+                    ? _t(context, 'Searching', 'تلاش جاری')
+                    : _t(context, '${request.offersCount} offers',
+                        '${request.offersCount} آفرز'),
+                tone: waiting ? UdTone.warn : UdTone.info,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '${request.pickupLabel} → ${request.destinationLabel}',
+            style: AppType.listTitle.copyWith(
+              fontSize: 16,
+              color: AppText.primary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${request.vehicleCategory} · PKR ${request.customerOffer.round()}',
+            style: AppType.small.copyWith(color: AppText.secondary),
+          ),
+          const SizedBox(height: 16),
+          UdButtonRow(
+            children: [
+              UdButton.dark(
+                label: _t(context, 'Resume search', 'تلاش پر واپس جائیں'),
+                size: UdButtonSize.small,
+                onPressed: () => _resume(context),
+              ),
+              UdButton(
+                label: _t(context, 'Cancel', 'منسوخ کریں'),
+                variant: UdButtonVariant.danger,
+                size: UdButtonSize.small,
+                onPressed: () => _cancel(context),
               ),
             ],
           ),
@@ -228,6 +218,7 @@ class _OpenSearchCard extends StatelessWidget {
   }
 }
 
+/// One booking, with whatever its status allows the customer to do.
 class _BookingCard extends StatelessWidget {
   const _BookingCard({
     required this.booking,
@@ -257,167 +248,178 @@ class _BookingCard extends StatelessWidget {
       'Scheduled',
     ].contains(booking.status);
 
-    return PremiumCard(
+    return UdCard(
+      tone: active ? UdCardTone.raised : UdCardTone.plain,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Text(
                   booking.bookingReference,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.primaryDark,
+                  style: AppType.listTitle.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppText.secondary,
                   ),
                 ),
               ),
-              StatusPill(
+              const SizedBox(width: 10),
+              // The raw status string, exactly as the API returns it.
+              UdBadge(
                 label: booking.status,
-                color: booking.status == 'Cancelled'
-                    ? AppColors.danger
+                tone: booking.status == 'Cancelled'
+                    ? UdTone.err
                     : active
-                        ? AppColors.primary
-                        : AppColors.success,
+                        ? UdTone.lime
+                        : UdTone.ok,
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Text(
             '${booking.pickupLabel} → ${booking.destinationLabel}',
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 16,
+            style: AppType.h3.copyWith(
+              fontWeight: FontWeight.w800,
+              color: AppText.primary,
             ),
           ),
           const SizedBox(height: 10),
           _Info(
             icon: Icons.calendar_month_rounded,
-            value: DateFormat('dd MMM yyyy · hh:mm a')
-                .format(booking.pickupAt),
+            value: DateFormat('dd MMM yyyy · hh:mm a').format(booking.pickupAt),
           ),
           if (booking.returnAt != null)
             _Info(
               icon: Icons.keyboard_return_rounded,
-              value:
-                  'Return ${DateFormat('dd MMM yyyy · hh:mm a').format(booking.returnAt!)}',
+              value: 'Return '
+                  '${DateFormat('dd MMM yyyy · hh:mm a').format(booking.returnAt!)}',
             ),
           _Info(
             icon: Icons.event_seat_rounded,
-            value:
-                '${booking.bookingType} · ${booking.seatsBooked} seat(s)',
+            value: '${booking.bookingType} · ${booking.seatsBooked} seat(s)',
           ),
           if (booking.driverName != null)
             _Info(
               icon: Icons.verified_user_rounded,
-              value:
-                  '${booking.driverName} · ${booking.vehicle ?? ''}',
+              value: '${booking.driverName} · ${booking.vehicle ?? ''}',
             ),
-          const Divider(height: 24),
+          const SizedBox(height: 14),
+          const Divider(height: 1, thickness: 1, color: AppColors.border),
+          const SizedBox(height: 14),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
+                    Text(
                       'Remaining',
-                      style: TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 11,
-                      ),
+                      style: AppType.small.copyWith(color: AppText.secondary),
                     ),
+                    const SizedBox(height: 3),
                     Text(
                       Money.amount(booking.remainingAmount),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 17,
+                      style: AppType.priceMd.copyWith(
+                        fontSize: 19,
+                        color: booking.remainingAmount > 0
+                            ? AppText.primary
+                            : AppColors.brandInk,
                       ),
                     ),
                   ],
                 ),
               ),
-              if (booking.tripOtp != null)
+              if (booking.tripOtp != null) ...[
+                const SizedBox(width: 10),
+                // A navy pill: this is the number the driver asks for at the
+                // kerb, so it has to be the thing on the card that reads first.
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 9,
-                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: .1),
-                    borderRadius: BorderRadius.circular(14),
+                    color: AppColors.navy,
+                    borderRadius: AppRadii.all(AppRadii.row),
                   ),
-                  child: Text(
-                    'OTP ${booking.tripOtp}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.primaryDark,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'OTP',
+                        style: AppType.overline
+                            .copyWith(color: AppText.onInkMuted),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${booking.tripOtp}',
+                        style: AppType.listTitle.copyWith(
+                          fontSize: 17,
+                          letterSpacing: 2,
+                          color: AppColors.brand,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ],
             ],
           ),
+          // Only when something is still owed — unchanged.
           if (booking.remainingAmount > 0) ...[
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => BookingPaymentScreen(
-                      bookingId: booking.id,
-                      bookingReference: booking.bookingReference,
-                    ),
+            const SizedBox(height: 16),
+            UdButton.primary(
+              label: 'Pay balance',
+              icon: Icons.payments_rounded,
+              size: UdButtonSize.small,
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => BookingPaymentScreen(
+                    bookingId: booking.id,
+                    bookingReference: booking.bookingReference,
                   ),
                 ),
-                icon: const Icon(Icons.payments_rounded),
-                label: const Text('Pay balance'),
               ),
             ),
           ],
+          // Only while the trip is still live — unchanged.
           if (active) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => BookingChatScreen(
-                      bookingId: booking.id,
-                      bookingReference: booking.bookingReference,
-                    ),
+            const SizedBox(height: 10),
+            UdButton.outline(
+              label: 'Chat with driver',
+              icon: Icons.chat_bubble_outline_rounded,
+              size: UdButtonSize.small,
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => BookingChatScreen(
+                    bookingId: booking.id,
+                    bookingReference: booking.bookingReference,
                   ),
                 ),
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
-                label: const Text('Chat with driver'),
               ),
             ),
           ],
+          // Only for the four statuses the server accepts a change on.
           if (canChange) ...[
-            const SizedBox(height: 14),
-            Row(
+            const SizedBox(height: 10),
+            UdButtonRow(
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _reschedule(context),
-                    icon: const Icon(Icons.event_repeat_rounded),
-                    label: Text(
-                      _t(context, 'Reschedule', 'تاریخ تبدیل کریں'),
-                    ),
-                  ),
+                UdButton.outline(
+                  label: _t(context, 'Reschedule', 'تاریخ تبدیل کریں'),
+                  icon: Icons.event_repeat_rounded,
+                  size: UdButtonSize.small,
+                  onPressed: () => _reschedule(context),
                 ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.danger,
-                    ),
-                    onPressed: () => _cancel(context),
-                    icon: const Icon(Icons.cancel_outlined),
-                    label: Text(_t(context, 'Cancel', 'منسوخ کریں')),
-                  ),
+                UdButton(
+                  label: _t(context, 'Cancel', 'منسوخ کریں'),
+                  variant: UdButtonVariant.danger,
+                  size: UdButtonSize.small,
+                  onPressed: () => _cancel(context),
                 ),
               ],
             ),
@@ -428,34 +430,35 @@ class _BookingCard extends StatelessWidget {
   }
 
   Future<void> _cancel(BuildContext context) async {
-    final controller = TextEditingController(
+    final reason = TextEditingController(
       text: 'Customer travel plan changed.',
     );
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showUdDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(_t(context, 'Cancel booking?', 'بکنگ منسوخ کریں؟')),
-        content: TextField(
-          controller: controller,
-          maxLines: 3,
-          decoration: InputDecoration(
-            labelText: _t(context, 'Reason', 'وجہ'),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(_t(context, 'Keep booking', 'بکنگ برقرار رکھیں')),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.danger,
-            ),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_t(context, 'Confirm cancel', 'منسوخی کی تصدیق')),
-          ),
-        ],
+      title: _t(context, 'Cancel booking?', 'بکنگ منسوخ کریں؟'),
+      message: _t(
+        context,
+        'Tell the driver why, so the trip is closed with a reason on record.',
+        'ڈرائیور کو وجہ بتائیں تاکہ سفر وجہ کے ساتھ بند ہو۔',
       ),
+      content: UdTextField(
+        controller: reason,
+        label: _t(context, 'Reason', 'وجہ'),
+        minLines: 2,
+        maxLines: 4,
+        textCapitalization: TextCapitalization.sentences,
+      ),
+      actions: [
+        UdButton(
+          label: _t(context, 'Confirm cancel', 'منسوخی کی تصدیق'),
+          variant: UdButtonVariant.dangerSolid,
+          onPressed: () => Navigator.pop(context, true),
+        ),
+        UdButton.ghost(
+          label: _t(context, 'Keep booking', 'بکنگ برقرار رکھیں'),
+          onPressed: () => Navigator.pop(context, false),
+        ),
+      ],
     );
 
     if (confirmed != true || !context.mounted) return;
@@ -463,9 +466,9 @@ class _BookingCard extends StatelessWidget {
     try {
       await AppControllerScope.of(context).cancelLiveBooking(
         booking.id,
-        controller.text.trim().isEmpty
+        reason.text.trim().isEmpty
             ? 'Customer cancelled the booking.'
-            : controller.text.trim(),
+            : reason.text.trim(),
       );
       await onChanged();
     } catch (error) {
@@ -531,11 +534,9 @@ class _BookingCard extends StatelessWidget {
       }
     }
   }
-
-  String _t(BuildContext context, String en, String ur) =>
-      AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
 }
 
+/// An icon and one line of booking detail.
 class _Info extends StatelessWidget {
   const _Info({required this.icon, required this.value});
 
@@ -544,18 +545,18 @@ class _Info extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 7),
+        padding: const EdgeInsets.only(top: 9),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, size: 17, color: AppColors.muted),
-            const SizedBox(width: 8),
+            Icon(icon, size: 18, color: AppText.secondary),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 value,
-                style: const TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 12,
+                style: AppType.small.copyWith(
                   fontWeight: FontWeight.w600,
+                  color: AppText.primary,
                 ),
               ),
             ),
