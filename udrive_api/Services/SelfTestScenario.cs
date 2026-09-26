@@ -102,9 +102,20 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
     /// Makes one call and records what came back.
     /// </summary>
     /// <param name="expectedStatus">
-    /// What a healthy platform answers. Usually 200; 409 where the run is
-    /// deliberately asking for something that must be refused.
+    /// Leave it null — the default — and any 2xx counts as success. Set it only
+    /// where the run is deliberately asking for something that must be refused,
+    /// such as 409 for the wrong Trip OTP; then the status must match exactly,
+    /// because "it was rejected somehow" is not the same assertion as "it was
+    /// rejected for the reason we meant".
     /// </param>
+    /// <remarks>
+    /// This used to default to 200 and demand an exact match, which failed
+    /// every endpoint that correctly answers 201 Created. The first such call
+    /// was the ride request — so a step that had done exactly the right thing
+    /// was reported red, and, being critical, took the whole 22-step ride
+    /// journey down with it. A harness that calls a correct API broken is worse
+    /// than no harness: it sends you hunting through working code.
+    /// </remarks>
     /// <param name="assert">
     /// Given the response's <c>data</c>, returns null when it is right or a
     /// sentence saying what was wrong. This is where most of the value is: a
@@ -122,7 +133,7 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
         HttpMethod method,
         string path,
         object? body = null,
-        int expectedStatus = 200,
+        int? expectedStatus = null,
         Func<JsonNode?, string?>? assert = null,
         bool skipIfMissing = false,
         bool critical = true,
@@ -165,10 +176,17 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
                 return null;
             }
 
-            if (status != expectedStatus)
+            var statusIsRight = expectedStatus is int required
+                ? status == required
+                : status is >= 200 and <= 299;
+
+            if (!statusIsRight)
             {
                 Record(name, "Failed",
-                    $"Expected HTTP {expectedStatus}, got {status}. {Message(payload, text)}".TrimEnd(),
+                    (expectedStatus is int wanted
+                        ? $"Expected HTTP {wanted}, got {status}. "
+                        : $"Expected a 2xx status, got {status}. ")
+                    + Message(payload, text).TrimEnd(),
                     (int)clock.ElapsedMilliseconds, method.Method, path, status);
                 if (critical)
                 {
@@ -234,6 +252,30 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
         if (!string.IsNullOrWhiteSpace(error))
         {
             return error;
+        }
+
+        // An unhandled exception does not come back as {success,error,message} —
+        // GlobalExceptionHandler answers with RFC 9110 ProblemDetails instead,
+        // and its body is long enough that the raw truncation below used to cut
+        // off two characters into "traceId". That was the one field worth
+        // keeping: the API logs the real exception against the same traceId, so
+        // it is what turns "500, no idea" into one searchable line in the
+        // deployment log. Rebuild the message around it rather than clipping.
+        var title = Text(payload, "title");
+        var detail = Text(payload, "detail");
+        var traceId = Text(payload, "traceId");
+        if (!string.IsNullOrWhiteSpace(title) || !string.IsNullOrWhiteSpace(traceId))
+        {
+            var parts = new List<string>(3);
+            if (!string.IsNullOrWhiteSpace(title)) parts.Add(title!.TrimEnd('.'));
+            if (!string.IsNullOrWhiteSpace(detail)) parts.Add(detail!.TrimEnd('.'));
+            if (!string.IsNullOrWhiteSpace(traceId))
+            {
+                parts.Add($"Search the API log for traceId {traceId} — the "
+                    + "exception is logged there in full");
+            }
+
+            return string.Join(". ", parts) + ".";
         }
 
         return raw.Length <= 200 ? raw : raw[..200] + "...";
@@ -520,38 +562,50 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
                 : "The driver's offer is not in the customer's offer list.",
             cancellationToken: cancellationToken);
 
+        // This response is the only place the plaintext Trip OTP is ever
+        // handed out. SelectDriverOfferAsync generates it here and threads it
+        // into the BookingDto it returns; the database keeps a hash beside it,
+        // and no list endpoint reads the plaintext column back. So the OTP is
+        // asserted and captured here rather than from /bookings/my, which omits
+        // it (see the next step).
         var booking = await CallAsync("Customer accepts the offer", HttpMethod.Post,
             $"/api/v1/bookings/ride-requests/{rideRequestId}/offers/{offerId}/select",
             new { advanceAmount = 0 },
-            assert: data => string.IsNullOrWhiteSpace(Text(data, "id"))
-                ? "No booking came back from accepting the offer."
-                : null,
-            cancellationToken: cancellationToken);
-
-        var bookingId = Text(booking, "id");
-
-        var myBookings = await CallAsync("Booking appears with its Trip OTP", HttpMethod.Get,
-            "/api/v1/bookings/my",
             assert: data =>
             {
-                var match = Items(data)?.FirstOrDefault(item =>
-                    string.Equals(Text(item, "id"), bookingId, StringComparison.OrdinalIgnoreCase));
-                if (match is null)
+                if (string.IsNullOrWhiteSpace(Text(data, "id")))
                 {
-                    return "The new booking is not in the customer's bookings list.";
+                    return "No booking came back from accepting the offer.";
                 }
 
-                var otp = Text(match, "tripOtp");
-                return otp is { Length: 4 }
+                var issued = Text(data, "tripOtp");
+                return issued is { Length: 4 } && issued.All(char.IsAsciiDigit)
                     ? null
-                    : "The booking has no four-digit Trip OTP, so the driver cannot start the ride.";
+                    : "The booking came back without a four-digit Trip OTP, so the "
+                      + "driver has no code to start the ride with.";
             },
             cancellationToken: cancellationToken);
 
-        var tripOtp = Items(myBookings)?.FirstOrDefault(item =>
-            string.Equals(Text(item, "id"), bookingId, StringComparison.OrdinalIgnoreCase)) is { } bookingRow
-            ? Text(bookingRow, "tripOtp")
-            : null;
+        var bookingId = Text(booking, "id");
+        var tripOtp = Text(booking, "tripOtp");
+
+        // Membership only — deliberately not the OTP.
+        //
+        // This step used to demand a four-digit tripOtp on the matching row and
+        // take the OTP from it. GET /api/v1/bookings/my does not select the
+        // trip_otp column at all and maps every row with a null OTP, and the API
+        // serializes with JsonIgnoreCondition.WhenWritingNull, so the key is not
+        // null in the response — it is absent. The step would therefore have
+        // failed on a correct platform, and, being critical, taken the eleven
+        // steps after it down with it. That is not a gap in the platform: a
+        // Customer who reopens the app reads the code from the trip tracking
+        // response, which does return it to the Customer and to nobody else.
+        await CallAsync("Booking appears in the customer's list", HttpMethod.Get,
+            "/api/v1/bookings/my",
+            assert: data => Contains(data, "id", bookingId)
+                ? null
+                : "The new booking is not in the customer's bookings list.",
+            cancellationToken: cancellationToken);
 
         // ------------------------------------------------------- 5. the trip
 
@@ -881,7 +935,7 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
         if (roomId is not null)
         {
             var checkIn = DateOnly.FromDateTime(DateTime.UtcNow.Date.AddDays(14));
-            await CallAsync("Customer books a room", HttpMethod.Post,
+            var hotelBooking = await CallAsync("Customer books a room", HttpMethod.Post,
                 $"/api/v1/hotels/{hotelId}/bookings",
                 new
                 {
@@ -895,20 +949,33 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
                     pickupLatitude = (double?)null,
                     pickupLongitude = (double?)null
                 },
-                assert: data => (Number(data, "amount") ?? 0) > 0
-                    ? null
-                    : "The hotel booking came back with no amount.",
+                // The booking's own key is "bookingId" here, and "id" on the
+                // owner's list below. Same record, two names — worth knowing
+                // before assuming one of them is a typo.
+                assert: data => (Number(data, "amount") ?? 0) <= 0
+                    ? "The hotel booking came back with no amount."
+                    : string.IsNullOrWhiteSpace(Text(data, "bookingId"))
+                        ? "The hotel booking came back without a booking id."
+                        : null,
                 critical: false,
                 cancellationToken: cancellationToken);
+
+            var hotelBookingId = Text(hotelBooking, "bookingId");
 
             As("Hotel Owner", hotelOwnerToken);
 
             // CROSSES ROLES: the customer's booking has to reach the owner.
+            //
+            // Asserting this exact booking, not merely a non-empty list. A
+            // count alone would pass on a leftover row from an earlier run and
+            // would still pass if the owner filter were broken badly enough to
+            // show somebody else's bookings — which is the one thing this step
+            // exists to rule out.
             await CallAsync("Booking reaches the Owner", HttpMethod.Get,
                 "/api/v1/hotels/owner/bookings",
-                assert: data => Items(data)?.Count > 0
+                assert: data => Contains(data, "id", hotelBookingId)
                     ? null
-                    : "The owner's bookings list is empty after a customer booked a room.",
+                    : "The booking the customer just made is not in the owner's list.",
                 critical: false,
                 cancellationToken: cancellationToken);
         }
