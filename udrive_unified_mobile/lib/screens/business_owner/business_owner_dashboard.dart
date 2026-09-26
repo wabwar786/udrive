@@ -4,10 +4,14 @@ import '../../core/businesses/business_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/business_models.dart';
 import 'business_owner_add_screen.dart';
 
-/// Lists everything this owner has submitted, with its approval state.
+/// H-04 — everything this owner has submitted, with its approval state.
+///
+/// No `Scaffold` here: `main_shell` already provides the bar and background,
+/// so wrapping again would render two stacked bars.
 class BusinessOwnerDashboard extends StatefulWidget {
   const BusinessOwnerDashboard({super.key});
 
@@ -61,130 +65,103 @@ class _BusinessOwnerDashboardState extends State<BusinessOwnerDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    // No Scaffold here: MainShell already provides the app bar and background,
-    // so wrapping again would render two stacked app bars.
-    return ColoredBox(
-      color: AppColors.background,
-      child: RefreshIndicator(
-        onRefresh: _load,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 26),
-                children: [
-                  if (_items.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: OutlinedButton.icon(
-                        onPressed: () => _openForm(),
-                        icon: const Icon(Icons.add_rounded, size: 18),
-                        label: const Text('Add another business'),
-                      ),
-                    ),
-                  if (_error != null)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 14),
-                      padding: const EdgeInsets.all(13),
-                      decoration: BoxDecoration(
-                        color: AppTint.danger,
-                        borderRadius: AppRadii.all(AppRadii.card),
-                      ),
-                      child: Text(
-                        _error!,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTint.dangerText,
-                        ),
-                      ),
-                    ),
-                  if (_items.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 34, horizontal: 20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: AppRadii.all(AppRadii.card),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Column(
-                        children: [
-                          const Icon(Icons.add_business_outlined,
-                              size: 32, color: AppText.disabled),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'You have not listed a business yet',
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w800,
-                              color: AppText.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'List your shop, restaurant or clinic so travellers '
-                            'nearby can find you.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              height: 1.45,
-                              color: AppText.secondary,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton(
-                              onPressed: () => _openForm(),
-                              child: const Text('List your business'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ..._items.map(
-                      (item) => Padding(
-                        padding: const EdgeInsets.only(bottom: 11),
-                        child: _OwnerListingTile(
-                          listing: item,
-                          onEdit: () => _openForm(item),
-                        ),
-                      ),
-                    ),
-                ],
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.navy),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: AppColors.navy,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
+        children: [
+          Text(
+            'My business',
+            style: AppType.h1.copyWith(color: AppText.primary),
+          ),
+          const SizedBox(height: 18),
+
+          if (_items.isNotEmpty) ...[
+            UdButton.outline(
+              label: 'Add another business',
+              icon: Icons.add_rounded,
+              onPressed: () => _openForm(),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          if (_error != null) ...[
+            // Says what to do about it. It used to be the error string on a
+            // red block and nothing else, which tells somebody standing in
+            // their own shop exactly nothing.
+            UdBanner(
+              tone: UdTone.err,
+              icon: Icons.cloud_off_rounded,
+              text: 'Unable to load some listings: $_error Pull down to '
+                  'retry.',
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          if (_items.isEmpty)
+            UdEmptyState(
+              icon: Icons.add_business_outlined,
+              title: 'You have not listed a business yet',
+              text: 'List your shop, restaurant or clinic so travellers '
+                  'nearby can find you.',
+              action: UdButton.primary(
+                label: 'List your business',
+                icon: Icons.add_rounded,
+                expand: false,
+                onPressed: () => _openForm(),
               ),
+            )
+          else
+            ..._items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _OwnerListingTile(
+                  listing: item,
+                  onEdit: () => _openForm(item),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 }
 
+/// One listing, and the one thing to do with it.
 class _OwnerListingTile extends StatelessWidget {
   const _OwnerListingTile({required this.listing, required this.onEdit});
 
   final BusinessListing listing;
   final VoidCallback onEdit;
 
-  (Color background, Color text) get _statusColors => switch (listing.status) {
-        BusinessStatus.approved => (AppTint.success, AppTint.successText),
-        BusinessStatus.rejected => (AppTint.danger, AppTint.dangerText),
-        BusinessStatus.suspended => (AppTint.danger, AppTint.dangerText),
-        _ => (AppTint.warning, AppTint.warningText),
+  UdTone get _tone => switch (listing.status) {
+        BusinessStatus.approved => UdTone.ok,
+        BusinessStatus.rejected => UdTone.err,
+        BusinessStatus.suspended => UdTone.err,
+        _ => UdTone.warn,
       };
 
   @override
   Widget build(BuildContext context) {
-    final (background, text) = _statusColors;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(13, 12, 13, 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.card),
-        border: Border.all(color: AppColors.border),
-      ),
+    return UdCard(
+      onTap: onEdit,
       child: Row(
         children: [
+          UdIconTile(
+            icon: listing.category?.icon ?? Icons.storefront_rounded,
+            tone: listing.status == BusinessStatus.approved
+                ? UdIconTone.soft
+                : UdIconTone.neutral,
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,43 +171,24 @@ class _OwnerListingTile extends StatelessWidget {
                   listing.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: AppText.primary,
-                  ),
+                  style: AppType.h3.copyWith(color: AppText.primary),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   listing.category?.label ?? 'Business',
-                  style: const TextStyle(
-                      fontSize: 11.5, color: AppText.secondary),
-                ),
-                const SizedBox(height: 7),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: background,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    listing.status.label,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w800,
-                      color: text,
-                    ),
-                  ),
+                  style: AppType.small.copyWith(color: AppText.secondary),
                 ),
               ],
             ),
           ),
-          IconButton(
-            onPressed: onEdit,
-            icon: const Icon(Icons.edit_outlined, size: 19),
-            tooltip: 'Edit listing',
-          ),
+          const SizedBox(width: 10),
+          UdBadge(label: listing.status.label, tone: _tone),
+          const SizedBox(width: 6),
+          // The pencil was a bare icon button with a tooltip nobody on a
+          // phone will ever see. The whole card opens the form now, and this
+          // is the affordance that says so.
+          const Icon(Icons.chevron_right_rounded,
+              size: 22, color: AppText.caption),
         ],
       ),
     );

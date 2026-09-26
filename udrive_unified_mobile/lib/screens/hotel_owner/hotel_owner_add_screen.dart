@@ -1,10 +1,18 @@
-import '../../core/theme/app_tokens.dart';
-import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/hotels/hotel_repository.dart';
 import '../../core/state/app_controller.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 
+/// H-02 — submit a property for admin approval.
+///
+/// Two lives: the second tab of [HotelOwnerShell], and a pushed page from the
+/// customer's hotel list. [standalone] is which — as a tab it draws no
+/// `Scaffold`, because the shell already has one. That split was here before
+/// this rebuild and it is the right shape; the create-package and documents
+/// screens got the same treatment in Phases 16 and 17.
 class HotelOwnerAddScreen extends StatefulWidget {
   const HotelOwnerAddScreen({this.standalone = false, super.key});
 
@@ -50,88 +58,104 @@ class _HotelOwnerAddScreenState extends State<HotelOwnerAddScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final body = SafeArea(
-      top: !widget.standalone,
-      child: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-          children: [
-            if (!widget.standalone) ...[
-              const Text('Add Hotel', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 5),
+    final body = Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
+        children: [
+          UdBanner(
+            tone: UdTone.info,
+            icon: Icons.verified_user_outlined,
+            text: 'Your hotel will stay hidden until the UDrive admin reviews '
+                'and approves it. After approval it will automatically appear '
+                'in Hotels & Stays.',
+          ),
+          const SizedBox(height: 20),
+
+          _field('Hotel name', _name, icon: Icons.apartment_rounded),
+          _field('Full address', _address,
+              icon: Icons.location_on_outlined, maxLines: 2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _field('City', _city)),
+              const SizedBox(width: 12),
+              Expanded(child: _field('District', _district)),
             ],
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppTint.success,
-                borderRadius: BorderRadius.circular(16),
+          ),
+          _field('Contact phone', _phone,
+              icon: Icons.call_outlined, keyboardType: TextInputType.phone),
+          _field('Hotel description', _description,
+              icon: Icons.notes_rounded, maxLines: 4),
+          _field('Main hotel image URL', _imageUrl,
+              suffix: '(optional)',
+              icon: Icons.image_outlined,
+              isRequired: false,
+              keyboardType: TextInputType.url),
+          _field('Amenities', _amenities,
+              suffix: '(optional, comma separated)',
+              icon: Icons.checklist_rounded,
+              isRequired: false),
+
+          const SizedBox(height: 6),
+          const UdSectionHeader(title: 'Map location'),
+          const SizedBox(height: 4),
+          Text(
+            'Where customers see the pin, and where a ride to this hotel is '
+            'sent.',
+            style: AppType.small.copyWith(color: AppText.secondary),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _field('Latitude', _latitude,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true, signed: true)),
               ),
-              child: const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.verified_user_outlined, color: AppColors.secondary),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Your hotel will stay hidden until the UDrive admin reviews and approves it. After approval it will automatically appear in Hotels & Stays.',
-                      style: TextStyle(fontSize: 11, height: 1.45, color: AppColors.secondary, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: _field('Longitude', _longitude,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true, signed: true)),
               ),
-            ),
-            const SizedBox(height: 16),
-            _field('Hotel name', _name),
-            _field('Full address', _address, maxLines: 2),
-            Row(
-              children: [
-                Expanded(child: _field('City', _city)),
-                const SizedBox(width: 10),
-                Expanded(child: _field('District', _district)),
-              ],
-            ),
-            _field('Contact phone', _phone, keyboardType: TextInputType.phone),
-            _field('Hotel description', _description, maxLines: 4),
-            _field('Main hotel image URL (optional)', _imageUrl, isRequired: false, keyboardType: TextInputType.url),
-            _field('Amenities, separated by commas', _amenities, isRequired: false),
-            const SizedBox(height: 2),
-            const Text('Map location', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: _field('Latitude', _latitude, keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true))),
-                const SizedBox(width: 10),
-                Expanded(child: _field('Longitude', _longitude, keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true))),
-              ],
-            ),
-            SwitchListTile.adaptive(
-              value: _transportAvailable,
-              onChanged: (value) => setState(() => _transportAvailable = value),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-              title: const Text('Transport available', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-              subtitle: const Text('Customers can book a ride to this hotel.', style: TextStyle(fontSize: 10.5)),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _busy ? null : _save,
-              icon: _busy
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.send_rounded),
-              label: Text(_busy ? 'Submitting…' : 'Submit for admin approval'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ],
+          ),
+
+          UdListGroup(
+            children: [
+              UdListRow(
+                title: 'Transport available',
+                subtitle: 'Customers can book a ride to this hotel.',
+                trailing: UdSwitch(
+                  value: _transportAvailable,
+                  onChanged: (value) =>
+                      setState(() => _transportAvailable = value),
+                  semanticLabel: 'Transport available',
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          UdButton.primary(
+            label: _busy ? 'Submitting…' : 'Submit for admin approval',
+            icon: Icons.send_rounded,
+            busy: _busy,
+            onPressed: _busy ? null : _save,
+          ),
+        ],
       ),
     );
 
     if (!widget.standalone) return body;
     return Scaffold(
-      appBar: AppBar(title: const Text('Add your hotel', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900))),
+      backgroundColor: AppColors.background,
+      appBar: UdTopBar(
+        title: 'Add your hotel',
+        onBack: () => Navigator.pop(context),
+      ),
       body: body,
     );
   }
@@ -139,26 +163,26 @@ class _HotelOwnerAddScreenState extends State<HotelOwnerAddScreen> {
   Widget _field(
     String label,
     TextEditingController controller, {
+    String? suffix,
+    IconData? icon,
     int maxLines = 1,
     bool isRequired = true,
     TextInputType? keyboardType,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 11),
-      child: TextFormField(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: UdTextField(
         controller: controller,
+        label: label,
+        labelSuffix: suffix,
+        icon: icon,
         maxLines: maxLines,
+        minLines: maxLines > 1 ? maxLines : null,
         keyboardType: keyboardType,
-        style: const TextStyle(fontSize: 12.5),
         validator: isRequired
-            ? (value) => value == null || value.trim().isEmpty ? 'Required' : null
+            ? (value) =>
+                value == null || value.trim().isEmpty ? 'Required' : null
             : null,
-        decoration: InputDecoration(
-          labelText: label,
-          isDense: true,
-          alignLabelWithHint: maxLines > 1,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-        ),
       ),
     );
   }
@@ -193,14 +217,26 @@ class _HotelOwnerAddScreenState extends State<HotelOwnerAddScreen> {
         'transportAvailable': _transportAvailable,
       });
       if (!mounted) return;
-      await showDialog<void>(
+      await showUdDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          icon: const Icon(Icons.hourglass_top_rounded, color: AppColors.secondary, size: 36),
-          title: const Text('Submitted for approval'),
-          content: const Text('Your hotel is pending admin review. It will become visible to customers only after approval.'),
-          actions: [FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Done'))],
+        title: 'Submitted for approval',
+        message: 'Your hotel is pending admin review. It will become visible '
+            'to customers only after approval.',
+        content: const Center(
+          child: UdIconTile(
+            icon: Icons.hourglass_top_rounded,
+            tone: UdIconTone.warn,
+            size: UdIconTileSize.lg,
+          ),
         ),
+        actions: [
+          Builder(
+            builder: (dialogContext) => UdButton.primary(
+              label: 'Done',
+              onPressed: () => Navigator.pop(dialogContext),
+            ),
+          ),
+        ],
       );
       if (widget.standalone && mounted) {
         Navigator.pop(context, true);

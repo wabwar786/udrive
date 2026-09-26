@@ -671,12 +671,12 @@ class _PremiumDrawer extends StatelessWidget {
   final ValueChanged<String> onSelected;
   final VoidCallback onSwitchMode;
 
+  // A branch here returned `const HotelOwnerShell()` — a Drawer that was a
+  // whole shell. It could never run: this drawer is only built inside
+  // MainShell's Scaffold, and MainShell hands the screen to HotelOwnerShell
+  // before that Scaffold exists.
   @override
   Widget build(BuildContext context) {
-    final controller = AppControllerScope.of(context);
-    if (controller.mode == UserMode.hotel) {
-      return const HotelOwnerShell();
-    }
     final driver = mode == UserMode.driver;
     final entries = driver ? _driverEntries(context) : _customerEntries(context);
 

@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../core/businesses/business_repository.dart';
-import '../../core/config/app_config.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/business_models.dart';
 
 /// Registration form a local business owner uses to list themselves in Near Me.
@@ -153,136 +153,125 @@ class _BusinessOwnerAddScreenState extends State<BusinessOwnerAddScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(editing ? 'Edit business' : 'List your business'),
+      appBar: UdTopBar(
+        title: editing ? 'Edit business' : 'List your business',
+        onBack: () => Navigator.pop(context),
       ),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+          padding: const EdgeInsets.fromLTRB(
+              AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
           children: [
-            const Text(
+            Text(
               'Customers browsing Near Me will see your business once it is '
               'approved. You can update details any time.',
-              style: TextStyle(
-                  fontSize: 12, height: 1.45, color: AppText.secondary),
+              style:
+                  AppType.body.copyWith(height: 1.45, color: AppText.secondary),
             ),
-            const SizedBox(height: 18),
-            TextFormField(
+            const SizedBox(height: 22),
+
+            UdTextField(
               controller: _name,
+              label: 'Business name',
+              icon: Icons.storefront_outlined,
               textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(labelText: 'Business name'),
               validator: (value) => (value ?? '').trim().isEmpty
                   ? 'Enter your business name'
                   : null,
             ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<BusinessCategory>(
-              initialValue: _category,
-              decoration: const InputDecoration(labelText: 'Category'),
-              items: BusinessCategory.values
-                  .map(
-                    (category) => DropdownMenuItem(
-                      value: category,
-                      child: Text(category.label),
-                    ),
-                  )
-                  .toList(growable: false),
-              onChanged: (value) {
-                if (value != null) setState(() => _category = value);
-              },
+            const SizedBox(height: 16),
+
+            // Was a `DropdownButtonFormField` of seven categories. Seven chips
+            // fit on three lines and each one carries its own icon, which is
+            // the same icon the customer sees on Near Me.
+            const UdLabel('Category'),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final category in BusinessCategory.values)
+                  UdChip(
+                    label: category.label,
+                    icon: category.icon,
+                    selected: _category == category,
+                    onTap: () => setState(() => _category = category),
+                  ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextFormField(
+            const SizedBox(height: 20),
+
+            UdTextField(
               controller: _address,
-              decoration: const InputDecoration(labelText: 'Address'),
+              label: 'Address',
+              icon: Icons.location_on_outlined,
               validator: (value) =>
                   (value ?? '').trim().isEmpty ? 'Enter your address' : null,
             ),
-            const SizedBox(height: 12),
-            TextFormField(
+            const SizedBox(height: 16),
+            UdTextField(
               controller: _phone,
+              label: 'Phone number',
+              icon: Icons.call_outlined,
               keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Phone number'),
               validator: (value) => (value ?? '').trim().length < 7
                   ? 'Enter a contact number'
                   : null,
             ),
-            const SizedBox(height: 12),
-            TextFormField(
+            const SizedBox(height: 16),
+            UdTextField(
               controller: _description,
-              maxLines: 3,
+              label: 'What do you offer?',
+              labelSuffix: '(optional)',
+              icon: Icons.notes_rounded,
+              minLines: 3,
+              maxLines: 4,
               maxLength: 400,
-              decoration: const InputDecoration(
-                labelText: 'What do you offer? (optional)',
-                alignLabelWithHint: true,
-              ),
             ),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(
-                color: pinned ? AppTint.success : Colors.white,
-                borderRadius: AppRadii.all(AppRadii.card),
-                border: Border.all(
-                  color: pinned ? AppColors.success : AppColors.border,
-                ),
+            const SizedBox(height: 16),
+
+            // Pinned or not, in the shape the artboard gives it: a banner
+            // that states the fact, and one button that either sets it or
+            // does it again.
+            UdBanner(
+              tone: pinned ? UdTone.ok : UdTone.gray,
+              icon: pinned
+                  ? Icons.check_circle_rounded
+                  : Icons.location_on_outlined,
+              trailing: UdButton(
+                label: _locating
+                    ? 'Locating…'
+                    : pinned
+                        ? 'Redo'
+                        : 'Pin',
+                size: UdButtonSize.xs,
+                variant: UdButtonVariant.outline,
+                expand: false,
+                busy: _locating,
+                onPressed: _locating ? null : _useCurrentLocation,
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    pinned
-                        ? Icons.check_circle_rounded
-                        : Icons.location_on_outlined,
-                    size: 20,
-                    color: pinned ? AppTint.successText : AppText.secondary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      pinned
-                          ? 'Location pinned '
-                              '(${_latitude!.toStringAsFixed(4)}, '
-                              '${_longitude!.toStringAsFixed(4)})'
-                          : 'Pin your exact location so customers can find you',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        height: 1.4,
-                        fontWeight: FontWeight.w600,
-                        color:
-                            pinned ? AppTint.successText : AppText.secondary,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _locating ? null : _useCurrentLocation,
-                    child: Text(_locating
-                        ? '…'
-                        : pinned
-                            ? 'Redo'
-                            : 'Pin'),
-                  ),
-                ],
-              ),
+              text: pinned
+                  ? 'Location pinned '
+                      '(${_latitude!.toStringAsFixed(4)}, '
+                      '${_longitude!.toStringAsFixed(4)})'
+                  : 'Pin your exact location so customers can find you',
             ),
-            const SizedBox(height: 20),
-            FilledButton(
+            const SizedBox(height: 24),
+
+            UdButton.primary(
+              label: editing ? 'Save changes' : 'Submit for review',
+              icon: Icons.send_rounded,
+              busy: _saving,
               onPressed: _saving ? null : _submit,
-              child: _saving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(editing ? 'Save changes' : 'Submit for review'),
             ),
-            const SizedBox(height: 10),
-            const Text(
-              'Photos and menu items can be added from your dashboard once the '
-              'listing is approved.',
+            const SizedBox(height: 14),
+            Text(
+              'Photos and menu items can be added from your dashboard once '
+              'the listing is approved.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: AppText.disabled),
+              style:
+                  AppType.small.copyWith(height: 1.5, color: AppText.caption),
             ),
           ],
         ),

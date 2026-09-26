@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/hotels/hotel_repository.dart';
 import '../../core/state/app_controller.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/hotel_models.dart';
 import 'hotel_owner_manage_screen.dart';
 
+/// H-01 — the hotels this owner has listed, and where each one stands.
+///
+/// The first tab of [HotelOwnerShell], which draws the bar — no `Scaffold`
+/// here.
 class HotelOwnerDashboard extends StatefulWidget {
   const HotelOwnerDashboard({super.key});
 
@@ -56,93 +64,172 @@ class _HotelOwnerDashboardState extends State<HotelOwnerDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(14),
-          children: <Widget>[
-            const Text(
-              'My Hotels',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 3),
-            const Text(
-              'Only admin-approved hotels appear to customers.',
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.black54,
-              ),
-            ),
-            const SizedBox(height: 14),
-            if (_busy)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_items.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(22),
-                  child: Text(
-                    'No hotel added yet. Use Add hotel to submit one for approval.',
+    // The two numbers the artboard leads with. Both come off the list that is
+    // already loaded, so they cost nothing — the screen simply never said
+    // them.
+    final rooms = _items.fold<int>(0, (sum, h) => sum + h.availableRooms);
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: AppColors.navy,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
+        children: <Widget>[
+          Text(
+            'My hotels',
+            style: AppType.h1.copyWith(color: AppText.primary),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Only admin-approved hotels appear to customers in Hotels & '
+            'Stays.',
+            style: AppType.body.copyWith(height: 1.45, color: AppText.secondary),
+          ),
+          const SizedBox(height: 20),
+
+          UdCard(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: UdStat(
+                    value: '${_items.length}',
+                    label: 'Listed hotels',
                   ),
                 ),
-              )
-            else
-              ..._items.map(_hotelCard),
-          ],
-        ),
+                Expanded(
+                  child: UdStat(
+                    value: '$rooms',
+                    label: 'Rooms available',
+                    align: CrossAxisAlignment.end,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 26),
+
+          UdSectionHeader(
+            title: 'Your listings',
+            caption: _items.isEmpty ? null : '${_items.length}',
+          ),
+          const SizedBox(height: 12),
+
+          if (_busy)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(
+                child: CircularProgressIndicator(color: AppColors.navy),
+              ),
+            )
+          else if (_items.isEmpty)
+            const UdEmptyState(
+              icon: Icons.apartment_outlined,
+              title: 'No hotel added yet',
+              text: 'Use Add hotel to submit your property for admin '
+                  'approval.',
+            )
+          else
+            ..._items.map(
+              (hotel) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _HotelCard(
+                  hotel: hotel,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => HotelOwnerManageScreen(hotel: hotel),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
+}
 
-  Widget _hotelCard(HotelSummary hotel) {
+/// One listing: what it is, where it is, and what the reviewers did with it.
+class _HotelCard extends StatelessWidget {
+  const _HotelCard({required this.hotel, required this.onTap});
+
+  final HotelSummary hotel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
     final status = hotel.approvalStatus ?? 'Pending';
-    final isApproved = status == 'Approved';
-    final isRejected = status == 'Rejected';
+    final approved = status == 'Approved';
+    final rejected = status == 'Rejected';
+    final reason = (hotel.rejectionReason ?? '').trim();
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => HotelOwnerManageScreen(hotel: hotel),
-            ),
-          );
-        },
-        leading: const CircleAvatar(
-          child: Icon(Icons.hotel_rounded),
-        ),
-        title: Text(
-          hotel.name,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
+    return UdCard(
+      selected: rejected,
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              UdIconTile(
+                icon: Icons.hotel_rounded,
+                tone: approved ? UdIconTone.soft : UdIconTone.neutral,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      hotel.name,
+                      style: AppType.h3.copyWith(color: AppText.primary),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${hotel.city} · ${hotel.availableRooms} rooms · '
+                      'PKR ${NumberFormat('#,###').format(hotel.startingRate.round())}'
+                      '/night',
+                      style: AppType.small.copyWith(color: AppText.secondary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              UdBadge(
+                label: rejected
+                    ? 'Rejected'
+                    : approved
+                        ? 'Approved'
+                        : 'Pending review',
+                tone: rejected
+                    ? UdTone.err
+                    : approved
+                        ? UdTone.ok
+                        : UdTone.warn,
+              ),
+            ],
           ),
-        ),
-        subtitle: Text(
-          '${hotel.city}\n$status',
-          style: const TextStyle(fontSize: 10),
-        ),
-        isThreeLine: true,
-        trailing: Icon(
-          isApproved
-              ? Icons.verified_rounded
-              : isRejected
-                  ? Icons.cancel_rounded
-                  : Icons.hourglass_top_rounded,
-          color: isApproved
-              ? Colors.green
-              : isRejected
-                  ? Colors.red
-                  : Colors.orange,
-        ),
+
+          // Why it came back, and what to do about it.
+          //
+          // The rejection reason is on `HotelSummary` and this screen never
+          // showed it — the status icon went red and that was all the owner
+          // was told.
+          if (rejected) ...[
+            const SizedBox(height: 14),
+            UdBanner(
+              tone: UdTone.err,
+              icon: Icons.assignment_late_outlined,
+              text: reason.isEmpty
+                  ? '${hotel.name} was rejected. Open Manage hotel to edit '
+                      'and resubmit.'
+                  : 'Reason: $reason Edit and resubmit from Manage hotel.',
+            ),
+          ],
+        ],
       ),
     );
   }
