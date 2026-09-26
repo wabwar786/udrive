@@ -227,6 +227,15 @@ public sealed class MarketplacePricingService(string connectionString)
             WHERE v.status = 'Verified'
               AND dp.verification_status = 'Approved'
               AND u.status = 'Approved'
+              -- The self-test vehicle is never a car a customer can book.
+              --
+              -- Unconditional here, unlike the ride-request guard: no step in
+              -- the run asserts that this vehicle appears in the public list,
+              -- so there is nothing to keep visible.
+              --
+              -- COALESCE because NULL NOT LIKE 'x' is NULL, not true, and a
+              -- bare NOT LIKE would drop every driver with no email address.
+              AND COALESCE(u.email, '') NOT LIKE 'selftest.%@udrive.local'
               AND (
                     (lower(@service) = 'privatevehicle' AND lower(v.category) <> 'rickshaw')
                     OR (lower(@service) = 'tours' AND v.passenger_capacity >= 4)
@@ -381,6 +390,9 @@ public sealed class MarketplacePricingService(string connectionString)
               AND dp.verification_status = 'Approved'
               AND u.status = 'Approved'
               AND v.status = 'Verified'
+              -- The self-test Driver posts a presence ping during a run, which
+              -- would otherwise put a car on a real customer's map.
+              AND COALESCE(u.email, '') NOT LIKE 'selftest.%@udrive.local'
               AND (@category = '' OR lower(v.category) = lower(@category))
               AND (@tourOnly = false OR COALESCE(v.available_for_tour, false) = true)
             ORDER BY distance_km

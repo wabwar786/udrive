@@ -10,7 +10,11 @@ namespace UDrive.Api.Controllers;
 [ApiController,Route("api/v1/hotels")]
 public sealed class HotelsController(HotelService service):ControllerBase
 {
-    [AllowAnonymous,HttpGet] public async Task<IActionResult> Search([FromQuery]string? query,[FromQuery]string? city,[FromQuery]DateOnly? checkIn,[FromQuery]DateOnly? checkOut,[FromQuery]int guests=1,[FromQuery]int rooms=1,[FromQuery]int page=1,[FromQuery]int pageSize=20,CancellationToken ct=default)=>Result(await service.SearchAsync(new(query,city,checkIn,checkOut,guests,rooms,page,pageSize),ct));
+    // GetUserIdOrNull, not GetRequiredUserId: this endpoint is anonymous and
+    // stays anonymous. The id is passed only so the self-test harness's own
+    // hotel can be shown to the self-test customer and hidden from everyone
+    // else — see the guard clause in HotelService.SearchAsync.
+    [AllowAnonymous,HttpGet] public async Task<IActionResult> Search([FromQuery]string? query,[FromQuery]string? city,[FromQuery]DateOnly? checkIn,[FromQuery]DateOnly? checkOut,[FromQuery]int guests=1,[FromQuery]int rooms=1,[FromQuery]int page=1,[FromQuery]int pageSize=20,CancellationToken ct=default)=>Result(await service.SearchAsync(new(query,city,checkIn,checkOut,guests,rooms,page,pageSize),User.GetUserIdOrNull(),ct));
     [AllowAnonymous,HttpGet("{id:guid}")] public async Task<IActionResult> Get(Guid id,[FromQuery]DateOnly? checkIn,[FromQuery]DateOnly? checkOut,CancellationToken ct)=>Result(await service.GetAsync(id,checkIn,checkOut,ct));
     [Authorize,HttpGet("owner/my")] public async Task<IActionResult> Mine(CancellationToken ct)=>Result(await service.MyHotelsAsync(User.GetRequiredUserId(),ct));
     [Authorize,HttpPost("owner")] public async Task<IActionResult> Create(CreateHotelRequest x,CancellationToken ct)=>Result(await service.CreateAsync(User.GetRequiredUserId(),x,ct));

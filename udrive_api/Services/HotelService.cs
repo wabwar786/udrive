@@ -7,7 +7,17 @@ namespace UDrive.Api.Services;
 
 public sealed class HotelService(string connectionString)
 {
-    public async Task<ServiceResult<object>> SearchAsync(HotelSearchRequest request, CancellationToken ct)
+    /// <param name="callerUserId">
+    /// Who is searching, or null when nobody is signed in.
+    /// </param>
+    /// <remarks>
+    /// The caller's identity is needed for one reason only: the self-test
+    /// harness creates and approves a hotel during a run, and that hotel must
+    /// be visible to the self-test customer (so the run can assert the search
+    /// finds it) and to nobody else. Search is otherwise anonymous and stays
+    /// that way — nothing else in this method reads the parameter.
+    /// </remarks>
+    public async Task<ServiceResult<object>> SearchAsync(HotelSearchRequest request, Guid? callerUserId, CancellationToken ct)
     {
         var page = Math.Max(1, request.Page); var size = Math.Clamp(request.PageSize, 1, 30); var offset=(page-1)*size;
         await using var c=new NpgsqlConnection(connectionString); await c.OpenAsync(ct);
@@ -40,12 +50,25 @@ public sealed class HotelService(string connectionString)
                 OR h.address ILIKE '%'||@query||'%'
               )
           AND (@city='' OR h.city ILIKE '%'||@city||'%' OR h.district ILIKE '%'||@city||'%')
+          -- The self-test harness creates and approves a hotel during a run.
+          -- It is visible to the self-test customer, so the run can assert this
+          -- very search finds it, and to nobody else.
+          AND (NOT EXISTS (SELECT 1 FROM udrive.users selftest_owner
+                            WHERE selftest_owner.id=h.owner_user_id
+                              AND selftest_owner.email LIKE 'selftest.%@udrive.local')
+               OR EXISTS (SELECT 1 FROM udrive.users selftest_caller
+                           WHERE selftest_caller.id=@caller_user_id
+                             AND selftest_caller.email LIKE 'selftest.%@udrive.local'))
         ORDER BY h.rating DESC,h.created_at DESC
         LIMIT @limit OFFSET @offset;
         """;
         cmd.Parameters.AddWithValue("query",request.Query?.Trim()??"");
         cmd.Parameters.AddWithValue("city",request.City?.Trim()??"");
         cmd.Parameters.AddWithValue("check_in",request.CheckIn??DateOnly.FromDateTime(DateTime.UtcNow.Date));
+        // Guid.Empty rather than NULL for an anonymous search: no users.id can
+        // ever equal it, so the guard's EXISTS is false either way, and
+        // AddWithValue does not have to infer a type for DBNull.
+        cmd.Parameters.AddWithValue("caller_user_id",callerUserId??Guid.Empty);
         cmd.Parameters.AddWithValue("limit",size);
         cmd.Parameters.AddWithValue("offset",offset);
         var list=new List<object>(); await using var r=await cmd.ExecuteReaderAsync(ct); while(await r.ReadAsync(ct)) list.Add(MapHotel(r));

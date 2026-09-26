@@ -371,6 +371,32 @@ public sealed class BookingService(
               AND rr.pickup_at > now() - interval '15 minutes'
               AND (rr.expires_at IS NULL OR rr.expires_at > now())
               AND rr.customer_user_id <> @driverUserId
+              -- The self-test harness runs against this database, and a
+              -- request it creates is a real row until it deletes it again.
+              -- This keeps that row in front of the self-test Driver only.
+              --
+              -- Conditional rather than an outright hide, because the harness
+              -- asserts that a request created by one role arrives in another
+              -- role's list — that crossing is the most valuable thing it
+              -- checks, and hiding the request from everyone would hide it
+              -- from the test too.
+              --
+              -- COALESCE is not decoration. Most customers have no email at
+              -- all — they sign in with a phone number — and in SQL
+              -- NULL NOT LIKE 'x' is NULL, not true, so a bare NOT LIKE here
+              -- would have hidden every request from every customer without an
+              -- email address. That would have been a far worse bug than the
+              -- one this guard prevents.
+              --
+              -- The pattern is SelfTestAccounts.EmailPattern. Written out
+              -- rather than called through a SQL function on purpose: a
+              -- function would make this query — and the whole marketplace —
+              -- depend on migration 056 having run.
+              AND (COALESCE(u.email, '') NOT LIKE 'selftest.%@udrive.local'
+                   OR EXISTS (SELECT 1
+                                FROM udrive.users selftest_driver
+                               WHERE selftest_driver.id = @driverUserId
+                                 AND selftest_driver.email LIKE 'selftest.%@udrive.local'))
               AND NOT EXISTS (
                   SELECT 1
                   FROM udrive.bookings active_b
