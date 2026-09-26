@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../data/models.dart';
 

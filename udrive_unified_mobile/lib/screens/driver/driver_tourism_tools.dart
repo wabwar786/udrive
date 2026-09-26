@@ -1,224 +1,377 @@
-import '../../core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
+
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/common_widgets.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../data/models.dart';
 
-class PackageBookingsScreen extends StatelessWidget {
-  const PackageBookingsScreen({super.key});
+// PackageBookingsScreen was here — a mock booking list over `controller
+// .packageBookings` with a hardcoded "5" for seats booked. Nothing routed it;
+// the real screen is LiveDriverPackageBookingsScreen, the second segment of
+// TourOperationsScreen.
 
-  @override
-  Widget build(BuildContext context) {
-    final controller = AppControllerScope.of(context);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 4, 18, 30),
-      children: [
-        Row(
-          children: [
-            MetricTile(icon: Icons.confirmation_number_rounded, label: context.tr('totalBookings'), value: '${controller.packageBookings.length}', color: AppColors.primary),
-            const SizedBox(width: 10),
-            MetricTile(icon: Icons.event_seat_rounded, label: context.tr('seatsBooked'), value: '5', color: AppColors.secondary),
-          ],
-        ),
-        const SizedBox(height: 18),
-        ...controller.packageBookings.map(
-          (booking) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: PremiumCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      StatusPill(label: booking.status, color: _statusColor(booking.status)),
-                      const Spacer(),
-                      Text(booking.travelDate, style: const TextStyle(color: AppColors.muted, fontSize: 11, fontWeight: FontWeight.w800)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(booking.packageTitle, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 8),
-                  Row(children: [const Icon(Icons.person_rounded, size: 18, color: AppColors.muted), const SizedBox(width: 6), Expanded(child: Text('${booking.customer} · ${booking.phone}', style: const TextStyle(color: AppColors.muted, fontSize: 12)))]),
-                  const SizedBox(height: 8),
-                  Row(children: [Icon(booking.bookingType == BookingType.perSeat ? Icons.event_seat_rounded : Icons.directions_car_filled_rounded, size: 18, color: AppColors.primaryDark), const SizedBox(width: 6), Text(booking.bookingType == BookingType.perSeat ? '${booking.seats} ${context.tr('seats')}' : context.tr('wholeVehicle'), style: const TextStyle(fontWeight: FontWeight.w800)), const Spacer(), Text('PKR ${booking.total}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))]),
-                  if (booking.status == 'Pending confirmation') ...[
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(child: OutlinedButton(onPressed: () => controller.updatePackageBooking(booking.id, 'Changes requested'), child: Text(context.tr('requestDetails')))),
-                        const SizedBox(width: 9),
-                        Expanded(child: FilledButton(onPressed: () => controller.updatePackageBooking(booking.id, 'Confirmed'), child: Text(context.tr('confirmBooking')))),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Color _statusColor(String status) {
-    if (status == 'Confirmed') return AppColors.success;
-    if (status == 'Changes requested') return AppColors.warning;
-    return AppColors.info;
-  }
-}
-
+/// D-35 — which routes each vehicle is allowed on, and what is missing.
+///
+/// Rendered by `main_shell`, so no `Scaffold` here.
 class VehicleSuitabilityScreen extends StatelessWidget {
   const VehicleSuitabilityScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 4, 18, 30),
+      padding: const EdgeInsets.fromLTRB(
+          AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
       children: [
-        PremiumCard(
-          color: AppColors.surface,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.terrain_rounded, color: AppColors.success),
-              const SizedBox(width: 10),
-              Expanded(child: Text(context.tr('vehicleSuitabilityHelp'), style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.45))),
-            ],
-          ),
+        UdBanner(
+          tone: UdTone.info,
+          icon: Icons.terrain_rounded,
+          text: context.tr('vehicleSuitabilityHelp'),
         ),
-        const SizedBox(height: 14),
-        ...controller.vehicles.map(
-          (vehicle) => Padding(
-            padding: const EdgeInsets.only(bottom: 13),
-            child: PremiumCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(width: 48, height: 48, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(15)), child: const Icon(Icons.directions_car_filled_rounded, color: AppColors.primaryDark)),
-                      const SizedBox(width: 11),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${vehicle.make} ${vehicle.model}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)), Text('${vehicle.registration} · ${vehicle.category}', style: const TextStyle(color: AppColors.muted, fontSize: 11))])),
-                      StatusPill(label: '${vehicle.readinessScore}% ${context.tr('ready')}', color: vehicle.readinessScore >= 80 ? AppColors.success : AppColors.warning),
-                    ],
-                  ),
-                  const SizedBox(height: 13),
-                  LinearProgressIndicator(value: vehicle.readinessScore / 100, minHeight: 8, borderRadius: BorderRadius.circular(20)),
-                  const SizedBox(height: 13),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: [
-                      _Capability(label: context.tr('city'), enabled: true),
-                      _Capability(label: context.tr('intercity'), enabled: true),
-                      _Capability(label: context.tr('familyTours'), enabled: vehicle.childSeat || vehicle.seats >= 5),
-                      _Capability(label: context.tr('mountainRoads'), enabled: vehicle.mountainReady),
-                      _Capability(label: context.tr('snowRoutes'), enabled: vehicle.fourWheelDrive && vehicle.snowChains),
-                      _Capability(label: context.tr('fourByFourRoutes'), enabled: vehicle.fourWheelDrive),
-                    ],
-                  ),
-                  const SizedBox(height: 13),
-                  Text(vehicle.mountainReady ? context.tr('mountainReadyMessage') : context.tr('mountainEquipmentMessage'), style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.4)),
-                ],
+        const SizedBox(height: 18),
+        if (controller.vehicles.isEmpty)
+          const UdEmptyState(
+            icon: Icons.directions_car_outlined,
+            title: 'No vehicle yet',
+            text: 'Register a vehicle and its capabilities appear here.',
+          )
+        else
+          ...controller.vehicles.map(
+            (vehicle) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: UdCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const UdIconTile(
+                          icon: Icons.directions_car_filled_rounded,
+                          tone: UdIconTone.soft,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${vehicle.make} ${vehicle.model}',
+                                style: AppType.h3
+                                    .copyWith(color: AppText.primary),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${vehicle.registration} · ${vehicle.category}',
+                                style: AppType.small
+                                    .copyWith(color: AppText.secondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        UdBadge(
+                          label: '${vehicle.readinessScore}% '
+                              '${context.tr('ready')}',
+                          tone: vehicle.readinessScore >= 80
+                              ? UdTone.ok
+                              : UdTone.warn,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    UdProgress(
+                      value: vehicle.readinessScore / 100,
+                      lime: vehicle.readinessScore >= 80,
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _Capability(
+                            label: context.tr('city'), enabled: true),
+                        _Capability(
+                            label: context.tr('intercity'), enabled: true),
+                        _Capability(
+                          label: context.tr('familyTours'),
+                          enabled: vehicle.childSeat || vehicle.seats >= 5,
+                        ),
+                        _Capability(
+                          label: context.tr('mountainRoads'),
+                          enabled: vehicle.mountainReady,
+                        ),
+                        _Capability(
+                          label: context.tr('snowRoutes'),
+                          enabled:
+                              vehicle.fourWheelDrive && vehicle.snowChains,
+                        ),
+                        _Capability(
+                          label: context.tr('fourByFourRoutes'),
+                          enabled: vehicle.fourWheelDrive,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // What to do about it, when there is something to do.
+                    // A vehicle that is ready gets the quiet version.
+                    UdBanner(
+                      tone: vehicle.mountainReady ? UdTone.ok : UdTone.warn,
+                      icon: vehicle.mountainReady
+                          ? Icons.check_circle_outline_rounded
+                          : Icons.build_outlined,
+                      text: vehicle.mountainReady
+                          ? context.tr('mountainReadyMessage')
+                          : context.tr('mountainEquipmentMessage'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
 }
 
+/// One route type a vehicle either can or cannot take.
+///
+/// Shape as well as colour: a tick or a padlock, so the difference survives a
+/// colour-blind driver and a phone in sunlight.
 class _Capability extends StatelessWidget {
   const _Capability({required this.label, required this.enabled});
   final String label;
   final bool enabled;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(color: (enabled ? AppColors.success : AppColors.muted).withValues(alpha: .11), borderRadius: BorderRadius.circular(30)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(enabled ? Icons.check_circle_rounded : Icons.lock_outline_rounded, size: 15, color: enabled ? AppColors.success : AppColors.muted), const SizedBox(width: 5), Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: enabled ? AppColors.success : AppColors.muted))]),
-      );
+  Widget build(BuildContext context) {
+    final (Color fill, Color ink, Color edge) = enabled
+        ? (AppTint.success, AppTint.successText, AppTint.successBorder)
+        : (AppColors.surface, AppText.caption, AppColors.border);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: AppRadii.all(999),
+        border: Border.all(color: edge),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            enabled ? Icons.check_circle_rounded : Icons.lock_outline_rounded,
+            size: 16,
+            color: ink,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: AppType.caption.copyWith(
+              fontWeight: FontWeight.w800,
+              color: ink,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
+/// D-36 — road conditions, reported by drivers and verified by operations.
+///
+/// Rendered by `main_shell`, so no `Scaffold` here.
 class DriverRoadReportsScreen extends StatelessWidget {
   const DriverRoadReportsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 4, 18, 30),
+      padding: const EdgeInsets.fromLTRB(
+          AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
       children: [
-        FilledButton.icon(onPressed: () => _newReport(context, controller), icon: const Icon(Icons.add_road_rounded), label: Text(context.tr('reportRoadCondition'))),
-        const SizedBox(height: 14),
-        PremiumCard(
-          color: AppTint.warning,
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.fact_check_rounded, color: AppColors.warning), const SizedBox(width: 10), Expanded(child: Text(context.tr('driverReportNotice'), style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.45)))]),
+        UdButton.primary(
+          label: context.tr('reportRoadCondition'),
+          icon: Icons.add_road_rounded,
+          onPressed: () => _newReport(context, controller),
         ),
-        const SizedBox(height: 14),
-        ...controller.roadReports.map(
-          (report) => Padding(
-            padding: const EdgeInsets.only(bottom: 11),
-            child: PremiumCard(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(width: 46, height: 46, decoration: BoxDecoration(color: AppColors.warning.withValues(alpha: .11), borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.warning_amber_rounded, color: AppColors.warning)),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(report.route, style: const TextStyle(fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 3),
-                        Text('${report.type} · ${report.details}', style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.4)),
-                        const SizedBox(height: 8),
-                        Row(children: [StatusPill(label: report.status, color: report.status.startsWith('Verified') ? AppColors.success : AppColors.warning), const Spacer(), Text(report.reportedAt, style: const TextStyle(color: AppColors.muted, fontSize: 10))]),
-                      ],
+        const SizedBox(height: 16),
+        UdBanner(
+          tone: UdTone.warn,
+          icon: Icons.fact_check_rounded,
+          text: context.tr('driverReportNotice'),
+        ),
+        const SizedBox(height: 20),
+        if (controller.roadReports.isEmpty)
+          const UdEmptyState(
+            icon: Icons.add_road_rounded,
+            title: 'No reports yet',
+            text: 'Report a road condition and it appears here for other '
+                'drivers.',
+          )
+        else
+          ...controller.roadReports.map(
+            (report) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: UdCard(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // The icon says what kind of report it is. Every one of
+                    // them used to be the same amber warning triangle,
+                    // including "Road open".
+                    UdIconTile(
+                      icon: _icon(report.type),
+                      tone: _open(report.type)
+                          ? UdIconTone.soft
+                          : UdIconTone.warn,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            report.route,
+                            style: AppType.listTitle
+                                .copyWith(fontSize: 16, color: AppText.primary),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${report.type} · ${report.details}',
+                            style: AppType.small.copyWith(
+                              height: 1.45,
+                              color: AppText.secondary,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              UdBadge(
+                                label: report.status,
+                                tone: report.status.startsWith('Verified')
+                                    ? UdTone.ok
+                                    : UdTone.gray,
+                                icon: report.status.startsWith('Verified')
+                                    ? Icons.verified_rounded
+                                    : Icons.people_outline_rounded,
+                              ),
+                              const Spacer(),
+                              Text(
+                                report.reportedAt,
+                                style: AppType.caption
+                                    .copyWith(color: AppText.caption),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
+
+  static const _types = <String>[
+    'Road blocked',
+    'Landslide risk',
+    'Heavy rain',
+    'Snow or ice',
+    'Bridge issue',
+    'Traffic delay',
+    'Road open',
+  ];
+
+  static bool _open(String type) => type == 'Road open';
+
+  static IconData _icon(String type) => switch (type) {
+        'Road open' => Icons.check_circle_outline_rounded,
+        'Landslide risk' => Icons.landslide_outlined,
+        'Heavy rain' => Icons.water_drop_outlined,
+        'Snow or ice' => Icons.ac_unit_rounded,
+        'Bridge issue' => Icons.dangerous_outlined,
+        'Traffic delay' => Icons.traffic_rounded,
+        _ => Icons.block_rounded,
+      };
 
   void _newReport(BuildContext context, AppController controller) {
     final route = TextEditingController(text: 'Muzaffarabad → Keran');
     final details = TextEditingController();
     var type = 'Road blocked';
-    showModalBottomSheet<void>(
+
+    showUdSheet<void>(
       context: context,
-      isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.viewInsetsOf(sheetContext).bottom + 24),
+        builder: (context, setSheet) => SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(context.tr('reportRoadCondition'), style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 12),
-              TextField(controller: route, decoration: InputDecoration(labelText: context.tr('affectedRoute'))),
+              const SizedBox(height: 4),
+              Text(
+                context.tr('reportRoadCondition'),
+                style: AppType.h2.copyWith(color: AppText.primary),
+              ),
+              const SizedBox(height: 16),
+              UdTextField(
+                controller: route,
+                label: context.tr('affectedRoute'),
+                icon: Icons.route_rounded,
+              ),
+              const SizedBox(height: 16),
+
+              // Was a `DropdownButtonFormField` of seven items. Seven chips
+              // fit on two lines and every option is readable without
+              // opening anything.
+              UdLabel(context.tr('roadConditionType')),
               const SizedBox(height: 10),
-              DropdownButtonFormField<String>(value: type, decoration: InputDecoration(labelText: context.tr('roadConditionType')), items: const ['Road blocked', 'Landslide risk', 'Heavy rain', 'Snow or ice', 'Bridge issue', 'Traffic delay', 'Road open'].map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(), onChanged: (value) => setState(() => type = value!)),
-              const SizedBox(height: 10),
-              TextField(controller: details, maxLines: 3, decoration: InputDecoration(labelText: context.tr('touristAdvice'))),
-              const SizedBox(height: 14),
-              FilledButton(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final option in _types)
+                    UdChip(
+                      label: option,
+                      selected: type == option,
+                      icon: type == option ? Icons.check_rounded : null,
+                      onTap: () => setSheet(() => type = option),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              UdTextField(
+                controller: details,
+                label: context.tr('touristAdvice'),
+                icon: Icons.notes_rounded,
+                minLines: 3,
+                maxLines: 4,
+              ),
+              const SizedBox(height: 20),
+              UdButton.primary(
+                label: context.tr('submitReport'),
+                icon: Icons.send_rounded,
                 onPressed: () {
-                  controller.addRoadReport(RoadReport(id: 'RR-${DateTime.now().millisecondsSinceEpoch}', route: route.text.trim(), type: type, details: details.text.trim().isEmpty ? 'Submitted by verified driver for operations review.' : details.text.trim(), reportedAt: 'Just now'));
+                  controller.addRoadReport(RoadReport(
+                    id: 'RR-${DateTime.now().millisecondsSinceEpoch}',
+                    route: route.text.trim(),
+                    type: type,
+                    details: details.text.trim().isEmpty
+                        ? 'Submitted by verified driver for operations review.'
+                        : details.text.trim(),
+                    reportedAt: 'Just now',
+                  ));
                   Navigator.pop(sheetContext);
                 },
-                child: Text(context.tr('submitReport')),
               ),
             ],
           ),

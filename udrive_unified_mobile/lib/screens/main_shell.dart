@@ -24,7 +24,6 @@ import 'customer/live_packages_screen.dart';
 import 'customer/live_tour_interest_screen.dart';
 import 'driver/live_create_package_screen.dart';
 import 'driver/live_driver_packages_screen.dart';
-import 'driver/live_driver_package_bookings_screen.dart';
 import 'driver/tour_operations_screen.dart';
 import 'driver/live_driver_requests_screen.dart';
 import 'customer/tourism_booking_screen.dart';
@@ -32,9 +31,7 @@ import 'driver/driver_home_screen.dart';
 import 'driver/driver_earnings_screen.dart';
 import 'feedback/feedback_center_screen.dart';
 import 'driver/driver_pages.dart';
-import 'driver/advanced_package_screen.dart';
 import 'driver/driver_tourism_tools.dart';
-import 'driver/vehicle_registration_screen.dart';
 import '../core/widgets/steering_wheel_icon.dart';
 import 'settings/cache_reset_screen.dart';
 import 'driver/driver_documents_screen.dart';
@@ -214,6 +211,22 @@ class _MainShellState extends State<MainShell> {
         onSelected: (value) {
           Navigator.pop(context);
           if (driver) {
+            // "Create package" is a form, not a page of this shell.
+            //
+            // It was both: routed here *and* pushed from the packages list.
+            // Because it ships its own Scaffold, the routed copy drew a
+            // second bar under this one. It lands on the packages list and
+            // pushes the form, which is also where the new draft appears.
+            if (value == 'createPackage') {
+              _goToDriver('driverPackages');
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const LiveCreatePackageScreen(),
+                ),
+              );
+              return;
+            }
             _goToDriver(value);
           } else {
             _goToCustomer(value);
@@ -598,7 +611,6 @@ class _MainShellState extends State<MainShell> {
         'dashboard' => const DriverHomeScreen(),
         'requests' => const LiveDriverRequestsScreen(),
         'driverPackages' => const LiveDriverPackagesScreen(),
-        'createPackage' => const LiveCreatePackageScreen(),
         'packageBookings' => const TourOperationsScreen(),
         'vehicleSuitability' => const VehicleSuitabilityScreen(),
         'roadReports' => const DriverRoadReportsScreen(),

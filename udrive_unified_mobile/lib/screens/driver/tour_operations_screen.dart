@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/network/api_client.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/common_widgets.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/auth_models.dart';
 import '../../models/tour_operation_models.dart';
 import 'live_driver_package_bookings_screen.dart';
 
+/// D-32 — boarding, departure and live tour progress, with D-33's bookings
+/// and manifests behind the second segment.
+///
+/// Rendered by `main_shell`, so no `Scaffold` here.
 class TourOperationsScreen extends StatefulWidget {
   const TourOperationsScreen({super.key});
 
@@ -16,9 +20,12 @@ class TourOperationsScreen extends StatefulWidget {
   State<TourOperationsScreen> createState() => _TourOperationsScreenState();
 }
 
-class _TourOperationsScreenState extends State<TourOperationsScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 2, vsync: this);
+class _TourOperationsScreenState extends State<TourOperationsScreen> {
+  /// Was a `TabController` driving a `TabBar` on a navy card — Material's own
+  /// underline indicator, in Material's own type. The design has a segmented
+  /// control, which is a plain index, so the ticker went with it.
+  int _tab = 0;
+
   List<TourOperationLive> _operations = const [];
   bool _busy = true;
   String? _error;
@@ -27,12 +34,6 @@ class _TourOperationsScreenState extends State<TourOperationsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -67,48 +68,45 @@ class _TourOperationsScreenState extends State<TourOperationsScreen>
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-          child: PremiumCard(
-            color: AppColors.navy,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Tour operations',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                const Text(
-                  'Manage boarding, departure, live tour progress and passenger manifests.',
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-                const SizedBox(height: 14),
-                TabBar(
-                  controller: _tabs,
-                  indicatorColor: Colors.white,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white60,
-                  tabs: const [
-                    Tab(text: 'Operations'),
-                    Tab(text: 'Bookings & manifest'),
-                  ],
-                ),
-              ],
-            ),
+          padding: const EdgeInsets.fromLTRB(
+              AppSizes.sidePadding, 6, AppSizes.sidePadding, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Tour operations',
+                style: AppType.h1.copyWith(color: AppText.primary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Manage boarding, departure, live tour progress and passenger '
+                'manifests.',
+                style:
+                    AppType.body.copyWith(height: 1.45, color: AppText.secondary),
+              ),
+              const SizedBox(height: 16),
+              UdSegmented(
+                options: const ['Operations', 'Bookings & manifest'],
+                index: _tab,
+                onChanged: (i) => setState(() => _tab = i),
+              ),
+              const SizedBox(height: 14),
+            ],
           ),
         ),
         Expanded(
-          child: TabBarView(
-            controller: _tabs,
+          // IndexedStack, not a TabBarView: both halves poll their own
+          // endpoint on first build, and keeping them alive means switching
+          // back does not re-fetch what is already on screen.
+          child: IndexedStack(
+            index: _tab,
             children: [
               RefreshIndicator(
                 onRefresh: _load,
+                color: AppColors.navy,
                 child: _operationsBody(),
               ),
               const LiveDriverPackageBookingsScreen(),
@@ -124,21 +122,27 @@ class _TourOperationsScreenState extends State<TourOperationsScreen>
       return ListView(
         children: const [
           SizedBox(height: 180),
-          Center(child: CircularProgressIndicator()),
+          Center(
+            child: CircularProgressIndicator(color: AppColors.navy),
+          ),
         ],
       );
     }
     if (_error != null) {
       return ListView(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 8, AppSizes.sidePadding, 40),
         children: [
-          PremiumCard(
-            child: Column(
-              children: [
-                Text(_error!, style: const TextStyle(color: Colors.red)),
-                const SizedBox(height: 12),
-                FilledButton(onPressed: _load, child: const Text('Retry')),
-              ],
+          UdEmptyState(
+            icon: Icons.cloud_off_rounded,
+            tone: UdTone.err,
+            title: 'Could not load operations',
+            text: _error,
+            action: UdButton.outline(
+              label: 'Retry',
+              icon: Icons.refresh_rounded,
+              expand: false,
+              onPressed: _load,
             ),
           ),
         ],
@@ -146,19 +150,20 @@ class _TourOperationsScreenState extends State<TourOperationsScreen>
     }
     if (_operations.isEmpty) {
       return ListView(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 8, AppSizes.sidePadding, 40),
         children: const [
-          PremiumCard(
-            child: Text(
-              'No active package departures yet. Approved packages will appear here.',
-              style: TextStyle(color: AppColors.muted),
-            ),
+          UdEmptyState(
+            icon: Icons.tour_outlined,
+            title: 'No departures yet',
+            text: 'Approved packages appear here once they have a departure.',
           ),
         ],
       );
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 90),
+      padding: const EdgeInsets.fromLTRB(
+          AppSizes.sidePadding, 0, AppSizes.sidePadding, 40),
       itemCount: _operations.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (_, index) => _OperationCard(
@@ -192,11 +197,27 @@ class _TourOperationsScreenState extends State<TourOperationsScreen>
   }
 }
 
+/// One departure, and the one thing to do to it next.
 class _OperationCard extends StatelessWidget {
   const _OperationCard({required this.operation, required this.onStatus});
 
   final TourOperationLive operation;
   final ValueChanged<String> onStatus;
+
+  /// Every status was the same blue pill. Where a tour is in its day is the
+  /// whole point of this card, so the four states differ.
+  static UdTone _tone(String status) => switch (status) {
+        'Completed' => UdTone.ok,
+        'InProgress' || 'Departed' => UdTone.lime,
+        'Boarding' => UdTone.warn,
+        'Cancelled' => UdTone.err,
+        _ => UdTone.info,
+      };
+
+  static String _spaced(String status) => switch (status) {
+        'InProgress' => 'In Progress',
+        _ => status,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -207,71 +228,86 @@ class _OperationCard extends StatelessWidget {
       'InProgress' => 'Completed',
       _ => null,
     };
-    return PremiumCard(
+
+    return UdCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Text(
                   operation.packageTitle,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                  ),
+                  style: AppType.h3.copyWith(color: AppText.primary),
                 ),
               ),
-              StatusPill(label: operation.status, color: AppColors.primary),
+              const SizedBox(width: 10),
+              UdBadge(
+                label: _spaced(operation.status),
+                tone: _tone(operation.status),
+              ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
-            DateFormat('dd MMM yyyy · hh:mm a')
-                .format(operation.departureAt),
-            style: const TextStyle(fontWeight: FontWeight.w700),
+            DateFormat('d MMM yyyy · hh:mm a').format(operation.departureAt),
+            style: AppType.listTitle
+                .copyWith(fontSize: 15, color: AppText.primary),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 3),
           Text(
             '${operation.vehicle} · ${operation.registrationNumber}',
-            style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            style: AppType.small.copyWith(color: AppText.secondary),
           ),
-          const Divider(height: 24),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          const SizedBox(height: 16),
+
+          // Four numbers, each over its label — the design's stat row. They
+          // used to be four grey pills reading "5 Bookings", where the number
+          // and the word carried the same weight.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _metric('${operation.confirmedBookings}', 'Bookings'),
-              _metric('${operation.seatsBooked}', 'Seats'),
-              _metric('${operation.checkedInPassengers}', 'Checked in'),
-              _metric('${operation.boardedPassengers}', 'Boarded'),
+              Expanded(
+                child: UdStat(
+                  value: '${operation.confirmedBookings}',
+                  label: 'Bookings',
+                ),
+              ),
+              Expanded(
+                child: UdStat(
+                  value: '${operation.seatsBooked}',
+                  label: 'Seats',
+                ),
+              ),
+              Expanded(
+                child: UdStat(
+                  value: '${operation.checkedInPassengers}',
+                  label: 'Checked in',
+                ),
+              ),
+              Expanded(
+                child: UdStat(
+                  value: '${operation.boardedPassengers}',
+                  label: 'Boarded',
+                ),
+              ),
             ],
           ),
+
           if (next != null) ...[
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => onStatus(next),
-                icon: const Icon(Icons.arrow_forward_rounded),
-                label: Text(_label(next)),
-              ),
+            const SizedBox(height: 18),
+            UdButton.primary(
+              label: _label(next),
+              trailingIcon: Icons.arrow_forward_rounded,
+              size: UdButtonSize.small,
+              onPressed: () => onStatus(next),
             ),
           ],
         ],
       ),
     );
   }
-
-  Widget _metric(String value, String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text('$value $label',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-      );
 
   String _label(String status) => switch (status) {
         'Boarding' => 'Open boarding',
