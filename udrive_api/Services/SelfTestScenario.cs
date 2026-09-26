@@ -33,6 +33,20 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
     /// </remarks>
     private bool _aborted;
 
+    /// <summary>
+    /// Opens a section that does not depend on the one before it.
+    /// </summary>
+    /// <remarks>
+    /// Steps inside a section cascade, which is right: there is no point asking
+    /// a driver to start a trip that was never booked. Sections do not.
+    ///
+    /// The first real run made the case. It stopped on an empty destinations
+    /// catalogue and skipped the remaining forty steps — including the whole
+    /// hotel journey, which needs no destination, no fare and no ride. One
+    /// missing catalogue row hid every other answer the run had to give.
+    /// </remarks>
+    private void StartSection() => _aborted = false;
+
     public IReadOnlyList<SelfTestStepResult> Steps => _steps;
 
     public void RecordFailure(string name, string detail) =>
@@ -53,7 +67,20 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
         string path,
         int? status) =>
         _steps.Add(new SelfTestStepResult(
-            _steps.Count + 1, name, _role, method, path, status, durationMs, outcome, detail));
+            _steps.Count + 1, name, _role, method, Readable(path), status,
+            durationMs, outcome, detail));
+
+    /// <summary>Turns an empty id in a path into something a person can read.</summary>
+    /// <remarks>
+    /// A step skipped because an earlier one failed never captured the id it
+    /// would have used, so its path came out as
+    /// <c>/api/v1/bookings/ride-requests//offers</c> — which reads like a bug
+    /// in the harness rather than a step that never ran.
+    /// </remarks>
+    private static string Readable(string path) =>
+        path.Contains("//", StringComparison.Ordinal)
+            ? path.Replace("//", "/{id}/", StringComparison.Ordinal)
+            : path;
 
     /// <summary>Records something checked without calling the API.</summary>
     private void Check(string name, bool passed, string? detail, bool critical = true)
@@ -294,11 +321,21 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
             assert: Expect("database", "connected", "The API reports its database as"),
             cancellationToken: cancellationToken);
 
+        // Not critical, and that is the whole point.
+        //
+        // The first real run failed here — an empty destinations catalogue —
+        // and took the other forty steps with it, none of which need a
+        // destination. A ride, a trip, a rating and a hotel booking are all
+        // perfectly testable without one. Only the tour package section needs
+        // a destination, and that section now skips itself instead.
         var destinations = await CallAsync("Destinations catalogue is populated", HttpMethod.Get,
             "/api/v1/catalog/destinations",
             assert: data => Items(data)?.Count > 0
                 ? null
-                : "No destinations came back. The tour package step needs at least one.",
+                : "No destinations came back. Tour packages cannot be tested without one \u2014 "
+                  + "the rest of the run is unaffected. Admin portal \u2192 Data management \u2192 "
+                  + "\"Add demo data\" restores the catalogue.",
+            critical: false,
             cancellationToken: cancellationToken);
 
         var destinationId = Items(destinations)?.FirstOrDefault() is { } first
@@ -309,7 +346,9 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
             $"/api/v1/catalog/service-rates?serviceType={serviceType}&lat={Fmt(pickupLat)}&lng={Fmt(pickupLng)}",
             assert: data => Items(data)?.Count > 0
                 ? null
-                : "No vehicle rates are configured. Every fare quote will fail.",
+                : "No vehicle rates are configured, so every fare quote will fail and "
+                  + "no ride can be booked. Admin portal \u2192 Data management \u2192 "
+                  + "\"Add demo data\" restores the rate card.",
             cancellationToken: cancellationToken);
 
         // ---------------------------------------------------- 2. as Customer
@@ -632,22 +671,45 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
         // exercised. The hotel endpoints have no edit and no delete at all, so
         // they cannot cover it.
 
-        var package = await CallAsync("Driver creates a tour package", HttpMethod.Post,
-            "/api/v1/driver/marketplace/packages",
-            PackageBody(vehicleId, destinationId, "Self-test package", 12000m),
-            assert: data => string.IsNullOrWhiteSpace(Text(data, "id"))
-                ? "The package was created without an id."
-                : null,
-            critical: false,
-            cancellationToken: cancellationToken);
+        StartSection();
+        As("Driver", driverToken);
+
+        JsonNode? package = null;
+        if (destinationId is null || vehicleId is null)
+        {
+            Record("Tour package: create, edit, submit, approve, pause, resume", "Skipped",
+                destinationId is null
+                    ? "The destinations catalogue is empty, and a package must name a "
+                      + "destination. Everything else in this run is unaffected."
+                    : "The harness vehicle was not found earlier, and a package must name "
+                      + "a vehicle. Everything else in this run is unaffected.",
+                0, "-", "-", null);
+        }
+        else
+        {
+            package = await CallAsync("Driver creates a tour package", HttpMethod.Post,
+                "/api/v1/driver/marketplace/packages",
+                PackageBody(vehicleId, destinationId, "Self-test package", 12000m),
+                assert: data => string.IsNullOrWhiteSpace(Text(data, "id"))
+                    ? "The package was created without an id."
+                    : null,
+                critical: false,
+                cancellationToken: cancellationToken);
+        }
 
         var packageId = Text(package, "id");
 
         if (packageId is null)
         {
-            Record("Tour package edit, submit, approve, pause and resume", "Skipped",
-                "The package was not created, so the rest of this section was not attempted.",
-                0, "-", "-", null);
+            // Only when the create was actually attempted. If the section was
+            // skipped for want of a destination or a vehicle, that has already
+            // been said once and does not need saying twice.
+            if (package is not null || (destinationId is not null && vehicleId is not null))
+            {
+                Record("Tour package edit, submit, approve, pause and resume", "Skipped",
+                    "The package was not created, so the rest of this section was not attempted.",
+                    0, "-", "-", null);
+            }
         }
         else
         {
@@ -700,7 +762,11 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
         }
 
         // ------------------------------------------------- 8. the Hotel Owner
+        //
+        // Nothing here depends on the ride, the fare or the package, so this
+        // runs whatever happened above.
 
+        StartSection();
         As("Hotel Owner", hotelOwnerToken);
 
         var hotelCity = "Muzaffarabad";
@@ -729,10 +795,11 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
 
         if (hotelId is null)
         {
-            Record("Hotel rooms, approval, search and booking", "Skipped",
-                "The hotel was not created, so the rest of this section was not attempted.",
-                0, "-", "-", null);
-            return;
+            // Not `return`: that ended the whole run and took the Near Me
+            // probes with it, which have nothing to do with hotels. Setting the
+            // flag skips the rest of THIS section; StartSection() below opens
+            // the next one.
+            _aborted = true;
         }
 
         await CallAsync("New hotel starts as Pending", HttpMethod.Get, "/api/v1/hotels/owner/my",
@@ -864,6 +931,7 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
         // than an error screen". They are probed rather than asserted, so the
         // day the endpoints arrive these turn green on their own.
 
+        StartSection();
         As("Customer", customerToken);
 
         await CallAsync("Near Me search", HttpMethod.Get,
