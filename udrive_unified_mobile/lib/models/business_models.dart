@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart' show IconData, Icons;
+
 /// Categories a local business can list itself under.
 ///
 /// Kept as a closed enum on the client so filter chips, icons and the owner
@@ -31,6 +33,22 @@ extension BusinessCategoryInfo on BusinessCategory {
         BusinessCategory.bank => 'ATM / Bank',
         BusinessCategory.fuel => 'Fuel',
         BusinessCategory.mosque => 'Mosque',
+      };
+
+  /// The glyph on the filter chip.
+  ///
+  /// The comment above this enum has always said the categories keep their
+  /// chips, *icons* and the owner form in sync — but there was no icon here,
+  /// so every chip in the app was a bare word. One mapping, used everywhere a
+  /// category is shown.
+  IconData get icon => switch (this) {
+        BusinessCategory.restaurant => Icons.restaurant_rounded,
+        BusinessCategory.grocery => Icons.storefront_rounded,
+        BusinessCategory.medicalStore => Icons.local_pharmacy_rounded,
+        BusinessCategory.hospital => Icons.local_hospital_rounded,
+        BusinessCategory.bank => Icons.account_balance_rounded,
+        BusinessCategory.fuel => Icons.local_gas_station_rounded,
+        BusinessCategory.mosque => Icons.mosque_rounded,
       };
 
   static BusinessCategory? fromApi(String? value) {

@@ -677,7 +677,10 @@ class _DriverLiveNavigationScreenState
                       height: 54,
                       child: const _MapMarker(
                         icon: Icons.directions_car_filled_rounded,
-                        color: AppColors.inkDeep,
+                        // Was AppColors.inkDeep — the old dark theme's
+                        // near-black. Phase 7 cleared the rest of this file
+                        // and missed these two markers on the driver's map.
+                        color: AppColors.navy,
                       ),
                     ),
                   if (_headingToPickup && pickup != null)
@@ -687,7 +690,10 @@ class _DriverLiveNavigationScreenState
                       height: 48,
                       child: const _MapMarker(
                         icon: Icons.person_pin_circle_rounded,
-                        color: Color(0xFF4C9AFF),
+                        // Was #4C9AFF, the old blue pin. It came out of the
+                        // customer's map in Phase 7; this copy on the
+                        // driver's map stayed behind.
+                        color: AppTint.pinPickupFill,
                       ),
                     ),
                   if (!_headingToPickup && destination != null)

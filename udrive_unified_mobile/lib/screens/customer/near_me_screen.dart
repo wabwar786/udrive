@@ -11,6 +11,7 @@ import '../../core/maps/ud_map.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/business_models.dart';
 import '../business_owner/business_owner_add_screen.dart';
 
@@ -150,76 +151,46 @@ class _NearMeScreenState extends State<NearMeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return ColoredBox(
       color: AppColors.background,
       child: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.navy,
         child: ListView(
-          padding: const EdgeInsets.only(bottom: 26),
+          padding: const EdgeInsets.only(bottom: 34),
           children: [
-            SizedBox(
-              height: 200,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  UdMap(
-                    controller: _mapController,
-                    initialCenter: _center,
-                    zoom: 14,
-                    markers: _items
-                        .map(
-                          (item) => UdMarker(
-                            id: item.id,
-                            position: LatLng(item.latitude, item.longitude),
-                            label: item.name,
-                          ),
-                        )
-                        .toList(growable: false),
-                  ),
-                  Positioned(
-                    right: 12,
-                    bottom: 12,
-                    child: GestureDetector(
-                      onTap: _locate,
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: AppShadows.floating,
-                        ),
-                        child: _locating
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.my_location_rounded,
-                                size: 19, color: AppColors.navy),
-                      ),
-                    ),
-                  ),
-                ],
+            _mapBand(),
+            const SizedBox(height: 18),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppSizes.sidePadding),
+              child: UdSectionHeader(
+                title: 'Near me',
+                caption: 'Local businesses around you',
               ),
             ),
+            const SizedBox(height: 14),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: _SearchField(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSizes.sidePadding),
+              child: UdTextField(
                 controller: _query,
+                hint: 'Search near me',
+                icon: Icons.search_rounded,
                 onChanged: _onQueryChanged,
               ),
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 36,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+            const SizedBox(height: 16),
+            // A wrapping row, not a horizontal scroller. Seven categories on
+            // a rail meant four of them were off-screen with nothing to say
+            // so; wrapped, the whole filter is visible at once.
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSizes.sidePadding),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
                 children: [
-                  _CategoryChip(
+                  UdChip(
                     label: 'All',
                     selected: _category == null,
                     onTap: () {
@@ -227,59 +198,67 @@ class _NearMeScreenState extends State<NearMeScreen> {
                       _load();
                     },
                   ),
-                  ...BusinessCategory.values.map(
-                    (category) => _CategoryChip(
+                  for (final category in BusinessCategory.values)
+                    UdChip(
                       label: category.label,
+                      icon: category.icon,
                       selected: _category == category,
                       onTap: () {
                         setState(() => _category = category);
                         _load();
                       },
                     ),
-                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSizes.sidePadding),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
                 children: [
-                  ...AppConfig.nearMeRadiiKm.map(
-                    (radius) => Padding(
-                      padding: const EdgeInsets.only(right: 7),
-                      child: _RadiusChip(
-                        label: '${radius.toStringAsFixed(0)} km',
-                        selected: _radiusKm == radius,
-                        onTap: () {
-                          setState(() => _radiusKm = radius);
-                          _load();
-                        },
-                      ),
+                  for (final radius in AppConfig.nearMeRadiiKm)
+                    _RadiusChip(
+                      label: '${radius.toStringAsFixed(0)} km',
+                      selected: _radiusKm == radius,
+                      onTap: () {
+                        setState(() => _radiusKm = radius);
+                        _load();
+                      },
                     ),
-                  ),
-                  const Spacer(),
-                  _SortToggle(
-                    sort: _sort,
-                    onChanged: (value) {
-                      setState(() => _sort = value);
-                      _load();
-                    },
-                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSizes.sidePadding),
+              child: _SortRow(
+                sort: _sort,
+                onChanged: (value) {
+                  setState(() => _sort = value);
+                  _load();
+                },
+              ),
+            ),
+            const SizedBox(height: 18),
             if (_loading)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: Center(child: CircularProgressIndicator()),
+                padding: EdgeInsets.symmetric(vertical: 50),
+                child: Center(
+                  child: CircularProgressIndicator(color: AppColors.navy),
+                ),
               )
             else if (_items.isEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSizes.sidePadding),
                 child: _EmptyState(
                   radiusKm: _radiusKm,
+                  // Hidden once the radius is already the widest step — the
+                  // button had nothing left to widen to.
                   onWiden: _radiusKm >= AppConfig.nearMeRadiiKm.last
                       ? null
                       : () {
@@ -299,116 +278,85 @@ class _NearMeScreenState extends State<NearMeScreen> {
                 ),
               )
             else
-              ..._items.map(
-                (item) => Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 11),
+              for (final item in _items)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSizes.sidePadding, 0, AppSizes.sidePadding, 14),
                   child: _ListingCard(
                     listing: item,
                     onCall: () => _call(item),
                     onDirections: () => _directions(item),
                   ),
                 ),
-              ),
           ],
         ),
       ),
     );
   }
-}
 
-class _SearchField extends StatelessWidget {
-  const _SearchField({required this.controller, required this.onChanged});
-
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.row),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.search_rounded, size: 19, color: AppText.secondary),
-          const SizedBox(width: 9),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              onChanged: onChanged,
-              style: const TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                color: AppText.primary,
-              ),
-              decoration: const InputDecoration(
-                isDense: true,
-                filled: false,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 14),
-                hintText: 'Search near me',
-                hintStyle: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: AppText.disabled,
-                ),
-              ),
+  /// The map is the first thing on the screen — no bar above it, the same
+  /// pattern Home uses.
+  Widget _mapBand() => SizedBox(
+        height: 200,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            UdMap(
+              controller: _mapController,
+              initialCenter: _center,
+              zoom: 14,
+              markers: _items
+                  .map(
+                    (item) => UdMarker(
+                      id: item.id,
+                      position: LatLng(item.latitude, item.longitude),
+                      label: item.name,
+                    ),
+                  )
+                  .toList(growable: false),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? AppTint.brand : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? AppColors.secondary : AppColors.border,
-              width: selected ? 1.3 : 1,
+            const Positioned(
+              left: 16,
+              top: 16,
+              child: UdMapChip(label: 'You are here'),
             ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-              color: selected ? AppColors.navy : AppText.secondary,
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: _locating
+                  // The float button has no busy state, so while a fix is
+                  // being taken the same 46px square holds a spinner.
+                  ? Container(
+                      width: AppSizes.iconButton,
+                      height: AppSizes.iconButton,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: AppRadii.all(15),
+                        boxShadow: AppShadows.floating,
+                      ),
+                      child: const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: AppColors.navy,
+                        ),
+                      ),
+                    )
+                  : UdIconButton(
+                      icon: Icons.my_location_rounded,
+                      variant: UdIconButtonVariant.float,
+                      tooltip: 'Recentre map',
+                      onPressed: _locate,
+                    ),
             ),
-          ),
+          ],
         ),
-      ),
-    );
-  }
+      );
 }
 
+/// A distance step. Navy when it is the one in force.
 class _RadiusChip extends StatelessWidget {
   const _RadiusChip({
     required this.label,
@@ -421,33 +369,42 @@ class _RadiusChip extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.navy : Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? AppColors.navy : AppColors.border,
+  Widget build(BuildContext context) => Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: AppRadii.all(AppRadii.chip),
+          child: Container(
+            height: AppSizes.buttonXs,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.navy : AppColors.background,
+              borderRadius: AppRadii.all(AppRadii.chip),
+              border: Border.all(
+                color: selected ? AppColors.navy : AppColors.border,
+                width: 1.5,
+              ),
+            ),
+            child: Text(
+              label,
+              style: AppType.buttonSm.copyWith(
+                fontSize: 14,
+                color: selected ? AppText.onInk : AppText.primary,
+              ),
+            ),
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w800,
-            color: selected ? Colors.white : AppText.secondary,
-          ),
-        ),
-      ),
-    );
-  }
+      );
 }
 
-class _SortToggle extends StatelessWidget {
-  const _SortToggle({required this.sort, required this.onChanged});
+/// The order in force on the left, the other one as a link on the right.
+///
+/// The toggle this replaces showed only the current state, so "Nearest" had
+/// to be read as both a label and a button — and tapping it silently reordered
+/// the list with nothing to say it would.
+class _SortRow extends StatelessWidget {
+  const _SortRow({required this.sort, required this.onChanged});
 
   final _NearMeSort sort;
   final ValueChanged<_NearMeSort> onChanged;
@@ -455,33 +412,56 @@ class _SortToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final byRating = sort == _NearMeSort.rating;
-    return GestureDetector(
-      onTap: () => onChanged(
-        byRating ? _NearMeSort.distance : _NearMeSort.rating,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            byRating ? Icons.star_rounded : Icons.near_me_rounded,
-            size: 15,
-            color: AppText.secondary,
-          ),
-          const SizedBox(width: 5),
-          Text(
-            byRating ? 'Top rated' : 'Nearest',
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
+    return Row(
+      children: [
+        Icon(
+          byRating ? Icons.star_rounded : Icons.explore_rounded,
+          size: 18,
+          color: AppText.secondary,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            byRating ? 'Sorted by rating' : 'Sorted by nearest',
+            style: AppType.small.copyWith(
+              fontWeight: FontWeight.w700,
               color: AppText.secondary,
             ),
           ),
-        ],
-      ),
+        ),
+        GestureDetector(
+          onTap: () => onChanged(
+            byRating ? _NearMeSort.distance : _NearMeSort.rating,
+          ),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  byRating ? Icons.near_me_rounded : Icons.star_outline_rounded,
+                  size: 18,
+                  color: AppColors.brandInk,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  byRating ? 'Nearest' : 'Top rated',
+                  style: AppType.small.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.brandInk,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
 
+/// One nearby business.
 class _ListingCard extends StatelessWidget {
   const _ListingCard({
     required this.listing,
@@ -495,149 +475,146 @@ class _ListingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
+    final hasPhone = (listing.phone ?? '').isNotEmpty;
+    final meta = [
+      if (listing.category != null) listing.category!.label,
+      if (listing.distanceKm != null)
+        '${listing.distanceKm!.toStringAsFixed(1)} km',
+    ].join(' · ');
+
+    return UdCard(
+      tone: UdCardTone.raised,
+      padding: EdgeInsets.zero,
+      child: ClipRRect(
         borderRadius: AppRadii.all(AppRadii.card),
-        border: Border.all(color: AppColors.border),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (listing.photos.isNotEmpty)
-            SizedBox(
-              height: 130,
-              child: Image.network(
-                listing.photos.first,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const ColoredBox(
-                  color: AppTint.surface,
-                  child: Icon(Icons.storefront_rounded,
-                      size: 30, color: AppText.disabled),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (listing.photos.isNotEmpty)
+              SizedBox(
+                height: 130,
+                child: Image.network(
+                  listing.photos.first,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const _PhotoFallback(),
                 ),
               ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(13, 12, 13, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        listing.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w900,
-                          color: AppText.primary,
-                        ),
-                      ),
-                    ),
-                    if (listing.rating != null) ...[
-                      const Icon(Icons.star_rounded,
-                          size: 15, color: AppTint.star),
-                      const SizedBox(width: 3),
-                      Text(
-                        listing.rating!.toStringAsFixed(1),
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w800,
-                          color: AppText.primary,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  [
-                    if (listing.category != null) listing.category!.label,
-                    if (listing.distanceKm != null)
-                      '${listing.distanceKm!.toStringAsFixed(1)} km',
-                  ].join('  ·  '),
-                  style: const TextStyle(
-                      fontSize: 11.5, color: AppText.secondary),
-                ),
-                const SizedBox(height: 7),
-                Row(
-                  children: [
-                    if (listing.openNow != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: listing.openNow!
-                              ? AppTint.success
-                              : AppTint.danger,
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                        child: Text(
-                          listing.openNow! ? 'Open now' : 'Closed',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w800,
-                            color: listing.openNow!
-                                ? AppTint.successText
-                                : AppTint.dangerText,
-                          ),
-                        ),
-                      ),
-                    if (listing.address.isNotEmpty) ...[
-                      if (listing.openNow != null) const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Expanded(
                         child: Text(
-                          listing.address,
+                          listing.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 11, color: AppText.secondary),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: onDirections,
-                        icon: const Icon(Icons.directions_rounded, size: 17),
-                        label: const Text('Directions'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(42),
-                        ),
-                      ),
-                    ),
-                    if (listing.phone != null && listing.phone!.isNotEmpty) ...[
-                      const SizedBox(width: 9),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: onCall,
-                          icon: const Icon(Icons.call_rounded, size: 17),
-                          label: const Text('Call'),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(42),
+                          style: AppType.h3.copyWith(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: AppText.primary,
                           ),
                         ),
                       ),
+                      if (listing.rating != null) ...[
+                        const SizedBox(width: 10),
+                        const Icon(Icons.star_rounded,
+                            size: 18, color: AppTint.star),
+                        const SizedBox(width: 3),
+                        Text(
+                          listing.rating!.toStringAsFixed(1),
+                          style: AppType.listTitle.copyWith(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: AppText.primary,
+                          ),
+                        ),
+                      ],
                     ],
+                  ),
+                  if (meta.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      meta,
+                      style: AppType.small.copyWith(color: AppText.secondary),
+                    ),
                   ],
-                ),
-              ],
+                  if (listing.openNow != null || listing.address.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        if (listing.openNow != null) ...[
+                          UdBadge(
+                            label: listing.openNow! ? 'Open now' : 'Closed',
+                            tone: listing.openNow! ? UdTone.ok : UdTone.err,
+                          ),
+                          const SizedBox(width: 10),
+                        ],
+                        if (listing.address.isNotEmpty)
+                          Expanded(
+                            child: Text(
+                              listing.address,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppType.small
+                                  .copyWith(color: AppText.secondary),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  UdButtonRow(
+                    children: [
+                      UdButton.outline(
+                        label: 'Directions',
+                        icon: Icons.route_rounded,
+                        size: UdButtonSize.small,
+                        onPressed: onDirections,
+                      ),
+                      // Only when there is a number to ring — unchanged.
+                      if (hasPhone)
+                        UdButton.outline(
+                          label: 'Call',
+                          icon: Icons.call_rounded,
+                          size: UdButtonSize.small,
+                          onPressed: onCall,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
+class _PhotoFallback extends StatelessWidget {
+  const _PhotoFallback();
+
+  @override
+  Widget build(BuildContext context) => const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppTint.mapPark, AppTint.mapWater],
+          ),
+        ),
+        child: Center(
+          child: Icon(Icons.storefront_rounded,
+              size: 40, color: AppColors.borderStrong),
+        ),
+      );
+}
+
+/// Nothing within the chosen radius — with the two things worth doing next.
 class _EmptyState extends StatelessWidget {
   const _EmptyState({
     required this.radiusKm,
@@ -650,62 +627,31 @@ class _EmptyState extends StatelessWidget {
   final VoidCallback onListBusiness;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 34, horizontal: 20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.card),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          const Icon(Icons.storefront_outlined,
-              size: 32, color: AppText.disabled),
-          const SizedBox(height: 12),
-          Text(
-            'No listings within ${radiusKm.toStringAsFixed(0)} km yet',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w800,
-              color: AppText.primary,
+  // A white card, not the grey one: the empty state's icon tile is grey, and
+  // on a grey card it disappears into it.
+  Widget build(BuildContext context) => UdCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UdEmptyState(
+              icon: Icons.storefront_rounded,
+              title: 'No listings within ${radiusKm.toStringAsFixed(0)} km yet',
+              text: 'Local businesses list themselves on UDrive. As shops in '
+                  'this area register, they will appear here.',
             ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Local businesses list themselves on UDrive. As shops in this area '
-            'register, they will appear here.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 11.5, height: 1.45, color: AppText.secondary),
-          ),
-          const SizedBox(height: 16),
-          if (onWiden != null)
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
+            if (onWiden != null) ...[
+              UdButton.outline(
+                label: 'Widen the search radius',
+                icon: Icons.zoom_out_map_rounded,
                 onPressed: onWiden,
-                child: const Text('Widen the search radius'),
               ),
-            ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: TextButton(
+              const SizedBox(height: 10),
+            ],
+            UdButton.ghost(
+              label: 'List your business',
               onPressed: onListBusiness,
-              child: const Text(
-                'List your business',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.navy,
-                ),
-              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
 }

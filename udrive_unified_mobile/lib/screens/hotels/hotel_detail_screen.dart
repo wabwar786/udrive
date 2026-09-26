@@ -1,19 +1,16 @@
-import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/hotels/hotel_repository.dart';
 import '../../core/state/app_controller.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../models/hotel_models.dart';
 import '../customer/udrive_route_flow_screen.dart';
 
-const _ink = AppColors.inkSurface;
-const _card = AppColors.inkPanel;
-const _tile = AppColors.inkTile;
-const _lime = AppColors.brand;
-const _muted = AppColors.onInkMuted;
-
+/// C-43 — one hotel, and the rooms it has for these dates.
 class HotelDetailScreen extends StatefulWidget {
   const HotelDetailScreen({required this.hotel, required this.checkIn, required this.checkOut, super.key});
   final HotelSummary hotel;
@@ -142,120 +139,202 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final hotel = widget.hotel;
+    final rooms = _details?.rooms ?? const <HotelRoom>[];
+
     return Scaffold(
-      backgroundColor: _ink,
-      appBar: AppBar(
-        backgroundColor: _ink,
-        surfaceTintColor: _ink,
-        foregroundColor: Colors.white,
-        title: Text(hotel.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+      backgroundColor: AppColors.background,
+      appBar: UdTopBar(
+        title: hotel.name,
+        onBack: () => Navigator.maybePop(context),
+        divider: true,
       ),
       body: _busy
-          ? const Center(child: CircularProgressIndicator(color: _lime))
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.navy),
+            )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 28),
+              padding: const EdgeInsets.fromLTRB(
+                  AppSizes.sidePadding, 16, AppSizes.sidePadding, 34),
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: AppRadii.all(22),
                   child: SizedBox(
-                    height: 190,
+                    height: 210,
                     width: double.infinity,
                     child: hotel.mainImageUrl.isEmpty
-                        ? const ColoredBox(color: AppColors.inkPanel, child: Icon(Icons.hotel_rounded, size: 66, color: _lime))
-                        : Image.network(hotel.mainImageUrl,
+                        ? const _HotelHeroFallback()
+                        : Image.network(
+                            hotel.mainImageUrl,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) =>
-                                const ColoredBox(color: AppColors.inkPanel, child: Icon(Icons.hotel_rounded, size: 66, color: _lime))),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(hotel.name, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 3),
-                Row(children: [
-                  const Icon(Icons.location_on_rounded, size: 14, color: _muted),
-                  const SizedBox(width: 4),
-                  Expanded(child: Text('${hotel.city} • ${hotel.address}', style: const TextStyle(color: _muted, fontSize: 11.5))),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  _chip(Icons.star_rounded, hotel.rating.toStringAsFixed(1)),
-                  const SizedBox(width: 8),
-                  _chip(Icons.meeting_room_rounded, '${hotel.availableRooms} rooms'),
-                  const SizedBox(width: 8),
-                  if (hotel.startingRate > 0) _chip(Icons.payments_rounded, 'From PKR ${hotel.startingRate.toStringAsFixed(0)}'),
-                ]),
-                if ((_details?.description ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(_details!.description, style: const TextStyle(color: _muted, fontSize: 12, height: 1.5)),
-                ],
-                const SizedBox(height: 14),
-                SizedBox(
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: _rideToHotel,
-                    icon: const Icon(Icons.local_taxi_rounded, size: 19),
-                    label: const Text('Book a ride to this hotel', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white24),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
+                                const _HotelHeroFallback(),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 18),
-                const Text('Available rooms', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 10),
-                if (_error != null) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Column(children: [
-                      Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: _muted, fontSize: 12, height: 1.4)),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          if (_busy) return;
-                          setState(() {
-                            _busy = true;
-                            _error = null;
-                          });
-                          _load();
-                        },
-                        icon: const Icon(Icons.refresh_rounded, size: 18),
-                        label: const Text('Try again'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white24),
-                        ),
-                      ),
-                    ]),
-                  ),
-                ] else ...[
-                  for (final room in _details?.rooms ?? const <HotelRoom>[])
-                    _RoomCard(room: room, onBook: _book, booking: _booking),
-                  if ((_details?.rooms ?? const <HotelRoom>[]).isEmpty)
+                Text(
+                  hotel.name,
+                  style: AppType.h2.copyWith(color: AppText.primary),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Text('No rooms available for these dates.', style: TextStyle(color: _muted, fontSize: 12)),
+                      padding: EdgeInsets.only(top: 1),
+                      child: Icon(Icons.location_on_rounded,
+                          size: 18, color: AppText.secondary),
                     ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        '${hotel.city} · ${hotel.address}',
+                        style:
+                            AppType.body2.copyWith(color: AppText.secondary),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _Fact(Icons.star_rounded, hotel.rating.toStringAsFixed(1),
+                        gold: true),
+                    _Fact(Icons.meeting_room_rounded,
+                        '${hotel.availableRooms} rooms'),
+                    // Only when there is a rate to show — unchanged.
+                    if (hotel.startingRate > 0)
+                      _Fact(
+                        Icons.payments_rounded,
+                        'From PKR ${NumberFormat('#,###').format(hotel.startingRate)}',
+                      ),
+                  ],
+                ),
+                if ((_details?.description ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    _details!.description,
+                    style: AppType.body2.copyWith(color: AppText.secondary),
+                  ),
                 ],
+                const SizedBox(height: 20),
+                UdButton.outline(
+                  label: 'Book a ride to this hotel',
+                  icon: Icons.local_taxi_rounded,
+                  onPressed: _rideToHotel,
+                ),
+                const SizedBox(height: 24),
+                UdSectionHeader(
+                  title: 'Available rooms',
+                  caption: '${DateFormat('dd MMM').format(widget.checkIn)} – '
+                      '${DateFormat('dd MMM').format(widget.checkOut)}',
+                ),
+                const SizedBox(height: 14),
+                if (_error != null)
+                  UdBanner(
+                    tone: UdTone.err,
+                    icon: Icons.cloud_off_rounded,
+                    trailing: UdButton.outline(
+                      label: 'Try again',
+                      size: UdButtonSize.xs,
+                      expand: false,
+                      onPressed: () {
+                        if (_busy) return;
+                        setState(() {
+                          _busy = true;
+                          _error = null;
+                        });
+                        _load();
+                      },
+                    ),
+                    text: _error!,
+                  )
+                else if (rooms.isEmpty)
+                  const UdEmptyState(
+                    icon: Icons.bed_rounded,
+                    title: 'No rooms for these dates',
+                    text: 'No rooms available for these dates. Try a different '
+                        'check-in or check-out date.',
+                  )
+                else
+                  for (final room in rooms)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: _RoomCard(
+                        room: room,
+                        onBook: _book,
+                        booking: _booking,
+                      ),
+                    ),
               ],
             ),
     );
   }
+}
 
-  Widget _chip(IconData icon, String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(10)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 13, color: _lime),
-          const SizedBox(width: 4),
-          Text(label, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
-        ]),
+/// A small outlined fact chip: the rating, the room count, the lowest rate.
+class _Fact extends StatelessWidget {
+  const _Fact(this.icon, this.label, {this.gold = false});
+
+  final IconData icon;
+  final String label;
+
+  /// Only the rating star is gold; nothing else in the app uses that hue.
+  final bool gold;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: AppRadii.all(AppRadii.chip),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: gold ? AppTint.star : AppText.secondary),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: AppType.caption.copyWith(
+                fontSize: 13.5,
+                color: AppText.primary,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _HotelHeroFallback extends StatelessWidget {
+  const _HotelHeroFallback();
+
+  @override
+  Widget build(BuildContext context) => const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppTint.mapPark, AppTint.mapWater],
+          ),
+        ),
+        child: Center(
+          child: Icon(Icons.hotel_rounded,
+              size: 64, color: AppColors.borderStrong),
+        ),
       );
 }
 
 class _RoomCard extends StatelessWidget {
-  const _RoomCard({required this.room, required this.onBook, required this.booking});
+  const _RoomCard({
+    required this.room,
+    required this.onBook,
+    required this.booking,
+  });
+
   final HotelRoom room;
   final Future<void> Function(HotelRoom room, bool transport) onBook;
 
@@ -273,72 +352,81 @@ class _RoomCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final soldOut = room.availableRooms < 1;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 11),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withValues(alpha: .06))),
+    final locked = soldOut || booking != null;
+
+    return UdCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Container(
-              width: 66,
-              height: 60,
-              decoration: BoxDecoration(color: _tile, borderRadius: BorderRadius.circular(13)),
-              child: const Icon(Icons.bed_rounded, size: 32, color: _muted),
-            ),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            children: [
+              const UdIconTile(
+                icon: Icons.bed_rounded,
+                size: UdIconTileSize.lg,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      room.roomType,
+                      style: AppType.listTitle.copyWith(
+                        fontSize: 16,
+                        color: AppText.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${room.capacity} guests · ${room.availableRooms} left',
+                      style: AppType.small.copyWith(
+                        fontWeight: FontWeight.w700,
+                        // Red only when there is nothing left to take.
+                        color: soldOut ? AppColors.danger : AppText.secondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(room.roomType, style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 3),
-                  Text('${room.capacity} guests • ${room.availableRooms} left',
-                      style: TextStyle(color: soldOut ? AppColors.danger : _muted, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                  Text(
+                    'PKR ${NumberFormat('#,###').format(room.rate)}',
+                    style: AppType.priceMd.copyWith(
+                      fontSize: 19,
+                      color: AppColors.brandInk,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'per night',
+                    style: AppType.caption.copyWith(color: AppText.secondary),
+                  ),
                 ],
               ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('PKR ${room.rate.toStringAsFixed(0)}', style: const TextStyle(color: _lime, fontSize: 14, fontWeight: FontWeight.w900)),
-                const Text('per night', style: TextStyle(color: _muted, fontSize: 9)),
-              ],
-            ),
-          ]),
-          const SizedBox(height: 11),
-          Row(children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: soldOut || booking != null ? null : () => onBook(room, false),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(42),
-                  side: const BorderSide(color: Colors.white24),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: booking == (room.id, false)
-                    ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2.1))
-                    : const Text('Room only', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          UdButtonRow(
+            children: [
+              UdButton.outline(
+                label: 'Room only',
+                size: UdButtonSize.small,
+                busy: booking == (room.id, false),
+                onPressed: locked ? null : () => onBook(room, false),
               ),
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: FilledButton(
-                onPressed: soldOut || booking != null ? null : () => onBook(room, true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: _lime,
-                  foregroundColor: Colors.black,
-                  minimumSize: const Size.fromHeight(42),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: booking == (room.id, true)
-                    ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2.1, color: Colors.black))
-                    : const Text('Room + ride', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
+              UdButton.primary(
+                label: 'Room + ride',
+                size: UdButtonSize.small,
+                busy: booking == (room.id, true),
+                onPressed: locked ? null : () => onBook(room, true),
               ),
-            ),
-          ]),
+            ],
+          ),
         ],
       ),
     );
