@@ -376,7 +376,7 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
                 ? null
                 : "No destinations came back. Tour packages cannot be tested without one \u2014 "
                   + "the rest of the run is unaffected. Admin portal \u2192 Data management \u2192 "
-                  + "\"Add demo data\" restores the catalogue.",
+                  + "\"Restore / refresh\" puts the catalogue back.",
             critical: false,
             cancellationToken: cancellationToken);
 
@@ -390,7 +390,7 @@ internal sealed class SelfTestScenario(HttpClient http, string baseUrl)
                 ? null
                 : "No vehicle rates are configured, so every fare quote will fail and "
                   + "no ride can be booked. Admin portal \u2192 Data management \u2192 "
-                  + "\"Add demo data\" restores the rate card.",
+                  + "\"Restore / refresh\" puts the rate card back.",
             cancellationToken: cancellationToken);
 
         // ---------------------------------------------------- 2. as Customer
