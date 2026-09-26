@@ -38,6 +38,7 @@ import 'place_search_screen.dart';
 import 'tour_map_screen.dart';
 import 'vehicle_choice_screen.dart';
 import 'udrive_route_flow_screen.dart';
+import '../../core/permissions/location_access.dart';
 
 /// Map-first, service-first Home.
 ///
@@ -505,10 +506,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return;
       }
 
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
+      // Discloses before the system prompt, then asks. Google Play requires
+      // the app's own explanation to come first; see LocationAccess.
+      final permission =
+          await LocationAccess.ensure(context, LocationPurpose.customer);
       if (permission == LocationPermission.deniedForever) {
         _setPickupFailure('Location permission is blocked. Allow it in your browser or device settings.');
         return;
@@ -1956,7 +1957,7 @@ class _TourRateGuideCard extends StatelessWidget {
             'Each driver sets their own tour price. Offer what you think the '
             'trip is worth — drivers reply with theirs.',
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 12,
               height: 1.4,
               color: AppText.disabled,
             ),
@@ -2312,7 +2313,7 @@ class _NotificationsPopup extends StatelessWidget {
                 AppConfig.buildLabel,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 12.5,
+                  fontSize: 12,
                   color: AppText.disabled,
                 ),
               ),
@@ -2404,7 +2405,7 @@ class _CentrePin extends StatelessWidget {
                       const Text(
                         'Pickup point',
                         style: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w700,
                           color: AppText.secondary,
                         ),

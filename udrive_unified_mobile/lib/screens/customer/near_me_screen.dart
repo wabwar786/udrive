@@ -14,6 +14,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/business_models.dart';
 import '../business_owner/business_owner_add_screen.dart';
+import '../../core/permissions/location_access.dart';
 
 /// Browses nearby third-party listings — restaurants, grocery, medical stores
 /// and so on — sourced from UDrive's own business directory.
@@ -72,12 +73,10 @@ class _NearMeScreenState extends State<NearMeScreen> {
     setState(() => _locating = true);
     try {
       if (await Geolocator.isLocationServiceEnabled()) {
-        var permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-        }
-        if (permission != LocationPermission.denied &&
-            permission != LocationPermission.deniedForever) {
+        // Disclosure before the prompt — see LocationAccess.
+        final permission =
+            await LocationAccess.ensure(context, LocationPurpose.customer);
+        if (LocationAccess.granted(permission)) {
           final position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(
               accuracy: LocationAccuracy.high,

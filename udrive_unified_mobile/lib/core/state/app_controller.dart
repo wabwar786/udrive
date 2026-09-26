@@ -376,28 +376,20 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// The one-tap demo sign-in behind the login screen's test-build button.
-  ///
-  /// Not a back door: it drives the ordinary OTP endpoints with the seeded
-  /// demo driver's number and the reviewer code configured under Services →
-  /// OTP settings. If that code is changed in the portal without being changed
-  /// here, this button stops working — which is the right failure, because the
-  /// alternative is a second code living in the app that nobody can revoke.
-  ///
-  /// The account is an Approved driver, so it lands in Customer mode and can
-  /// switch to Driver Mode from the home card. That is what a Play reviewer
-  /// needs from one sign-in.
-  static const String demoPhoneNumber = '03000000001';
-  static const String demoReviewerCode = '5095';
-
-  Future<void> login() async {
-    await requestOtp(demoPhoneNumber);
-    await verifyOtp(
-      phoneNumber: demoPhoneNumber,
-      code: demoReviewerCode,
-      fullName: 'Udrive Demo Driver',
-    );
-  }
+  // REMOVED for the Play Store release: the demo phone number and the fixed
+  // reviewer code, and the one-tap `login()` that used them.
+  //
+  // They were `static const`, so they shipped inside the AAB whatever the UI
+  // did — and anybody who unpacked the bundle could read them and sign in
+  // against production as a verified Approved Driver. The button that used them
+  // was hidden on release Android but its gate was `kIsWeb || kDebugMode`, so a
+  // production web build offered one-tap demo sign-in to the public.
+  //
+  // The Play reviewer still gets in, and by the route Google intends: the
+  // number and code go in Play Console -> App access, and the server honours
+  // them from system_settings (Admin portal -> Services -> WhatsApp OTP). That
+  // keeps the credential revocable in one place, out of the client, and lets it
+  // be switched off the day the listing is approved.
 
   /// Loads everything the signed-in app needs.
   ///

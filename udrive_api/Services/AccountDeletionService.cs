@@ -252,7 +252,19 @@ public sealed class AccountDeletionService(string connectionString, LocalFileSto
             SELECT t.screenshot_url
               FROM udrive.driver_wallet_topups t
               JOIN udrive.driver_profiles p ON p.id = t.driver_profile_id
-             WHERE p.user_id = @u AND t.screenshot_url IS NOT NULL;
+             WHERE p.user_id = @u AND t.screenshot_url IS NOT NULL
+            UNION ALL
+            -- The customer's own profile photo. It was missing from this union,
+            -- so the column was nulled a few lines above while the file stayed
+            -- on the volume for good — and both the deletion page and the app's
+            -- own confirmation screen tell the person their profile photo is
+            -- deleted. Nothing writes that column from the app today, so no such
+            -- file exists yet; it is here now so the gap does not ship with the
+            -- upload feature whenever that arrives. Exactly the trap the CNIC
+            -- photos fell into once already.
+            SELECT cp.profile_image_url
+              FROM udrive.customer_profiles cp
+             WHERE cp.user_id = @u AND cp.profile_image_url IS NOT NULL;
             """;
 
         var urls = new List<string>();

@@ -49,8 +49,11 @@ public sealed class AdminUsersController(
         Result(await authService.SetPortalCredentialsAsync(request, cancellationToken));
 
     /// <summary>
-    /// Deletes an account on a person's emailed request (the public
-    /// /account-deletion page offers email for people who cannot open the app).
+    /// Deletes an account when the person asked for it outside the app (the
+    /// public /account-deletion page tells anyone who cannot open the app to
+    /// message UDrive on WhatsApp from the registered number). The comment used
+    /// to say "emailed request" and name email as the published route, which no
+    /// legal page has ever offered.
     /// Same effect as in-app deletion; the audit log records the admin.
     /// </summary>
     [HttpPost("delete-account")]

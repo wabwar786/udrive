@@ -8,31 +8,13 @@ import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
 import '../../models/auth_models.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/common_widgets.dart';
 import '../../core/vehicles/vehicle_catalogue.dart';
 import '../../data/models.dart';
 import '../../models/booking_models.dart';
 import 'driver_offers_screen.dart';
 import 'live_packages_screen.dart';
-
-/// Secondary copy, at the smallest size the design system allows.
-///
-/// This file used to set nine, nine and a half, eleven, eleven and a half and
-/// twelve pixels by hand, in seventeen places. Nothing in v2 goes below 12.5,
-/// and nine pixels on a phone in daylight is not small type — it is absent
-/// type.
-const _captionMuted = TextStyle(
-  fontSize: 13,
-  fontWeight: FontWeight.w600,
-  color: AppColors.muted,
-  height: 1.35,
-);
-
-/// The same, one step down, for the tightest rows inside a card.
-const _overlineMuted = TextStyle(
-  fontSize: 12.5,
-  fontWeight: FontWeight.w700,
-  color: AppColors.muted,
-);
+import '../../core/permissions/location_access.dart';
 
 class TourismBookingScreen extends StatefulWidget {
   const TourismBookingScreen({this.initialType, this.initialDestination, super.key});
@@ -160,76 +142,105 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
           subtitle: 'Enter your destination and date. Available vehicles will appear instantly.',
         ),
         const SizedBox(height: 14),
-        UdCard(
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceHigh,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .035),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
           child: Column(
             children: [
-              UdTextField(
+              TextFormField(
                 controller: _pickup,
                 textInputAction: TextInputAction.next,
-                icon: Icons.trip_origin_rounded,
-                label: context.tr('pickup'),
-                hint: 'Your pickup city or point',
-                suffix: _locatingPickup
-                    ? const Padding(
-                        padding: EdgeInsets.all(13),
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.trip_origin_rounded),
+                  labelText: context.tr('pickup'),
+                  hintText: 'Your pickup city or point',
+                  suffixIcon: _locatingPickup
+                      ? const Padding(
+                          padding: EdgeInsets.all(13),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : IconButton(
+                          tooltip: 'Use my current location',
+                          onPressed: _useCurrentLocation,
+                          icon: const Icon(Icons.my_location_rounded),
                         ),
-                      )
-                    : UdIconButton(
-                        icon: Icons.my_location_rounded,
-                        tooltip: 'Use my current location',
-                        onPressed: _useCurrentLocation,
-                      ),
+                ),
                 validator: _required,
               ),
               const SizedBox(height: 10),
-              UdTextField(
+              TextFormField(
                 controller: _destination,
                 textInputAction: TextInputAction.search,
-                icon: Icons.location_on_rounded,
-                label: context.tr('destination'),
-                hint: 'e.g. Neelum Valley, Sharda, Arang Kel',
-                suffix: _destination.text.trim().isEmpty
-                    ? null
-                    : UdIconButton(
-                        icon: Icons.close_rounded,
-                        onPressed: _destination.clear,
-                      ),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.location_on_rounded),
+                  labelText: context.tr('destination'),
+                  hintText: 'e.g. Neelum Valley, Sharda, Arang Kel',
+                  suffixIcon: _destination.text.trim().isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: _destination.clear,
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                ),
                 validator: _required,
               ),
               if (destinationSuggestions.isNotEmpty) ...[
                 const SizedBox(height: 6),
-                // Still scrollable, and still capped — a long suggestion list
-                // must not push the date fields off the step. UdListGroup lays
-                // its children out in a Column, so the scrolling is here.
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 190),
-                  child: SingleChildScrollView(
-                    child: UdListGroup(
-                      children: [
-                        for (final suggestion in destinationSuggestions)
-                          UdListRow(
-                            title: suggestion,
-                            leading: const Icon(
-                              Icons.location_on_outlined,
-                              color: AppColors.navy,
-                              size: 19,
-                            ),
-                            onTap: () {
-                              _destination.value = TextEditingValue(
-                                text: suggestion,
-                                selection: TextSelection.collapsed(
-                                  offset: suggestion.length,
-                                ),
-                              );
-                              FocusScope.of(context).unfocus();
-                            },
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 170),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    itemCount: destinationSuggestions.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final suggestion = destinationSuggestions[index];
+                      return ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        leading: const Icon(
+                          Icons.location_on_outlined,
+                          color: AppColors.primaryDark,
+                          size: 19,
+                        ),
+                        title: Text(
+                          suggestion,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
                           ),
-                      ],
-                    ),
+                        ),
+                        onTap: () {
+                          _destination.value = TextEditingValue(
+                            text: suggestion,
+                            selection: TextSelection.collapsed(
+                              offset: suggestion.length,
+                            ),
+                          );
+                          FocusScope.of(context).unfocus();
+                        },
+                      );
+                    },
                   ),
                 ),
               ],
@@ -265,17 +276,34 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Available vehicles', style: AppType.section),
+                  Text(
+                    'Available vehicles',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+                  ),
                   SizedBox(height: 2),
                   Text(
                     'Matching scheduled vehicles are shown for reference. Continue to complete your request below.',
-                    style: _captionMuted,
+                    style: TextStyle(color: AppColors.muted, fontSize: 11),
                   ),
                 ],
               ),
             ),
             if (destinationEntered)
-              UdBadge(label: '${matches.length} found', tone: UdTone.lime),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTint.success,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${matches.length} found',
+                  style: const TextStyle(
+                    color: AppColors.primaryDark,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
           ],
         ),
         const SizedBox(height: 10),
@@ -308,30 +336,47 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
             ),
           ),
         const SizedBox(height: 14),
-        const UdBanner(
-          tone: UdTone.info,
-          icon: Icons.info_outline_rounded,
-          text: 'No suitable scheduled vehicle? Continue below to request a '
-              'private or shared ride and receive Driver offers.',
+        Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline_rounded, color: AppColors.info, size: 20),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'No suitable scheduled vehicle? Continue below to request a private or shared ride and receive Driver offers.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 11, height: 1.4),
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
-        // The subtitle stays: it is the only place that explains what a return
-        // trip does to the fare, and the row is meaningless without it.
-        UdListGroup(
-          children: [
-            UdListRow(
-              title: context.tr('returnTrip'),
-              subtitle: context.tr('returnTripHelp'),
-              trailing: UdSwitch(
-                value: _returnTrip,
-                onChanged: (value) => setState(() {
-                  _returnTrip = value;
-                  _returnDate =
-                      value ? _departureDate.add(const Duration(days: 2)) : null;
-                }),
-              ),
-            ),
-          ],
+        SwitchListTile.adaptive(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          tileColor: AppColors.surfaceHigh,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: AppColors.border),
+          ),
+          value: _returnTrip,
+          onChanged: (value) => setState(() {
+            _returnTrip = value;
+            _returnDate = value ? _departureDate.add(const Duration(days: 2)) : null;
+          }),
+          title: Text(
+            context.tr('returnTrip'),
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          subtitle: Text(
+            context.tr('returnTripHelp'),
+            style: const TextStyle(fontSize: 11),
+          ),
         ),
         if (_returnTrip) ...[
           const SizedBox(height: 10),
@@ -450,7 +495,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
             onTap: () => setState(() => _bookingType = BookingType.wholeVehicle),
           ),
           const SizedBox(height: 18),
-          UdCard(
+          PremiumCard(
             child: Column(
               children: [
                 _CounterRow(label: context.tr('adults'), icon: Icons.person_rounded, value: _adults, min: 1, onChanged: (value) { setState(() => _adults = value); _syncRecommendedVehicle(); }),
@@ -462,7 +507,7 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          Text(context.tr('travellerPreference'), style: AppType.h3),
+          Text(context.tr('travellerPreference'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
@@ -475,16 +520,19 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          UdCheckboxRow(
+          CheckboxListTile(
             value: _familyOnly,
-            onChanged: (value) => setState(() => _familyOnly = value),
-            child: Text(context.tr('familyOnlyPreference'), style: AppType.body),
+            onChanged: (value) => setState(() => _familyOnly = value ?? false),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            title: Text(context.tr('familyOnlyPreference'), style: const TextStyle(fontWeight: FontWeight.w800)),
           ),
-          const SizedBox(height: 4),
-          UdCheckboxRow(
+          CheckboxListTile(
             value: _femalePreference,
-            onChanged: (value) => setState(() => _femalePreference = value),
-            child: Text(context.tr('femalePassengerPreference'), style: AppType.body),
+            onChanged: (value) => setState(() => _femalePreference = value ?? false),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            title: Text(context.tr('femalePassengerPreference'), style: const TextStyle(fontWeight: FontWeight.w800)),
           ),
         ],
       );
@@ -510,13 +558,10 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
             },
           ),
           const SizedBox(height: 8),
-          UdTextField(
+          TextFormField(
             controller: _notes,
             maxLines: 3,
-            minLines: 3,
-            icon: Icons.notes_rounded,
-            label: context.tr('specialInstructions'),
-            hint: context.tr('specialInstructionsHint'),
+            decoration: InputDecoration(labelText: context.tr('specialInstructions'), hintText: context.tr('specialInstructionsHint'), prefixIcon: const Padding(padding: EdgeInsets.only(bottom: 54), child: Icon(Icons.notes_rounded))),
           ),
         ],
       );
@@ -526,8 +571,8 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
         children: [
           _StepIntro(icon: Icons.fact_check_rounded, title: context.tr('reviewBooking'), subtitle: context.tr('bookingStepFourHelp')),
           const SizedBox(height: 18),
-          UdCard(
-            tone: UdCardTone.navy,
+          PremiumCard(
+            color: AppColors.navy,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -553,23 +598,25 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          UdCard(
+          PremiumCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Your fare offer', style: AppType.h3),
+                const Text('Your fare offer', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
                 const SizedBox(height: 6),
                 const Text(
                   'Enter the total amount you want to offer verified Drivers. Drivers can accept it or send a counteroffer.',
-                  style: _captionMuted,
+                  style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.4),
                 ),
                 const SizedBox(height: 12),
-                UdTextField(
+                TextFormField(
                   controller: _customerOffer,
                   keyboardType: TextInputType.number,
-                  icon: Icons.payments_rounded,
-                  label: 'Customer offered fare (PKR)',
-                  helper: 'A driver will answer with their own price.',
+                  decoration: InputDecoration(
+                    labelText: 'Customer offered fare (PKR)',
+                    prefixIcon: const Icon(Icons.payments_rounded),
+                    helperText: 'A driver will answer with their own price.',
+                  ),
                   validator: (value) {
                     final amount = int.tryParse((value ?? '').trim().replaceAll(',', ''));
                     if (amount == null || amount <= 0) return 'Enter a valid fare offer.';
@@ -584,21 +631,22 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
                   _bookingType == BookingType.perSeat
                       ? 'Fuel, toll and Udrive charges are included in the seat fare.'
                       : 'Toll charges, if applicable, will be paid by the customer at actual cost.',
-                  style: const TextStyle(
-                    color: AppTint.successText,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    height: 1.35,
-                  ),
+                  style: const TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w800),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 14),
-          UdBanner(
-            tone: UdTone.ok,
-            icon: Icons.verified_user_rounded,
-            text: context.tr('secureBookingMessage'),
+          PremiumCard(
+            color: AppTint.brand,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.verified_user_rounded, color: AppColors.primaryDark),
+                const SizedBox(width: 12),
+                Expanded(child: Text(context.tr('secureBookingMessage'), style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, height: 1.4))),
+              ],
+            ),
           ),
         ],
       );
@@ -791,11 +839,10 @@ class _TourismBookingScreenState extends State<TourismBookingScreen> {
         }
         return;
       }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      // Disclosure before the prompt — see LocationAccess.
+      final permission =
+          await LocationAccess.ensure(context, LocationPurpose.customer);
+      if (!LocationAccess.granted(permission)) {
         if (!silent && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Location permission is required for automatic pickup.')),
@@ -911,19 +958,19 @@ class _CompactDateField extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(icon, color: AppColors.navy, size: 19),
+              Icon(icon, color: AppColors.primaryDark, size: 19),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: _overlineMuted),
+                    Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 9)),
                     const SizedBox(height: 2),
                     Text(
                       value,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppType.caption,
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11.5),
                     ),
                   ],
                 ),
@@ -966,15 +1013,14 @@ class _VehicleSearchHint extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: _captionMuted,
+              style: const TextStyle(color: AppColors.muted, fontSize: 11, height: 1.4),
             ),
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 10),
-              UdButton.ghost(
-                label: actionLabel!,
-                icon: Icons.event_available_rounded,
-                size: UdButtonSize.small,
+              TextButton.icon(
                 onPressed: onAction,
+                icon: const Icon(Icons.event_available_rounded, size: 18),
+                label: Text(actionLabel!),
               ),
             ],
           ],
@@ -1013,8 +1059,8 @@ class _SearchVehicleCard extends StatelessWidget {
                 const Icon(Icons.trip_origin_rounded, size: 15, color: AppColors.primary),
                 const SizedBox(width: 5),
                 Expanded(child: Text(package.startingCity, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5))),
-                const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.navy)),
-                Expanded(child: Text(package.destination, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.navy, fontWeight: FontWeight.w900, fontSize: 12.5))),
+                const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.primaryDark)),
+                Expanded(child: Text(package.destination, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900, fontSize: 12.5))),
                 const SizedBox(width: 4),
                 const Icon(Icons.location_on_rounded, size: 15, color: AppColors.primary),
               ],
@@ -1030,27 +1076,27 @@ class _SearchVehicleCard extends StatelessWidget {
                 decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
                 clipBehavior: Clip.antiAlias,
                 child: image != null && image.isNotEmpty
-                    ? Image.network(image, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.directions_bus_rounded, color: AppColors.navy))
-                    : const Icon(Icons.directions_bus_rounded, color: AppColors.navy),
+                    ? Image.network(image, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark))
+                    : const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark),
               ),
               const SizedBox(width: 9),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(package.vehicle.isEmpty ? package.title : package.vehicle, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppType.caption),
+                  Text(package.vehicle.isEmpty ? package.title : package.vehicle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
                   const SizedBox(height: 2),
-                  Text(package.registrationNumber, maxLines: 1, overflow: TextOverflow.ellipsis, style: _overlineMuted),
+                  Text(package.registrationNumber, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted, fontSize: 9.5)),
                   const SizedBox(height: 4),
-                  Text(DateFormat('dd MMM · hh:mm a').format(package.departureAt), style: _overlineMuted),
+                  Text(DateFormat('dd MMM · hh:mm a').format(package.departureAt), style: const TextStyle(color: AppColors.muted, fontSize: 9.5, fontWeight: FontWeight.w700)),
                 ]),
               ),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text('PKR ${NumberFormat('#,###').format(package.pricePerSeat)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.navy)),
-                const Text('per seat', style: _overlineMuted),
+                Text('PKR ${NumberFormat('#,###').format(package.pricePerSeat)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.primaryDark)),
+                const Text('per seat', style: TextStyle(color: AppColors.muted, fontSize: 9)),
                 const SizedBox(height: 5),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(color: seatColor, borderRadius: BorderRadius.circular(999)),
-                  child: Text('$seats seats free', style: _overlineMuted.copyWith(color: seatText)),
+                  child: Text('$seats seats free', style: TextStyle(color: seatText, fontWeight: FontWeight.w900, fontSize: 9.5)),
                 ),
               ]),
             ],
@@ -1126,19 +1172,10 @@ class _DateCard extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => UdCard(
+  Widget build(BuildContext context) => PremiumCard(
         onTap: onTap,
         padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: AppColors.navy),
-            const SizedBox(height: 10),
-            Text(label, style: _overlineMuted),
-            const SizedBox(height: 3),
-            Text(value, style: AppType.listTitle),
-          ],
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, color: AppColors.primaryDark), const SizedBox(height: 10), Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 11, fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13))]),
       );
 }
 
@@ -1219,7 +1256,7 @@ class _CounterRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
         children: [
-          Icon(icon, color: AppColors.navy),
+          Icon(icon, color: AppColors.primaryDark),
           const SizedBox(width: 10),
           Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w900))),
           IconButton.filledTonal(onPressed: value > min ? () => onChanged(value - 1) : null, icon: const Icon(Icons.remove_rounded, size: 18)),
@@ -1237,12 +1274,7 @@ class _PartyChip extends StatelessWidget {
   final TripPartyType selected;
   final ValueChanged<TripPartyType> onSelected;
   @override
-  Widget build(BuildContext context) => UdChip(
-        label: label,
-        icon: icon,
-        selected: selected == value,
-        onTap: () => onSelected(value),
-      );
+  Widget build(BuildContext context) => ChoiceChip(selected: selected == value, onSelected: (_) => onSelected(value), avatar: Icon(icon, size: 18), label: Text(label));
 }
 
 class _VehicleChoice extends StatelessWidget {
@@ -1285,7 +1317,7 @@ class _VehicleChoice extends StatelessWidget {
                     color: AppColors.primary.withValues(alpha: .11),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(vehicle.icon, color: AppColors.navy),
+                  child: Icon(vehicle.icon, color: AppColors.primaryDark),
                 ),
                 const SizedBox(width: 13),
                 Expanded(
@@ -1302,10 +1334,7 @@ class _VehicleChoice extends StatelessWidget {
                           ),
                           if (recommended) ...[
                             const SizedBox(width: 7),
-                            UdBadge(
-                              label: context.tr('recommended'),
-                              tone: UdTone.lime,
-                            ),
+                            StatusPill(label: context.tr('recommended')),
                           ],
                         ],
                       ),
@@ -1314,11 +1343,11 @@ class _VehicleChoice extends StatelessWidget {
                         enabled
                             ? '${vehicle.seats} seats · ${vehicle.luggage} bags'
                             : '${vehicle.seats} seats · Not enough capacity',
-                        style: _captionMuted,
+                        style: const TextStyle(color: AppColors.muted, fontSize: 12),
                       ),
                       Text(
                         vehicle.description,
-                        style: _captionMuted,
+                        style: const TextStyle(color: AppColors.muted, fontSize: 11),
                       ),
                     ],
                   ),

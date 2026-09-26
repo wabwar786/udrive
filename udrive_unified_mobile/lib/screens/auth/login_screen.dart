@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -18,7 +17,6 @@ import 'otp_screen.dart';
 /// that goes to Google Play — never does. It used to guard a second thing, a
 /// line of text naming the fixed code, but no screen names a code any more:
 /// the OTP screen's copy of that hint had no guard at all and shipped.
-const bool _showTestingHelpers = kIsWeb || kDebugMode;
 
 /// Sign-in. Design system v2, screen G-02.
 ///
@@ -123,7 +121,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       onAcceptedChanged: (value) =>
                           setState(() => _accepted = value),
                       onContinue: _continue,
-                      onDemo: _demoLogin,
                     ),
                   ],
                 ),
@@ -155,18 +152,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _demoLogin() async {
-    setState(() => _error = null);
-    try {
-      await AppControllerScope.of(context).login();
-    } on ApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
-    } catch (_) {
-      if (mounted) {
-        setState(() => _error = 'Demo login failed. Check the API deployment.');
-      }
-    }
-  }
 }
 
 /// The grey sheet holding the form.
@@ -185,7 +170,6 @@ class _FormSheet extends StatelessWidget {
     required this.busy,
     required this.onAcceptedChanged,
     required this.onContinue,
-    required this.onDemo,
   });
 
   final GlobalKey<FormState> formKey;
@@ -197,7 +181,6 @@ class _FormSheet extends StatelessWidget {
   final bool busy;
   final ValueChanged<bool> onAcceptedChanged;
   final VoidCallback onContinue;
-  final VoidCallback onDemo;
 
   @override
   Widget build(BuildContext context) {
@@ -289,19 +272,6 @@ class _FormSheet extends StatelessWidget {
               busy: busy,
               onPressed: accepted ? onContinue : null,
             ),
-            // The demo account and the fixed testing code exist for our own
-            // browser testing. A published Android build must not offer either:
-            // a reviewer sees a "demo" door into the product, and the code is a
-            // way into somebody else's account while the old provider is on.
-            if (_showTestingHelpers) ...[
-              const SizedBox(height: 10),
-              UdButton.outline(
-                label:
-                    urdu ? 'منظور شدہ ڈرائیور ڈیمو' : 'Use approved driver demo',
-                icon: Icons.verified_user_outlined,
-                onPressed: busy ? null : onDemo,
-              ),
-            ],
             const SizedBox(height: 16),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,

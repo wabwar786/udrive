@@ -7,6 +7,7 @@ import '../../core/safety/safety_repository.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
+import '../../core/permissions/location_access.dart';
 
 /// C-53 — Safety centre.
 ///
@@ -54,12 +55,10 @@ class _SafetyHubScreenState extends State<SafetyHubScreen> {
 
   Future<Position?> location() async {
     try {
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      // Disclosure before the prompt — see LocationAccess.
+      final permission =
+          await LocationAccess.ensure(context, LocationPurpose.customer);
+      if (!LocationAccess.granted(permission)) {
         return null;
       }
       return await Geolocator.getCurrentPosition();

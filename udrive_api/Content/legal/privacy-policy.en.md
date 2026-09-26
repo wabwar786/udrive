@@ -272,8 +272,9 @@ first.
 
 **What is erased**
 
-- Your name, phone number and email are replaced. Your number is freed
-  immediately, so you or anyone else can register it again.
+- Your email address is deleted outright. Your name and phone number are
+  replaced with placeholders, and your number is freed immediately, so you or
+  anyone else can register it again.
 - Every session everywhere is ended.
 - Your trusted contacts are deleted outright.
 - Any emergency notes on your profile.

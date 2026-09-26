@@ -18,6 +18,7 @@ import '../../models/booking_models.dart';
 import '../../models/trip_operations_models.dart';
 import '../operations/live_trip_navigation_screen.dart';
 import 'driver_documents_screen.dart';
+import '../../core/permissions/location_access.dart';
 
 /// D-10 / D-11 — the driver's dashboard, offline and online.
 ///
@@ -141,9 +142,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (!mounted || !_isOnline) return;
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return;
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
+      // The Driver's disclosure, not the customer one: going online starts a
+      // location trail that is uploaded while they are online, and the wording
+      // has to say that before the system prompt. See LocationAccess.
+      final permission =
+          await LocationAccess.ensure(context, LocationPurpose.driver);
+      if (!LocationAccess.granted(permission)) return;
       // `best`: this is the position published as the driver's own, and it is
       // what decides which requests reach them and how far away a customer
       // thinks they are.

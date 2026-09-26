@@ -8,6 +8,7 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
+import '../../core/permissions/location_access.dart';
 
 class CustomerSosSheet extends StatefulWidget {
   const CustomerSosSheet({super.key});
@@ -29,16 +30,24 @@ class CustomerSosSheet extends StatefulWidget {
   @override
   State<CustomerSosSheet> createState() => _CustomerSosSheetState();
 
-  static Future<Position> currentLocation() async {
+  /// Takes a [BuildContext] because the permission may still have to be asked
+  /// for, and Google Play requires the app's own disclosure to come before the
+  /// system prompt.
+  ///
+  /// In practice nobody in an emergency sees a dialog: by the time somebody
+  /// presses SOS the customer home screen has almost always been through this
+  /// already, and [LocationAccess.ensure] returns straight away when permission
+  /// is granted. The disclosure only appears in the one case where it must —
+  /// location was never granted and the app is about to raise the system
+  /// prompt anyway. An undisclosed prompt here would be the policy breach, and
+  /// a prompt with no explanation is not faster for the person, only stranger.
+  static Future<Position> currentLocation(BuildContext context) async {
     if (!await Geolocator.isLocationServiceEnabled()) {
       throw Exception('Please switch on location services.');
     }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
+    final permission =
+        await LocationAccess.ensure(context, LocationPurpose.customer);
+    if (!LocationAccess.granted(permission)) {
       throw Exception('Location permission is required for an emergency alert.');
     }
     return Geolocator.getCurrentPosition(
@@ -152,7 +161,7 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
 
     try {
       final controller = AppControllerScope.of(context);
-      final location = await CustomerSosSheet.currentLocation();
+      final location = await CustomerSosSheet.currentLocation(context);
       final personalNumbers = _numbers
           .where((item) => !item.isOfficial)
           .map((item) => item.phone)

@@ -2,11 +2,28 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Declaring ACCESS_FINE_LOCATION makes Android treat
+         android.hardware.location.gps as REQUIRED unless it is said otherwise
+         here, and Play then hides the listing from every device without a GPS
+         chip. Saying required="false" keeps those devices eligible; the app
+         already copes with a refused or missing fix (the pickup can be typed).
+    -->
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.location"
+        android:required="false" />
     <!-- No RECORD_AUDIO. The SOS sheet used to record a clip and post it to an
          endpoint the API never implemented, so the permission bought nothing
          and the privacy policy had to declare audio it never received. The
          alert now sends name and location only. -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- No POST_NOTIFICATIONS. It was declared, but the app has no
+         notification capability at all: no notification package in pubspec, no
+         runtime request, nothing that can post one. A declared permission the
+         app never uses is a question a Play reviewer has to ask and the answer
+         is "we do not". Add it back together with the code that needs it. -->
 
     <!-- Location is used only while the app is open (foreground). No background
          location or foreground-service permission: Google Play requires a
@@ -21,7 +38,9 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:enableOnBackInvokedCallback="true"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
 
         <!-- Google Maps SDK key.
              This MUST be present at build time; Google does not allow the map

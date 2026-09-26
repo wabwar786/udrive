@@ -32,6 +32,7 @@ Har type par: **Collected = Yes**, **Shared = No**, **Processed ephemerally = No
 | Photos and videos → Photos (driver documents, vehicle photos) | App functionality; Fraud prevention, security and compliance |
 | App activity → Other user-generated content (trips, ratings) | App functionality |
 | Personal info → Other info (trusted contacts, emergency contacts, and tour passenger names) | App functionality; Fraud prevention, security and compliance |
+| Personal info → Other info (tour passenger **gender** and age group) | App functionality |
 | Device or other IDs | Fraud prevention, security and compliance |
 
 **Do entries baad mein shaamil ki gayin** (release audit ke dauran — code inhein
@@ -41,6 +42,13 @@ declare karne jitna he masla hai):
 - **Financial info → Payment info** — driver apna payout account deta hai:
   account title, bank ka naam aur account number. Yeh "Other financial info"
   se alag cheez hai.
+- **Personal info → Other info (gender)** — tour package book karte waqt har
+  passenger ka gender aur age group liya jata hai (`CreateTourPassenger`
+  request), kyunke family-only aur women-only gaariyon ka intezam isi par
+  chalta hai. Play gender ko sensitive ginta hai, is liye declare karna
+  lazmi hai — chhupana reject hone ki wajah banta hai. Yeh sirf us booking
+  ke driver tak jata hai, kahin bika nahi jata, ads mein istemal nahi hota.
+
 - **Personal info → Other info (doosre logon ka data)** — trusted contacts ka
   naam aur number, booking ka emergency contact, aur tour passengers ke naam.
   Yeh user ka apna data nahi, kisi aur ka hai, is liye alag entry chahiye.
@@ -102,6 +110,19 @@ message nahi jata.
 ke baad app **Customer mode** mein khulta hai, aur home par "Switch to Driver
 Mode" ka card se reviewer driver wala app bhee dekh leta hai. Is liye ek hi
 credential se dono taraf ka jaiza liya ja sakta hai.
+
+> **Yeh credentials app ke andar NAHI hain, aur dobara na daalein.** Pehle
+> `AppController` mein `demoPhoneNumber` aur `demoReviewerCode` `static const`
+> thay, yani AAB mein ship hote thay — jo bhi bundle kholta, woh production
+> par ek verified Approved Driver ban kar login kar sakta tha. Aur login
+> screen ka one-tap demo button `kIsWeb || kDebugMode` par tha, is liye kisi
+> bhi production **web** build par woh sab ko nazar aata tha. Dono hata diye
+> gaye hain. Reviewer ko rasta sirf isi "App access" field se milta hai, aur
+> server us ko `system_settings` se manta hai — to ek hi jagah se revoke bhi
+> ho jata hai.
+>
+> **Listing approve hone ke din:** Admin portal → Services → WhatsApp OTP mein
+> reviewer number aur code khali kar dein. Us ke baad woh bypass band.
 
 Play Console ke "App access" mein yeh instructions daalein:
 

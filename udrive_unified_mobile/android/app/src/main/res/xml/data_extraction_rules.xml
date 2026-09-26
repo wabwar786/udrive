@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    What may leave this app in a backup or a device-to-device transfer.
+
+    Nothing may.
+
+    android:allowBackup="false" alone is not enough on Android 12 and above:
+    it stops cloud backup, but device-to-device transfer is governed by this
+    file, and with no file the platform decides. What the app keeps locally is
+    the signed-in session and, on a Driver's phone, a queue of up to 150
+    location points waiting to upload — both in plain SharedPreferences. Neither
+    should be copied onto another handset by a transfer wizard, and a session
+    token that survives onto a second device is the kind of thing nobody
+    notices until it matters.
+
+    There is nothing to lose by excluding everything: the app holds no local
+    content a person would miss. Signing in again restores all of it from the
+    API.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

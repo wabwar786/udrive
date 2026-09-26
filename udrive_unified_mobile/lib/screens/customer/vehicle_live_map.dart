@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/booking_models.dart';
+import '../../core/permissions/location_access.dart';
 
 /// C-29 — the assigned tour vehicle, live, relative to the customer.
 ///
@@ -80,12 +81,10 @@ class _VehicleLiveMapState extends State<VehicleLiveMap> {
   Future<Position?> _readCustomerPosition() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return null;
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      // Disclosure before the prompt — see LocationAccess.
+      final permission =
+          await LocationAccess.ensure(context, LocationPurpose.customer);
+      if (!LocationAccess.granted(permission)) {
         return null;
       }
       return Geolocator.getCurrentPosition(

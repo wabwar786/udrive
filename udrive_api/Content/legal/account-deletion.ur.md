@@ -27,7 +27,8 @@ account bana hua hai. Hum number ki tasdeeq kar ke account delete kar dein ge.
 
 ## Kya mit jata hai
 
-- Aap ka naam, phone number aur email badal kar khali kar diye jate hain. **Aap
+- Aap ka email address mita diya jata hai, aur naam aur phone number ki jagah
+  placeholder aa jate hain. **Aap
   ka mobile number foran azad ho jata hai**, to woh dobara register ho sakta hai
   — aap se ya kisi aur se.
 - Har device par har khula hua session usi waqt khatam.

@@ -289,7 +289,8 @@ cancel karein.
 
 **Kya mit jata hai**
 
-- Aap ka naam, phone number aur email badal diye jate hain. Aap ka number foran
+- Aap ka email address mita diya jata hai. Naam aur phone number ki jagah
+  placeholder aa jate hain. Aap ka number foran
   azad ho jata hai, to aap ya koi aur usay dobara register kar sakta hai.
 - Har jagah ke tamam sessions khatam.
 - Aap ke trusted contacts poori tarah mita diye jate hain.

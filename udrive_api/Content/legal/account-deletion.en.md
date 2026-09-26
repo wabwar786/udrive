@@ -27,9 +27,9 @@ registered to. We will verify the number and delete the account for you.
 
 ## What is erased
 
-- Your name, phone number and email address are replaced with placeholders.
-  **Your mobile number is released immediately**, so it can be registered again
-  — by you or by anybody else.
+- Your email address is deleted outright. Your name and phone number are
+  replaced with placeholders. **Your mobile number is released immediately**, so
+  it can be registered again — by you or by anybody else.
 - Every signed-in session, on every device, ends at once.
 - Your trusted contacts are deleted outright.
 - If you drove for UDrive: your CNIC number, driving licence number, date of

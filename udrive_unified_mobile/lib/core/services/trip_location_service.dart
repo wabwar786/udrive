@@ -15,7 +15,25 @@ class TripLocationService {
   Timer? _timer;String? _bookingId;String? _status;
   static const _queueKey='phase12_location_queue_v1';
 
-  Future<bool> ensurePermission() async {if(!await Geolocator.isLocationServiceEnabled())return false;var p=await Geolocator.checkPermission();if(p==LocationPermission.denied)p=await Geolocator.requestPermission();return p==LocationPermission.always||p==LocationPermission.whileInUse;}
+  /// Checks, and deliberately does NOT ask.
+  ///
+  /// This runs from a repeating timer while a trip is under way, with no screen
+  /// of its own and no BuildContext. It used to call
+  /// `Geolocator.requestPermission()` from there, which meant the system
+  /// permission dialog could appear out of a background tick with no
+  /// explanation in front of it — the exact thing Google Play's location policy
+  /// forbids, and startling for the Driver either way.
+  ///
+  /// The Driver is asked properly, with a disclosure, when they go online
+  /// (driver_home_screen -> LocationAccess.ensure with LocationPurpose.driver),
+  /// and a Driver cannot be on a trip without having been online first. So by
+  /// the time this runs the answer is already yes; if it somehow is not, the
+  /// trail simply does not upload until it is, which is the right failure.
+  Future<bool> ensurePermission() async {
+    if (!await Geolocator.isLocationServiceEnabled()) return false;
+    final p = await Geolocator.checkPermission();
+    return p == LocationPermission.always || p == LocationPermission.whileInUse;
+  }
   /// Starts publishing this Driver's position.
   ///
   /// The interval comes from the server, so an admin can turn it without a
