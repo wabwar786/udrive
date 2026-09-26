@@ -530,115 +530,195 @@ public sealed class SelfTestService(
     /// Every account is left <c>Suspended</c>; <see cref="SetAccountsSuspendedAsync"/>
     /// is what lifts that for the length of a run.
     /// </remarks>
+    /// <summary>One statement of the setup, with a name to report it by.</summary>
+    /// <remarks>
+    /// The setup used to be a single multi-statement command. When the live
+    /// database answered <c>42P10: there is no unique or exclusion constraint
+    /// matching the ON CONFLICT specification</c>, the report could say only
+    /// that — not which of the eight statements had failed, and there are six
+    /// <c>ON CONFLICT</c> clauses among them. Each one is named and sent
+    /// separately now, so the next failure says where it happened.
+    /// </remarks>
+    private sealed record SetupStatement(string Name, string Sql);
+
     private async Task EnsureAccountsAsync(CancellationToken cancellationToken)
     {
-        const string sql = """
-            -- The three signed-in roles plus the Admin the run needs for the
-            -- two approval steps. Admin, not SuperAdmin: the harness approves a
-            -- hotel and a tour package, and nothing else.
-            INSERT INTO udrive.users
-                (id, phone_number, email, full_name, role, status,
-                 preferred_language, phone_verified, created_at, updated_at)
-            VALUES
-                (gen_random_uuid(), @customerPhone, @customerEmail, @customerName,
-                 'Customer', 'Suspended', 'en', true, now(), now()),
-                (gen_random_uuid(), @driverPhone, @driverEmail, @driverName,
-                 'Driver', 'Suspended', 'en', true, now(), now()),
-                (gen_random_uuid(), @hotelPhone, @hotelEmail, @hotelName,
-                 'Customer', 'Suspended', 'en', true, now(), now()),
-                (gen_random_uuid(), @adminPhone, @adminEmail, @adminName,
-                 'Admin', 'Suspended', 'en', true, now(), now())
-            ON CONFLICT (phone_number) DO UPDATE
-            SET email = EXCLUDED.email,
-                full_name = EXCLUDED.full_name,
-                updated_at = now();
+        SetupStatement[] statements =
+        [
+            new("the four accounts", """
+                -- The three signed-in roles plus the Admin the run needs for
+                -- the two approval steps. Admin, not SuperAdmin: the harness
+                -- approves a hotel and a tour package, and nothing else.
+                INSERT INTO udrive.users
+                    (id, phone_number, email, full_name, role, status,
+                     preferred_language, phone_verified, created_at, updated_at)
+                VALUES
+                    (gen_random_uuid(), @customerPhone, @customerEmail, @customerName,
+                     'Customer', 'Suspended', 'en', true, now(), now()),
+                    (gen_random_uuid(), @driverPhone, @driverEmail, @driverName,
+                     'Driver', 'Suspended', 'en', true, now(), now()),
+                    (gen_random_uuid(), @hotelPhone, @hotelEmail, @hotelName,
+                     'Customer', 'Suspended', 'en', true, now(), now()),
+                    (gen_random_uuid(), @adminPhone, @adminEmail, @adminName,
+                     'Admin', 'Suspended', 'en', true, now(), now())
+                ON CONFLICT (phone_number) DO UPDATE
+                SET email = EXCLUDED.email,
+                    full_name = EXCLUDED.full_name,
+                    updated_at = now();
+                """),
 
-            INSERT INTO udrive.user_roles (user_id, role, created_at)
-            SELECT u.id, 'Customer', now() FROM udrive.users u
-             WHERE u.email IN (@customerEmail, @hotelEmail)
-            ON CONFLICT (user_id, role) DO NOTHING;
+            new("the Customer role", """
+                INSERT INTO udrive.user_roles (user_id, role, created_at)
+                SELECT u.id, 'Customer', now() FROM udrive.users u
+                 WHERE u.email IN (@customerEmail, @hotelEmail)
+                ON CONFLICT (user_id, role) DO NOTHING;
+                """),
 
-            INSERT INTO udrive.user_roles (user_id, role, created_at)
-            SELECT u.id, 'Driver', now() FROM udrive.users u WHERE u.email = @driverEmail
-            ON CONFLICT (user_id, role) DO NOTHING;
+            new("the Driver role", """
+                INSERT INTO udrive.user_roles (user_id, role, created_at)
+                SELECT u.id, 'Driver', now() FROM udrive.users u
+                 WHERE u.email = @driverEmail
+                ON CONFLICT (user_id, role) DO NOTHING;
+                """),
 
-            INSERT INTO udrive.user_roles (user_id, role, created_at)
-            SELECT u.id, 'Admin', now() FROM udrive.users u WHERE u.email = @adminEmail
-            ON CONFLICT (user_id, role) DO NOTHING;
+            new("the Admin role", """
+                INSERT INTO udrive.user_roles (user_id, role, created_at)
+                SELECT u.id, 'Admin', now() FROM udrive.users u
+                 WHERE u.email = @adminEmail
+                ON CONFLICT (user_id, role) DO NOTHING;
+                """),
 
-            INSERT INTO udrive.customer_profiles (id, user_id, created_at, updated_at)
-            SELECT gen_random_uuid(), u.id, now(), now() FROM udrive.users u
-             WHERE u.email IN (@customerEmail, @hotelEmail)
-            ON CONFLICT (user_id) DO NOTHING;
+            new("the customer profiles", """
+                INSERT INTO udrive.customer_profiles (id, user_id, created_at, updated_at)
+                SELECT gen_random_uuid(), u.id, now(), now() FROM udrive.users u
+                 WHERE u.email IN (@customerEmail, @hotelEmail)
+                ON CONFLICT (user_id) DO NOTHING;
+                """),
 
-            -- Approved and online, because a Driver who is neither sees no ride
-            -- requests at all and the run would fail on its own setup.
-            INSERT INTO udrive.driver_profiles
-                (id, user_id, verification_status, languages, service_areas,
-                 is_online, created_at, updated_at)
-            SELECT gen_random_uuid(), u.id, 'Approved', '{en}', '{Muzaffarabad}',
-                   true, now(), now()
-            FROM udrive.users u WHERE u.email = @driverEmail
-            ON CONFLICT (user_id) DO UPDATE
-            SET verification_status = 'Approved', is_online = true, updated_at = now();
+            new("the driver profile", """
+                -- Approved and online, because a Driver who is neither sees no
+                -- ride requests at all and the run would fail on its own setup.
+                INSERT INTO udrive.driver_profiles
+                    (id, user_id, verification_status, languages, service_areas,
+                     is_online, created_at, updated_at)
+                SELECT gen_random_uuid(), u.id, 'Approved', '{en}', '{Muzaffarabad}',
+                       true, now(), now()
+                FROM udrive.users u WHERE u.email = @driverEmail
+                ON CONFLICT (user_id) DO UPDATE
+                SET verification_status = 'Approved',
+                    is_online = true,
+                    updated_at = now();
+                """),
 
-            -- Capacity 4 and a readiness score of 85: the tour package rules
-            -- refuse anything under 60, and the package books 4 seats.
-            INSERT INTO udrive.vehicles
-                (id, driver_profile_id, category, make, model, year,
-                 registration_number, colour, passenger_capacity, luggage_capacity,
-                 has_air_conditioning, has_heating, is_four_by_four,
-                 mountain_readiness_score, status, booking_mode,
-                 available_for_tour, created_at, updated_at)
-            SELECT gen_random_uuid(), dp.id, 'Car', 'Self-test', 'Harness', 2024,
-                   @registration, 'White', 4, 2, true, true, true,
-                   85, 'Verified', 'Both', true, now(), now()
-            FROM udrive.driver_profiles dp
-            JOIN udrive.users u ON u.id = dp.user_id
-            WHERE u.email = @driverEmail
-            ON CONFLICT (registration_number) DO UPDATE
-            SET status = 'Verified',
-                mountain_readiness_score = 85,
-                available_for_tour = true,
-                booking_mode = 'Both',
-                updated_at = now();
+            // Deliberately not ON CONFLICT. Migration 042 dropped the plain
+            // UNIQUE on registration_number and replaced it with a PARTIAL,
+            // EXPRESSION index:
+            //
+            //     CREATE UNIQUE INDEX ux_vehicles_registration_live
+            //         ON udrive.vehicles (upper(btrim(registration_number)))
+            //         WHERE status <> 'Deleted';
+            //
+            // `ON CONFLICT (registration_number)` cannot match that on two
+            // counts — the index is on an expression, and it covers only part
+            // of the table — so the live database answered 42P10. An update
+            // followed by an insert-if-absent works whatever shape the
+            // constraint is in, which is the point: the next migration to
+            // change it will not break this again.
+            new("the harness vehicle (update)", """
+                UPDATE udrive.vehicles v
+                SET status = 'Verified',
+                    passenger_capacity = 4,
+                    mountain_readiness_score = 85,
+                    available_for_tour = true,
+                    booking_mode = 'Both',
+                    updated_at = now()
+                FROM udrive.driver_profiles dp
+                JOIN udrive.users du ON du.id = dp.user_id
+                WHERE v.driver_profile_id = dp.id
+                  AND du.email = @driverEmail
+                  AND upper(btrim(v.registration_number)) = upper(btrim(@registration));
+                """),
 
-            -- Prepaid commission, topped back up every run.
-            --
-            -- GetEligibleRideRequestsAsync stops showing requests to a Driver
-            -- whose commission balance has run out, and the run spends some of
-            -- it every time it starts a trip. Without this the harness would
-            -- work for a few weeks and then start reporting a platform failure
-            -- that was really its own empty wallet.
-            INSERT INTO udrive.driver_wallets
-                (id, driver_profile_id, commission_balance, created_at, updated_at)
-            SELECT gen_random_uuid(), dp.id, 20000, now(), now()
-            FROM udrive.driver_profiles dp
-            JOIN udrive.users u ON u.id = dp.user_id
-            WHERE u.email = @driverEmail
-            ON CONFLICT (driver_profile_id) DO UPDATE
-            SET commission_balance = 20000,
-                version = udrive.driver_wallets.version + 1,
-                updated_at = now();
-            """;
+            // Capacity 4 and a readiness score of 85: the tour package rules
+            // refuse anything under 60, and the package books 4 seats.
+            //
+            // The UPDATE above runs first, so a row that already exists — even
+            // a soft-deleted one — has been revived by the time this looks, and
+            // NOT EXISTS then stops a second one being created.
+            new("the harness vehicle (insert)", """
+                INSERT INTO udrive.vehicles
+                    (id, driver_profile_id, category, make, model, year,
+                     registration_number, colour, passenger_capacity, luggage_capacity,
+                     has_air_conditioning, has_heating, is_four_by_four,
+                     mountain_readiness_score, status, booking_mode,
+                     available_for_tour, created_at, updated_at)
+                SELECT gen_random_uuid(), dp.id, 'Car', 'Self-test', 'Harness', 2024,
+                       @registration, 'White', 4, 2, true, true, true,
+                       85, 'Verified', 'Both', true, now(), now()
+                FROM udrive.driver_profiles dp
+                JOIN udrive.users du ON du.id = dp.user_id
+                WHERE du.email = @driverEmail
+                  AND NOT EXISTS (
+                        SELECT 1 FROM udrive.vehicles v2
+                         WHERE upper(btrim(v2.registration_number))
+                               = upper(btrim(@registration)));
+                """),
+
+            new("the driver wallet", """
+                -- Prepaid commission, topped back up every run.
+                --
+                -- GetEligibleRideRequestsAsync stops showing requests to a
+                -- Driver whose commission balance has run out, and the run
+                -- spends some of it every time it starts a trip. Without this
+                -- the harness would work for a few weeks and then start
+                -- reporting a platform failure that was really its own empty
+                -- wallet.
+                INSERT INTO udrive.driver_wallets
+                    (id, driver_profile_id, commission_balance, created_at, updated_at)
+                SELECT gen_random_uuid(), dp.id, 20000, now(), now()
+                FROM udrive.driver_profiles dp
+                JOIN udrive.users du ON du.id = dp.user_id
+                WHERE du.email = @driverEmail
+                ON CONFLICT (driver_profile_id) DO UPDATE
+                SET commission_balance = 20000,
+                    version = udrive.driver_wallets.version + 1,
+                    updated_at = now();
+                """),
+        ];
 
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("customerPhone", SelfTestAccounts.CustomerPhone);
-        command.Parameters.AddWithValue("customerEmail", SelfTestAccounts.CustomerEmail);
-        command.Parameters.AddWithValue("customerName", SelfTestAccounts.CustomerName);
-        command.Parameters.AddWithValue("driverPhone", SelfTestAccounts.DriverPhone);
-        command.Parameters.AddWithValue("driverEmail", SelfTestAccounts.DriverEmail);
-        command.Parameters.AddWithValue("driverName", SelfTestAccounts.DriverName);
-        command.Parameters.AddWithValue("hotelPhone", SelfTestAccounts.HotelOwnerPhone);
-        command.Parameters.AddWithValue("hotelEmail", SelfTestAccounts.HotelOwnerEmail);
-        command.Parameters.AddWithValue("hotelName", SelfTestAccounts.HotelOwnerName);
-        command.Parameters.AddWithValue("adminPhone", SelfTestAccounts.AdminPhone);
-        command.Parameters.AddWithValue("adminEmail", SelfTestAccounts.AdminEmail);
-        command.Parameters.AddWithValue("adminName", SelfTestAccounts.AdminName);
-        command.Parameters.AddWithValue("registration", SelfTestAccounts.VehicleRegistration);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        foreach (var statement in statements)
+        {
+            try
+            {
+                await using var command = new NpgsqlCommand(statement.Sql, connection);
+                command.Parameters.AddWithValue("customerPhone", SelfTestAccounts.CustomerPhone);
+                command.Parameters.AddWithValue("customerEmail", SelfTestAccounts.CustomerEmail);
+                command.Parameters.AddWithValue("customerName", SelfTestAccounts.CustomerName);
+                command.Parameters.AddWithValue("driverPhone", SelfTestAccounts.DriverPhone);
+                command.Parameters.AddWithValue("driverEmail", SelfTestAccounts.DriverEmail);
+                command.Parameters.AddWithValue("driverName", SelfTestAccounts.DriverName);
+                command.Parameters.AddWithValue("hotelPhone", SelfTestAccounts.HotelOwnerPhone);
+                command.Parameters.AddWithValue("hotelEmail", SelfTestAccounts.HotelOwnerEmail);
+                command.Parameters.AddWithValue("hotelName", SelfTestAccounts.HotelOwnerName);
+                command.Parameters.AddWithValue("adminPhone", SelfTestAccounts.AdminPhone);
+                command.Parameters.AddWithValue("adminEmail", SelfTestAccounts.AdminEmail);
+                command.Parameters.AddWithValue("adminName", SelfTestAccounts.AdminName);
+                command.Parameters.AddWithValue("registration", SelfTestAccounts.VehicleRegistration);
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                // Rethrown with the statement's name in front, because the
+                // database's own message says what went wrong and never says
+                // where.
+                throw new InvalidOperationException(
+                    $"Setting up {statement.Name} failed: {exception.Message}",
+                    exception);
+            }
+        }
     }
 
     /// <summary>Opens the four accounts for a run, or shuts them again after one.</summary>
