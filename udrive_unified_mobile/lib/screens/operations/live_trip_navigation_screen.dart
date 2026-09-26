@@ -237,50 +237,47 @@ class _DriverLiveNavigationScreenState
   Future<void> _startTripWithOtp() async {
     if (_actionBusy) return;
     final controller = TextEditingController();
-    final otp = await showDialog<String>(
+    final otp = await showUdDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Start the trip'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Says what the code is for, not just what to type.
-            //
-            // "Enter Trip OTP" tells a Driver the mechanics and none of the
-            // purpose, and a step whose purpose is unclear is one people work
-            // around — asking for the code through a car window, or starting
-            // the trip with the wrong passenger aboard.
-            const Text(
-              'Ask the passenger for the 4-digit code in their app.\n\n'
-              'It confirms the right person is in your vehicle, and it starts '
-              'the fare. Nobody can be charged for a trip they did not take, '
-              'and you cannot be blamed for one you did not carry.',
-              style: TextStyle(height: 1.5),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 8),
-              decoration: const InputDecoration(counterText: '', hintText: '0000'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (RegExp(r'^\d{4}$').hasMatch(value)) Navigator.pop(dialogContext, value);
-            },
-            child: const Text('Start Ride'),
-          ),
-        ],
+      title: 'Start the trip',
+      // Says what the code is for, not just what to type.
+      //
+      // "Enter Trip OTP" tells a Driver the mechanics and none of the
+      // purpose, and a step whose purpose is unclear is one people work
+      // around — asking for the code through a car window, or starting
+      // the trip with the wrong passenger aboard.
+      message: 'Ask the passenger for the 4-digit code in their app.\n\n'
+          'It confirms the right person is in your vehicle, and it starts '
+          'the fare. Nobody can be charged for a trip they did not take, '
+          'and you cannot be blamed for one you did not carry.',
+      content: UdTextField(
+        controller: controller,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        maxLength: 4,
+        hint: '0000',
       ),
+      actions: [
+        Builder(
+          builder: (dialogContext) => UdButtonRow(
+            children: [
+              UdButton.outline(
+                label: 'Cancel',
+                onPressed: () => Navigator.pop(dialogContext),
+              ),
+              UdButton.primary(
+                label: 'Start ride',
+                onPressed: () {
+                  final value = controller.text.trim();
+                  if (RegExp(r'^\d{4}$').hasMatch(value)) {
+                    Navigator.pop(dialogContext, value);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
     );
     controller.dispose();
     if (otp == null || !mounted) return;
@@ -329,70 +326,62 @@ class _DriverLiveNavigationScreenState
     String? chosen;
     final note = TextEditingController();
 
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showUdSheet<bool>(
       context: context,
-      isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            18,
-            18,
-            18,
-            MediaQuery.viewInsetsOf(context).bottom + 18,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Cancel this ride?',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'The customer is told immediately and the request goes back '
-                  'to other drivers.',
-                  style: TextStyle(fontSize: 12, height: 1.45),
-                ),
-                const SizedBox(height: 14),
-                for (final reason in _cancelReasons)
-                  RadioListTile<String>(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    value: reason,
-                    groupValue: chosen,
-                    onChanged: (value) => setSheet(() => chosen = value),
-                    title: Text(
-                      reason,
-                      style: const TextStyle(fontSize: 13.5),
+        builder: (context, setSheet) => SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 4),
+              Text(
+                'Cancel this ride?',
+                style: AppType.h2.copyWith(color: AppText.primary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'The customer is told immediately and the request goes back '
+                'to other drivers.',
+                style: AppType.body2.copyWith(color: AppText.secondary),
+              ),
+              const SizedBox(height: 16),
+              UdListGroup(
+                children: [
+                  for (final reason in _cancelReasons)
+                    UdListRow(
+                      title: reason,
+                      leading: UdRadio(
+                        selected: chosen == reason,
+                        onTap: () => setSheet(() => chosen = reason),
+                      ),
+                      onTap: () => setSheet(() => chosen = reason),
                     ),
-                  ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: note,
-                  maxLength: 200,
-                  decoration: const InputDecoration(
-                    labelText: 'Anything else (optional)',
-                    counterText: '',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.danger,
-                  ),
-                  onPressed: chosen == null
-                      ? null
-                      : () => Navigator.pop(sheetContext, true),
-                  child: const Text('Cancel ride'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(sheetContext, false),
-                  child: const Text('Keep this ride'),
-                ),
-              ],
-            ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              UdTextField(
+                controller: note,
+                label: 'Anything else',
+                labelSuffix: '(optional)',
+                maxLength: 200,
+                minLines: 2,
+                maxLines: 3,
+              ),
+              const SizedBox(height: 18),
+              UdButton(
+                label: 'Cancel ride',
+                variant: UdButtonVariant.dangerSolid,
+                onPressed: chosen == null
+                    ? null
+                    : () => Navigator.pop(sheetContext, true),
+              ),
+              const SizedBox(height: 10),
+              UdButton.ghost(
+                label: 'Keep this ride',
+                onPressed: () => Navigator.pop(sheetContext, false),
+              ),
+            ],
           ),
         ),
       ),
@@ -977,7 +966,19 @@ class _DriverLiveNavigationScreenState
                         const SizedBox(width: 8),
                         Expanded(
                           flex: 2,
-                          child: FilledButton.icon(
+                          child: UdButton.primary(
+                            size: UdButtonSize.small,
+                            busy: _actionBusy,
+                            icon: _currentStatus == 'DriverArrived'
+                                ? Icons.play_arrow_rounded
+                                : _currentStatus == 'TripStarted'
+                                    ? Icons.check_circle_outline_rounded
+                                    : Icons.location_on_rounded,
+                            label: _currentStatus == 'DriverArrived'
+                                ? 'Start trip with OTP'
+                                : _currentStatus == 'TripStarted'
+                                    ? 'Complete trip'
+                                    : 'I have arrived',
                             onPressed: _starting || _actionBusy
                                 ? null
                                 : _currentStatus == 'DriverEnRoute'
@@ -987,25 +988,6 @@ class _DriverLiveNavigationScreenState
                                         : _currentStatus == 'TripStarted'
                                             ? () => _changeStatus('TripCompleted')
                                             : null,
-                            icon: _actionBusy
-                                ? const SizedBox.square(
-                                    dimension: 17,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : Icon(
-                                    _currentStatus == 'DriverArrived'
-                                        ? Icons.play_arrow_rounded
-                                        : _currentStatus == 'TripStarted'
-                                            ? Icons.check_circle_outline_rounded
-                                            : Icons.location_on_rounded,
-                                  ),
-                            label: Text(
-                              _currentStatus == 'DriverArrived'
-                                  ? 'Customer boarded · Start trip'
-                                  : _currentStatus == 'TripStarted'
-                                      ? 'Complete trip'
-                                      : 'I have arrived',
-                            ),
                           ),
                         ),
                       ],
@@ -1441,99 +1423,83 @@ class _CustomerFullScreenTrackingScreenState
     final reason = TextEditingController();
     var chosen = '';
 
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showUdSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
       builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            20, 18, 20, MediaQuery.viewInsetsOf(context).bottom + 20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Cancel this ride?',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                    color: AppText.primary,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  needsReason
-                      ? 'Your driver has been on the way for a while. Tell them '
-                          'why so they are not left guessing.'
-                      : 'The driver will be told straight away.',
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    height: 1.5,
-                    color: AppText.secondary,
-                  ),
-                ),
+        builder: (context, setSheet) => SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 4),
+              Text(
+                'Cancel this ride?',
+                style: AppType.h2.copyWith(color: AppText.primary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                needsReason
+                    ? 'Your driver has been on the way for a while. Tell them '
+                        'why so they are not left guessing.'
+                    : 'The driver will be told straight away.',
+                style: AppType.body2.copyWith(color: AppText.secondary),
+              ),
 
-                if (needsReason) ...[
-                  const SizedBox(height: 16),
-                  for (final option in const [
-                    'My plans changed',
-                    'The driver is taking too long',
-                    'I found another ride',
-                    'The pickup point is wrong',
-                    'Something else',
-                  ])
-                    RadioListTile<String>(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      value: option,
-                      groupValue: chosen,
-                      onChanged: (value) => setSheet(() => chosen = value ?? ''),
-                      title: Text(
-                        option,
-                        style: const TextStyle(
-                            fontSize: 13.5, color: AppText.primary),
-                      ),
-                    ),
-                  if (chosen == 'Something else')
-                    TextField(
-                      controller: reason,
-                      maxLength: 200,
-                      style: const TextStyle(color: AppText.primary),
-                      decoration: const InputDecoration(
-                        labelText: 'What happened?',
-                        counterText: '',
-                      ),
-                    ),
-                ],
-
+              if (needsReason) ...[
                 const SizedBox(height: 16),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.danger,
+                UdListGroup(
+                  children: [
+                    for (final option in const [
+                      'My plans changed',
+                      'The driver is taking too long',
+                      'I found another ride',
+                      'The pickup point is wrong',
+                      'Something else',
+                    ])
+                      UdListRow(
+                        title: option,
+                        leading: UdRadio(
+                          selected: chosen == option,
+                          onTap: () => setSheet(() => chosen = option),
+                        ),
+                        onTap: () => setSheet(() => chosen = option),
+                      ),
+                  ],
+                ),
+                if (chosen == 'Something else') ...[
+                  const SizedBox(height: 14),
+                  UdTextField(
+                    controller: reason,
+                    label: 'What happened?',
+                    maxLength: 200,
+                    minLines: 2,
+                    maxLines: 3,
+                    onChanged: (_) => setSheet(() {}),
                   ),
-                  // A reason is required once the window has passed, and
-                  // "Something else" has to actually say something — an empty
-                  // free-text box selected and left blank tells the driver
-                  // exactly as little as no reason at all.
-                  onPressed: !needsReason ||
-                          (chosen.isNotEmpty &&
-                              (chosen != 'Something else' ||
-                                  reason.text.trim().length >= 3))
-                      ? () => Navigator.pop(sheetContext, true)
-                      : null,
-                  child: const Text('Cancel ride'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(sheetContext, false),
-                  child: const Text('Keep this ride'),
-                ),
+                ],
               ],
-            ),
+
+              const SizedBox(height: 18),
+              UdButton(
+                label: 'Cancel ride',
+                variant: UdButtonVariant.dangerSolid,
+                // A reason is required once the window has passed, and
+                // "Something else" has to actually say something — an empty
+                // free-text box selected and left blank tells the driver
+                // exactly as little as no reason at all.
+                onPressed: !needsReason ||
+                        (chosen.isNotEmpty &&
+                            (chosen != 'Something else' ||
+                                reason.text.trim().length >= 3))
+                    ? () => Navigator.pop(sheetContext, true)
+                    : null,
+              ),
+              const SizedBox(height: 10),
+              UdButton.ghost(
+                label: 'Keep this ride',
+                onPressed: () => Navigator.pop(sheetContext, false),
+              ),
+            ],
           ),
         ),
       ),

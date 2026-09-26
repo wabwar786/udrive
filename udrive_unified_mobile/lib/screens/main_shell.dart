@@ -31,7 +31,7 @@ import 'customer/tourism_booking_screen.dart';
 import 'driver/driver_home_screen.dart';
 import 'driver/driver_earnings_screen.dart';
 import 'feedback/feedback_center_screen.dart';
-import 'driver/driver_pages.dart' hide DriverEarningsScreen;
+import 'driver/driver_pages.dart';
 import 'driver/advanced_package_screen.dart';
 import 'driver/driver_tourism_tools.dart';
 import 'driver/vehicle_registration_screen.dart';
@@ -595,7 +595,7 @@ class _MainShellState extends State<MainShell> {
 
   Widget _driverContent(String key) => switch (key) {
         'driverVerification' => const DriverVerificationScreen(),
-        'dashboard' => DriverHomeScreen(onNavigate: _driverNavigate),
+        'dashboard' => const DriverHomeScreen(),
         'requests' => const LiveDriverRequestsScreen(),
         'driverPackages' => const LiveDriverPackagesScreen(),
         'createPackage' => const LiveCreatePackageScreen(),
@@ -630,7 +630,7 @@ class _MainShellState extends State<MainShell> {
         'support' => const FeedbackCenterScreen(),
         'settings' => const SettingsScreen(),
         'driverProfile' => DriverProfileScreen(onNavigate: _driverNavigate),
-        _ => DriverHomeScreen(onNavigate: _driverNavigate),
+        _ => const DriverHomeScreen(),
       };
 
   void _customerNavigate(String page) => _goToCustomer(page);
