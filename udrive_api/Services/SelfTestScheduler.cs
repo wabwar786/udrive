@@ -89,6 +89,17 @@ public sealed class SelfTestScheduler(
             return;
         }
 
+        // A due time from before the schedule was switched on is not owed.
+        //
+        // Turning the daily run on at two in the afternoon would otherwise fire
+        // it immediately: this morning's 03:00 has passed and no scheduled run
+        // has happened since it, which looks exactly like a missed run. The
+        // first run belongs at the next 03:00.
+        if (schedule.EnabledAt is { } enabledAt && due < enabledAt)
+        {
+            return;
+        }
+
         if (await service.HasScheduledRunSinceAsync(due, stoppingToken))
         {
             return;

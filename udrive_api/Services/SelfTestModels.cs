@@ -67,11 +67,21 @@ public sealed record SelfTestRunSummary(
 /// Local Pakistan time (UTC+5) as <c>HH:mm</c>. Pakistan does not observe
 /// daylight saving, so a fixed offset is correct here and will stay correct.
 /// </param>
+/// <param name="EnabledAt">
+/// When the daily run was last switched on.
+/// </param>
+/// <remarks>
+/// Needed so that turning the schedule on at two in the afternoon does not
+/// immediately fire the run: this morning's 03:00 has passed and no scheduled
+/// run has happened since, which without this reads as "today's run is owed".
+/// The first run belongs at the next 03:00, not now.
+/// </remarks>
 public sealed record SelfTestScheduleDto(
     bool Enabled,
     string Time,
     DateTimeOffset? LastRunAt,
     string? LastRunStatus,
-    DateTimeOffset? NextRunAt);
+    DateTimeOffset? NextRunAt,
+    DateTimeOffset? EnabledAt);
 
 public sealed record SaveSelfTestScheduleRequest(bool Enabled, string Time);

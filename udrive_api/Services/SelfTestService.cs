@@ -376,7 +376,9 @@ public sealed class SelfTestService(
                 COALESCE((SELECT value_json #>> '{}' FROM udrive.system_settings
                            WHERE key='selftest.schedule.time'), '03:00'),
                 (SELECT started_at FROM udrive.self_test_runs ORDER BY started_at DESC LIMIT 1),
-                (SELECT status FROM udrive.self_test_runs ORDER BY started_at DESC LIMIT 1);
+                (SELECT status FROM udrive.self_test_runs ORDER BY started_at DESC LIMIT 1),
+                (SELECT value_json #>> '{}' FROM udrive.system_settings
+                  WHERE key='selftest.schedule.enabled_at');
             """;
 
         await using var connection = new NpgsqlConnection(connectionString);
@@ -390,12 +392,24 @@ public sealed class SelfTestService(
         var lastRunAt = reader.IsDBNull(2) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(2);
         var lastStatus = reader.IsDBNull(3) ? null : reader.GetString(3);
 
+        DateTimeOffset? enabledAt = null;
+        if (!reader.IsDBNull(4) &&
+            DateTimeOffset.TryParse(
+                reader.GetString(4),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal,
+                out var parsedEnabledAt))
+        {
+            enabledAt = parsedEnabledAt;
+        }
+
         return new SelfTestScheduleDto(
             enabled,
             time,
             lastRunAt,
             lastStatus,
-            enabled ? NextRunAfter(DateTimeOffset.UtcNow, time) : null);
+            enabled ? NextRunAfter(DateTimeOffset.UtcNow, time) : null,
+            enabledAt);
     }
 
     /// <summary>Whether a scheduled run has already happened since a moment.</summary>
@@ -432,10 +446,17 @@ public sealed class SelfTestService(
         Guid adminUserId,
         CancellationToken cancellationToken)
     {
+        // enabled_at is written on every save while the schedule is on, not only
+        // when it changes from off to on. Changing the time is the same problem
+        // in miniature: moving 03:00 to 23:00 at noon would otherwise leave
+        // today's 23:00... which has not happened, so that one is fine — but
+        // moving 23:00 to 03:00 at noon would make this morning's 03:00 look
+        // owed. Re-stamping on every save settles both.
         const string sql = """
             INSERT INTO udrive.system_settings (key, value_json, updated_by_user_id, created_at, updated_at)
             VALUES ('selftest.schedule.enabled', @enabled::jsonb, @admin, now(), now()),
-                   ('selftest.schedule.time', @time::jsonb, @admin, now(), now())
+                   ('selftest.schedule.time', @time::jsonb, @admin, now(), now()),
+                   ('selftest.schedule.enabled_at', @enabledAt::jsonb, @admin, now(), now())
             ON CONFLICT (key) DO UPDATE
             SET value_json = EXCLUDED.value_json,
                 updated_by_user_id = EXCLUDED.updated_by_user_id,
@@ -447,6 +468,9 @@ public sealed class SelfTestService(
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("enabled", request.Enabled ? "true" : "false");
         command.Parameters.AddWithValue("time", JsonSerializer.Serialize(NormaliseTime(request.Time)));
+        command.Parameters.AddWithValue(
+            "enabledAt",
+            JsonSerializer.Serialize(DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)));
         command.Parameters.AddWithValue("admin", adminUserId);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -462,9 +486,20 @@ public sealed class SelfTestService(
     /// </remarks>
     public static string NormaliseTime(string? value)
     {
-        if (TimeOnly.TryParseExact(value?.Trim(), "HH:mm", CultureInfo.InvariantCulture, out var parsed) ||
-            TimeOnly.TryParse(value?.Trim(), CultureInfo.InvariantCulture, out parsed))
+        var text = value?.Trim() ?? string.Empty;
+
+        // TryParseExact has no (string, string, IFormatProvider, out TimeOnly)
+        // overload — the provider one also takes a DateTimeStyles. The three-
+        // argument form is what this wants anyway: "HH:mm" is a fixed pattern
+        // with nothing culture-dependent in it.
+        //
+        // The second line is the fallback for a value typed by hand or sent by
+        // a browser that formats the time differently ("3:00 AM", "03:00:00").
+        if (TimeOnly.TryParseExact(text, "HH:mm", out var parsed) ||
+            TimeOnly.TryParse(text, CultureInfo.InvariantCulture, out parsed))
         {
+            // Backslash escapes the colon so it stays a literal rather than the
+            // culture's time separator.
             return parsed.ToString("HH\\:mm", CultureInfo.InvariantCulture);
         }
 
