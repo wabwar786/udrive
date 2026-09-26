@@ -730,3 +730,184 @@ class _RouteStop extends StatelessWidget {
     );
   }
 }
+
+/// `.pill-live` — a white chip that sits on a map and says one short thing.
+///
+/// A coloured dot and a label: "LIVE GPS", "Driver is coming to pickup",
+/// "LIVE · 10 sec". The dot is the signal, so it is a real state and not
+/// decoration — amber when a position has gone stale, lime-ink when it is
+/// current, grey when nothing has arrived yet.
+///
+/// White on `sh-2` rather than a tinted pill: the v2 map artwork is a
+/// green-grey, and a tinted chip on it reads as part of the map.
+class UdMapChip extends StatelessWidget {
+  const UdMapChip({
+    required this.label,
+    this.dotColour,
+    this.icon,
+    this.uppercase = false,
+    super.key,
+  });
+
+  final String label;
+
+  /// Null draws no dot at all — a chip that is only a label.
+  final Color? dotColour;
+
+  final IconData? icon;
+
+  /// Overline treatment: 12.5/700 with tracking, for "LIVE GPS".
+  final bool uppercase;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: AppRadii.all(AppRadii.tile),
+          boxShadow: AppShadows.floating,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (dotColour != null) ...[
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  color: dotColour,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            if (icon != null) ...[
+              Icon(icon, size: 16, color: AppColors.navy),
+              const SizedBox(width: 7),
+            ],
+            Flexible(
+              child: Text(
+                uppercase ? label.toUpperCase() : label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: uppercase
+                    ? AppType.overline.copyWith(color: AppText.primary)
+                    : AppType.small.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppText.primary,
+                      ),
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// One leg of a [UdTimeline].
+class UdTimelineStep {
+  const UdTimelineStep({required this.title, this.subtitle});
+
+  final String title;
+  final String? subtitle;
+}
+
+/// `.route.numbered` — the from/to rail with numbered navy dots instead of the
+/// two end markers, for an itinerary of three or more stops.
+///
+/// [UdRouteRail] cannot do this: it draws exactly two ends, a ring and a
+/// square, because a ride has exactly two. A tour has as many stops as the
+/// driver typed, and each one needs its position in the order shown.
+class UdTimeline extends StatelessWidget {
+  const UdTimeline({required this.steps, super.key});
+
+  final List<UdTimelineStep> steps;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < steps.length; i++)
+            // IntrinsicHeight for the same reason UdRouteBlock needs it: the
+            // connecting line stretches to the height of the card beside it,
+            // and stretch inside a scrolling column has no height to take.
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: 28,
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            color: AppColors.navy,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '${i + 1}',
+                            style: AppType.caption.copyWith(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: AppText.onInk,
+                            ),
+                          ),
+                        ),
+                        if (i != steps.length - 1)
+                          const Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 4),
+                              child: SizedBox(
+                                width: 2,
+                                child: ColoredBox(
+                                    color: AppColors.borderStrong),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      margin: EdgeInsets.only(
+                          bottom: i == steps.length - 1 ? 0 : 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: AppRadii.all(AppRadii.row),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            steps[i].title,
+                            style: AppType.listTitle.copyWith(
+                              fontSize: 15,
+                              color: AppText.primary,
+                            ),
+                          ),
+                          if ((steps[i].subtitle ?? '').isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              steps[i].subtitle!,
+                              style: AppType.small.copyWith(
+                                fontSize: 13.5,
+                                color: AppText.secondary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      );
+}

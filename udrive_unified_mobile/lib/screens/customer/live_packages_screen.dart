@@ -4,11 +4,20 @@ import 'package:intl/intl.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/common_widgets.dart';
+import '../../core/widgets/ud_controls.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../core/widgets/vehicle_art.dart';
 import '../../models/booking_models.dart';
 import 'vehicle_live_map.dart';
 
+final _money = NumberFormat('#,###');
+
+String _pkr(num value) => 'PKR ${_money.format(value)}';
+
+/// C-27 — the tour marketplace.
+///
+/// A bottom-nav tab root: `main_shell` supplies the top bar, so there is no
+/// `Scaffold` and no app bar here.
 class LivePackagesScreen extends StatefulWidget {
   const LivePackagesScreen({super.key});
 
@@ -32,81 +41,100 @@ class _LivePackagesScreenState extends State<LivePackagesScreen> {
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
     final packages = controller.liveMarketplacePackages;
+
     return RefreshIndicator(
       onRefresh: _refresh,
+      color: AppColors.navy,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 30),
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 6, AppSizes.sidePadding, 34),
         children: [
-          PremiumCard(
-            color: AppColors.navy,
+          UdCard(
+            tone: UdCardTone.navy,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.travel_explore_rounded, color: Colors.white, size: 34),
-                const SizedBox(height: 12),
-                Text(
-                  _t(context, 'Verified Kashmir departures', 'تصدیق شدہ کشمیر ٹورز'),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20),
+                const UdIconTile(
+                  icon: Icons.travel_explore_rounded,
+                  tone: UdIconTone.lime,
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 14),
                 Text(
-                  _t(context, 'Reserve seats for 10 minutes, book the complete vehicle, or send your own offer.', 'نشستیں 10 منٹ کے لیے محفوظ کریں، پوری گاڑی بک کریں یا اپنی آفر بھیجیں۔'),
-                  style: const TextStyle(color: AppText.secondary, height: 1.4),
+                  _t(context, 'Verified Kashmir departures',
+                      'تصدیق شدہ کشمیر ٹورز'),
+                  style: AppType.h2.copyWith(color: AppText.onInk),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _t(
+                    context,
+                    'Reserve seats for 10 minutes, book the complete vehicle, '
+                        'or send your own offer.',
+                    'نشستیں 10 منٹ کے لیے محفوظ کریں، پوری گاڑی بک کریں یا اپنی آفر بھیجیں۔',
+                  ),
+                  // Was AppText.secondary — a grey picked for white pages,
+                  // which on navy is about 2.3:1. This one is 10.8:1.
+                  style: AppType.body2.copyWith(color: AppText.onInkMuted),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           if (controller.marketplaceBusy && packages.isEmpty)
-            const Padding(padding: EdgeInsets.all(60), child: Center(child: CircularProgressIndicator()))
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 70),
+              child: Center(
+                child: CircularProgressIndicator(color: AppColors.navy),
+              ),
+            )
           else if (packages.isEmpty)
-            _empty(context)
+            UdEmptyState(
+              icon: Icons.luggage_rounded,
+              title: _t(context, 'No active packages yet',
+                  'ابھی کوئی فعال پیکج نہیں'),
+              text: _t(
+                context,
+                'Admin-approved Driver packages will appear here.',
+                'ایڈمن سے منظور شدہ ڈرائیور پیکجز یہاں نظر آئیں گے۔',
+              ),
+            )
           else
-            ...packages.map((package) => Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
-                  child: _PackageCard(package: package, onTap: () => _openPackage(package)),
-                )),
+            for (final package in packages)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: _PackageCard(
+                  package: package,
+                  onTap: () => _openPackage(package),
+                ),
+              ),
           if (controller.liveCustomerPackageOffers.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            SectionHeader(title: _t(context, 'My package offers', 'میری پیکج آفرز')),
-            const SizedBox(height: 8),
-            ...controller.liveCustomerPackageOffers.map(
-              (offer) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+            const SizedBox(height: 6),
+            UdSectionHeader(
+              title: _t(context, 'My package offers', 'میری پیکج آفرز'),
+            ),
+            const SizedBox(height: 12),
+            for (final offer in controller.liveCustomerPackageOffers)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
                 child: _CustomerOfferCard(offer: offer, onConfirmed: _refresh),
               ),
-            ),
           ],
           if (controller.liveCustomerPackageWaitlist.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            SectionHeader(
+            const SizedBox(height: 6),
+            UdSectionHeader(
               title: _t(context, 'My waiting list', 'میری ویٹنگ لسٹ'),
             ),
-            const SizedBox(height: 8),
-            ...controller.liveCustomerPackageWaitlist.map(
-              (entry) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+            const SizedBox(height: 12),
+            for (final entry in controller.liveCustomerPackageWaitlist)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
                 child: _WaitlistCard(entry: entry),
               ),
-            ),
           ],
         ],
       ),
     );
   }
-
-  Widget _empty(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 65),
-        child: Column(
-          children: [
-            const Icon(Icons.luggage_rounded, size: 68, color: AppColors.muted),
-            const SizedBox(height: 14),
-            Text(_t(context, 'No active packages yet', 'ابھی کوئی فعال پیکج نہیں'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19)),
-            const SizedBox(height: 8),
-            Text(_t(context, 'Admin-approved Driver packages will appear here.', 'ایڈمن سے منظور شدہ ڈرائیور پیکجز یہاں نظر آئیں گے۔'), textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted)),
-          ],
-        ),
-      );
 
   Future<void> _openPackage(LiveTourPackage package) async {
     await Navigator.push(
@@ -115,116 +143,125 @@ class _LivePackagesScreenState extends State<LivePackagesScreen> {
     );
     if (mounted) await _refresh();
   }
-
-  String _t(BuildContext context, String en, String ur) =>
-      AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
 }
 
+String _t(BuildContext context, String en, String ur) =>
+    AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
+
+/// One marketplace package: a cover band, then the route and the two prices.
 class _PackageCard extends StatelessWidget {
   const _PackageCard({required this.package, required this.onTap});
+
   final LiveTourPackage package;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => PremiumCard(
-        onTap: onTap,
-        padding: EdgeInsets.zero,
+  Widget build(BuildContext context) {
+    final tight = package.bookableSeats <= 2;
+    final vehicleLine = [package.vehicle, package.registrationNumber]
+        .where((value) => value.trim().isNotEmpty)
+        .join(' · ');
+
+    return UdCard(
+      tone: UdCardTone.raised,
+      padding: EdgeInsets.zero,
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: AppRadii.all(AppRadii.card),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
               height: 150,
-              child: Stack(fit: StackFit.expand, children: [
-                VehicleBanner(
-                  vehicleText: '${package.vehicle} ${package.title} ${package.registrationNumber}',
-                  imageUrl: package.coverImageUrl,
-                ),
-                const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black54]))),
-                Positioned(
-                  right: 12,
-                  top: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: package.bookableSeats <= 2 ? AppTint.warning : AppTint.success,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '${package.bookableSeats} seats free',
-                      style: TextStyle(
-                        color: package.bookableSeats <= 2 ? AppTint.warningText : AppTint.successText,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 10,
-                      ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  VehicleBanner(
+                    vehicleText:
+                        '${package.vehicle} ${package.title} ${package.registrationNumber}',
+                    imageUrl: package.coverImageUrl,
+                  ),
+                  Positioned(
+                    right: 12,
+                    top: 12,
+                    child: UdBadge(
+                      label: '${package.bookableSeats} seats free',
+                      tone: tight ? UdTone.warn : UdTone.ok,
                     ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             ),
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-                    decoration: BoxDecoration(color: AppTint.brand, borderRadius: BorderRadius.circular(12)),
-                    child: Row(children: [
-                      const Icon(Icons.trip_origin_rounded, size: 16, color: AppColors.primary),
-                      const SizedBox(width: 6),
-                      Expanded(child: Text(package.startingCity, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13))),
-                      const Padding(padding: EdgeInsets.symmetric(horizontal: 7), child: Icon(Icons.arrow_forward_rounded, size: 17, color: AppColors.primaryDark)),
-                      Expanded(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Flexible(child: Text(package.destination, textAlign: TextAlign.end, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w900, fontSize: 13.5))),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.star_rounded, size: 15, color: AppTint.star),
-                            Text(package.destinationRating.toStringAsFixed(1), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      const Icon(Icons.location_on_rounded, size: 16, color: AppColors.primary),
-                    ]),
+                  _RoutePill(
+                    from: package.startingCity,
+                    to: package.destination,
+                    rating: package.destinationRating,
                   ),
-                  const SizedBox(height: 9),
-                  Text(package.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                  if (package.vehicle.isNotEmpty || package.registrationNumber.isNotEmpty) ...[
-                    const SizedBox(height: 3),
+                  const SizedBox(height: 12),
+                  Text(
+                    package.title,
+                    style: AppType.h3.copyWith(color: AppText.primary),
+                  ),
+                  if (vehicleLine.isNotEmpty) ...[
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Expanded(
                           child: Text(
-                            [package.vehicle, package.registrationNumber].where((value) => value.trim().isNotEmpty).join(' · '),
+                            vehicleLine,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: AppColors.muted, fontSize: 10.5),
+                            style: AppType.small
+                                .copyWith(color: AppText.secondary),
                           ),
                         ),
-                        const Icon(Icons.star_rounded, size: 14, color: AppTint.star),
-                        Text(' ${package.vehicleRating.toStringAsFixed(1)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+                        const SizedBox(width: 8),
+                        _Stars(package.vehicleRating),
                       ],
                     ),
                   ],
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 13),
                   Wrap(
-                    spacing: 10,
+                    spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _PackageFact(Icons.trip_origin_rounded, package.pickupPoint),
-                      _PackageFact(Icons.calendar_month_rounded, DateFormat('dd MMM yyyy').format(package.departureAt)),
-                      _PackageFact(Icons.verified_user_rounded, package.driverName),
-                      _PackageFact(Icons.shield_rounded, '${package.driverSafetyScore}/100'),
+                      _Fact(Icons.trip_origin_rounded, package.pickupPoint),
+                      _Fact(
+                        Icons.calendar_month_rounded,
+                        DateFormat('dd MMM yyyy').format(package.departureAt),
+                      ),
+                      _Fact(
+                        Icons.shield_rounded,
+                        '${package.driverName} · '
+                            '${package.driverSafetyScore}/100',
+                      ),
                     ],
                   ),
-                  const Divider(height: 25),
+                  const SizedBox(height: 14),
+                  const Divider(
+                      height: 1, thickness: 1, color: AppColors.border),
+                  const SizedBox(height: 14),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: _Price(label: 'Per seat', value: package.pricePerSeat)),
-                      Expanded(child: _Price(label: 'Whole vehicle', value: package.wholeVehiclePrice, alignEnd: true)),
+                      Expanded(
+                        child: _Price(
+                          label: 'Per seat',
+                          value: package.pricePerSeat,
+                        ),
+                      ),
+                      Expanded(
+                        child: _Price(
+                          label: 'Whole vehicle',
+                          value: package.wholeVehiclePrice,
+                          alignEnd: true,
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -232,11 +269,166 @@ class _PackageCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// `from → to` on a pale lime strip, with the destination's rating on the end.
+class _RoutePill extends StatelessWidget {
+  const _RoutePill({
+    required this.from,
+    required this.to,
+    this.rating,
+  });
+
+  final String from;
+  final String to;
+  final double? rating;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: AppColors.brandWash,
+          borderRadius: AppRadii.all(AppRadii.row),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.route_rounded, size: 17, color: AppColors.navy),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                from,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppType.small.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppText.primary,
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6),
+              child: Icon(Icons.arrow_forward_rounded,
+                  size: 16, color: AppColors.navy),
+            ),
+            Flexible(
+              child: Text(
+                to,
+                textAlign: TextAlign.end,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppType.small.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.brandInk,
+                ),
+              ),
+            ),
+            if (rating != null) ...[
+              const SizedBox(width: 8),
+              _Stars(rating!),
+            ],
+          ],
+        ),
       );
 }
 
+/// A gold star and a rating to one decimal. Gold is this app's only use of
+/// that hue, so a rating never has to be labelled.
+class _Stars extends StatelessWidget {
+  const _Stars(this.rating);
+
+  final double rating;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.star_rounded, size: 16, color: AppTint.star),
+          const SizedBox(width: 2),
+          Text(
+            rating.toStringAsFixed(1),
+            style: AppType.caption.copyWith(
+              fontWeight: FontWeight.w800,
+              color: AppText.primary,
+            ),
+          ),
+        ],
+      );
+}
+
+/// An outlined pill carrying one fact about a package.
+class _Fact extends StatelessWidget {
+  const _Fact(this.icon, this.text);
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: AppRadii.all(AppRadii.chip),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: AppText.secondary),
+            const SizedBox(width: 6),
+            Text(
+              text,
+              style: AppType.caption.copyWith(color: AppText.primary),
+            ),
+          ],
+        ),
+      );
+}
+
+/// A label over a price. Deep lime, which is 7.9:1 on white — the lime itself
+/// is 1.28:1 and cannot carry text.
+class _Price extends StatelessWidget {
+  const _Price({
+    required this.label,
+    required this.value,
+    this.alignEnd = false,
+  });
+
+  final String label;
+  final double value;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment:
+            alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: AppType.small.copyWith(color: AppText.secondary),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            _pkr(value),
+            style: AppType.priceMd.copyWith(
+              fontSize: 19,
+              color: AppColors.brandInk,
+            ),
+          ),
+        ],
+      );
+}
+
+/// An offer this customer has sent, and its answer.
 class _CustomerOfferCard extends StatelessWidget {
   const _CustomerOfferCard({required this.offer, required this.onConfirmed});
+
   final LivePackageOffer offer;
   final Future<void> Function() onConfirmed;
 
@@ -244,26 +436,43 @@ class _CustomerOfferCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final amount = offer.counterAmount ?? offer.offeredAmount;
     final confirmable = offer.status == 'Accepted' || offer.status == 'Countered';
-    return PremiumCard(
+
+    return UdCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Text(offer.packageTitle, style: const TextStyle(fontWeight: FontWeight.w900))),
-              StatusPill(label: offer.status),
+              Expanded(
+                child: Text(
+                  offer.packageTitle,
+                  style: AppType.h3.copyWith(color: AppText.primary),
+                ),
+              ),
+              const SizedBox(width: 10),
+              UdBadge(label: offer.status, tone: _statusTone(offer.status)),
             ],
           ),
           const SizedBox(height: 8),
-          Text('${offer.bookingType} · ${offer.seatsRequested} seat(s)', style: const TextStyle(color: AppColors.muted)),
-          const SizedBox(height: 8),
-          Text('Final offer: PKR ${NumberFormat('#,###').format(amount)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark)),
+          Text(
+            '${offer.bookingType} · ${offer.seatsRequested} seat(s)',
+            style: AppType.body2.copyWith(color: AppText.secondary),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Final offer: ${_pkr(amount)}',
+            style: AppType.priceMd.copyWith(
+              fontSize: 19,
+              color: AppColors.brandInk,
+            ),
+          ),
           if (confirmable) ...[
-            const SizedBox(height: 12),
-            FilledButton.icon(
+            const SizedBox(height: 14),
+            UdButton.primary(
+              label: 'Confirm negotiated package',
+              trailingIcon: Icons.check_circle_rounded,
               onPressed: () => _confirm(context),
-              icon: const Icon(Icons.check_circle_rounded),
-              label: const Text('Confirm negotiated package'),
             ),
           ],
         ],
@@ -273,90 +482,101 @@ class _CustomerOfferCard extends StatelessWidget {
 
   Future<void> _confirm(BuildContext context) async {
     try {
-      final booking = await AppControllerScope.of(context).confirmLivePackageOffer(offerId: offer.id);
+      final booking = await AppControllerScope.of(context)
+          .confirmLivePackageOffer(offerId: offer.id);
       await onConfirmed();
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Booking ${booking.bookingReference} confirmed.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Booking ${booking.bookingReference} confirmed.')),
+      );
     } catch (error) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
     }
   }
 }
 
+UdTone _statusTone(String status) => switch (status) {
+      'Accepted' || 'Confirmed' || 'Approved' => UdTone.ok,
+      'Rejected' || 'Declined' || 'Cancelled' || 'Expired' => UdTone.err,
+      'Countered' => UdTone.info,
+      _ => UdTone.warn,
+    };
+
+/// A departure this customer is queued for.
 class _WaitlistCard extends StatelessWidget {
   const _WaitlistCard({required this.entry});
 
   final LivePackageWaitlist entry;
 
   @override
-  Widget build(BuildContext context) => PremiumCard(
+  Widget build(BuildContext context) => UdCard(
         child: Row(
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: .12),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.hourglass_top_rounded,
-                color: AppColors.warning,
-              ),
+            const UdIconTile(
+              icon: Icons.hourglass_top_rounded,
+              tone: UdIconTone.warn,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     entry.packageTitle,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${entry.bookingType} · ${entry.seatsRequested} seat(s) · ${DateFormat('dd MMM').format(entry.departureAt)}',
-                    style: const TextStyle(
-                      color: AppColors.muted,
-                      fontSize: 11,
+                    style: AppType.listTitle.copyWith(
+                      fontSize: 16,
+                      color: AppText.primary,
                     ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${entry.bookingType} · ${entry.seatsRequested} seat(s) · '
+                    '${DateFormat('dd MMM').format(entry.departureAt)}',
+                    style: AppType.small.copyWith(color: AppText.secondary),
                   ),
                 ],
               ),
             ),
-            StatusPill(label: entry.status, color: AppColors.warning),
+            const SizedBox(width: 10),
+            UdBadge(label: entry.status, tone: UdTone.warn),
           ],
         ),
       );
 }
 
+/// C-28 — one package, and the two ways to book it.
 class LivePackageDetailScreen extends StatefulWidget {
   const LivePackageDetailScreen({
     required this.package,
     this.initialBookingType = 'PerSeat',
     super.key,
   });
+
   final LiveTourPackage package;
   final String initialBookingType;
 
   @override
-  State<LivePackageDetailScreen> createState() => _LivePackageDetailScreenState();
+  State<LivePackageDetailScreen> createState() =>
+      _LivePackageDetailScreenState();
 }
 
 class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
   late String _bookingType;
-
-  @override
-  void initState() {
-    super.initState();
-    _bookingType = widget.initialBookingType == 'WholeVehicle'
-        ? 'WholeVehicle'
-        : 'PerSeat';
-  }
   int _seats = 1;
   bool _busy = false;
 
   LiveTourPackage get package => widget.package;
+
+  @override
+  void initState() {
+    super.initState();
+    _bookingType =
+        widget.initialBookingType == 'WholeVehicle' ? 'WholeVehicle' : 'PerSeat';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -365,181 +585,133 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
     final canHold = whole
         ? package.bookableSeats == package.totalSeats
         : package.bookableSeats >= _seats;
+
     return Scaffold(
-      appBar: AppBar(title: Text(package.title)),
+      backgroundColor: AppColors.background,
+      appBar: UdTopBar(
+        title: package.title,
+        onBack: () => Navigator.maybePop(context),
+        divider: true,
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 6, 18, 120),
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 14, AppSizes.sidePadding, 30),
         children: [
           VehicleLiveMap(package: package),
           const SizedBox(height: 16),
-          PremiumCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          _DetailCard(package: package),
+          const SizedBox(height: 16),
+          // IntrinsicHeight, and it is not optional. `stretch` makes the two
+          // cards the same height whichever one has the longer label, but it
+          // takes that height from the row's own constraints — and inside a
+          // ListView those are unbounded. Debug trips an assert; release
+          // strips asserts, the row becomes infinitely tall, and everything
+          // below it is pushed past the end of the scroll view.
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    VehicleThumb(
-                      vehicleText: '${package.vehicle} ${package.title} ${package.registrationNumber}',
-                      size: 58,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            package.vehicle.isEmpty ? package.title : package.vehicle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
-                          ),
-                          if (package.registrationNumber.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              package.registrationNumber,
-                              style: const TextStyle(color: AppColors.muted, fontSize: 12, fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(height: 22),
-                Row(children: [Expanded(child: Text('${package.startingCity} → ${package.destination}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17))), StatusPill(label: package.status)]),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    _RatingPill(label: 'Destination', rating: package.destinationRating, count: package.destinationReviewCount),
-                    _RatingPill(label: 'Vehicle', rating: package.vehicleRating, count: package.vehicleReviewCount),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(13),
-                  decoration: BoxDecoration(
-                    color: AppTint.brand,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.trip_origin_rounded, color: AppColors.primaryDark),
-                      const SizedBox(width: 9),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('Pickup point', style: TextStyle(fontSize: 10, color: AppColors.muted, fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 3),
-                        Text(package.pickupPoint, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
-                      ])),
-                    ],
+                Expanded(
+                  child: _Choice(
+                    selected: !whole,
+                    title: 'Per seat',
+                    subtitle: _pkr(package.pricePerSeat),
+                    onTap: () => setState(() => _bookingType = 'PerSeat'),
                   ),
                 ),
-                const SizedBox(height: 12),
-                _Line(Icons.schedule_rounded, DateFormat('dd MMM yyyy · hh:mm a').format(package.departureAt)),
-                _Line(Icons.directions_car_rounded, '${package.vehicle} · ${package.registrationNumber}'),
-                _Line(Icons.verified_user_rounded, '${package.driverName} · ${package.driverRating.toStringAsFixed(1)}★'),
-                _Line(Icons.shield_rounded, 'Safety ${package.driverSafetyScore}/100 · Vehicle readiness ${package.mountainReadinessScore}/100'),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _Choice(
+                    selected: whole,
+                    title: 'Whole vehicle',
+                    subtitle: _pkr(package.wholeVehiclePrice),
+                    onTap: () => setState(() => _bookingType = 'WholeVehicle'),
+                  ),
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(child: _Choice(selected: !whole, title: 'Per seat', subtitle: 'PKR ${NumberFormat('#,###').format(package.pricePerSeat)}', onTap: () => setState(() => _bookingType = 'PerSeat'))),
-              const SizedBox(width: 10),
-              Expanded(child: _Choice(selected: whole, title: 'Whole vehicle', subtitle: 'PKR ${NumberFormat('#,###').format(package.wholeVehiclePrice)}', onTap: () => setState(() => _bookingType = 'WholeVehicle'))),
-            ],
           ),
           if (!whole) ...[
             const SizedBox(height: 14),
-            PremiumCard(
-              child: Row(
+            UdStepper(
+              label: 'Seats to reserve',
+              value: _seats,
+              min: 1,
+              // The bound the code already enforced, kept exactly.
+              max: package.bookableSeats < 1 ? 1 : package.bookableSeats,
+              onChanged: (value) => setState(() => _seats = value),
+            ),
+          ],
+          const SizedBox(height: 16),
+          _FacilitiesCard(package: package),
+          if (package.displayReviews.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _ReviewsCard(reviews: package.displayReviews),
+          ],
+          const SizedBox(height: 16),
+          UdBanner(
+            tone: UdTone.info,
+            icon: Icons.lock_clock_rounded,
+            child: Text.rich(
+              TextSpan(
+                text: 'Your selected inventory will be locked for 10 minutes '
+                    'before confirmation. Available now: ',
                 children: [
-                  const Expanded(child: Text('Seats to reserve', style: TextStyle(fontWeight: FontWeight.w900))),
-                  IconButton(onPressed: _seats > 1 ? () => setState(() => _seats--) : null, icon: const Icon(Icons.remove_circle_outline_rounded)),
-                  Text('$_seats', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-                  IconButton(onPressed: _seats < package.bookableSeats ? () => setState(() => _seats++) : null, icon: const Icon(Icons.add_circle_outline_rounded)),
+                  TextSpan(
+                    text: '${package.bookableSeats} seats',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const TextSpan(text: '.'),
                 ],
               ),
             ),
+          ),
+          if (package.customerOffersAllowed) ...[
+            const SizedBox(height: 16),
+            UdButton.dark(
+              label: 'Make offer',
+              icon: Icons.local_offer_rounded,
+              onPressed: _busy ? null : _sendOffer,
+            ),
           ],
-          const SizedBox(height: 14),
-          PremiumCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Included facilities', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                const SizedBox(height: 10),
-                if (package.inclusions.isEmpty) const Text('Verified Driver · Route support · Trip safety tools') else ...package.inclusions.map((item) => Padding(padding: const EdgeInsets.only(bottom: 7), child: Row(children: [const Icon(Icons.check_circle_rounded, size: 18, color: AppColors.success), const SizedBox(width: 8), Expanded(child: Text(item))]))),
-                if (package.itinerary.isNotEmpty) ...[
-                  const Divider(height: 26),
-                  const Row(
-                    children: [
-                      Icon(Icons.alt_route_rounded, color: AppColors.primaryDark),
-                      SizedBox(width: 8),
-                      Text(
-                        'Trip itinerary',
-                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _ItineraryTimeline(items: package.itinerary),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          PremiumCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Reviews', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                const SizedBox(height: 10),
-                ...package.displayReviews.map((review) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const CircleAvatar(radius: 17, child: Icon(Icons.person_rounded, size: 18)),
-                      const SizedBox(width: 9),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(children: [
-                          ...List.generate(5, (index) => const Icon(Icons.star_rounded, size: 14, color: AppTint.star)),
-                        ]),
-                        const SizedBox(height: 3),
-                        Text(review, style: const TextStyle(color: AppColors.muted, height: 1.35, fontSize: 11.5)),
-                      ])),
-                    ],
-                  ),
-                )),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          PremiumCard(
-            color: AppColors.surface,
-            child: Row(children: [const Icon(Icons.lock_clock_rounded, color: AppColors.primaryDark), const SizedBox(width: 10), Expanded(child: Text('Your selected inventory will be locked for 10 minutes before confirmation. Available now: ${package.bookableSeats} seats.', style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primaryDark, height: 1.35)))]),
+        ],
+      ),
+      bottomNavigationBar: UdBottomBar(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total',
+                      style: AppType.small.copyWith(color: AppText.secondary),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _pkr(total),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.priceMd.copyWith(color: AppText.primary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                flex: 2,
+                child: UdButton.primary(
+                  label: canHold ? 'Hold & confirm' : 'Join waiting list',
+                  busy: _busy,
+                  onPressed: canHold ? _reserve : _joinWaitlist,
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      bottomSheet: SafeArea(
-        child: Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
-          child: Row(
-            children: [
-              Expanded(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Total', style: TextStyle(color: AppColors.muted, fontSize: 11)), Text('PKR ${NumberFormat('#,###').format(total)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19))])),
-              const SizedBox(width: 10),
-              Expanded(flex: 2, child: FilledButton(onPressed: _busy ? null : (canHold ? _reserve : _joinWaitlist), child: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(canHold ? 'Hold & confirm' : 'Join waiting list'))),
-            ],
-          ),
-        ),
-      ),
-      floatingActionButton: package.customerOffersAllowed ? FloatingActionButton.extended(onPressed: _busy ? null : _sendOffer, icon: const Icon(Icons.local_offer_rounded), label: const Text('Make offer')) : null,
     );
   }
 
@@ -549,13 +721,57 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
       final controller = AppControllerScope.of(context);
       final passengers = await _collectPassengers(controller);
       if (passengers == null) return;
-      final hold = await controller.acquireLivePackageHold(packageId: package.id, bookingType: _bookingType, seats: _bookingType == 'WholeVehicle' ? package.totalSeats : _seats);
-      final booking = await controller.confirmLivePackageBooking(packageId: package.id, holdId: hold.holdId, advanceAmount: 0, passengers: passengers);
+      final hold = await controller.acquireLivePackageHold(
+        packageId: package.id,
+        bookingType: _bookingType,
+        seats: _bookingType == 'WholeVehicle' ? package.totalSeats : _seats,
+      );
+      final booking = await controller.confirmLivePackageBooking(
+        packageId: package.id,
+        holdId: hold.holdId,
+        advanceAmount: 0,
+        passengers: passengers,
+      );
       if (!mounted) return;
-      await showDialog<void>(context: context, builder: (_) => AlertDialog(icon: const Icon(Icons.check_circle_rounded, size: 54, color: AppColors.success), title: const Text('Tour booked'), content: Text('Booking ${booking.bookingReference} is confirmed. Trip OTP: ${booking.tripOtp ?? '-'}'), actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))]));
+      await showUdDialog<void>(
+        context: context,
+        title: 'Tour booked',
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Centred, not stretched: the dialog's content column is
+            // `stretch`, which would hand a fixed-size tile a tight full-width
+            // constraint and turn the 56px square into a 56px-tall band.
+            const Center(
+              child: UdIconTile(
+                icon: Icons.check_circle_rounded,
+                tone: UdIconTone.lime,
+                size: UdIconTileSize.lg,
+              ),
+            ),
+            const SizedBox(height: 16),
+            UdKeyValue(label: 'Booking', value: booking.bookingReference),
+            UdKeyValue(
+              label: 'Trip OTP',
+              value: booking.tripOtp ?? '-',
+              showDivider: false,
+            ),
+          ],
+        ),
+        actions: [
+          UdButton.primary(
+            label: 'Done',
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      );
       if (mounted) Navigator.pop(context);
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -572,44 +788,38 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
           'Tour passenger ${index + 1}',
       ].join('\n'),
     );
-    final accepted = await showModalBottomSheet<bool>(
+
+    final accepted = await showUdSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          MediaQuery.viewInsetsOf(sheetContext).bottom + 20,
-        ),
+      builder: (sheetContext) => SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
+            Text(
               'Add tour persons',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
+              style: AppType.h2.copyWith(color: AppText.primary),
             ),
-            const SizedBox(height: 6),
-            const Text(
-              'Enter one passenger name per line. Private contact details are never shown publicly.',
-              style: TextStyle(color: AppColors.muted, height: 1.4),
+            const SizedBox(height: 8),
+            Text(
+              'Enter one passenger name per line. Private contact details are '
+              'never shown publicly.',
+              style: AppType.body2.copyWith(color: AppText.secondary),
             ),
-            const SizedBox(height: 14),
-            TextField(
+            const SizedBox(height: 18),
+            UdTextField(
               controller: input,
+              label: 'Passenger names',
+              icon: Icons.groups_rounded,
               minLines: 3,
               maxLines: 8,
-              decoration: const InputDecoration(
-                labelText: 'Passenger names',
-                prefixIcon: Icon(Icons.groups_rounded),
-              ),
+              textCapitalization: TextCapitalization.words,
             ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
+            const SizedBox(height: 18),
+            UdButton.primary(
+              label: 'Continue securely',
+              icon: Icons.verified_user_rounded,
               onPressed: () => Navigator.pop(sheetContext, true),
-              icon: const Icon(Icons.verified_user_rounded),
-              label: const Text('Continue securely'),
             ),
           ],
         ),
@@ -650,18 +860,13 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Waiting list registered for ${entry.packageTitle}.',
-          ),
-        ),
+        SnackBar(content: Text('Waiting list registered for ${entry.packageTitle}.')),
       );
       Navigator.pop(context);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$error')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -669,141 +874,485 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
   }
 
   Future<void> _sendOffer() async {
-    final input = TextEditingController(text: (_bookingType == 'WholeVehicle' ? package.wholeVehiclePrice * .9 : package.pricePerSeat * _seats * .9).round().toString());
-    await showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (sheet) => Padding(padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.viewInsetsOf(sheet).bottom + 20), child: Column(mainAxisSize: MainAxisSize.min, children: [const Text('Send package offer', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)), const SizedBox(height: 14), TextField(controller: input, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Your total offer (PKR)', prefixIcon: Icon(Icons.payments_rounded))), const SizedBox(height: 16), FilledButton(onPressed: () async { try { await AppControllerScope.of(context).createLivePackageOffer(packageId: package.id, bookingType: _bookingType, seats: _bookingType == 'WholeVehicle' ? package.totalSeats : _seats, amount: double.parse(input.text), message: 'Customer tourism package offer'); if (!mounted) return; Navigator.pop(sheet); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offer sent to Driver'))); } catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error'))); } }, child: const Text('Send offer'))])));
+    final suggested = (_bookingType == 'WholeVehicle'
+            ? package.wholeVehiclePrice * .9
+            : package.pricePerSeat * _seats * .9)
+        .round();
+    final input = TextEditingController(text: '$suggested');
+
+    await showUdSheet<void>(
+      context: context,
+      builder: (sheetContext) => SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Send package offer',
+              style: AppType.h2.copyWith(color: AppText.primary),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'The Driver can accept your figure, answer with one of their '
+              'own, or decline.',
+              style: AppType.body2.copyWith(color: AppText.secondary),
+            ),
+            const SizedBox(height: 18),
+            UdTextField(
+              controller: input,
+              label: 'Your total offer (PKR)',
+              icon: Icons.payments_rounded,
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 18),
+            UdButton.primary(
+              label: 'Send offer',
+              onPressed: () => _submitOffer(sheetContext, input.text),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitOffer(BuildContext sheetContext, String raw) async {
+    try {
+      await AppControllerScope.of(context).createLivePackageOffer(
+        packageId: package.id,
+        bookingType: _bookingType,
+        seats: _bookingType == 'WholeVehicle' ? package.totalSeats : _seats,
+        amount: double.parse(raw),
+        message: 'Customer tourism package offer',
+      );
+      if (!mounted) return;
+      Navigator.pop(sheetContext);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Offer sent to Driver')),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
   }
 }
 
+/// Vehicle, route, ratings, pickup point and the four detail lines.
+class _DetailCard extends StatelessWidget {
+  const _DetailCard({required this.package});
 
+  final LiveTourPackage package;
+
+  @override
+  Widget build(BuildContext context) => UdCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                VehicleThumb(
+                  vehicleText:
+                      '${package.vehicle} ${package.title} ${package.registrationNumber}',
+                  size: 56,
+                  radius: AppRadii.tile,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        package.vehicle.isEmpty ? package.title : package.vehicle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.listTitle.copyWith(
+                          fontSize: 16,
+                          color: AppText.primary,
+                        ),
+                      ),
+                      if (package.registrationNumber.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          package.registrationNumber,
+                          style: AppType.small.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: AppText.secondary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Divider(height: 1, thickness: 1, color: AppColors.border),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    '${package.startingCity} → ${package.destination}',
+                    style: AppType.h3.copyWith(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: AppText.primary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                UdBadge(
+                  label: package.status,
+                  tone: _statusTone(package.status),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _RatingPill(
+                  label: 'Destination',
+                  rating: package.destinationRating,
+                  count: package.destinationReviewCount,
+                ),
+                _RatingPill(
+                  label: 'Vehicle',
+                  rating: package.vehicleRating,
+                  count: package.vehicleReviewCount,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.brandWash,
+                borderRadius: AppRadii.all(AppRadii.row),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.route_rounded,
+                      size: 20, color: AppColors.navy),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Pickup point',
+                          style: AppType.small
+                              .copyWith(color: AppText.secondary),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          package.pickupPoint,
+                          style: AppType.listTitle.copyWith(
+                            fontSize: 15.5,
+                            color: AppText.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            _Line(
+              Icons.calendar_month_rounded,
+              DateFormat('dd MMM yyyy · hh:mm a').format(package.departureAt),
+            ),
+            _Line(
+              Icons.directions_car_rounded,
+              '${package.vehicle} · ${package.registrationNumber}',
+            ),
+            _Line(
+              Icons.verified_user_rounded,
+              '${package.driverName} · ${package.driverRating.toStringAsFixed(1)}★',
+            ),
+            _Line(
+              Icons.shield_rounded,
+              'Safety ${package.driverSafetyScore}/100 · '
+                  'Vehicle readiness ${package.mountainReadinessScore}/100',
+            ),
+          ],
+        ),
+      );
+}
+
+/// What the package includes, then its itinerary.
+class _FacilitiesCard extends StatelessWidget {
+  const _FacilitiesCard({required this.package});
+
+  final LiveTourPackage package;
+
+  @override
+  Widget build(BuildContext context) {
+    // Unchanged: the code's own fallback when a Driver listed nothing.
+    final inclusions = package.inclusions.isEmpty
+        ? const ['Verified Driver', 'Route support', 'Trip safety tools']
+        : package.inclusions;
+
+    return UdCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Included facilities',
+            style: AppType.section.copyWith(
+              fontSize: 17,
+              color: AppText.primary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final item in inclusions)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.check_circle_rounded,
+                      size: 19, color: AppColors.brandInk),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      item,
+                      style: AppType.body2.copyWith(color: AppText.primary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (package.itinerary.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Divider(height: 1, thickness: 1, color: AppColors.border),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.alt_route_rounded,
+                    size: 20, color: AppColors.navy),
+                const SizedBox(width: 9),
+                Text(
+                  'Trip itinerary',
+                  style: AppType.section.copyWith(
+                    fontSize: 17,
+                    color: AppText.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            UdTimeline(
+              steps: [
+                for (final leg in package.itinerary) _parseLeg(leg),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Splits "1. Muzaffarabad pickup — hotel check-in" into a title and a
+  /// subtitle. Unchanged from the version this replaces.
+  static UdTimelineStep _parseLeg(String raw) {
+    final value = raw.trim().replaceFirst(RegExp(r'^\d+[.)-]?\s*'), '');
+    for (final separator in const [' — ', ' - ', ': ']) {
+      final index = value.indexOf(separator);
+      if (index > 0 && index < value.length - separator.length) {
+        return UdTimelineStep(
+          title: value.substring(0, index).trim(),
+          subtitle: value.substring(index + separator.length).trim(),
+        );
+      }
+    }
+    final words = value.split(RegExp(r'\s+'));
+    if (words.length > 8) {
+      return UdTimelineStep(
+        title: words.take(5).join(' '),
+        subtitle: words.skip(5).join(' '),
+      );
+    }
+    return UdTimelineStep(title: value);
+  }
+}
+
+class _ReviewsCard extends StatelessWidget {
+  const _ReviewsCard({required this.reviews});
+
+  final List<String> reviews;
+
+  @override
+  Widget build(BuildContext context) => UdCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Reviews',
+              style: AppType.section.copyWith(
+                fontSize: 17,
+                color: AppText.primary,
+              ),
+            ),
+            const SizedBox(height: 14),
+            for (var i = 0; i < reviews.length; i++)
+              Padding(
+                padding:
+                    EdgeInsets.only(bottom: i == reviews.length - 1 ? 0 : 14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const UdIconTile(
+                      icon: Icons.person_rounded,
+                      tone: UdIconTone.navy,
+                      size: UdIconTileSize.sm,
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.star_rounded,
+                                  size: 15, color: AppTint.star),
+                              Icon(Icons.star_rounded,
+                                  size: 15, color: AppTint.star),
+                              Icon(Icons.star_rounded,
+                                  size: 15, color: AppTint.star),
+                              Icon(Icons.star_rounded,
+                                  size: 15, color: AppTint.star),
+                              Icon(Icons.star_rounded,
+                                  size: 15, color: AppTint.star),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            reviews[i],
+                            style: AppType.body2.copyWith(
+                              fontSize: 14,
+                              color: AppText.secondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+}
+
+/// A gold-star rating chip: "Destination 4.9 · 128 reviews".
 class _RatingPill extends StatelessWidget {
-  const _RatingPill({required this.label, required this.rating, required this.count});
+  const _RatingPill({
+    required this.label,
+    required this.rating,
+    required this.count,
+  });
+
   final String label;
   final double rating;
   final int count;
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
         decoration: BoxDecoration(
-          color: AppTint.warning,
-          borderRadius: BorderRadius.circular(999),
+          color: AppColors.background,
+          borderRadius: AppRadii.all(AppRadii.chip),
+          border: Border.all(color: AppColors.border),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.star_rounded, size: 15, color: AppTint.star),
-            const SizedBox(width: 3),
-            Text('$label ${rating.toStringAsFixed(1)} · $count reviews', style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800)),
+            const Icon(Icons.star_rounded, size: 16, color: AppTint.star),
+            const SizedBox(width: 6),
+            Text(
+              '$label ${rating.toStringAsFixed(1)} · $count reviews',
+              style: AppType.caption.copyWith(color: AppText.primary),
+            ),
           ],
         ),
       );
 }
 
+/// An icon and one line of package detail.
+class _Line extends StatelessWidget {
+  const _Line(this.icon, this.text);
 
-class _ItineraryTimeline extends StatelessWidget {
-  const _ItineraryTimeline({required this.items});
-
-  final List<String> items;
+  final IconData icon;
+  final String text;
 
   @override
-  Widget build(BuildContext context) => Column(
-        children: items.asMap().entries.map((entry) {
-          final parsed = _parse(entry.value);
-          final last = entry.key == items.length - 1;
-          return IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  width: 30,
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 26,
-                        height: 26,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          color: AppColors.primaryDark,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          '${entry.key + 1}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                      if (!last)
-                        Expanded(
-                          child: Container(
-                            width: 2,
-                            margin: const EdgeInsets.symmetric(vertical: 4),
-                            color: AppColors.border,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Container(
-                    margin: EdgeInsets.only(bottom: last ? 0 : 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          parsed.$1,
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5),
-                        ),
-                        if (parsed.$2.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            parsed.$2,
-                            style: const TextStyle(
-                              color: AppColors.muted,
-                              fontSize: 11,
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: AppText.secondary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                style: AppType.body2.copyWith(color: AppText.primary),
+              ),
             ),
-          );
-        }).toList(),
+          ],
+        ),
       );
-
-  (String, String) _parse(String raw) {
-    final value = raw.trim().replaceFirst(RegExp(r'^\d+[.)-]?\s*'), '');
-    for (final separator in const [' — ', ' - ', ': ']) {
-      final index = value.indexOf(separator);
-      if (index > 0 && index < value.length - separator.length) {
-        return (
-          value.substring(0, index).trim(),
-          value.substring(index + separator.length).trim(),
-        );
-      }
-    }
-    final words = value.split(RegExp(r'\s+'));
-    if (words.length > 8) {
-      return (words.take(5).join(' '), words.skip(5).join(' '));
-    }
-    return (value, '');
-  }
 }
 
-class _PackageFact extends StatelessWidget { const _PackageFact(this.icon, this.text); final IconData icon; final String text; @override Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 16, color: AppColors.muted), const SizedBox(width: 5), Text(text, style: const TextStyle(color: AppColors.muted, fontSize: 11, fontWeight: FontWeight.w700))]); }
-class _Price extends StatelessWidget { const _Price({required this.label, required this.value, this.alignEnd=false}); final String label; final double value; final bool alignEnd; @override Widget build(BuildContext context) => Column(crossAxisAlignment: alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 11)), Text('PKR ${NumberFormat('#,###').format(value)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primaryDark))]); }
-class _Line extends StatelessWidget { const _Line(this.icon,this.text); final IconData icon; final String text; @override Widget build(BuildContext context)=>Padding(padding: const EdgeInsets.only(top:8),child:Row(children:[Icon(icon,size:18,color:AppColors.muted),const SizedBox(width:8),Expanded(child:Text(text,style:const TextStyle(color:AppColors.muted,fontWeight:FontWeight.w600)))])); }
-class _Choice extends StatelessWidget { const _Choice({required this.selected,required this.title,required this.subtitle,required this.onTap}); final bool selected; final String title; final String subtitle; final VoidCallback onTap; @override Widget build(BuildContext context)=>InkWell(onTap:onTap,borderRadius:BorderRadius.circular(20),child:Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(color:selected?AppColors.primary.withValues(alpha:.1):Colors.white,borderRadius:BorderRadius.circular(20),border:Border.all(color:selected?AppColors.primary:AppColors.border,width:selected?1.7:1)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontWeight:FontWeight.w900)),const SizedBox(height:5),Text(subtitle,style:const TextStyle(color:AppColors.primaryDark,fontWeight:FontWeight.w800,fontSize:12))]))); }
+/// Per seat or whole vehicle. Selected takes `.card.sel` — a 2px navy border
+/// and a pale lime fill, the same treatment every other choice in the app uses.
+class _Choice extends StatelessWidget {
+  const _Choice({
+    required this.selected,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => UdCard(
+        selected: selected,
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: AppType.listTitle.copyWith(
+                fontSize: 15.5,
+                color: AppText.primary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              style: AppType.priceMd.copyWith(
+                fontSize: 17,
+                color: AppColors.brandInk,
+              ),
+            ),
+          ],
+        ),
+      );
+}

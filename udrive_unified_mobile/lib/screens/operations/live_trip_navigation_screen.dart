@@ -741,7 +741,7 @@ class _DriverLiveNavigationScreenState
                     onPressed: () => Navigator.pop(context),
                   ),
                   const Spacer(),
-                  const _MapChip(
+                  const UdMapChip(
                     dotColour: AppColors.brandInk,
                     label: 'LIVE · 10 sec',
                   ),
@@ -1701,7 +1701,7 @@ class _CustomerFullScreenTrackingScreenState
                   // signal: amber while the driver's position is stale, lime
                   // ink while it is live.
                   Flexible(
-                    child: _MapChip(
+                    child: UdMapChip(
                       dotColour: (t?.driverLocation?.stale ?? true)
                           ? AppTint.warningText
                           : AppColors.brandInk,
@@ -2380,50 +2380,6 @@ class _RoundAction extends StatelessWidget {
 }
 
 /// `.map-chip` — a white pill that sits on top of a map.
-class _MapChip extends StatelessWidget {
-  const _MapChip({required this.label, this.dotColour});
-
-  final String label;
-  final Color? dotColour;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: AppRadii.all(AppRadii.tile),
-          boxShadow: AppShadows.floating,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (dotColour != null) ...[
-              Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(
-                  color: dotColour,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppType.small.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: AppText.primary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-}
-
 /// A square icon button in the Driver's action row.
 class _DriverAction extends StatelessWidget {
   const _DriverAction({required this.icon, required this.onTap, this.tooltip});

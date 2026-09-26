@@ -1,4 +1,5 @@
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -6,13 +7,25 @@ import 'package:latlong2/latlong.dart';
 /// Maps free-text vehicle descriptions to bundled, on-brand vehicle
 /// illustrations so every ride card shows a real vehicle picture instead of a
 /// bare icon. Used across the customer home, packages and booking screens.
+/// The `_clean` assets, not the `_photo` ones.
+///
+/// The `_photo` set this used to point at does not hold what its filenames
+/// say. `car_photo.png` is a green motorbike; `bike_photo.png` is a white
+/// hatchback; `coaster_photo.png` is a "Trips" marketing banner with a van and
+/// a car on it; `private_car_photo.png` is a rickshaw beside a sedan. So every
+/// vehicle picture on the package screens was showing a different vehicle from
+/// the one named beside it — a Car card with a motorbike on it.
+///
+/// The `_clean` set is correct for all six, and is cut out on transparency, so
+/// it also sits on a light tile instead of carrying its own dark background
+/// into a white v2 card.
 enum VehicleArt {
-  sedan('assets/vehicles_photo/car_photo.png', 'Car', Icons.directions_car_filled_rounded),
-  suv('assets/vehicles_photo/private_car_photo.png', '4x4 / Jeep', Icons.terrain_rounded),
-  van('assets/vehicles_photo/coaster_photo.png', 'Van', Icons.airport_shuttle_rounded),
-  coaster('assets/vehicles_photo/coaster_photo.png', 'Coaster', Icons.directions_bus_filled_rounded),
-  bike('assets/vehicles_photo/bike_photo.png', 'Bike', Icons.two_wheeler_rounded),
-  rickshaw('assets/vehicles_photo/rickshaw_photo.png', 'Rickshaw', Icons.electric_rickshaw_rounded);
+  sedan('assets/vehicles_photo/car_clean.png', 'Car', Icons.directions_car_filled_rounded),
+  suv('assets/vehicles_photo/private_car_clean.png', '4x4 / Jeep', Icons.terrain_rounded),
+  van('assets/vehicles_photo/coaster_clean.png', 'Van', Icons.airport_shuttle_rounded),
+  coaster('assets/vehicles_photo/coaster_clean.png', 'Coaster', Icons.directions_bus_filled_rounded),
+  bike('assets/vehicles_photo/bike_clean.png', 'Bike', Icons.two_wheeler_rounded),
+  rickshaw('assets/vehicles_photo/rickshaw_clean.png', 'Rickshaw', Icons.electric_rickshaw_rounded);
 
   const VehicleArt(this.asset, this.label, this.icon);
 
@@ -101,14 +114,10 @@ class VehicleThumb extends StatelessWidget {
       height: size,
       padding: EdgeInsets.all(size * 0.10),
       decoration: BoxDecoration(
-        gradient: tinted
-            ? const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.surface, AppColors.surfaceAlt],
-              )
-            : null,
-        color: tinted ? null : Colors.white,
+        // Flat grey, not a gradient. In v2 a grey inset is one colour; the
+        // two-stop wash was a v1 card treatment and it fights the illustration
+        // sitting on it.
+        color: tinted ? AppColors.surface : AppColors.surfaceHigh,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: AppColors.border),
       ),
@@ -149,11 +158,14 @@ class VehicleBanner extends StatelessWidget {
   Widget _illustration() {
     final art = VehicleArt.from(vehicleText);
     return DecoratedBox(
+      // The design's cover placeholder: the same pale green-to-blue the map
+      // artwork uses, not the navy panel gradient. Those two `ink*` values
+      // were the last of the old dark theme left in this file.
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [AppColors.inkPanel, AppColors.inkSurface],
+          colors: [AppTint.mapPark, AppTint.mapWater],
         ),
       ),
       child: Center(
