@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/business_models.dart';
+import '../../core/permissions/location_access.dart';
 
 /// Registration form a local business owner uses to list themselves in Near Me.
 ///
@@ -67,12 +68,12 @@ class _BusinessOwnerAddScreenState extends State<BusinessOwnerAddScreen> {
         _snack('Turn on location to pin your business.');
         return;
       }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      // Disclosure before the prompt — see LocationAccess. This one uses the
+      // `place` wording: the reading becomes a public pin on a business
+      // listing, which is a different thing to say than "we find your pickup".
+      final permission =
+          await LocationAccess.ensure(context, LocationPurpose.place);
+      if (!LocationAccess.granted(permission)) {
         _snack('Allow location access to pin your business.');
         return;
       }

@@ -16,6 +16,11 @@ enum LocationPurpose {
   /// A Driver going online or running a trip. This one is continuous and it
   /// leaves the device, so it has to say so.
   driver,
+
+  /// Somebody pinning a place on the map — a business owner placing their own
+  /// listing. One reading, and what it becomes is a public pin, not a private
+  /// record, which is worth saying plainly.
+  place,
 }
 
 /// The single place the app asks for location.
@@ -90,6 +95,8 @@ class LocationAccess {
   static Future<bool?> _disclose(BuildContext context, LocationPurpose purpose) {
     final driver = purpose == LocationPurpose.driver;
 
+    if (purpose == LocationPurpose.place) return _disclosePlace(context);
+
     return showUdDialog<bool>(
       context: context,
       // Not dismissible by tapping outside. A disclosure that can be waved
@@ -133,6 +140,60 @@ class LocationAccess {
             text: driver
                 ? 'Your trip trail is deleted after 30 days.'
                 : 'You can decline and set your pickup by typing it instead.',
+          ),
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: () => LegalScreen.open(context, 'privacy-policy'),
+            child: Text(
+              'Read the Privacy Policy',
+              style: AppType.body2.copyWith(
+                color: AppColors.navy,
+                fontWeight: FontWeight.w800,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        UdButton.primary(
+          label: 'Continue',
+          onPressed: () => Navigator.of(context).pop(true),
+        ),
+        UdButton.ghost(
+          label: 'Not now',
+          onPressed: () => Navigator.of(context).pop(false),
+        ),
+      ],
+    );
+  }
+
+  static Future<bool?> _disclosePlace(BuildContext context) {
+    return showUdDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      title: 'Use your location?',
+      message: 'UDrive reads your precise location once, to drop the pin for '
+          'your business where you are standing.',
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _Point(
+            icon: Icons.schedule_rounded,
+            text: 'One reading, only when you tap it. UDrive never collects '
+                'your location in the background.',
+          ),
+          const SizedBox(height: 12),
+          const _Point(
+            icon: Icons.public_rounded,
+            text: 'This pin becomes part of your public business listing, so '
+                'customers can find you. It is not kept as a record of where '
+                'you have been.',
+          ),
+          const SizedBox(height: 12),
+          const _Point(
+            icon: Icons.edit_location_alt_outlined,
+            text: 'You can decline and place the pin on the map by hand.',
           ),
           const SizedBox(height: 14),
           GestureDetector(
