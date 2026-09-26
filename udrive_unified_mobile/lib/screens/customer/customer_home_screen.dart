@@ -1957,7 +1957,7 @@ class _TourRateGuideCard extends StatelessWidget {
             'Each driver sets their own tour price. Offer what you think the '
             'trip is worth — drivers reply with theirs.',
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 13,
               height: 1.4,
               color: AppText.disabled,
             ),
@@ -2313,7 +2313,7 @@ class _NotificationsPopup extends StatelessWidget {
                 AppConfig.buildLabel,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 12.5,
                   color: AppText.disabled,
                 ),
               ),
@@ -2405,7 +2405,7 @@ class _CentrePin extends StatelessWidget {
                       const Text(
                         'Pickup point',
                         style: TextStyle(
-                          fontSize: 11.5,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w700,
                           color: AppText.secondary,
                         ),
