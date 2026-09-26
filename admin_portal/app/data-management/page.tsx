@@ -65,7 +65,7 @@ export default function DataManagementPage() {
   }, [load]);
 
   async function seedDemo() {
-    if (!window.confirm('Add or refresh demo vehicles, destinations, tour packages and hotels? Existing real records will not be deleted.')) return;
+    if (!window.confirm('Restore the destination catalogue and vehicle rate card, and add the demo hotels? Nothing is deleted — existing rows are refreshed in place.')) return;
     setAction('demo');
     setError('');
     setSuccess('');
@@ -104,7 +104,7 @@ export default function DataManagementPage() {
   return (
     <AdminFrame
       title="Data management"
-      subtitle="Reset old application records or add a complete demonstration catalogue."
+      subtitle="Restore the destination catalogue and rate card, or delete old application records."
       actions={
         <button className="secondaryButton" onClick={() => void load()} disabled={busy || !!action}>
           <RefreshCw className={busy ? 'spin' : ''} /> Refresh counts
@@ -131,10 +131,12 @@ export default function DataManagementPage() {
             <article className="panel dataActionCard demoDataCard">
               <div className="dataActionIcon"><FlaskConical /></div>
               <span className="dataEyebrow">SAFE / REPEATABLE</span>
-              <h2>Add demo data</h2>
+              <h2>Restore reference data</h2>
               <p>
-                Adds Kashmir destinations, verified drivers, cars, coasters, bikes, rickshaws,
-                tour packages, approved hotels, hotel rooms and one pending hotel for approval testing.
+                Puts back the 35 Azad Kashmir destinations and the vehicle rate card — the two
+                things the customer app cannot work without, because an empty rate card means no
+                fare can be quoted. Also adds a few approved hotels with rooms, and one pending
+                hotel for testing approval. Existing records are refreshed, never duplicated.
               </p>
               <div className="dataMiniStats">
                 <span><strong>{status.demoUsers}</strong> demo users</span>
@@ -142,7 +144,7 @@ export default function DataManagementPage() {
                 <span><strong>{status.pendingHotels}</strong> pending hotels</span>
               </div>
               <button className="primaryButton wide" disabled={!!action} onClick={() => void seedDemo()}>
-                <Database /> {action === 'demo' ? 'Adding demo data…' : 'Add / refresh demo data'}
+                <Database /> {action === 'demo' ? 'Restoring…' : 'Restore / refresh'}
               </button>
             </article>
 
@@ -152,7 +154,9 @@ export default function DataManagementPage() {
               <h2>Delete all old data</h2>
               <p>
                 Deletes customer, driver, vehicle, booking, finance, tourism, support and hotel records.
-                Admin portal accounts and system settings are preserved so you can sign in again.
+                Admin portal accounts and system settings are preserved so you can sign in again, and
+                so are the destination catalogue and the vehicle rate card — those are reference data,
+                not records, and the app cannot quote a fare without them.
               </p>
               <div className="dataWarning"><ShieldAlert /> This action cannot be undone.</div>
               <label className="field">
