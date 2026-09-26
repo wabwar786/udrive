@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_theme.dart';
+import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/ud_kit.dart';
+import '../../../data/models.dart';
 import '../../hotel_owner/hotel_owner_shell.dart';
 import 'driver_signup_screen.dart';
 
-/// The first question: what are you offering?
+/// D-01 — the first question: what are you offering?
 ///
 /// Asked on its own, before anything else, because it is the one decision
 /// somebody can make without looking anything up — and because it changes what
@@ -16,6 +18,10 @@ import 'driver_signup_screen.dart';
 /// Putting a hotel on that list would have been a small lie, so the question
 /// widened instead: everything here is a way to earn on the platform, and the
 /// shape of the form follows from which one you pick.
+///
+/// No `Scaffold` and no `AppBar`. `main_shell` renders this as the driver
+/// verification gate and draws a white bar above it, so its own navy bar was a
+/// second bar on the same screen.
 class DriverVehicleTypeScreen extends StatelessWidget {
   const DriverVehicleTypeScreen({super.key});
 
@@ -35,99 +41,62 @@ class DriverVehicleTypeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('How do you want to earn?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-        children: [
-          const Text(
-            'You can add another later.',
-            style: TextStyle(
-              fontSize: 13.5,
-              height: 1.5,
-              color: AppText.secondary,
-            ),
-          ),
-          const SizedBox(height: 18),
-          for (final (name, blurb, icon) in _types)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Material(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(18),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  // A hotel goes somewhere else entirely.
-                  //
-                  // It has no licence, no number plate and no CNIC-with-selfie
-                  // — sending it through the driver steps would mean four
-                  // screens of questions with nothing to answer.
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => name == 'Hotel'
-                          ? const HotelOwnerShell()
-                          : DriverSignUpScreen(vehicleCategory: name),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 56,
-                          height: 56,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceAlt,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Icon(icon,
-                              size: 28, color: AppColors.secondary),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                name,
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppText.primary,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                blurb,
-                                style: const TextStyle(
-                                  fontSize: 12.5,
-                                  color: AppText.secondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.chevron_right_rounded,
-                            color: AppText.disabled),
-                      ],
-                    ),
+    final controller = AppControllerScope.of(context);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+          AppSizes.sidePadding, 4, AppSizes.sidePadding, 34),
+      children: [
+        Text(
+          'How do you want to earn?',
+          style: AppType.h1.copyWith(color: AppText.primary),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'You can add another later.',
+          style: AppType.body.copyWith(height: 1.45, color: AppText.secondary),
+        ),
+        const SizedBox(height: 22),
+        UdListGroup(
+          children: [
+            for (final (name, blurb, icon) in _types)
+              UdListRow(
+                title: name,
+                subtitle: blurb,
+                leading: UdIconTile(icon: icon),
+                showChevron: true,
+                // A hotel goes somewhere else entirely.
+                //
+                // It has no licence, no number plate and no CNIC-with-selfie
+                // — sending it through the driver steps would mean four
+                // screens of questions with nothing to answer.
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => name == 'Hotel'
+                        ? const HotelOwnerShell()
+                        : DriverSignUpScreen(vehicleCategory: name),
                   ),
                 ),
               ),
-            ),
-        ],
-      ),
+          ],
+        ),
+        const SizedBox(height: 26),
+        // Was a "Close" button in the app bar calling `Navigator.pop`.
+        //
+        // This screen is not pushed — `main_shell` renders it as the driver
+        // verification gate, and `MainShell` is `app.dart`'s `home:`, the root
+        // route. So `pop` had nothing to pop and the button did precisely
+        // nothing, on the first screen a new driver ever sees.
+        //
+        // Leaving the gate means going back to being a customer, so that is
+        // what the button does now.
+        UdButton.ghost(
+          label: 'Not now — back to customer',
+          icon: Icons.arrow_back_rounded,
+          onPressed: () => controller.switchMode(UserMode.customer),
+        ),
+      ],
     );
   }
 }

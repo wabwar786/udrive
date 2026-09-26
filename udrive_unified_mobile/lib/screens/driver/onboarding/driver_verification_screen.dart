@@ -4,7 +4,7 @@ import '../../../core/media/image_compressor.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
-import '../../../core/widgets/common_widgets.dart';
+import '../../../core/widgets/ud_kit.dart';
 import '../../../models/auth_models.dart';
 import 'live_vehicle_registration_screen.dart';
 
@@ -47,106 +47,204 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
     final controller = AppControllerScope.of(context);
     final profile = controller.driverProfile;
     final urdu = controller.locale.languageCode == 'ur';
+    final status = profile?.verificationStatus ?? 'Not started';
 
+    // Rendered inside `main_shell`, which draws the bar — no Scaffold here.
     return RefreshIndicator(
       onRefresh: controller.refreshAccount,
+      color: AppColors.navy,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 120),
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 6, AppSizes.sidePadding, 120),
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              gradient: const LinearGradient(colors: [AppColors.inkDeep, AppColors.primary]),
-            ),
+          // Was a navy gradient from AppColors.inkDeep — the last of the old
+          // dark theme on this screen.
+          UdCard(
+            tone: UdCardTone.navy,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  const CircleAvatar(radius: 28, backgroundColor: Colors.white, child: Icon(Icons.badge_outlined, color: AppColors.primaryDark, size: 31)),
-                  const SizedBox(width: 13),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(urdu ? 'ڈرائیور کی تصدیق' : 'Driver verification', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 3),
-                    Text(controller.currentUserPhone, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
-                  ])),
-                ]),
+                Row(
+                  children: [
+                    const UdIconTile(
+                      icon: Icons.badge_outlined,
+                      tone: UdIconTone.lime,
+                      size: UdIconTileSize.lg,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            urdu ? 'ڈرائیور کی تصدیق' : 'Driver verification',
+                            style: AppType.h2.copyWith(color: AppText.onInk),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            controller.currentUserPhone,
+                            style: AppType.body2
+                                .copyWith(color: AppText.onInkMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 18),
                 Text(
                   urdu
                       ? 'محفوظ سیاحت کے لیے شناخت، لائسنس، سیلفی اور گاڑی کی تصدیق ضروری ہے۔'
-                      : 'Identity, licence, selfie and vehicle verification are required before accepting real tourism bookings.',
-                  style: const TextStyle(color: Colors.white, height: 1.45, fontWeight: FontWeight.w600),
+                      : 'Identity, licence, selfie and vehicle verification are '
+                          'required before accepting real tourism bookings.',
+                  style: AppType.body2.copyWith(color: AppText.onInkMuted),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          _StatusCard(status: profile?.verificationStatus ?? 'Not started', notes: profile?.reviewNotes),
+          const SizedBox(height: 18),
+          _StatusCard(status: status, notes: profile?.reviewNotes),
           if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(_error!, style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 14),
+            UdBanner(
+              tone: UdTone.err,
+              icon: Icons.error_outline_rounded,
+              text: _error!,
+            ),
           ],
-          const SizedBox(height: 16),
-          if (profile == null || profile.verificationStatus == 'Draft' || profile.verificationStatus == 'ChangesRequired')
+          const SizedBox(height: 22),
+          // Editable while it is a draft or has come back for changes;
+          // read-only once it is with the reviewers. Unchanged.
+          if (profile == null ||
+              profile.verificationStatus == 'Draft' ||
+              profile.verificationStatus == 'ChangesRequired')
             _profileForm(urdu)
           else
             _submittedProfile(profile, urdu),
-          const SizedBox(height: 16),
+          const SizedBox(height: 22),
           _documentsSection(urdu),
-          const SizedBox(height: 16),
+          const SizedBox(height: 22),
           _vehiclesSection(urdu),
-          const SizedBox(height: 18),
+          const SizedBox(height: 24),
           if (profile != null && profile.verificationStatus != 'Approved')
-            FilledButton.icon(
-              onPressed: _busy ? null : _submitApplication,
-              icon: const Icon(Icons.send_rounded),
-              label: Text(urdu ? 'تصدیق کے لیے جمع کریں' : 'Submit complete application'),
+            UdButton.primary(
+              label: urdu
+                  ? 'تصدیق کے لیے جمع کریں'
+                  : 'Submit complete application',
+              icon: Icons.send_rounded,
+              busy: _busy,
+              onPressed: _submitApplication,
             ),
           const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: _busy ? null : AppControllerScope.of(context).refreshAccount,
-            icon: const Icon(Icons.refresh_rounded),
-            label: Text(urdu ? 'حالت دوبارہ چیک کریں' : 'Refresh approval status'),
+          UdButton.outline(
+            label: urdu ? 'حالت دوبارہ چیک کریں' : 'Refresh approval status',
+            icon: Icons.refresh_rounded,
+            onPressed: _busy ? null : controller.refreshAccount,
           ),
         ],
       ),
     );
   }
 
-  Widget _profileForm(bool urdu) => PremiumCard(
+  Widget _profileForm(bool urdu) => UdCard(
         child: Form(
           key: _formKey,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(urdu ? 'ذاتی اور قانونی معلومات' : 'Personal and legal information', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 15),
-            _field(_name, urdu ? 'پورا نام' : 'Full legal name', Icons.person_outline, required: true),
-            _field(_cnic, urdu ? 'شناختی کارڈ نمبر (13 ہندسے)' : 'CNIC number (13 digits)', Icons.credit_card_rounded, keyboard: TextInputType.number, required: true),
-            _field(_licence, urdu ? 'ڈرائیونگ لائسنس نمبر' : 'Driving licence number', Icons.badge_outlined, required: true),
-            _field(_address, urdu ? 'مکمل پتہ' : 'Residential address', Icons.home_outlined, required: true, lines: 2),
-            _field(_emergencyName, urdu ? 'ایمرجنسی رابطے کا نام' : 'Emergency contact name', Icons.contact_emergency_outlined, required: true),
-            _field(_emergencyPhone, urdu ? 'ایمرجنسی موبائل نمبر' : 'Emergency mobile number', Icons.phone_outlined, keyboard: TextInputType.phone, required: true),
-            _field(_bankTitle, urdu ? 'اکاؤنٹ کا عنوان' : 'Bank/wallet account title', Icons.account_balance_outlined),
-            _field(_payoutAccount, urdu ? 'بینک/والٹ اکاؤنٹ' : 'Bank account, IBAN or wallet number', Icons.payments_outlined),
-            const SizedBox(height: 6),
-            FilledButton.icon(
-              onPressed: _busy ? null : _saveProfile,
-              icon: const Icon(Icons.save_outlined),
-              label: Text(urdu ? 'معلومات محفوظ کریں' : 'Save registration details'),
-            ),
-          ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                urdu
+                    ? 'ذاتی اور قانونی معلومات'
+                    : 'Personal and legal information',
+                style: AppType.section.copyWith(
+                  fontSize: 17,
+                  color: AppText.primary,
+                ),
+              ),
+              const SizedBox(height: 18),
+              _field(_name, urdu ? 'پورا نام' : 'Full legal name',
+                  Icons.person_outline, required: true),
+              _field(
+                  _cnic,
+                  urdu
+                      ? 'شناختی کارڈ نمبر (13 ہندسے)'
+                      : 'CNIC number (13 digits)',
+                  Icons.credit_card_rounded,
+                  keyboard: TextInputType.number,
+                  required: true),
+              _field(_licence, urdu ? 'ڈرائیونگ لائسنس نمبر' : 'Driving licence number',
+                  Icons.badge_outlined, required: true),
+              _field(_address, urdu ? 'مکمل پتہ' : 'Residential address',
+                  Icons.home_outlined, required: true, lines: 2),
+              _field(
+                  _emergencyName,
+                  urdu ? 'ایمرجنسی رابطے کا نام' : 'Emergency contact name',
+                  Icons.contact_emergency_outlined,
+                  required: true),
+              _field(
+                  _emergencyPhone,
+                  urdu ? 'ایمرجنسی موبائل نمبر' : 'Emergency mobile number',
+                  Icons.phone_outlined,
+                  keyboard: TextInputType.phone,
+                  required: true),
+              _field(_bankTitle, urdu ? 'اکاؤنٹ کا عنوان' : 'Bank/wallet account title',
+                  Icons.account_balance_outlined),
+              _field(
+                  _payoutAccount,
+                  urdu
+                      ? 'بینک/والٹ اکاؤنٹ'
+                      : 'Bank account, IBAN or wallet number',
+                  Icons.payments_outlined),
+              const SizedBox(height: 6),
+              // Navy, not lime. The lime button on this screen is "Submit
+              // complete application" at the very bottom — one green button
+              // per screen, and it is the one that ends the job.
+              UdButton.dark(
+                label: urdu
+                    ? 'معلومات محفوظ کریں'
+                    : 'Save registration details',
+                trailingIcon: Icons.edit_outlined,
+                busy: _busy,
+                onPressed: _saveProfile,
+              ),
+            ],
+          ),
         ),
       );
 
-  Widget _submittedProfile(DriverProfileLive profile, bool urdu) => PremiumCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(urdu ? 'محفوظ معلومات' : 'Saved registration', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 12),
-          _info('CNIC', profile.cnicMasked ?? '—'),
-          _info(urdu ? 'لائسنس' : 'Licence', profile.drivingLicenceMasked ?? '—'),
-          _info(urdu ? 'زبانیں' : 'Languages', profile.languages.join(', ')),
-          _info(urdu ? 'سروس ایریاز' : 'Service areas', profile.serviceAreas.join(', ')),
-        ]),
+  Widget _submittedProfile(DriverProfileLive profile, bool urdu) => UdCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              urdu ? 'محفوظ معلومات' : 'Saved registration',
+              style: AppType.section.copyWith(
+                fontSize: 17,
+                color: AppText.primary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            UdKeyValue(label: 'CNIC', value: profile.cnicMasked ?? '—'),
+            UdKeyValue(
+              label: urdu ? 'لائسنس' : 'Licence',
+              value: profile.drivingLicenceMasked ?? '—',
+            ),
+            UdKeyValue(
+              label: urdu ? 'زبانیں' : 'Languages',
+              value: profile.languages.isEmpty
+                  ? '—'
+                  : profile.languages.join(', '),
+            ),
+            UdKeyValue(
+              label: urdu ? 'سروس ایریاز' : 'Service areas',
+              value: profile.serviceAreas.isEmpty
+                  ? '—'
+                  : profile.serviceAreas.join(', '),
+              showDivider: false,
+            ),
+          ],
+        ),
       );
 
   Widget _documentsSection(bool urdu) {
@@ -156,88 +254,119 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
       ('DRIVING_LICENCE', 'Driving licence', Icons.badge_rounded),
       ('SELFIE', 'Live selfie/profile photo', Icons.face_rounded),
     ];
-    return PremiumCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(urdu ? 'ضروری دستاویزات' : 'Required driver documents', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 5),
-        Text(urdu ? 'JPG، PNG، WebP یا PDF، زیادہ سے زیادہ 10 MB۔' : 'JPG, PNG, WebP or PDF, maximum 10 MB.', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
-        const SizedBox(height: 10),
-        for (final item in documents)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(backgroundColor: AppColors.primary.withValues(alpha: .1), child: Icon(item.$3, color: AppColors.primaryDark)),
-            title: Text(item.$2, style: const TextStyle(fontWeight: FontWeight.w800)),
-            trailing: const Icon(Icons.upload_file_rounded),
-            onTap: _busy ? null : () => _pickAndUploadDriverDocument(item.$1),
-          ),
-      ]),
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UdSectionHeader(
+          title: urdu ? 'ضروری دستاویزات' : 'Required driver documents',
+        ),
+        const SizedBox(height: 6),
+        Text(
+          urdu
+              ? 'JPG، PNG، WebP یا PDF، زیادہ سے زیادہ 10 MB۔'
+              : 'JPG, PNG, WebP or PDF, maximum 10 MB.',
+          style: AppType.small.copyWith(color: AppText.secondary),
+        ),
+        const SizedBox(height: 14),
+        UdListGroup(
+          children: [
+            for (final item in documents)
+              UdListRow(
+                title: item.$2,
+                leading: UdIconTile(icon: item.$3),
+                trailing: const Icon(Icons.upload_file_rounded,
+                    size: 22, color: AppText.secondary),
+                onTap: _busy
+                    ? null
+                    : () => _pickAndUploadDriverDocument(item.$1),
+              ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _vehiclesSection(bool urdu) {
     final vehicles = AppControllerScope.of(context).liveVehicles;
-    return PremiumCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Expanded(child: Text(urdu ? 'رجسٹرڈ گاڑیاں' : 'Registered vehicles', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
-          IconButton.filledTonal(
-            onPressed: _busy ? null : _openVehicleRegistration,
-            icon: const Icon(Icons.add_rounded),
-          ),
-        ]),
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UdSectionHeader(
+          title: urdu ? 'رجسٹرڈ گاڑیاں' : 'Registered vehicles',
+          caption: vehicles.isEmpty
+              ? null
+              : (urdu
+                  ? '${vehicles.length} گاڑیاں'
+                  : '${vehicles.length} on your account'),
+        ),
+        const SizedBox(height: 14),
         if (vehicles.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Text(urdu ? 'ابھی کوئی گاڑی رجسٹر نہیں ہوئی۔' : 'No live vehicle is registered yet.', textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted)),
+          UdEmptyState(
+            icon: Icons.directions_car_outlined,
+            title: urdu ? 'کوئی گاڑی نہیں' : 'No vehicle yet',
+            text: urdu
+                ? 'ابھی کوئی گاڑی رجسٹر نہیں ہوئی۔'
+                : 'No live vehicle is registered yet.',
           )
         else
-          for (final vehicle in vehicles)
-            Container(
-              margin: const EdgeInsets.only(top: 10),
-              padding: const EdgeInsets.all(13),
-              // Theme surfaces, not a hard-coded near-white.
-              //
-              // `#F5F8F7` was mixed for the old light scheme and reads as a
-              // grey slab on the teal palette, with the vehicle name in ink
-              // chosen for a different background.
-              decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
-              child: Row(children: [
-                CircleAvatar(backgroundColor: AppTint.brand, child: Icon(Icons.directions_car_filled_rounded, color: AppColors.secondary)),
-                const SizedBox(width: 12),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${vehicle.make} ${vehicle.model} ${vehicle.year}', style: const TextStyle(fontWeight: FontWeight.w800, color: AppText.primary)),
-                  Text('${vehicle.registrationNumber} · ${vehicle.passengerCapacity} seats · readiness ${vehicle.mountainReadinessScore}%', style: const TextStyle(color: AppText.secondary, fontSize: 11.5)),
-                ])),
-                _StatusPill(vehicle.status),
-              ]),
-            ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
+          UdListGroup(
+            children: [
+              for (final vehicle in vehicles)
+                UdListRow(
+                  title: '${vehicle.make} ${vehicle.model} ${vehicle.year}',
+                  subtitle: '${vehicle.registrationNumber} · '
+                      '${vehicle.passengerCapacity} seats · '
+                      'readiness ${vehicle.mountainReadinessScore}%',
+                  leading: const UdIconTile(
+                    icon: Icons.directions_car_filled_rounded,
+                    tone: UdIconTone.soft,
+                  ),
+                  trailing: UdBadge(
+                    label: vehicle.status,
+                    tone: _vehicleTone(vehicle.status),
+                  ),
+                ),
+            ],
+          ),
+        const SizedBox(height: 14),
+        UdButton.outline(
+          label: urdu ? 'نئی گاڑی رجسٹر کریں' : 'Register another vehicle',
+          icon: Icons.add_road_rounded,
           onPressed: _busy ? null : _openVehicleRegistration,
-          icon: const Icon(Icons.add_road_rounded),
-          label: Text(urdu ? 'نئی گاڑی رجسٹر کریں' : 'Register another vehicle'),
         ),
-      ]),
+      ],
     );
   }
 
-  Widget _field(TextEditingController controller, String label, IconData icon, {bool required = false, TextInputType? keyboard, int lines = 1}) => Padding(
-        padding: const EdgeInsets.only(bottom: 11),
-        child: TextFormField(
+  static UdTone _vehicleTone(String status) => switch (status) {
+        'Approved' || 'Active' => UdTone.ok,
+        'Rejected' || 'Suspended' => UdTone.err,
+        _ => UdTone.warn,
+      };
+
+  Widget _field(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool required = false,
+    TextInputType? keyboard,
+    int lines = 1,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: UdTextField(
           controller: controller,
+          label: label,
+          icon: icon,
           keyboardType: keyboard,
           maxLines: lines,
-          decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
-          validator: required ? (value) => (value ?? '').trim().isEmpty ? 'Required' : null : null,
+          minLines: lines > 1 ? lines : null,
+          validator: required
+              ? (value) => (value ?? '').trim().isEmpty ? 'Required' : null
+              : null,
         ),
-      );
-
-  Widget _info(String label, String value) => Padding(
-        padding: const EdgeInsets.only(bottom: 9),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(width: 105, child: Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 12))),
-          Expanded(child: Text(value.isEmpty ? '—' : value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
-        ]),
       );
 
   Future<void> _saveProfile() async {
@@ -308,31 +437,62 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
   }
 }
 
+/// Where the application stands, and what the reviewers said about it.
 class _StatusCard extends StatelessWidget {
   const _StatusCard({required this.status, this.notes});
+
   final String status;
   final String? notes;
-  @override
-  Widget build(BuildContext context) => PremiumCard(
-        color: status == 'Approved' ? AppTint.success : AppTint.warning,
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(status == 'Approved' ? Icons.verified_rounded : Icons.pending_actions_rounded, color: status == 'Approved' ? AppColors.success : AppColors.warning, size: 30),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Verification status: $status', style: TextStyle(fontWeight: FontWeight.w800, color: status == 'Approved' ? AppTint.successText : AppTint.warningText)),
-            if (notes != null && notes!.isNotEmpty) ...[const SizedBox(height: 5), Text(notes!, style: TextStyle(color: status == 'Approved' ? AppTint.successText : AppTint.warningText, fontSize: 12, height: 1.4))],
-          ])),
-        ]),
-      );
-}
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill(this.status);
-  final String status;
+  /// What to do next, per status.
+  ///
+  /// The banner used to say only "Verification status: Draft", which tells a
+  /// driver where they are and not what to do about it — and "Draft" on its
+  /// own reads like a failure rather than a form nobody has sent yet.
+  static String? _hint(String status) => switch (status) {
+        'Draft' || 'Not started' =>
+          'save your details below, then submit for review',
+        'Submitted' || 'PendingReview' || 'UnderReview' =>
+          'our team reviews new registrations within 24 hours',
+        'ChangesRequired' || 'Rejected' =>
+          'send the document below again and resubmit',
+        _ => null,
+      };
+
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-        decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(99)),
-        child: Text(status, style: const TextStyle(color: AppColors.primaryDark, fontSize: 10, fontWeight: FontWeight.w900)),
-      );
+  Widget build(BuildContext context) {
+    final approved = status == 'Approved';
+    final hint = _hint(status);
+    return UdBanner(
+      tone: approved ? UdTone.ok : UdTone.warn,
+      icon: approved
+          ? Icons.verified_rounded
+          : Icons.pending_actions_rounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            hint == null
+                ? 'Verification status: $status'
+                : 'Verification status: $status — $hint.',
+            style: AppType.listTitle.copyWith(
+              fontSize: 15.5,
+              height: 1.4,
+              color: approved ? AppTint.successText : AppTint.warningText,
+            ),
+          ),
+          if ((notes ?? '').isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              notes!,
+              style: AppType.small.copyWith(
+                color: approved ? AppTint.successText : AppTint.warningText,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

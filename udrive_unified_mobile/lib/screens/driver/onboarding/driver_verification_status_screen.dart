@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/ud_kit.dart';
 import '../driver_documents_screen.dart';
 import 'driver_vehicle_type_screen.dart';
 
-/// Where a driver's registration stands.
+/// D-07 — where a driver's registration stands.
 ///
 /// This screen did not exist, and its absence was the whole problem: after
 /// submitting, a driver was returned to the same "how do you want to earn?"
@@ -17,6 +18,9 @@ import 'driver_vehicle_type_screen.dart';
 /// Four states, and each one says what to do next rather than only what has
 /// happened. "Submitted" with no idea whether to wait an hour or a week is
 /// barely better than silence.
+///
+/// No `Scaffold`. `main_shell` renders this behind the driver gate and draws
+/// the bar; the design's own back arrow is that bar, not a second one.
 class DriverVerificationStatusScreen extends StatefulWidget {
   const DriverVerificationStatusScreen({super.key});
 
@@ -52,11 +56,14 @@ class _DriverVerificationStatusScreenState
     final status = controller.driverVerificationStatus;
     final notes = controller.driverProfile?.reviewNotes;
 
-    final (icon, tint, ink, title, body, actionLabel) = switch (status) {
+    // The tone drives the halo, the icon and — for the two states that carry a
+    // reviewer's words — the banner underneath. One switch, so a new status can
+    // never end up with a green tick and a red message.
+    final (IconData icon, UdIconTone tone, String title, String body,
+        String? actionLabel) = switch (status) {
       'Submitted' || 'PendingReview' || 'UnderReview' => (
           Icons.hourglass_top_rounded,
-          AppTint.warning,
-          AppTint.warningText,
+          UdIconTone.warn,
           'With our team',
           'Our team checks new registrations within 24 hours. You can close '
               'the app — nothing is lost, and this screen will show the '
@@ -65,8 +72,7 @@ class _DriverVerificationStatusScreenState
         ),
       'ChangesRequired' || 'Rejected' => (
           Icons.error_outline_rounded,
-          AppTint.danger,
-          AppTint.dangerText,
+          UdIconTone.red,
           'Something needs to be sent again',
           notes == null || notes.trim().isEmpty
               // A rejection with no reason is the worst of both: the driver
@@ -78,93 +84,131 @@ class _DriverVerificationStatusScreenState
         ),
       'Approved' => (
           Icons.verified_rounded,
-          AppTint.success,
-          AppTint.successText,
+          UdIconTone.soft,
           'You are approved',
           'You can go online and start taking rides.',
           null,
         ),
       _ => (
           Icons.edit_note_rounded,
-          AppColors.surfaceAlt,
-          AppText.secondary,
+          UdIconTone.neutral,
           'Not finished yet',
           'Your registration has not been sent. Pick up where you left off.',
           'Continue registration',
         ),
     };
 
+    final rejected = status == 'ChangesRequired' || status == 'Rejected';
+
     return RefreshIndicator(
       onRefresh: _refresh,
+      color: AppColors.navy,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 26, 20, 30),
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 24, AppSizes.sidePadding, 34),
         children: [
-          Center(
-            child: Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
-              child: Icon(icon, size: 42, color: ink),
-            ),
-          ),
-          const SizedBox(height: 20),
+          // 88px halo, same as the artboard. Bigger than any tile size the kit
+          // ships, and deliberately so — on a screen with four lines of text
+          // this is the one thing you read from across the room.
+          Center(child: _Halo(icon: icon, tone: tone)),
+          const SizedBox(height: 22),
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: AppText.primary,
-            ),
+            style: AppType.h1.copyWith(color: AppText.primary),
           ),
           const SizedBox(height: 10),
           Text(
             body,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 14.5,
-              height: 1.6,
-              color: AppText.secondary,
-            ),
+            style: AppType.body.copyWith(height: 1.6, color: AppText.secondary),
           ),
+
+          // A reviewer's own words, when there are any, on a red banner rather
+          // than as grey body text. They are the only part of this screen that
+          // is about *your* form and not about the process.
+          if (rejected && notes != null && notes.trim().isNotEmpty) ...[
+            const SizedBox(height: 18),
+            UdBanner(
+              tone: UdTone.err,
+              icon: Icons.assignment_late_outlined,
+              text: notes,
+            ),
+          ],
 
           const SizedBox(height: 26),
 
-          if (actionLabel != null)
-            FilledButton(
+          if (actionLabel != null) ...[
+            UdButton(
+              label: actionLabel,
+              icon: rejected
+                  ? Icons.folder_open_rounded
+                  : Icons.arrow_forward_rounded,
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => status == 'ChangesRequired' ||
-                          status == 'Rejected'
+                  builder: (routeContext) => rejected
                       ? const DriverDocumentsScreen()
-                      : const DriverVehicleTypeScreen(),
+                      // D-01 ships no `Scaffold` of its own — `main_shell`
+                      // normally frames it. Pushed from here it has no frame,
+                      // so it gets one: without it the list paints on nothing
+                      // and there is no way back.
+                      : Scaffold(
+                          backgroundColor: AppColors.background,
+                          appBar: UdTopBar(
+                            title: 'Driver registration',
+                            onBack: () => Navigator.pop(routeContext),
+                          ),
+                          body: const DriverVehicleTypeScreen(),
+                        ),
                 ),
               ),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-              child: Text(actionLabel),
             ),
+            const SizedBox(height: 10),
+          ],
 
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
+          UdButton.outline(
+            label: _refreshing ? 'Checking…' : 'Check for an update',
+            icon: Icons.refresh_rounded,
+            busy: _refreshing,
             onPressed: _refreshing ? null : _refresh,
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(50),
-            ),
-            icon: _refreshing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh_rounded, size: 18),
-            label: Text(_refreshing ? 'Checking…' : 'Check for an update'),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The status halo — a circle of wash with the state's icon in its ink.
+///
+/// `UdIconTile` tops out at 56px and is a rounded square; this is round and
+/// 88px, so it borrows the tile's colour pairs rather than the tile itself.
+/// Every pair here is one the kit already ships, which is what keeps the icon
+/// legible on its own wash.
+class _Halo extends StatelessWidget {
+  const _Halo({required this.icon, required this.tone});
+
+  final IconData icon;
+  final UdIconTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color fill, Color ink) = switch (tone) {
+      UdIconTone.warn => (AppTint.warning, AppTint.warningText),
+      UdIconTone.red => (AppTint.danger, AppTint.dangerText),
+      UdIconTone.soft => (AppColors.brandWash, AppColors.brandInk),
+      UdIconTone.info => (AppTint.info, AppTint.infoText),
+      UdIconTone.lime => (AppColors.brand, AppText.onBrand),
+      UdIconTone.navy => (AppColors.navy, AppColors.brand),
+      UdIconTone.neutral => (AppColors.surfaceAlt, AppColors.navy),
+    };
+
+    return Container(
+      width: 88,
+      height: 88,
+      decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
+      child: Icon(icon, size: 40, color: ink),
     );
   }
 }

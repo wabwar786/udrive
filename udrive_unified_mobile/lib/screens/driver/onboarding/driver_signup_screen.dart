@@ -6,6 +6,7 @@ import '../../../core/media/image_compressor.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/ud_kit.dart';
 
 /// Driver sign-up, in four steps.
 ///
@@ -296,20 +297,27 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: _back,
-          icon: const Icon(Icons.close_rounded),
-        ),
-        title: Text(_titles[_step]),
+      // A pushed page, so it keeps its own Scaffold and draws its own bar.
+      //
+      // The two controls now match what they do: the arrow goes back a step
+      // (and out of the form from step one), the cross leaves the form. Both
+      // existed before; the leading one was a cross that behaved like a back
+      // arrow.
+      appBar: UdTopBar(
+        title: _titles[_step],
+        onBack: _busy ? null : _back,
+        divider: true,
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+          UdIconButton(
+            icon: Icons.close_rounded,
+            variant: UdIconButtonVariant.soft,
+            tooltip: 'Leave sign-up',
+            onPressed: _busy ? null : () => Navigator.pop(context),
           ),
         ],
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
             child: PageView(
@@ -325,14 +333,12 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
           ),
           if (_error != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                _error!,
-                style: const TextStyle(
-                  fontSize: 13,
-                  height: 1.4,
-                  color: AppColors.danger,
-                ),
+              padding: const EdgeInsets.fromLTRB(
+                  AppSizes.sidePadding, 0, AppSizes.sidePadding, 12),
+              child: UdBanner(
+                tone: UdTone.err,
+                icon: Icons.error_outline_rounded,
+                text: _error!,
               ),
             ),
           _footer(),
@@ -342,88 +348,75 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
   }
 
   Widget _footer() {
-    return SafeArea(
-      minimum: const EdgeInsets.fromLTRB(20, 10, 20, 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_step + 1} of 4',
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: AppText.primary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // A bar, not a number alone. "3 of 4" says where you are; a
-                // bar says how much is left, which is the part that decides
-                // whether someone carries on.
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(99),
-                  child: LinearProgressIndicator(
-                    value: (_step + 1) / 4,
-                    minHeight: 5,
-                    backgroundColor: AppColors.surfaceAlt,
-                    valueColor:
-                        AlwaysStoppedAnimation(AppColors.secondary),
-                  ),
-                ),
-              ],
+    return UdBottomBar(
+      children: [
+        Row(
+          children: [
+            Text(
+              'Step ${_step + 1} of 4',
+              style: AppType.listTitle.copyWith(
+                fontSize: 16,
+                color: AppText.primary,
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          if (_step > 0) ...[
-            _SquareButton(
-              icon: Icons.chevron_left_rounded,
-              onTap: _busy ? null : _back,
+            const Spacer(),
+            Text(
+              _titles[_step],
+              style: AppType.small.copyWith(color: AppText.secondary),
             ),
-            const SizedBox(width: 8),
           ],
-          FilledButton(
-            // Disabled until the step is complete, rather than allowing Next
-            // and complaining afterwards. The person can see what is missing
-            // on the screen in front of them.
-            onPressed: (_busy || !_stepComplete) ? null : _next,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(120, 52),
+        ),
+        // Segments, not a number alone. "3 of 4" says where you are; the bar
+        // says how much is left, which is the part that decides whether
+        // someone carries on.
+        UdSteps(total: 4, current: _step),
+        UdButtonRow(
+          children: [
+            if (_step > 0)
+              UdButton.outline(
+                label: 'Back',
+                icon: Icons.chevron_left_rounded,
+                onPressed: _busy ? null : _back,
+              ),
+            UdButton.primary(
+              label: _step == 3 ? 'Submit' : 'Next',
+              trailingIcon: Icons.chevron_right_rounded,
+              busy: _busy,
+              // Disabled until the step is complete, rather than allowing Next
+              // and complaining afterwards. The person can see what is missing
+              // on the screen in front of them.
+              onPressed: _stepComplete ? _next : null,
             ),
-            child: _busy
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(_step == 3 ? 'Submit' : 'Next'),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.chevron_right_rounded, size: 20),
-                    ],
-                  ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _page1Body(List<Widget> children) => ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 18, AppSizes.sidePadding, 24),
         children: children,
       );
 
   Widget _personalStep() => _page1Body([
-        _PhotoSlot(
-          label: 'Personal picture',
-          file: _files['SELFIE'],
-          onTap: () => _pick('SELFIE'),
-          onClear: () => setState(() => _files.remove('SELFIE')),
+        _StepIntro(
+          icon: Icons.person_rounded,
+          title: 'Who are you?',
+          text: 'Your name and a clear picture of your face. This is what a '
+              'customer sees before they get in.',
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: 160,
+          child: _PhotoSlot(
+            label: 'Personal picture',
+            file: _files['SELFIE'],
+            onTap: () => _pick('SELFIE'),
+            onClear: () => setState(() => _files.remove('SELFIE')),
+          ),
+        ),
+        const SizedBox(height: 22),
         _Field(label: 'First name', controller: _firstName, onChanged: _touch),
         _Field(label: 'Last name', controller: _lastName, onChanged: _touch),
         _DateField(
@@ -443,6 +436,12 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
       ]);
 
   Widget _licenceStep() => _page1Body([
+        _StepIntro(
+          icon: Icons.badge_rounded,
+          title: 'Your driving licence',
+          text: 'Both sides, and the number and expiry exactly as printed.',
+        ),
+        const SizedBox(height: 20),
         Row(
           children: [
             Expanded(
@@ -466,7 +465,7 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 22),
         _Field(
           label: 'Licence number',
           controller: _licenceNumber,
@@ -489,6 +488,13 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
       ]);
 
   Widget _cnicStep() => _page1Body([
+        _StepIntro(
+          icon: Icons.credit_card_rounded,
+          title: 'Your CNIC',
+          text: 'Front, back, and one photo of you holding it. All three are '
+              'needed before an account can be approved.',
+        ),
+        const SizedBox(height: 20),
         Row(
           children: [
             Expanded(
@@ -520,12 +526,13 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 22),
         _Field(
           label: 'ID number',
           controller: _cnic,
           onChanged: _touch,
           keyboard: TextInputType.number,
+          helper: '13 digits, no dashes.',
           formatters: [
             FilteringTextInputFormatter.digitsOnly,
             LengthLimitingTextInputFormatter(13),
@@ -534,6 +541,13 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
       ]);
 
   Widget _vehicleStep() => _page1Body([
+        _StepIntro(
+          icon: Icons.directions_car_rounded,
+          title: 'Your ${widget.vehicleCategory.toLowerCase()}',
+          text: 'The vehicle itself, its registration book, and the details on '
+              'the number plate.',
+        ),
+        const SizedBox(height: 20),
         Row(
           children: [
             Expanded(
@@ -566,7 +580,7 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 22),
         _Field(label: 'Vehicle brand', controller: _make, onChanged: _touch),
         _Field(label: 'Vehicle model', controller: _model, onChanged: _touch),
         _Field(label: 'Vehicle colour', controller: _colour, onChanged: _touch),
@@ -581,6 +595,7 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
           controller: _year,
           onChanged: _touch,
           keyboard: TextInputType.number,
+          helper: '1980 or later.',
           formatters: [
             FilteringTextInputFormatter.digitsOnly,
             LengthLimitingTextInputFormatter(4),
@@ -606,6 +621,45 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
           '${value.day.toString().padLeft(2, '0')}';
 }
 
+/// What this step is for, in one line, before the fields.
+class _StepIntro extends StatelessWidget {
+  const _StepIntro({
+    required this.icon,
+    required this.title,
+    required this.text,
+  });
+
+  final IconData icon;
+  final String title;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          UdIconTile(icon: icon, tone: UdIconTone.soft),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: AppType.h3.copyWith(color: AppText.primary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  text,
+                  style: AppType.small.copyWith(color: AppText.secondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+}
+
 /// A photograph slot: tap to add, cross to remove.
 class _PhotoSlot extends StatelessWidget {
   const _PhotoSlot({
@@ -623,6 +677,7 @@ class _PhotoSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bytes = file?.bytes;
+    final filled = bytes != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -637,45 +692,52 @@ class _PhotoSlot extends StatelessWidget {
                 child: Container(
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border),
+                    color: filled ? AppColors.background : AppColors.surface,
+                    borderRadius: AppRadii.all(AppRadii.field),
+                    // A dashed-looking empty slot reads as "put something
+                    // here"; a filled one is just the photograph.
+                    border: Border.all(
+                      color: filled
+                          ? AppColors.border
+                          : AppColors.borderStrong,
+                      width: 1.5,
+                    ),
                   ),
-                  child: bytes == null
-                      ? const Icon(Icons.add_rounded,
-                          size: 30, color: AppText.secondary)
-                      : Image.memory(bytes, fit: BoxFit.cover),
+                  child: filled
+                      ? Image.memory(bytes, fit: BoxFit.cover)
+                      : const Icon(Icons.add_a_photo_outlined,
+                          size: 26, color: AppText.secondary),
                 ),
               ),
             ),
-            if (bytes != null)
+            if (filled)
               Positioned(
-                top: -6,
-                right: -6,
+                top: -8,
+                right: -8,
                 child: GestureDetector(
                   onTap: onClear,
                   child: Container(
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
-                      color: AppText.secondary,
+                      color: AppColors.navy,
                       shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.background, width: 2),
+                      border: Border.all(
+                          color: AppColors.background, width: 2.5),
                     ),
-                    child: Icon(Icons.close_rounded,
-                        size: 14, color: AppColors.background),
+                    child: const Icon(Icons.close_rounded,
+                        size: 14, color: AppColors.brand),
                   ),
                 ),
               ),
           ],
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: 9),
         Text(
           label,
           maxLines: 2,
-          style: const TextStyle(
-            fontSize: 12.5,
-            height: 1.3,
-            color: AppText.secondary,
+          style: AppType.caption.copyWith(
+            fontSize: 13,
+            color: filled ? AppText.primary : AppText.secondary,
           ),
         ),
       ],
@@ -683,11 +745,9 @@ class _PhotoSlot extends StatelessWidget {
   }
 }
 
-/// A labelled field, with the label inside the box.
-///
-/// Above the value rather than floating: the label stays readable once
-/// something has been typed, which matters on a form somebody may come back to
-/// after a day.
+/// A labelled field. The label sits above the box, where it stays readable
+/// once something has been typed — which matters on a form somebody may come
+/// back to after a day.
 class _Field extends StatelessWidget {
   const _Field({
     required this.label,
@@ -695,6 +755,7 @@ class _Field extends StatelessWidget {
     required this.onChanged,
     this.keyboard,
     this.formatters,
+    this.helper,
     this.capitals = false,
   });
 
@@ -703,60 +764,27 @@ class _Field extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final TextInputType? keyboard;
   final List<TextInputFormatter>? formatters;
+  final String? helper;
   final bool capitals;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      // The whole box is the field, not a strip inside it.
-      //
-      // The label and the input were stacked in a Column with the input's
-      // padding zeroed, so the tappable area was one line of text near the
-      // bottom of a 60px box — you could see where to type and not reach it.
-      //
-      // `TextField` draws its own filled background and carries the label,
-      // which makes the entire control the target.
-      child: TextField(
-        controller: controller,
-        onChanged: onChanged,
-        keyboardType: keyboard,
-        inputFormatters: formatters,
-        textCapitalization: capitals
-            ? TextCapitalization.characters
-            : TextCapitalization.words,
-        style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: AppText.primary,
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: UdTextField(
+          controller: controller,
+          label: label,
+          helper: helper,
+          onChanged: onChanged,
+          keyboardType: keyboard,
+          inputFormatters: formatters,
+          textCapitalization: capitals
+              ? TextCapitalization.characters
+              : TextCapitalization.words,
         ),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(fontSize: 14, color: AppText.secondary),
-          floatingLabelStyle:
-              const TextStyle(fontSize: 12.5, color: AppText.secondary),
-          filled: true,
-          fillColor: AppColors.surface,
-          contentPadding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: AppColors.secondary, width: 1.6),
-          ),
-        ),
-      ),
-    );
-  }
+      );
 }
 
-/// A date, shown in the same shape as a field so the form reads as one thing.
+/// A date, in the same shape as a field so the form reads as one thing.
 class _DateField extends StatelessWidget {
   const _DateField({
     required this.label,
@@ -769,77 +797,58 @@ class _DateField extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: const TextStyle(
-                          fontSize: 12.5, color: AppText.secondary),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      value == null
-                          ? 'Select'
-                          : '${value!.day.toString().padLeft(2, '0')}'
-                              '.${value!.month.toString().padLeft(2, '0')}'
-                              '.${value!.year}',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: value == null
-                            ? AppText.disabled
-                            : AppText.primary,
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            UdLabel(label),
+            const SizedBox(height: 8),
+            Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: AppRadii.all(AppRadii.field),
+                child: Container(
+                  height: AppSizes.field,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: AppRadii.all(AppRadii.field),
+                    border: Border.all(
+                        color: AppColors.borderStrong, width: 1.5),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_month_rounded,
+                          size: 22, color: AppText.secondary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          value == null
+                              ? 'Select'
+                              : '${value!.day.toString().padLeft(2, '0')}'
+                                  '.${value!.month.toString().padLeft(2, '0')}'
+                                  '.${value!.year}',
+                          style: AppType.body.copyWith(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w600,
+                            color: value == null
+                                ? AppText.caption
+                                : AppText.primary,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 10),
+                      const Icon(Icons.chevron_right_rounded,
+                          size: 22, color: AppText.caption),
+                    ],
+                  ),
                 ),
               ),
-              const Icon(Icons.calendar_today_rounded,
-                  size: 18, color: AppText.secondary),
-            ],
-          ),
+            ),
+          ],
         ),
-      ),
-    );
-  }
-}
-
-class _SquareButton extends StatelessWidget {
-  const _SquareButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: SizedBox(
-          width: 52,
-          height: 52,
-          child: Icon(icon, color: AppText.secondary),
-        ),
-      ),
-    );
-  }
+      );
 }
