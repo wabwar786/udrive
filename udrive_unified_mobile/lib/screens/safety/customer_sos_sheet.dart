@@ -1,5 +1,3 @@
-import '../../core/theme/app_tokens.dart';
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,15 +6,23 @@ import '../../core/communication/whatsapp_repository.dart';
 import '../../core/safety/safety_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 
 class CustomerSosSheet extends StatefulWidget {
   const CustomerSosSheet({super.key});
 
+  /// Presented with `showModalBottomSheet` rather than `showUdSheet`, because
+  /// this sheet paints its own container: it needs a height cap, its own
+  /// scroll region and a footer note under it. What it does take from the kit
+  /// is the scrim — navy at 45%, the same dimming every other sheet uses.
   static Future<void> show(BuildContext context) => showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
         backgroundColor: Colors.transparent,
+        barrierColor: AppTint.scrim,
+        elevation: 0,
         builder: (_) => const CustomerSosSheet(),
       );
 
@@ -196,9 +202,11 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
   }
 
   Future<void> _addContact() async {
-    final result = await showDialog<_NewContact>(
+    // A sheet, not a dialog. Three fields and a toggle inside an AlertDialog
+    // shrank to a strip the moment the keyboard came up.
+    final result = await showUdSheet<_NewContact>(
       context: context,
-      builder: (_) => const _AddContactDialog(),
+      builder: (_) => const _AddContactForm(),
     );
     if (result == null || !mounted) return;
     try {
@@ -223,118 +231,122 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
     final personalCount = _numbers.where((item) => !item.isOfficial).length;
+
     return Container(
-      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .92),
-      padding: EdgeInsets.fromLTRB(18, 12, 18, 18 + bottom),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .92),
+      padding: EdgeInsets.fromLTRB(
+          AppSizes.sidePadding, 12, AppSizes.sidePadding, 20 + bottom),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh,
+        borderRadius: AppRadii.sheetTop(),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(width: 46, height: 5, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(99))),
-          const SizedBox(height: 14),
+          const UdSheetHandle(),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(color: AppTint.danger, borderRadius: BorderRadius.circular(16)),
-                child: const Icon(Icons.shield_rounded, color: AppTint.dangerText, size: 28),
+              const UdIconTile(
+                icon: Icons.shield_rounded,
+                tone: UdIconTone.red,
+                size: UdIconTileSize.lg,
               ),
-              const SizedBox(width: 12),
-              const Expanded(
+              const SizedBox(width: 14),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Emergency & safety contacts', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                    SizedBox(height: 3),
-                    Text('Call an official helpline, or send your name and live location to your personal contacts.', style: TextStyle(color: AppColors.muted, height: 1.3)),
+                    Text(
+                      'Emergency & safety contacts',
+                      style: AppType.h2.copyWith(
+                        fontSize: 20,
+                        color: AppText.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Call an official helpline, or send your name and live '
+                      'location to your personal contacts.',
+                      style:
+                          AppType.body2.copyWith(color: AppText.secondary),
+                    ),
                   ],
                 ),
               ),
-              IconButton(onPressed: _sending ? null : () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
+              const SizedBox(width: 10),
+              UdIconButton(
+                icon: Icons.close_rounded,
+                variant: UdIconButtonVariant.soft,
+                tooltip: 'Close',
+                onPressed: _sending ? null : () => Navigator.pop(context),
+              ),
             ],
           ),
           if (_error != null) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(color: AppTint.warning, borderRadius: BorderRadius.circular(13)),
-              child: Text(_error!, style: const TextStyle(color: AppTint.warningText, fontSize: 12)),
+            const SizedBox(height: 14),
+            UdBanner(
+              tone: UdTone.warn,
+              icon: Icons.warning_amber_rounded,
+              text: _error!,
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Flexible(
             child: _loading
-                ? const Center(child: Padding(padding: EdgeInsets.all(34), child: CircularProgressIndicator()))
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(40),
+                      child:
+                          CircularProgressIndicator(color: AppColors.navy),
+                    ),
+                  )
                 : ListView(
                     shrinkWrap: true,
+                    padding: EdgeInsets.zero,
                     children: [
-                      ..._numbers.map((item) => Padding(
-                            padding: const EdgeInsets.only(bottom: 9),
-                            child: _ContactCard(item: item, onCall: () => _call(item)),
-                          )),
-                      OutlinedButton.icon(
+                      // Official helplines first, then this person's own
+                      // contacts — unchanged.
+                      for (final item in _numbers)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _ContactCard(
+                            item: item,
+                            onCall: () => _call(item),
+                          ),
+                        ),
+                      const SizedBox(height: 4),
+                      UdButton.outline(
+                        label: personalCount == 0
+                            ? 'Add emergency contact'
+                            : 'Add another emergency contact',
+                        icon: Icons.person_add_alt_1_rounded,
+                        size: UdButtonSize.small,
                         onPressed: _addContact,
-                        icon: const Icon(Icons.person_add_alt_1_rounded),
-                        label: Text(personalCount == 0 ? 'Add emergency contact' : 'Add another emergency contact'),
                       ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: AppTint.danger),
-                        ),
-                        child: Column(
-                          children: [
-                            const Text('Send emergency alert', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-                            const SizedBox(height: 5),
-                            Text(
-                              _sending
-                                  ? 'Sending your location…'
-                                  : personalCount == 0
-                                      ? 'Tap to alert Udrive safety operations with your location.'
-                                      : 'Tap to send your name and live location to your $personalCount emergency contact(s) and Udrive safety operations.',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: AppColors.muted, fontSize: 12.5, height: 1.35),
-                            ),
-                            const SizedBox(height: 14),
-                            GestureDetector(
-                              onTap: _sending ? null : _sendAlert,
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 160),
-                                width: 72,
-                                height: 72,
-                                decoration: BoxDecoration(
-                                  color: _sending ? AppText.disabled : AppColors.danger,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: AppTint.danger, width: 6),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.danger.withValues(alpha: .20),
-                                      blurRadius: 16,
-                                    ),
-                                  ],
-                                ),
-                                child: _sending
-                                    ? const Padding(padding: EdgeInsets.all(23), child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white))
-                                    : const Icon(Icons.sos_rounded, color: Colors.white, size: 34),
-                              ),
-                            ),
-                          ],
-                        ),
+                      const SizedBox(height: 18),
+                      _AlertCard(
+                        sending: _sending,
+                        personalCount: personalCount,
+                        onSend: _sendAlert,
                       ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        'Official helplines receive calls only. Your alert goes to your personal emergency contacts and Udrive safety operations. No audio is recorded.',
+                      const SizedBox(height: 14),
+                      // This line replaced a press-and-hold that recorded
+                      // audio to an endpoint that never existed. Saying so
+                      // plainly is the point of it.
+                      Text(
+                        'Official helplines receive calls only. Your alert '
+                        'goes to your personal emergency contacts and Udrive '
+                        'safety operations. No audio is recorded.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: AppColors.muted, fontSize: 10.5, height: 1.35),
+                        style: AppType.caption.copyWith(
+                          color: AppText.caption,
+                        ),
                       ),
+                      const SizedBox(height: 6),
                     ],
                   ),
           ),
@@ -344,53 +356,112 @@ class _CustomerSosSheetState extends State<CustomerSosSheet> {
   }
 }
 
+/// One number to call. Official helplines are lime; a person's own contacts
+/// are purple, which is the one hue in the app that belongs to no product —
+/// on this sheet, in an emergency, "Rescue 1122" and "my brother" have to be
+/// told apart at a glance, and both of them being *the app's* colours would
+/// not do that.
 class _ContactCard extends StatelessWidget {
   const _ContactCard({required this.item, required this.onCall});
+
   final _EmergencyNumber item;
   final VoidCallback onCall;
 
   @override
   Widget build(BuildContext context) {
-    final accent = item.isOfficial ? AppColors.primaryDark : const Color(0xFF6C55C9);
-    final pale = item.isOfficial ? AppTint.success : const Color(0xFFF0ECFF);
+    final accent = item.isOfficial ? AppColors.brandInk : AppTint.personal;
+    final pale = item.isOfficial ? AppTint.success : AppTint.personalWash;
+    final edge = item.isOfficial ? AppTint.successBorder : AppTint.personalBorder;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 9, 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: item.isOfficial ? AppColors.border : const Color(0xFFDDD5FA)),
-        borderRadius: BorderRadius.circular(18),
+        color: AppColors.surfaceHigh,
+        border: Border.all(color: edge),
+        borderRadius: AppRadii.all(AppRadii.card),
       ),
       child: Row(
         children: [
-          CircleAvatar(backgroundColor: pale, child: Icon(item.isOfficial ? Icons.phone_in_talk_rounded : Icons.person_rounded, color: accent)),
-          const SizedBox(width: 11),
+          Container(
+            width: AppSizes.iconTile,
+            height: AppSizes.iconTile,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: pale, shape: BoxShape.circle),
+            child: Icon(
+              item.isOfficial
+                  ? Icons.phone_in_talk_rounded
+                  : Icons.person_rounded,
+              size: 22,
+              color: accent,
+            ),
+          ),
+          const SizedBox(width: 13),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   children: [
-                    Flexible(child: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14))),
-                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        item.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.listTitle.copyWith(
+                          fontSize: 15.5,
+                          color: AppText.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(99)),
-                      child: Text(item.isOfficial ? 'Official' : item.isPrimary ? 'Primary' : 'My Contact', style: TextStyle(color: accent, fontSize: 9.5, fontWeight: FontWeight.w800)),
+                      height: 24,
+                      padding: const EdgeInsets.symmetric(horizontal: 9),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: pale,
+                        borderRadius: AppRadii.all(AppRadii.chip),
+                      ),
+                      child: Text(
+                        item.isOfficial
+                            ? 'Official'
+                            : item.isPrimary
+                                ? 'Primary'
+                                : 'My contact',
+                        style: AppType.caption.copyWith(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: accent,
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 3),
-                Text(item.phone, style: TextStyle(color: accent, fontSize: 12.5, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 2),
-                Text(item.subtitle, style: const TextStyle(color: AppColors.muted, fontSize: 10.5)),
+                const SizedBox(height: 4),
+                Text(
+                  '${item.phone} · ${item.subtitle}',
+                  style: AppType.small.copyWith(color: AppText.secondary),
+                ),
               ],
             ),
           ),
-          IconButton.filledTonal(
-            tooltip: 'Call ${item.phone}',
-            onPressed: onCall,
-            style: IconButton.styleFrom(backgroundColor: pale, foregroundColor: accent),
-            icon: const Icon(Icons.call_rounded, size: 20),
+          const SizedBox(width: 10),
+          Material(
+            color: pale,
+            shape: const CircleBorder(),
+            child: InkWell(
+              onTap: onCall,
+              customBorder: const CircleBorder(),
+              child: Tooltip(
+                message: 'Call ${item.phone}',
+                child: SizedBox(
+                  width: AppSizes.iconTile,
+                  height: AppSizes.iconTile,
+                  child: Icon(Icons.call_rounded, size: 21, color: accent),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -398,21 +469,104 @@ class _ContactCard extends StatelessWidget {
   }
 }
 
+/// The one-tap alert: a case for the safety desk, then a WhatsApp broadcast.
+class _AlertCard extends StatelessWidget {
+  const _AlertCard({
+    required this.sending,
+    required this.personalCount,
+    required this.onSend,
+  });
+
+  final bool sending;
+  final int personalCount;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHigh,
+          borderRadius: AppRadii.all(AppRadii.panel),
+          border: Border.all(color: AppTint.dangerBorder, width: 1.5),
+        ),
+        child: Column(
+          children: [
+            Text(
+              'Send emergency alert',
+              style: AppType.h3.copyWith(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: AppText.primary,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              sending
+                  ? 'Sending your location…'
+                  : personalCount == 0
+                      ? 'Tap to alert Udrive safety operations with your '
+                          'location.'
+                      : 'Tap to send your name and live location to your '
+                          '$personalCount emergency contact(s) and Udrive '
+                          'safety operations.',
+              textAlign: TextAlign.center,
+              style: AppType.small.copyWith(color: AppText.secondary),
+            ),
+            const SizedBox(height: 18),
+            Semantics(
+              button: true,
+              enabled: !sending,
+              label: 'Send emergency alert',
+              child: GestureDetector(
+                onTap: sending ? null : onSend,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 76,
+                  height: 76,
+                  decoration: BoxDecoration(
+                    color: sending ? AppText.disabled : AppColors.danger,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppTint.danger, width: 6),
+                  ),
+                  child: sending
+                      ? const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            color: AppColors.background,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.sos_rounded,
+                          color: AppColors.background,
+                          size: 34,
+                        ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
 class _NewContact {
   const _NewContact(this.name, this.phone, this.relationship, this.primary);
+
   final String name;
   final String phone;
   final String relationship;
   final bool primary;
 }
 
-class _AddContactDialog extends StatefulWidget {
-  const _AddContactDialog();
+/// G-23 — Add emergency contact.
+class _AddContactForm extends StatefulWidget {
+  const _AddContactForm();
+
   @override
-  State<_AddContactDialog> createState() => _AddContactDialogState();
+  State<_AddContactForm> createState() => _AddContactFormState();
 }
 
-class _AddContactDialogState extends State<_AddContactDialog> {
+class _AddContactFormState extends State<_AddContactForm> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _phone = TextEditingController();
@@ -427,34 +581,88 @@ class _AddContactDialogState extends State<_AddContactDialog> {
     super.dispose();
   }
 
+  void _save() {
+    // Unchanged: a name is required, and a number of at least 7 digits.
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(
+      context,
+      _NewContact(
+        _name.text.trim(),
+        _phone.text.trim(),
+        _relationship.text.trim(),
+        _primary,
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Add emergency contact'),
-        content: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(controller: _name, decoration: const InputDecoration(labelText: 'Contact name'), validator: (v) => v == null || v.trim().isEmpty ? 'Enter contact name' : null),
-                const SizedBox(height: 10),
-                TextFormField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone / WhatsApp number'), validator: (v) => v == null || v.trim().length < 7 ? 'Enter a valid phone number' : null),
-                const SizedBox(height: 10),
-                TextFormField(controller: _relationship, decoration: const InputDecoration(labelText: 'Relationship')),
-                SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: const Text('Set as primary contact'), value: _primary, onChanged: (v) => setState(() => _primary = v)),
-              ],
-            ),
+  Widget build(BuildContext context) => Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Add emergency contact',
+                style: AppType.h2.copyWith(color: AppText.primary),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'They get your name and live location when you send an alert.',
+                style: AppType.body2.copyWith(color: AppText.secondary),
+              ),
+              const SizedBox(height: 20),
+              UdTextField(
+                controller: _name,
+                label: 'Contact name',
+                icon: Icons.person_rounded,
+                textCapitalization: TextCapitalization.words,
+                validator: (value) => (value ?? '').trim().isEmpty
+                    ? 'Enter contact name'
+                    : null,
+              ),
+              const SizedBox(height: 14),
+              UdTextField(
+                controller: _phone,
+                label: 'Phone / WhatsApp number',
+                icon: Icons.call_rounded,
+                keyboardType: TextInputType.phone,
+                validator: (value) => (value ?? '').trim().length < 7
+                    ? 'Enter a valid phone number'
+                    : null,
+              ),
+              const SizedBox(height: 14),
+              UdTextField(
+                controller: _relationship,
+                label: 'Relationship',
+                labelSuffix: '(optional)',
+                icon: Icons.diversity_3_rounded,
+                hint: 'Brother, friend, neighbour',
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 18),
+              UdCheckboxRow(
+                value: _primary,
+                semanticLabel: 'Set as primary contact',
+                onChanged: (value) => setState(() => _primary = value),
+                child: Text(
+                  'Set as primary contact',
+                  style: AppType.body2.copyWith(color: AppText.primary),
+                ),
+              ),
+              const SizedBox(height: 20),
+              UdButtonRow(
+                children: [
+                  UdButton.outline(
+                    label: 'Cancel',
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  UdButton.dark(label: 'Save contact', onPressed: _save),
+                ],
+              ),
+            ],
           ),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (!_formKey.currentState!.validate()) return;
-              Navigator.pop(context, _NewContact(_name.text.trim(), _phone.text.trim(), _relationship.text.trim(), _primary));
-            },
-            child: const Text('Save contact'),
-          ),
-        ],
       );
 }

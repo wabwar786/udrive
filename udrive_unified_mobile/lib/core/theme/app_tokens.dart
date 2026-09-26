@@ -55,6 +55,22 @@ class AppTint {
   static const infoText = Color(0xFF1B5FA8); // 5.9:1 on the wash
   static const infoBorder = Color(0xFFC9DBF7);
 
+  /// A person's own emergency contact, as opposed to an official helpline.
+  ///
+  /// The one hue in the app that belongs to no part of the brand, and it is
+  /// here on purpose: on the SOS sheet the difference between "Rescue 1122"
+  /// and "my brother" has to be visible at a glance, in an emergency, and
+  /// lime-versus-navy is not that difference — both of those are *the app*.
+  /// The design keeps this purple; these three values are it, named, so the
+  /// sheet does not carry raw hexes of its own.
+  static const personal = Color(0xFF6C55C9); // 4.9:1 on [personalWash]
+  static const personalWash = Color(0xFFF0ECFF);
+  static const personalBorder = Color(0xFFDDD5FA);
+
+  /// The grab bar at the top of a sheet, and other hairline furniture that is
+  /// a shade rather than a line.
+  static const handle = Color(0x1F0B1B33);
+
   /// The deep end of the emergency gradient, under [AppColors.danger].
   ///
   /// The safety centre's SOS card is the one place in v2 that is not white,

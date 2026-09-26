@@ -4,6 +4,7 @@ import '../../core/feedback/feedback_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 
 /// Rating the driver, once the trip is over.
 ///
@@ -114,47 +115,41 @@ class _TripRatingScreenState extends State<TripRatingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: _done ? _thanks() : _form(),
-      ),
+      body: SafeArea(child: _done ? _thanks() : _form()),
     );
   }
 
   Widget _thanks() => Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 34),
+          padding: const EdgeInsets.symmetric(horizontal: 28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.check_circle_rounded,
-                  size: 64, color: AppColors.success),
-              const SizedBox(height: 18),
-              const Text(
-                'Thank you',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: AppText.primary,
+              const Center(
+                child: UdIconTile(
+                  icon: Icons.check_circle_rounded,
+                  tone: UdIconTone.lime,
+                  size: UdIconTileSize.lg,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 20),
               Text(
-                'Your rating goes on ${widget.driverName}\u2019s profile, where '
+                'Thank you',
+                textAlign: TextAlign.center,
+                style: AppType.h1.copyWith(color: AppText.primary),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Your rating goes on ${widget.driverName}’s profile, where '
                 'the next customer will see it.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  height: 1.55,
-                  color: AppText.secondary,
-                ),
+                style: AppType.body2.copyWith(color: AppText.secondary),
               ),
-              const SizedBox(height: 26),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Done'),
-                ),
+              const SizedBox(height: 28),
+              UdButton.primary(
+                label: 'Done',
+                onPressed: () => Navigator.pop(context),
               ),
             ],
           ),
@@ -163,42 +158,44 @@ class _TripRatingScreenState extends State<TripRatingScreen> {
 
   Widget _form() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(22, 26, 22, 20),
+            padding: const EdgeInsets.fromLTRB(
+                AppSizes.sidePadding, 28, AppSizes.sidePadding, 20),
             children: [
               Text(
-                'Trip completed',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
-                  color: AppColors.secondary,
-                ),
+                'TRIP COMPLETED',
+                style: AppType.overline.copyWith(color: AppColors.brandInk),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Text(
                 'How was your ride with ${widget.driverName}?',
-                style: const TextStyle(
-                  fontSize: 25,
-                  height: 1.2,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -.6,
-                  color: AppText.primary,
-                ),
+                style: AppType.h1.copyWith(color: AppText.primary),
               ),
-              const SizedBox(height: 7),
-              Text(
-                '${widget.vehicle}  ·  PKR ${widget.fare.toStringAsFixed(0)}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppText.secondary,
-                ),
+              const SizedBox(height: 14),
+              // Who and what, under the headline. The driver was text-only
+              // before; the name, vehicle and fare all already arrive here.
+              Row(
+                children: [
+                  UdAvatar(initials: _initials(widget.driverName), size: 40),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '${widget.vehicle} · '
+                      'PKR ${widget.fare.toStringAsFixed(0)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.small.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppText.secondary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-
-              const SizedBox(height: 30),
+              const SizedBox(height: 32),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -212,20 +209,23 @@ class _TripRatingScreenState extends State<TripRatingScreen> {
                         _tags.clear();
                       }),
                       iconSize: 44,
+                      tooltip: '$star star${star == 1 ? '' : 's'}',
                       icon: Icon(
                         star <= _overall
                             ? Icons.star_rounded
                             : Icons.star_outline_rounded,
+                        // Gold when it counts, and the strong hairline grey
+                        // when it does not — the disabled ink is for text.
                         color: star <= _overall
-                            ? AppColors.secondary
-                            : AppText.disabled,
+                            ? AppTint.star
+                            : AppColors.borderStrong,
                       ),
                     ),
                 ],
               ),
-
+              // The whole lower half appears only once a star is picked.
               if (_overall > 0) ...[
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Text(
                   switch (_overall) {
                     1 => 'Bad',
@@ -235,20 +235,27 @@ class _TripRatingScreenState extends State<TripRatingScreen> {
                     _ => 'Excellent',
                   },
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 15,
+                  style: AppType.h3.copyWith(
+                    fontSize: 17,
                     fontWeight: FontWeight.w800,
                     color: AppText.primary,
                   ),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 26),
+                Text(
+                  _overall >= 4 ? 'What went well?' : 'What went wrong?',
+                  style: AppType.section.copyWith(
+                    fontSize: 17,
+                    color: AppText.primary,
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 10,
                   children: [
                     for (final tag in _tagOptions)
-                      _Tag(
+                      UdChip(
                         label: tag,
                         selected: _tags.contains(tag),
                         onTap: () => setState(() {
@@ -257,104 +264,58 @@ class _TripRatingScreenState extends State<TripRatingScreen> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 20),
-                TextField(
+                const SizedBox(height: 22),
+                UdTextField(
                   controller: _review,
+                  hint: 'Anything you want the next customer to know? '
+                      '(optional)',
                   minLines: 3,
                   maxLines: 5,
                   maxLength: 1000,
-                  style: const TextStyle(color: AppText.primary),
-                  decoration: const InputDecoration(
-                    counterText: '',
-                    hintText: 'Anything you want the next customer to know? '
-                        '(optional)',
-                  ),
+                  textCapitalization: TextCapitalization.sentences,
                 ),
               ],
-
               if (_error != null) ...[
-                const SizedBox(height: 10),
-                Text(
-                  _error!,
-                  style: const TextStyle(color: AppColors.danger, fontSize: 12),
+                const SizedBox(height: 16),
+                UdBanner(
+                  tone: UdTone.err,
+                  icon: Icons.error_outline_rounded,
+                  text: _error!,
                 ),
               ],
             ],
           ),
         ),
-
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 0, 22, 16),
-            child: Column(
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: _overall == 0 || _sending ? null : _submit,
-                    child: _sending
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Submit rating'),
-                  ),
-                ),
-                TextButton(
-                  // Skipping is allowed and says so plainly. A rating screen
-                  // with no way out is one people learn to close by killing the
-                  // app, and that loses the trip summary too.
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Skip for now'),
-                ),
-              ],
+        UdBottomBar(
+          children: [
+            UdButton.primary(
+              label: 'Submit rating',
+              busy: _sending,
+              // Disabled until a star is picked — unchanged.
+              onPressed: _overall == 0 ? null : _submit,
             ),
-          ),
+            // Skipping is allowed and says so plainly. A rating screen with no
+            // way out is one people learn to close by killing the app, and
+            // that loses the trip summary too.
+            UdButton.ghost(
+              label: 'Skip for now',
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
         ),
       ],
     );
   }
-}
 
-class _Tag extends StatelessWidget {
-  const _Tag({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? AppTint.brand : AppColors.surfaceAlt,
-      borderRadius: BorderRadius.circular(99),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(99),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(99),
-            border: Border.all(
-              color: selected ? AppColors.secondary : Colors.transparent,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: selected ? AppColors.secondary : AppText.secondary,
-            ),
-          ),
-        ),
-      ),
-    );
+  /// The same two-letter rule the shell's avatar uses.
+  static String _initials(String name) {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .take(2)
+        .toList();
+    if (parts.isEmpty) return 'U';
+    return parts.map((part) => part[0].toUpperCase()).join();
   }
 }
