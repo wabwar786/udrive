@@ -5,6 +5,24 @@ namespace UDrive.Api.Services;
 
 public sealed class AdminDataService(string connectionString, ILogger<AdminDataService> logger)
 {
+    /// <summary>Which accounts count as demo content.</summary>
+    /// <remarks>
+    /// A constant, and deliberately anchored at the start of the address.
+    ///
+    /// The tempting pattern is <c>%demo%</c>, and it would be a disaster:
+    /// <c>admin.demo@udrive.local</c> matches it, and that is the portal's
+    /// SuperAdmin account — the one an operator is signed in as while they press
+    /// the button. Removing demo data would lock them out of the portal that
+    /// removed it. <c>demo.%@udrive.local</c> matches the seeded hotel owners
+    /// and nothing else: not admin.demo@, not the selftest.% harness accounts,
+    /// not a real user who happens to have "demo" in their address.
+    ///
+    /// This is also the pattern the rest of the codebase already uses for the
+    /// same purpose (see MarketplacePricingService's IsDemo flag), so the two
+    /// cannot drift apart.
+    /// </remarks>
+    private const string DemoEmailPattern = "demo.%@udrive.local";
+
     private static readonly string[] PortalRoles =
     [
         "SuperAdmin", "Admin", "Manager", "Operations", "VerificationOfficer",
@@ -276,6 +294,193 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
             message,
             status = await GetStatusAsync(cancellationToken)
         };
+    }
+
+    /// <summary>Removes the seeded demo hotels and their owner accounts.</summary>
+    /// <remarks>
+    /// The counterpart to AddDemoDataAsync, and narrower than it on purpose.
+    /// That method seeds two different kinds of thing: reference data (the
+    /// destination catalogue and the vehicle rate card) and demo content (a few
+    /// hotels owned by seeded accounts). Only the second kind is demo, and only
+    /// the second kind is removed here. Deleting the reference data would not
+    /// tidy anything up — it would stop the app quoting a fare.
+    ///
+    /// Delete order is dictated by the real foreign keys, not by guesswork:
+    /// hotel_bookings has NO ACTION references to hotels, hotel_rooms AND users,
+    /// so it blocks all three and has to go first. hotels then has a NO ACTION
+    /// reference to users, so it goes before the accounts. hotel_rooms and
+    /// hotel_room_inventory cascade from hotels, and hotel_owner_profiles
+    /// cascades from users, so neither needs deleting by hand.
+    ///
+    /// The accounts are removed inside a savepoint because 48 columns across the
+    /// schema reference udrive.users and most of them are NO ACTION. If anything
+    /// still points at a demo account — an audit row, a support ticket — the
+    /// account delete fails. Rolling back only that savepoint means the hotels
+    /// still go, which is what the operator actually wanted, and the reply names
+    /// the constraint instead of returning a 500 that undoes everything.
+    /// </remarks>
+    public async Task<object> RemoveDemoDataAsync(Guid adminUserId, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        int accountsRemoved;
+        string? accountsBlockedBy = null;
+        int accountsFound, roomsFound, bookingsRemoved, hotelsRemoved;
+
+        try
+        {
+            accountsFound = await CountDemoAsync(connection, transaction, """
+                SELECT count(*) FROM udrive.users WHERE email LIKE @pattern;
+                """, cancellationToken);
+
+            // Counted before the delete, because the rows cascade away with
+            // their hotel and there would be nothing left to count afterwards.
+            roomsFound = await CountDemoAsync(connection, transaction, """
+                SELECT count(*)
+                FROM udrive.hotel_rooms r
+                JOIN udrive.hotels h ON h.id = r.hotel_id
+                JOIN udrive.users u ON u.id = h.owner_user_id
+                WHERE u.email LIKE @pattern;
+                """, cancellationToken);
+
+            bookingsRemoved = await ExecuteDemoAsync(connection, transaction, """
+                DELETE FROM udrive.hotel_bookings hb
+                USING udrive.hotels h, udrive.users u
+                WHERE hb.hotel_id = h.id
+                  AND h.owner_user_id = u.id
+                  AND u.email LIKE @pattern;
+                """, cancellationToken);
+
+            hotelsRemoved = await ExecuteDemoAsync(connection, transaction, """
+                DELETE FROM udrive.hotels h
+                USING udrive.users u
+                WHERE h.owner_user_id = u.id AND u.email LIKE @pattern;
+                """, cancellationToken);
+
+            await transaction.SaveAsync("demo_accounts", cancellationToken);
+            try
+            {
+                await ExecuteDemoAsync(connection, transaction, """
+                    DELETE FROM udrive.refresh_tokens t
+                    USING udrive.users u
+                    WHERE t.user_id = u.id AND u.email LIKE @pattern;
+                    """, cancellationToken);
+
+                await ExecuteDemoAsync(connection, transaction, """
+                    DELETE FROM udrive.user_roles r
+                    USING udrive.users u
+                    WHERE r.user_id = u.id AND u.email LIKE @pattern;
+                    """, cancellationToken);
+
+                accountsRemoved = await ExecuteDemoAsync(connection, transaction, """
+                    DELETE FROM udrive.users WHERE email LIKE @pattern;
+                    """, cancellationToken);
+
+                await transaction.ReleaseAsync("demo_accounts", cancellationToken);
+            }
+            catch (PostgresException blocked)
+                when (blocked.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+            {
+                await transaction.RollbackAsync("demo_accounts", cancellationToken);
+                accountsRemoved = 0;
+                accountsBlockedBy = blocked.ConstraintName ?? "another record";
+                logger.LogWarning(blocked,
+                    "The demo accounts were kept: {Constraint} still references them. "
+                    + "The demo hotels were removed.", accountsBlockedBy);
+            }
+
+            await using var audit = connection.CreateCommand();
+            audit.Transaction = transaction;
+            audit.CommandText = """
+                INSERT INTO udrive.audit_logs
+                    (id, actor_user_id, action, entity_type, entity_id, changes_json, created_at, updated_at)
+                VALUES
+                    (gen_random_uuid(), @admin_id, 'DemoDataRemoved', 'System', 'udrive-demo',
+                     jsonb_build_object('hotels', @hotels, 'rooms', @rooms,
+                                        'hotelBookings', @bookings, 'accounts', @accounts,
+                                        'referenceDataPreserved', true),
+                     now(), now());
+                """;
+            audit.Parameters.AddWithValue("admin_id", adminUserId);
+            audit.Parameters.AddWithValue("hotels", hotelsRemoved);
+            audit.Parameters.AddWithValue("rooms", roomsFound);
+            audit.Parameters.AddWithValue("bookings", bookingsRemoved);
+            audit.Parameters.AddWithValue("accounts", accountsRemoved);
+            await audit.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+
+        logger.LogInformation(
+            "Demo data was removed by admin {AdminUserId}: {Hotels} hotels, {Accounts} accounts",
+            adminUserId, hotelsRemoved, accountsRemoved);
+
+        var removed = new List<string>(4);
+        if (hotelsRemoved > 0) removed.Add(Plural(hotelsRemoved, "hotel", "hotels"));
+        if (roomsFound > 0) removed.Add(Plural(roomsFound, "room type", "room types"));
+        if (bookingsRemoved > 0) removed.Add(Plural(bookingsRemoved, "hotel booking", "hotel bookings"));
+        if (accountsRemoved > 0) removed.Add(Plural(accountsRemoved, "demo owner account", "demo owner accounts"));
+
+        var message = removed.Count == 0
+            ? "There was no demo data left to remove."
+            : "Removed " + Join(removed) + ".";
+
+        if (accountsBlockedBy is not null && accountsFound > 0)
+        {
+            message += $" The {Plural(accountsFound, "demo owner account", "demo owner accounts")} "
+                + $"could not be removed because other records still reference "
+                + $"{(accountsFound == 1 ? "it" : "them")} (constraint '{accountsBlockedBy}'). "
+                + "The hotels are gone either way.";
+        }
+
+        message += " The destination catalogue and the vehicle rate card were not touched.";
+
+        return new
+        {
+            message,
+            status = await GetStatusAsync(cancellationToken)
+        };
+    }
+
+    private static string Plural(int count, string one, string many) =>
+        $"{count} {(count == 1 ? one : many)}";
+
+    private static string Join(List<string> parts) =>
+        parts.Count == 1
+            ? parts[0]
+            : string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1];
+
+    private static async Task<int> CountDemoAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string sql,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("pattern", DemoEmailPattern);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static async Task<int> ExecuteDemoAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string sql,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandTimeout = 120;
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("pattern", DemoEmailPattern);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task ExecuteSqlAsync(

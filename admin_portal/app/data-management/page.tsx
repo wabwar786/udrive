@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Database,
+  Eraser,
   FlaskConical,
   RefreshCw,
   ShieldAlert,
@@ -80,6 +81,27 @@ export default function DataManagementPage() {
     }
   }
 
+  async function removeDemo() {
+    if (!window.confirm(
+      'Remove the demo hotels and their owner accounts? The destination catalogue and '
+      + 'vehicle rate card are not touched, and nothing belonging to a real customer is '
+      + 'affected. You can put the demo hotels back with Restore / refresh.'
+    )) return;
+    setAction('removeDemo');
+    setError('');
+    setSuccess('');
+    try {
+      const result = await apiFetch<{ message: string; status: DataStatus }>(
+        '/api/v1/admin/data/demo/remove', { method: 'POST' });
+      setStatus(result.status);
+      setSuccess(result.message);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : 'Demo data could not be removed.');
+    } finally {
+      setAction('');
+    }
+  }
+
   async function resetData() {
     if (!canReset || confirmation !== 'DELETE ALL DATA') return;
     if (!window.confirm('This will permanently delete operational, customer, driver, vehicle, booking, tourism and hotel records. Continue?')) return;
@@ -145,6 +167,33 @@ export default function DataManagementPage() {
               </div>
               <button className="primaryButton wide" disabled={!!action} onClick={() => void seedDemo()}>
                 <Database /> {action === 'demo' ? 'Restoring…' : 'Restore / refresh'}
+              </button>
+            </article>
+
+            <article className="panel dataActionCard">
+              <div className="dataActionIcon"><Eraser /></div>
+              <span className="dataEyebrow">SCOPED / REVERSIBLE</span>
+              <h2>Remove demo data</h2>
+              <p>
+                Removes the seeded demo hotels, their rooms and bookings, and the demo owner
+                accounts — the ones whose address starts with &quot;demo.&quot;. Use it before going
+                live, so demo hotels stop appearing in customer searches and revenue figures.
+                Kept: the destination catalogue, the vehicle rate card, every real record, and
+                your own portal account. Restore / refresh puts the demo hotels back.
+              </p>
+              <div className="dataMiniStats">
+                <span><strong>{status.demoUsers}</strong> demo accounts</span>
+                <span><strong>{status.hotels}</strong> hotels</span>
+                <span><strong>{status.hotelBookings}</strong> hotel bookings</span>
+              </div>
+              <button
+                className="secondaryButton wide"
+                disabled={!!action || status.demoUsers === 0}
+                onClick={() => void removeDemo()}
+              >
+                <Eraser /> {action === 'removeDemo'
+                  ? 'Removing…'
+                  : status.demoUsers === 0 ? 'No demo data to remove' : 'Remove demo data'}
               </button>
             </article>
 
