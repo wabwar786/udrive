@@ -211,23 +211,7 @@ class _MainShellState extends State<MainShell> {
         onSelected: (value) {
           Navigator.pop(context);
           if (driver) {
-            // "Create package" is a form, not a page of this shell.
-            //
-            // It was both: routed here *and* pushed from the packages list.
-            // Because it ships its own Scaffold, the routed copy drew a
-            // second bar under this one. It lands on the packages list and
-            // pushes the form, which is also where the new draft appears.
-            if (value == 'createPackage') {
-              _goToDriver('driverPackages');
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const LiveCreatePackageScreen(),
-                ),
-              );
-              return;
-            }
-            _goToDriver(value);
+            _driverNavigate(value);
           } else {
             _goToCustomer(value);
           }
@@ -619,7 +603,6 @@ class _MainShellState extends State<MainShell> {
         'payouts' => const DriverEarningsScreen(),
         'vehicles' => const LiveVehicleListScreen(),
         'refresh' => const CacheResetScreen(),
-        'driverDocuments' => const DriverDocumentsScreen(),
         'driverWallet' => const DriverWalletScreen(),
         // The four-step sign-up replaces the old single-page form.
         //
@@ -631,7 +614,6 @@ class _MainShellState extends State<MainShell> {
         // chooser from sign-up — so an already-approved driver tapping
         // "Documents" was dropped back into registration. It now opens
         // the same screen as the drawer's "My documents".
-        'documents' => const DriverDocumentsScreen(),
         'availability' => const DriverAvailabilityScreen(),
         // Earnings already shows the driver's real rating, rating count and
         // recent reviews. The screen this used to open showed every driver an
@@ -646,7 +628,34 @@ class _MainShellState extends State<MainShell> {
       };
 
   void _customerNavigate(String page) => _goToCustomer(page);
-  void _driverNavigate(String page) => _goToDriver(page);
+
+  /// Two driver destinations are forms, not pages of this shell.
+  ///
+  /// Both were routed here *and* pushed from elsewhere, and because both ship
+  /// their own `Scaffold` the routed copy drew a second bar under this one.
+  /// They are pushed now, from the one place the drawer and Driver Profile
+  /// both come through, so neither entry point can drift from the other.
+  void _driverNavigate(String page) {
+    // Lands on the packages list, which is where the new draft appears.
+    if (page == 'createPackage') {
+      _goToDriver('driverPackages');
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const LiveCreatePackageScreen()),
+      );
+      return;
+    }
+    // Lands on Vehicles, where the third way in to documents lives.
+    if (page == 'driverDocuments' || page == 'documents') {
+      _goToDriver('vehicles');
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const DriverDocumentsScreen()),
+      );
+      return;
+    }
+    _goToDriver(page);
+  }
 }
 
 class _PremiumDrawer extends StatelessWidget {

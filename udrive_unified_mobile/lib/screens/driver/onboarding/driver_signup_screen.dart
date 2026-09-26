@@ -257,27 +257,29 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
       // identical to the screen having crashed — there was nothing to tell a
       // driver whether an hour of photographing documents had worked. People
       // were closing and reopening the app to find out.
-      await showDialog<void>(
+      await showUdDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          icon: Icon(Icons.check_circle_rounded,
-              size: 44, color: AppColors.secondary),
-          title: const Text('Sent for review'),
-          content: const Text(
-            'Our team checks new registrations within 24 hours. You will see '
-            'the result here, and we will tell you if anything needs to be '
-            'sent again.\n\n'
+        title: 'Sent for review',
+        message: 'Our team checks new registrations within 24 hours. You will '
+            'see the result here, and we will tell you if anything needs to '
+            'be sent again.\n\n'
             'You can close the app — nothing is lost.',
-            style: TextStyle(height: 1.5),
+        content: const Center(
+          child: UdIconTile(
+            icon: Icons.check_circle_rounded,
+            tone: UdIconTone.soft,
+            size: UdIconTileSize.lg,
           ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Done'),
-            ),
-          ],
         ),
+        actions: [
+          Builder(
+            builder: (dialogContext) => UdButton.primary(
+              label: 'Done',
+              onPressed: () => Navigator.pop(dialogContext),
+            ),
+          ),
+        ],
       );
 
       if (!mounted) return;

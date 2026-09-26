@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/localization/app_strings.dart';
 import '../../core/state/app_controller.dart';
-import '../../core/theme/app_theme.dart';
-import '../../core/widgets/common_widgets.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 import '../../data/models.dart';
 
 // Three screens were here and all three were mock-ups that the real screens
@@ -38,11 +38,15 @@ import '../../data/models.dart';
 // "4.9" over "846 trips" and three fabricated passenger reviews. The real
 // figures live on DriverEarningsScreen.
 
+/// D-45 — which days, which hours, which areas.
+///
+/// Rendered by `main_shell`, so no `Scaffold` here.
 class DriverAvailabilityScreen extends StatefulWidget {
   const DriverAvailabilityScreen({super.key});
 
   @override
-  State<DriverAvailabilityScreen> createState() => _DriverAvailabilityScreenState();
+  State<DriverAvailabilityScreen> createState() =>
+      _DriverAvailabilityScreenState();
 }
 
 class _DriverAvailabilityScreenState extends State<DriverAvailabilityScreen> {
@@ -50,79 +54,168 @@ class _DriverAvailabilityScreenState extends State<DriverAvailabilityScreen> {
   bool nights = false;
   bool multi = true;
 
+  static const _names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
   @override
   Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
         children: [
-          PremiumCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Available days', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: List.generate(7, (i) {
-                    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                    return FilterChip(
-                      label: Text(names[i]),
-                      selected: selected.contains(i + 1),
-                      onSelected: (value) => setState(() {
-                        if (value) {
-                          selected.add(i + 1);
-                        } else {
-                          selected.remove(i + 1);
-                        }
-                      }),
-                    );
+          Text(
+            'Availability',
+            style: AppType.h1.copyWith(color: AppText.primary),
+          ),
+          const SizedBox(height: 22),
+
+          const UdSectionHeader(title: 'Available days'),
+          const SizedBox(height: 12),
+          // Was seven Material `FilterChip`s, which bring their own fill,
+          // their own checkmark animation and their own type.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var i = 0; i < 7; i++)
+                UdChip(
+                  label: _names[i],
+                  selected: selected.contains(i + 1),
+                  onTap: () => setState(() {
+                    if (selected.contains(i + 1)) {
+                      selected.remove(i + 1);
+                    } else {
+                      selected.add(i + 1);
+                    }
                   }),
                 ),
-              ],
-            ),
+            ],
           ),
-          const SizedBox(height: 14),
-          PremiumCard(
-            child: Column(
-              children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
+          const SizedBox(height: 26),
+
+          UdListGroup(
+            children: [
+              UdListRow(
+                title: 'Night driving',
+                trailing: UdSwitch(
                   value: nights,
                   onChanged: (value) => setState(() => nights = value),
-                  title: const Text('Night driving', style: TextStyle(fontWeight: FontWeight.w800)),
+                  semanticLabel: 'Night driving',
                 ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
+              ),
+              UdListRow(
+                title: 'Multi-day tours',
+                trailing: UdSwitch(
                   value: multi,
                   onChanged: (value) => setState(() => multi = value),
-                  title: const Text('Multi-day tours', style: TextStyle(fontWeight: FontWeight.w800)),
+                  semanticLabel: 'Multi-day tours',
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-          const PremiumCard(
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.location_on_rounded, color: AppColors.primaryDark),
-              title: Text('Operating areas', style: TextStyle(fontWeight: FontWeight.w900)),
-              subtitle: Text('Islamabad · Rawalpindi · Muzaffarabad · Neelum Valley'),
-              trailing: Icon(Icons.edit_outlined),
-            ),
+          const SizedBox(height: 26),
+
+          const UdSectionHeader(title: 'Operating areas'),
+          const SizedBox(height: 12),
+          // The pencil that sat at the end of this row opened nothing. It is
+          // a fact until the screen that edits it exists, so it reads as one.
+          UdBanner(
+            tone: UdTone.gray,
+            icon: Icons.location_on_rounded,
+            text: 'Islamabad · Rawalpindi · Muzaffarabad · Neelum Valley',
           ),
-          const SizedBox(height: 16),
-          FilledButton(
+          const SizedBox(height: 26),
+
+          UdButton.primary(
+            label: context.tr('save'),
+            icon: Icons.check_rounded,
             onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Availability saved.')),
             ),
-            child: Text(context.tr('save')),
           ),
         ],
       );
 }
 
-// DriverReviewsScreen was here. It showed every driver the same invented
-// "4.9" over "846 trips" and three fabricated passenger reviews. The real
-// figures live on DriverEarningsScreen.
+/// D-42 — who you are, and the five places the driver side keeps things.
+///
+/// Rendered by `main_shell`, so no `Scaffold` here.
+class DriverProfileScreen extends StatelessWidget {
+  const DriverProfileScreen({required this.onNavigate, super.key});
 
-class DriverProfileScreen extends StatelessWidget { const DriverProfileScreen({required this.onNavigate,super.key}); final ValueChanged<String> onNavigate; @override Widget build(BuildContext context){final c=AppControllerScope.of(context);return ListView(padding:const EdgeInsets.all(18),children:[PremiumCard(color:AppColors.navy,child:Column(children:[const CircleAvatar(radius:38,backgroundColor:Colors.white,child:Icon(Icons.person_rounded,size:42,color:AppColors.primaryDark)),const SizedBox(height:12),Text(c.currentUserName,style:const TextStyle(color:Colors.white,fontSize:19,fontWeight:FontWeight.w900)),const SizedBox(height:4),Text(c.currentUserPhone,style:const TextStyle(color:Colors.white70,fontSize:11)),const SizedBox(height:13),StatusPill(label:c.driverVerificationStatus,color:c.driverApproved?AppColors.success:AppColors.warning)])),const SizedBox(height:15),FilledButton.icon(onPressed:()=>c.switchMode(UserMode.customer),icon:const Icon(Icons.person_rounded),label:Text(context.tr('switchCustomer'))),const SizedBox(height:13),for(final item in [('vehicles',Icons.directions_car_filled_rounded,context.tr('vehicles')),('documents',Icons.fact_check_rounded,context.tr('documents')),('availability',Icons.calendar_month_rounded,context.tr('availability')),('reviews',Icons.star_rounded,context.tr('reviews')),('settings',Icons.settings_rounded,context.tr('settings'))]) Padding(padding:const EdgeInsets.only(bottom:9),child:PremiumCard(onTap:()=>onNavigate(item.$1),child:Row(children:[Icon(item.$2,color:AppColors.primaryDark),const SizedBox(width:13),Expanded(child:Text(item.$3,style:const TextStyle(fontWeight:FontWeight.w900))),const Icon(Icons.chevron_right_rounded)]))) ]);}}
+  final ValueChanged<String> onNavigate;
+
+  /// The rows, in the order the artboard has them.
+  static const _rows = <(String, IconData, String)>[
+    ('vehicles', Icons.directions_car_filled_rounded, 'Vehicle registration'),
+    ('documents', Icons.fact_check_rounded, 'Documents & verification'),
+    ('availability', Icons.calendar_month_rounded, 'Availability'),
+    ('reviews', Icons.star_rounded, 'Ratings & reviews'),
+    ('settings', Icons.settings_rounded, 'Settings'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppControllerScope.of(context);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+          AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
+      children: [
+        UdCard(
+          tone: UdCardTone.navy,
+          child: Column(
+            children: [
+              UdAvatar(initials: _initials(c.currentUserName), size: 76),
+              const SizedBox(height: 14),
+              Text(
+                c.currentUserName,
+                textAlign: TextAlign.center,
+                style: AppType.h2.copyWith(color: AppText.onInk),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                c.currentUserPhone,
+                style: AppType.small.copyWith(color: AppText.onInkMuted),
+              ),
+              const SizedBox(height: 14),
+              UdBadge(
+                label: c.driverVerificationStatus,
+                tone: c.driverApproved ? UdTone.lime : UdTone.warn,
+                icon: c.driverApproved
+                    ? Icons.verified_rounded
+                    : Icons.pending_actions_rounded,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        UdButton.outline(
+          label: context.tr('switchCustomer'),
+          icon: Icons.person_rounded,
+          onPressed: () => c.switchMode(UserMode.customer),
+        ),
+        const SizedBox(height: 22),
+        UdListGroup(
+          children: [
+            for (final (key, icon, label) in _rows)
+              UdListRow(
+                title: label,
+                leading: UdIconTile(icon: icon),
+                showChevron: true,
+                onTap: () => onNavigate(key),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static String _initials(String name) {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .take(2);
+    final value = parts.map((part) => part[0].toUpperCase()).join();
+    return value.isEmpty ? 'D' : value;
+  }
+}

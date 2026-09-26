@@ -6,6 +6,10 @@ import 'package:intl/intl.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
+
+/// PKR with thousands separators — used by this screen and its rows.
+String _money(num value) => NumberFormat('#,###').format(value.round());
 
 /// The Driver's prepaid commission balance.
 ///
@@ -15,6 +19,10 @@ import '../../core/theme/app_tokens.dart';
 ///
 /// The balance is the largest thing on the screen because it is the only thing
 /// a Driver opens this screen to find out.
+///
+/// Rendered by `main_shell`, so no `Scaffold` here. It used to carry one,
+/// which meant this screen drew two bars every single time — there was no
+/// route that reached it any other way.
 class DriverWalletScreen extends StatefulWidget {
   const DriverWalletScreen({super.key});
 
@@ -45,9 +53,6 @@ class _DriverWalletScreenState extends State<DriverWalletScreen> {
     });
   }
 
-  static String _money(num value) =>
-      NumberFormat('#,###').format(value.round());
-
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
@@ -74,171 +79,143 @@ class _DriverWalletScreenState extends State<DriverWalletScreen> {
     final reference = TextEditingController();
     PlatformFile? screenshot;
 
-    final submitted = await showModalBottomSheet<bool>(
+    final submitted = await showUdSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
       builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            18,
-            20,
-            MediaQuery.viewInsetsOf(context).bottom + 20,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Add funds',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                    color: AppText.primary,
-                  ),
-                ),
-                const SizedBox(height: 14),
+        builder: (context, setSheet) => SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 4),
+              Text(
+                'Add funds',
+                style: AppType.h2.copyWith(color: AppText.primary),
+              ),
+              const SizedBox(height: 16),
 
-                // Where to send it, before how to record it.
-                //
-                // The sheet used to explain the process and then ask for a
-                // transaction ID — without ever saying which account to pay.
-                // The number lived in a WhatsApp message somewhere, and every
-                // driver had to ask for it.
-                //
-                // It comes from settings rather than the app, because accounts
-                // get closed and ownership moves; a number baked into a release
-                // means money sent somewhere nobody is watching.
-                if (_topupNumber != null && _topupNumber!.isNotEmpty) ...[
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppTint.brand,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.account_balance_wallet_rounded,
-                            size: 26, color: AppColors.secondary),
-                        const SizedBox(width: 13),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Send EasyPaisa to',
-                                style: TextStyle(
-                                    fontSize: 11.5, color: AppText.secondary),
+              // Where to send it, before how to record it.
+              //
+              // The sheet used to explain the process and then ask for a
+              // transaction ID — without ever saying which account to pay.
+              // The number lived in a WhatsApp message somewhere, and every
+              // driver had to ask for it.
+              //
+              // It comes from settings rather than the app, because accounts
+              // get closed and ownership moves; a number baked into a release
+              // means money sent somewhere nobody is watching.
+              if (_topupNumber != null && _topupNumber!.isNotEmpty) ...[
+                UdCard(
+                  tone: UdCardTone.lime,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.account_balance_wallet_rounded,
+                          size: 26, color: AppText.onBrand),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Send EasyPaisa to',
+                              style: AppType.caption
+                                  .copyWith(color: AppText.onBrand),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _topupNumber!,
+                              style: AppType.h2.copyWith(
+                                letterSpacing: 0.5,
+                                color: AppText.onBrand,
                               ),
-                              const SizedBox(height: 2),
+                            ),
+                            if ((_topupName ?? '').isNotEmpty)
                               Text(
-                                _topupNumber!,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: .5,
-                                  color: AppText.primary,
-                                ),
+                                _topupName!,
+                                style: AppType.small
+                                    .copyWith(color: AppText.onBrand),
                               ),
-                              if ((_topupName ?? '').isNotEmpty)
-                                Text(
-                                  _topupName!,
-                                  style: const TextStyle(
-                                      fontSize: 12.5,
-                                      color: AppText.secondary),
-                                ),
-                            ],
-                          ),
+                          ],
                         ),
-                        IconButton(
-                          tooltip: 'Copy number',
-                          onPressed: () {
-                            Clipboard.setData(
-                                ClipboardData(text: _topupNumber!));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Number copied.')),
-                            );
-                          },
-                          icon: const Icon(Icons.copy_rounded, size: 20),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                ],
-
-                const Text(
-                  'Send the amount to that number, then enter it here with '
-                  'the transaction ID and a screenshot. Your balance is '
-                  'credited once the office confirms the money arrived.',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.5,
-                    color: AppText.secondary,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                TextField(
-                  controller: amount,
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(color: AppText.primary),
-                  decoration: const InputDecoration(
-                    labelText: 'Amount sent',
-                    prefixText: 'PKR ',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: reference,
-                  style: const TextStyle(color: AppText.primary),
-                  decoration: const InputDecoration(
-                    labelText: 'EasyPaisa transaction ID',
-                    // This is what the office matches against the company
-                    // statement. Asked for as its own field rather than left
-                    // to be read off a screenshot.
-                    helperText: 'From your EasyPaisa receipt',
-                  ),
-                ),
-                const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final picked = await FilePicker.pickFiles(
-                      type: FileType.custom,
-                      allowedExtensions: const ['jpg', 'jpeg', 'png'],
-                      withData: true,
-                    );
-                    if (picked == null || picked.files.isEmpty) return;
-                    setSheet(() => screenshot = picked.files.single);
-                  },
-                  icon: const Icon(Icons.image_outlined, size: 18),
-                  label: Text(
-                    screenshot == null
-                        ? 'Attach the screenshot'
-                        : screenshot!.name,
-                    overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(width: 8),
+                      UdIconButton(
+                        icon: Icons.copy_rounded,
+                        tooltip: 'Copy number',
+                        iconColor: AppText.onBrand,
+                        onPressed: () {
+                          Clipboard.setData(
+                              ClipboardData(text: _topupNumber!));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Number copied.')),
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () {
-                    final value = double.tryParse(amount.text.trim());
-                    if (value == null || value <= 0) return;
-                    Navigator.pop(sheetContext, true);
-                  },
-                  child: const Text('Submit for confirmation'),
-                ),
               ],
-            ),
+
+              Text(
+                'Send the amount to that number, then enter it here with '
+                'the transaction ID and a screenshot. Your balance is '
+                'credited once the office confirms the money arrived.',
+                style: AppType.small
+                    .copyWith(height: 1.5, color: AppText.secondary),
+              ),
+              const SizedBox(height: 20),
+              UdTextField(
+                controller: amount,
+                label: 'Amount sent',
+                labelSuffix: 'PKR',
+                icon: Icons.payments_rounded,
+                hint: '0',
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 14),
+              UdTextField(
+                controller: reference,
+                label: 'EasyPaisa transaction ID',
+                icon: Icons.tag_rounded,
+                // This is what the office matches against the company
+                // statement. Asked for as its own field rather than left
+                // to be read off a screenshot.
+                helper: 'From your EasyPaisa receipt',
+              ),
+              const SizedBox(height: 16),
+              UdButton.outline(
+                label: screenshot == null
+                    ? 'Attach the screenshot'
+                    : screenshot!.name,
+                icon: Icons.image_outlined,
+                size: UdButtonSize.small,
+                onPressed: () async {
+                  final picked = await FilePicker.pickFiles(
+                    type: FileType.custom,
+                    allowedExtensions: const ['jpg', 'jpeg', 'png'],
+                    withData: true,
+                  );
+                  if (picked == null || picked.files.isEmpty) return;
+                  setSheet(() => screenshot = picked.files.single);
+                },
+              ),
+              const SizedBox(height: 20),
+              UdButton.primary(
+                label: 'Submit for confirmation',
+                icon: Icons.send_rounded,
+                onPressed: () {
+                  final value = double.tryParse(amount.text.trim());
+                  if (value == null || value <= 0) return;
+                  Navigator.pop(sheetContext, true);
+                },
+              ),
+            ],
           ),
         ),
       ),
     );
-
     final value = double.tryParse(amount.text.trim());
     final ref = reference.text.trim();
     final file = screenshot;
@@ -309,7 +286,8 @@ class _DriverWalletScreenState extends State<DriverWalletScreen> {
     final wallet = _wallet;
     final balance = (wallet?['balance'] as num?)?.toDouble() ?? 0;
     final canDrive = wallet?['canReceiveRides'] == true;
-    final percentage = (wallet?['commissionPercentage'] as num?)?.toDouble() ?? 10;
+    final percentage =
+        (wallet?['commissionPercentage'] as num?)?.toDouble() ?? 10;
     final topups = (wallet?['topups'] as List? ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
@@ -319,223 +297,203 @@ class _DriverWalletScreenState extends State<DriverWalletScreen> {
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Wallet')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _sending ? null : _addFunds,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add funds'),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
-                children: [
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: AppRadii.all(AppRadii.panel),
-                      border: Border.all(
-                        color: canDrive ? AppColors.border : AppColors.danger,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Balance',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppText.secondary,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        // The only large number on the screen. It is the one
-                        // thing a Driver opens this screen to find out.
-                        Text(
-                          'PKR ${_money(balance)}',
-                          style: TextStyle(
-                            fontSize: 44,
-                            height: 1,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -1.6,
-                            color: canDrive
-                                ? AppColors.secondary
-                                : AppColors.danger,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          canDrive
-                              ? 'You are receiving ride requests. '
-                                  '${percentage.round()}% of each completed trip '
-                                  'comes out of this balance.'
-                              : 'Requests have stopped. Add funds to start '
-                                  'receiving rides again — any trip you are on '
-                                  'now will finish normally.',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            height: 1.5,
-                            color: canDrive
-                                ? AppText.secondary
-                                : AppColors.danger,
-                          ),
-                        ),
-                      ],
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.navy));
+    }
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: AppColors.navy,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
+        children: [
+          Text('Wallet', style: AppType.h1.copyWith(color: AppText.primary)),
+          const SizedBox(height: 18),
+
+          // The balance, and what it means for whether you are working.
+          UdCard(
+            tone: canDrive ? UdCardTone.navy : UdCardTone.plain,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Balance',
+                  style: AppType.small.copyWith(
+                    color: canDrive ? AppText.onInkMuted : AppText.secondary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // The only large number on the screen. It is the one
+                // thing a Driver opens this screen to find out.
+                Text(
+                  'PKR ${_money(balance)}',
+                  style: AppType.display.copyWith(
+                    fontSize: 44,
+                    height: 1,
+                    letterSpacing: -1.6,
+                    color: canDrive ? AppColors.brand : AppTint.dangerText,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  canDrive
+                      ? 'You are receiving ride requests. '
+                          '${percentage.round()}% of each completed trip '
+                          'comes out of this balance.'
+                      : 'Requests have stopped. Add funds to start '
+                          'receiving rides again — any trip you are on '
+                          'now will finish normally.',
+                  style: AppType.small.copyWith(
+                    height: 1.5,
+                    color: canDrive ? AppText.onInkMuted : AppTint.dangerText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // What the wallet actually is, said once. The artboard says it and
+          // the screen never did — a driver seeing "Balance PKR 3,450" has no
+          // way to know it is money they owe against, not money they are owed.
+          UdBanner(
+            tone: UdTone.info,
+            icon: Icons.info_outline_rounded,
+            text: 'Your wallet is a prepaid commission balance — send a '
+                'top-up, the office confirms it, and your balance is '
+                'credited.',
+          ),
+
+          if (_error != null) ...[
+            const SizedBox(height: 14),
+            UdBanner(
+              tone: UdTone.err,
+              icon: Icons.cloud_off_rounded,
+              text: _error,
+            ),
+          ],
+
+          const SizedBox(height: 26),
+          UdSectionHeader(
+            title: 'Your payments',
+            caption: topups.isEmpty ? null : '${topups.length}',
+          ),
+          const SizedBox(height: 12),
+          if (topups.isEmpty)
+            const UdEmptyState(
+              icon: Icons.receipt_outlined,
+              title: 'No top-up yet',
+              text: 'Send a payment and record it here; the office confirms '
+                  'it and your balance goes up.',
+            )
+          else
+            for (final topup in topups)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _PaymentRow(topup: topup),
+              ),
+
+          if (charges.isNotEmpty) ...[
+            const SizedBox(height: 26),
+            UdSectionHeader(
+              title: 'Commission taken',
+              caption: '${charges.length}',
+            ),
+            const SizedBox(height: 12),
+            UdListGroup(
+              children: [
+                for (final charge in charges)
+                  UdListRow(
+                    title: 'PKR '
+                        '${_money(((charge['amount'] as num?) ?? 0).abs())}',
+                    subtitle: '${charge['description'] ?? ''}',
+                    leading: const UdIconTile(
+                      icon: Icons.percent_rounded,
+                      tone: UdIconTone.neutral,
                     ),
                   ),
-
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _error!,
-                      style: const TextStyle(
-                          color: AppColors.danger, fontSize: 12.5),
-                    ),
-                  ],
-
-                  if (topups.isNotEmpty) ...[
-                    const SizedBox(height: 22),
-                    const _SectionLabel('Your payments'),
-                    for (final topup in topups)
-                      _Row(
-                        title: 'PKR ${_money((topup['amount'] as num?) ?? 0)}',
-                        subtitle: [
-                          '${topup['method'] ?? ''}',
-                          if ('${topup['senderReference'] ?? ''}'.isNotEmpty)
-                            '${topup['senderReference']}',
-                        ].join('  ·  '),
-                        trailing: '${topup['status'] ?? ''}',
-                        trailingColour: switch ('${topup['status']}') {
-                          'Approved' => AppColors.success,
-                          'Rejected' => AppColors.danger,
-                          _ => AppColors.warning,
-                        },
-                        note: '${topup['adminNotes'] ?? ''}',
-                      ),
-                  ],
-
-                  if (charges.isNotEmpty) ...[
-                    const SizedBox(height: 22),
-                    const _SectionLabel('Commission taken'),
-                    for (final charge in charges)
-                      _Row(
-                        title:
-                            'PKR ${_money(((charge['amount'] as num?) ?? 0).abs())}',
-                        subtitle: '${charge['description'] ?? ''}',
-                        trailing: '',
-                        trailingColour: AppText.disabled,
-                      ),
-                  ],
-                ],
-              ),
+              ],
             ),
+          ],
+
+          const SizedBox(height: 26),
+          // Was a floating action button, which v2 does not have — a screen's
+          // main action belongs at the end of its content where a thumb
+          // reaches it, not floating over the last row.
+          UdButton.primary(
+            label: 'Add funds',
+            icon: Icons.add_rounded,
+            busy: _sending,
+            onPressed: _sending ? null : _addFunds,
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
+/// One top-up the driver has recorded, and what the office said about it.
+class _PaymentRow extends StatelessWidget {
+  const _PaymentRow({required this.topup});
 
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(
-          text.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 10.5,
-            letterSpacing: 1.1,
-            fontWeight: FontWeight.w800,
-            color: AppText.disabled,
-          ),
-        ),
-      );
-}
-
-class _Row extends StatelessWidget {
-  const _Row({
-    required this.title,
-    required this.subtitle,
-    required this.trailing,
-    required this.trailingColour,
-    this.note,
-  });
-
-  final String title;
-  final String subtitle;
-  final String trailing;
-  final Color trailingColour;
-  final String? note;
+  final Map<String, dynamic> topup;
 
   @override
   Widget build(BuildContext context) {
-    final hasNote = (note ?? '').trim().isNotEmpty;
+    final status = '${topup['status'] ?? ''}';
+    final note = '${topup['adminNotes'] ?? ''}'.trim();
+    final tone = switch (status) {
+      'Approved' => UdTone.ok,
+      'Rejected' => UdTone.err,
+      _ => UdTone.warn,
+    };
+    final subtitle = [
+      '${topup['method'] ?? ''}',
+      if ('${topup['senderReference'] ?? ''}'.isNotEmpty)
+        '${topup['senderReference']}',
+    ].where((part) => part.trim().isNotEmpty).join('  ·  ');
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.row),
-      ),
+    return UdCard(
+      tone: UdCardTone.flat,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppText.primary,
-                      ),
+                      'PKR ${_money((topup['amount'] as num?) ?? 0)}',
+                      style: AppType.listTitle
+                          .copyWith(fontSize: 16, color: AppText.primary),
                     ),
-                    if (subtitle.trim().isNotEmpty) ...[
-                      const SizedBox(height: 2),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 3),
                       Text(
                         subtitle,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          color: AppText.secondary,
-                        ),
+                        style:
+                            AppType.small.copyWith(color: AppText.secondary),
                       ),
                     ],
                   ],
                 ),
               ),
-              if (trailing.isNotEmpty)
-                Text(
-                  trailing,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    color: trailingColour,
-                  ),
-                ),
+              const SizedBox(width: 10),
+              UdBadge(label: status, tone: tone),
             ],
           ),
-          if (hasNote) ...[
-            const SizedBox(height: 7),
+          if (note.isNotEmpty) ...[
+            const SizedBox(height: 12),
             // The reviewer's own words. A rejected payment with no reason
             // leaves a Driver who has genuinely sent money with nowhere to go.
-            Text(
-              note!.trim(),
-              style: const TextStyle(
-                fontSize: 11.5,
-                height: 1.45,
-                color: AppColors.danger,
-              ),
+            UdBanner(
+              tone: UdTone.err,
+              icon: Icons.assignment_late_outlined,
+              text: note,
             ),
           ],
         ],

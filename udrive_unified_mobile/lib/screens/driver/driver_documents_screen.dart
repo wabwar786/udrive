@@ -6,6 +6,7 @@ import '../../core/network/api_config.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 
 /// One document the platform needs from every Driver.
 class _Required {
@@ -36,6 +37,11 @@ class _Required {
 /// could photograph their licence, send it, and have no way to see what had
 /// actually arrived — they found out it was blurred or upside down when it came
 /// back rejected, days later. Every upload here can be opened and looked at.
+///
+/// Keeps its own `Scaffold`. Four screens push this — the dashboard's
+/// document banner, its approval-needed card, the vehicle list and D-07 — so
+/// it has to frame itself. The drawer's two entries used to route it as a
+/// page instead, which drew a bar under the shell's; they push it now.
 class DriverDocumentsScreen extends StatefulWidget {
   const DriverDocumentsScreen({super.key});
 
@@ -239,29 +245,37 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('My documents')),
+      appBar: UdTopBar(
+        title: 'My documents',
+        onBack: () => Navigator.pop(context),
+      ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.navy),
+            )
           : RefreshIndicator(
               onRefresh: _load,
+              color: AppColors.navy,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
+                padding: const EdgeInsets.fromLTRB(
+                    AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
                 children: [
                   _StatusBanner(
                     status: _profileStatus,
                     notes: _reviewNotes,
                     rejectedDocuments: _anyRejected,
                   ),
-                  const SizedBox(height: 14),
 
                   if (_error != null) ...[
-                    Text(
-                      _error!,
-                      style: const TextStyle(
-                          color: AppColors.danger, fontSize: 12.5),
+                    const SizedBox(height: 14),
+                    UdBanner(
+                      tone: UdTone.err,
+                      icon: Icons.cloud_off_rounded,
+                      text: _error,
                     ),
-                    const SizedBox(height: 12),
                   ],
+
+                  const SizedBox(height: 20),
 
                   for (final item in _required) ...[
                     _DocumentRow(
@@ -275,40 +289,37 @@ class _DriverDocumentsScreenState extends State<DriverDocumentsScreen> {
                         if (document != null) _preview(item, document);
                       },
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                   ],
 
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      // Submitting before everything is present wastes a review
-                      // cycle and a day of the Driver's time, so the button
-                      // stays off and the row above says what is missing.
-                      onPressed: !_allUploaded ||
-                              _busyType != null ||
-                              _profileStatus == 'Approved'
-                          ? null
-                          : _submit,
-                      child: Text(
-                        _profileStatus == 'Approved'
-                            ? 'Approved'
-                            : _allUploaded
-                                ? 'Send for approval'
-                                : 'Upload all documents first',
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 10),
-                  const Text(
+                  UdButton.primary(
+                    // Submitting before everything is present wastes a review
+                    // cycle and a day of the Driver's time, so the button
+                    // stays off and the row above says what is missing.
+                    label: _profileStatus == 'Approved'
+                        ? 'Approved'
+                        : _allUploaded
+                            ? 'Send for approval'
+                            : 'Upload all documents first',
+                    icon: _profileStatus == 'Approved'
+                        ? Icons.verified_rounded
+                        : Icons.send_rounded,
+                    onPressed: !_allUploaded ||
+                            _busyType != null ||
+                            _profileStatus == 'Approved'
+                        ? null
+                        : _submit,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
                     'Photographs are fine. Make sure all four corners are in '
                     'the frame and the text is readable — that is what most '
                     'rejections are about.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 11.5,
+                    style: AppType.small.copyWith(
                       height: 1.5,
-                      color: AppText.disabled,
+                      color: AppText.caption,
                     ),
                   ),
                 ],
@@ -336,18 +347,16 @@ class _StatusBanner extends StatelessWidget {
     final approved = status == 'Approved';
     final submitted = status == 'Submitted' || status == 'UnderReview';
 
-    final (background, ink, icon, title, body) = approved
+    final (UdTone tone, IconData icon, String title, String body) = approved
         ? (
-            AppTint.success,
-            AppTint.successText,
+            UdTone.ok,
             Icons.verified_rounded,
             'Approved',
             'You can go online and take rides.',
           )
         : rejected
             ? (
-                AppTint.danger,
-                AppTint.dangerText,
+                UdTone.err,
                 Icons.error_outline_rounded,
                 'Something needs fixing',
                 notes?.trim().isNotEmpty == true
@@ -357,51 +366,41 @@ class _StatusBanner extends StatelessWidget {
               )
             : submitted
                 ? (
-                    AppTint.warning,
-                    AppTint.warningText,
+                    UdTone.warn,
                     Icons.hourglass_top_rounded,
                     'With the reviewers',
                     'Nothing to do. The result appears on this screen.',
                   )
                 : (
-                    AppColors.surfaceAlt,
-                    AppText.secondary,
+                    UdTone.gray,
                     Icons.description_outlined,
                     'Not sent yet',
-                    'Upload the four documents below, check each one, then send '
+                    'Upload the documents below, check each one, then send '
                         'for approval.',
                   );
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: AppRadii.all(AppRadii.panel),
-      ),
-      child: Row(
+    final ink = switch (tone) {
+      UdTone.ok => AppTint.successText,
+      UdTone.err => AppTint.dangerText,
+      UdTone.warn => AppTint.warningText,
+      _ => AppText.secondary,
+    };
+
+    return UdBanner(
+      tone: tone,
+      icon: icon,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: ink, size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                    color: ink,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  body,
-                  style: TextStyle(fontSize: 12.5, height: 1.5, color: ink),
-                ),
-              ],
-            ),
+          Text(
+            title,
+            style: AppType.listTitle.copyWith(fontSize: 15.5, color: ink),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            body,
+            style: AppType.small.copyWith(height: 1.5, color: ink),
           ),
         ],
       ),
@@ -442,17 +441,10 @@ class _DocumentRow extends StatelessWidget {
     // Everything in between is view-only.
     final canReplace = !uploaded || rejected;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.panel),
-        border: Border.all(
-          color: rejected ? AppColors.danger : AppColors.border,
-        ),
-      ),
+    return UdCard(
+      selected: rejected,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -465,18 +457,19 @@ class _DocumentRow extends StatelessWidget {
               GestureDetector(
                 onTap: uploaded ? onPreview : onUpload,
                 child: Container(
-                  width: 62,
-                  height: 62,
+                  width: 64,
+                  height: 64,
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppColors.surface,
+                    borderRadius: AppRadii.all(AppRadii.tile),
                     border: Border.all(
                       color: approved
-                          ? AppColors.success
+                          ? AppTint.successBorder
                           : rejected
-                              ? AppColors.danger
+                              ? AppTint.dangerBorder
                               : AppColors.border,
+                      width: 1.5,
                     ),
                   ),
                   child: uploaded
@@ -489,40 +482,69 @@ class _DocumentRow extends StatelessWidget {
                               : {'Authorization': 'Bearer $token'},
                           errorBuilder: (_, __, ___) => const Icon(
                             Icons.description_rounded,
-                            color: AppText.disabled,
+                            color: AppText.caption,
                           ),
                           loadingBuilder: (context, child, progress) =>
                               progress == null
                                   ? child
                                   : const Center(
                                       child: SizedBox(
-                                        width: 16,
-                                        height: 16,
+                                        width: 18,
+                                        height: 18,
                                         child: CircularProgressIndicator(
-                                            strokeWidth: 2),
+                                          strokeWidth: 2,
+                                          color: AppColors.navy,
+                                        ),
                                       ),
                                     ),
                         )
                       : const Icon(
                           Icons.add_photo_alternate_outlined,
-                          color: AppText.disabled,
+                          color: AppText.caption,
                         ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      item.label,
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppText.primary,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.label,
+                            style: AppType.listTitle.copyWith(
+                              fontSize: 16,
+                              color: AppText.primary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // The state as a badge rather than as a coloured
+                        // sentence. Four rows of tinted small print is four
+                        // things competing to be read first.
+                        UdBadge(
+                          label: approved
+                              ? 'Sent'
+                              : rejected
+                                  ? 'Returned'
+                                  : uploaded
+                                      ? 'Sent'
+                                      : 'Required',
+                          tone: approved
+                              ? UdTone.ok
+                              : rejected
+                                  ? UdTone.err
+                                  : uploaded
+                                      ? UdTone.warn
+                                      : UdTone.gray,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       approved
                           ? 'Approved'
@@ -531,12 +553,12 @@ class _DocumentRow extends StatelessWidget {
                               : uploaded
                                   ? 'Uploaded, waiting for review'
                                   : item.why,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        height: 1.4,
-                        fontWeight: uploaded ? FontWeight.w700 : FontWeight.w500,
+                      style: AppType.small.copyWith(
+                        height: 1.45,
+                        fontWeight:
+                            uploaded ? FontWeight.w700 : FontWeight.w500,
                         color: rejected
-                            ? AppColors.danger
+                            ? AppTint.dangerText
                             : AppText.secondary,
                       ),
                     ),
@@ -547,96 +569,71 @@ class _DocumentRow extends StatelessWidget {
           ),
 
           if (rejected && notes.isNotEmpty) ...[
-            const SizedBox(height: 9),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-              decoration: BoxDecoration(
-                color: AppTint.danger,
-                borderRadius: AppRadii.all(AppRadii.row),
-              ),
-              // The reviewer's own words. A rejection with no reason is a wall,
-              // and the Driver will simply upload the same photograph again.
-              child: Text(
-                notes,
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  height: 1.45,
-                  color: AppColors.danger,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+            const SizedBox(height: 12),
+            // The reviewer's own words. A rejection with no reason is a wall,
+            // and the Driver will simply upload the same photograph again.
+            UdBanner(
+              tone: UdTone.err,
+              icon: Icons.assignment_late_outlined,
+              text: notes,
             ),
           ],
 
-          const SizedBox(height: 11),
-          Row(
-            children: [
-              if (uploaded) ...[
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onPreview,
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(40),
-                    ),
-                    icon: const Icon(Icons.visibility_outlined, size: 16),
-                    label: const Text('View',
-                        style: TextStyle(fontSize: 12.5)),
-                  ),
+          const SizedBox(height: 14),
+          if (uploaded && canReplace)
+            UdButtonRow(
+              children: [
+                UdButton.outline(
+                  label: 'View',
+                  icon: Icons.visibility_outlined,
+                  size: UdButtonSize.small,
+                  onPressed: onPreview,
                 ),
-                const SizedBox(width: 9),
+                UdButton.primary(
+                  label: 'Replace',
+                  icon: Icons.refresh_rounded,
+                  size: UdButtonSize.small,
+                  busy: busy,
+                  onPressed: busy ? null : onUpload,
+                ),
               ],
-              // Replacing is only offered when the reviewer has asked for it.
-              //
-              // A document that has been sent is evidence. Letting a Driver
-              // swap it while it sits in a queue means a reviewer can approve
-              // one file and a different one ends up on the record — and it
-              // gives anyone who has been rejected an easy way to keep
-              // resubmitting until a tired reviewer says yes. Once sent, it is
-              // view-only until someone asks for a new one.
-              if (canReplace)
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: busy ? null : onUpload,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(40),
-                  ),
-                    icon: busy
-                        ? const SizedBox(
-                            width: 15,
-                            height: 15,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            rejected
-                                ? Icons.refresh_rounded
-                                : Icons.upload_rounded,
-                            size: 16,
-                          ),
-                    label: Text(
-                      rejected ? 'Replace' : 'Upload',
-                      style: const TextStyle(fontSize: 12.5),
-                    ),
-                  ),
-                )
-              else
-                // Says why there is no button, rather than leaving a greyed
-                // one the Driver presses and presses.
-                Expanded(
-                  child: Text(
-                    approved
-                        ? 'Approved — locked'
-                        : 'Sent. You can view it, but not change it while it '
-                            'is being reviewed.',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      height: 1.4,
-                      color: AppText.disabled,
-                    ),
-                  ),
-                ),
-            ],
-          ),
+            )
+          // Replacing is only offered when the reviewer has asked for it.
+          //
+          // A document that has been sent is evidence. Letting a Driver
+          // swap it while it sits in a queue means a reviewer can approve
+          // one file and a different one ends up on the record — and it
+          // gives anyone who has been rejected an easy way to keep
+          // resubmitting until a tired reviewer says yes. Once sent, it is
+          // view-only until someone asks for a new one.
+          else if (uploaded) ...[
+            UdButton.outline(
+              label: 'View',
+              icon: Icons.visibility_outlined,
+              size: UdButtonSize.small,
+              onPressed: onPreview,
+            ),
+            const SizedBox(height: 8),
+            // Says why there is no button, rather than leaving a greyed
+            // one the Driver presses and presses.
+            Text(
+              approved
+                  ? 'Approved — locked.'
+                  : 'Sent. You can view it, but not change it while it is '
+                      'being reviewed.',
+              style: AppType.caption.copyWith(
+                height: 1.45,
+                color: AppText.caption,
+              ),
+            ),
+          ] else
+            UdButton.primary(
+              label: 'Upload',
+              icon: Icons.upload_rounded,
+              size: UdButtonSize.small,
+              busy: busy,
+              onPressed: busy ? null : onUpload,
+            ),
         ],
       ),
     );
@@ -644,6 +641,10 @@ class _DocumentRow extends StatelessWidget {
 }
 
 /// Shows an uploaded document full screen.
+///
+/// Black, and deliberately so: this is the one screen in the app that is a
+/// photo viewer, and a white page around a photograph of a licence makes the
+/// paper itself hard to judge.
 class _DocumentPreview extends StatelessWidget {
   const _DocumentPreview({
     required this.title,
@@ -662,11 +663,15 @@ class _DocumentPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.navy,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text(title),
+        backgroundColor: AppColors.navy,
+        foregroundColor: AppText.onInk,
+        elevation: 0,
+        title: Text(
+          title,
+          style: AppType.barTitle.copyWith(color: AppText.onInk),
+        ),
       ),
       body: Center(
         child: InteractiveViewer(
@@ -675,18 +680,21 @@ class _DocumentPreview extends StatelessWidget {
             url,
             headers: token == null ? null : {'Authorization': 'Bearer $token'},
             fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => const Padding(
-              padding: EdgeInsets.all(32),
+            errorBuilder: (_, __, ___) => Padding(
+              padding: const EdgeInsets.all(32),
               child: Text(
                 'This file cannot be shown here — PDFs open outside the app. '
                 'If you expected a photograph, upload it again.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, height: 1.5),
+                style: AppType.body2.copyWith(
+                  height: 1.5,
+                  color: AppText.onInkMuted,
+                ),
               ),
             ),
             loadingBuilder: (context, child, progress) => progress == null
                 ? child
-                : const CircularProgressIndicator(),
+                : const CircularProgressIndicator(color: AppColors.brand),
           ),
         ),
       ),

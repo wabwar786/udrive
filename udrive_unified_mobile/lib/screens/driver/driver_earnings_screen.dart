@@ -1,6 +1,4 @@
-import '../../core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
-
 import 'package:intl/intl.dart';
 
 import '../../core/auth/session_store.dart';
@@ -9,7 +7,19 @@ import '../../core/booking/trip_chat_repository.dart';
 import '../../core/network/api_client.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/ud_kit.dart';
 
+/// D-40 — this month, the rating, and the payout wallet.
+///
+/// Also serves D-46. The drawer's "Ratings & reviews" lands here rather than
+/// on a screen of its own, because the rating and the reviews come from this
+/// screen's `driverDashboard` call and there is only one of each. The screen
+/// D-46 replaced showed every driver an identical invented "4.9 over 846
+/// trips"; the numbers below are whatever this driver actually has, including
+/// none.
+///
+/// Rendered by `main_shell`, so no `Scaffold` here.
 class DriverEarningsScreen extends StatefulWidget {
   const DriverEarningsScreen({super.key});
 
@@ -66,7 +76,8 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
 
   double _number(dynamic value) => double.tryParse('$value') ?? 0;
 
-  String _pkr(dynamic value) => 'PKR ${_number(value).toStringAsFixed(0)}';
+  String _pkr(dynamic value) =>
+      'PKR ${NumberFormat('#,###').format(_number(value).round())}';
 
   @override
   Widget build(BuildContext context) {
@@ -82,116 +93,149 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
             .toList()
         : <Map<String, dynamic>>[];
 
-    return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(18),
-          children: [
-            const Text(
-              'Earnings & wallet',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-            ),
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: AppColors.navy,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 6, AppSizes.sidePadding, 40),
+        children: [
+          Text(
+            'Earnings',
+            style: AppType.h1.copyWith(color: AppText.primary),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "Your rating, this month's trips, and your prepaid wallet.",
+            style: AppType.body.copyWith(height: 1.45, color: AppText.secondary),
+          ),
+          const SizedBox(height: 20),
+
+          if (_dashboard != null) ...[
+            _MonthCard(dashboard: _dashboard!),
             const SizedBox(height: 14),
-            if (_dashboard != null) ...[
-              _DriverRecord(dashboard: _dashboard!),
-              const SizedBox(height: 16),
-            ],
-            if (_busy && _data == null)
-              const Padding(
-                padding: EdgeInsets.all(32),
-                child: Center(child: CircularProgressIndicator()),
+            _RatingBlock(dashboard: _dashboard!),
+            const SizedBox(height: 26),
+          ],
+
+          if (_busy && _data == null)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(
+                child: CircularProgressIndicator(color: AppColors.navy),
               ),
-            if (_error != null)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_error!),
-                      const SizedBox(height: 8),
-                      TextButton(onPressed: _load, child: const Text('Retry')),
-                    ],
+            ),
+
+          if (_error != null)
+            UdEmptyState(
+              icon: Icons.cloud_off_rounded,
+              tone: UdTone.err,
+              title: 'Could not load your wallet',
+              text: _error,
+              action: UdButton.outline(
+                label: 'Retry',
+                icon: Icons.refresh_rounded,
+                expand: false,
+                onPressed: _load,
+              ),
+            ),
+
+          if (_data != null) ...[
+            // Balance, pending and paid out — three numbers from one card,
+            // because they are three states of the same money.
+            UdCard(
+              tone: UdCardTone.navy,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Available balance',
+                    style: AppType.small.copyWith(color: AppText.onInkMuted),
                   ),
-                ),
-              ),
-            if (_data != null) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 4),
+                  Text(
+                    _pkr(wallet['availableBalance']),
+                    style: AppType.display.copyWith(color: AppColors.brand),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
                     children: [
-                      const Text('Available balance'),
-                      const SizedBox(height: 6),
-                      Text(
-                        _pkr(wallet['availableBalance']),
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
+                      Expanded(
+                        child: UdStat(
+                          value: _pkr(wallet['pendingBalance']),
+                          label: 'Pending',
+                          onDark: true,
                         ),
                       ),
-                      const Divider(),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Pending\n${_pkr(wallet['pendingBalance'])}',
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              'Paid\n${_pkr(wallet['paidBalance'])}',
-                            ),
-                          ),
-                        ],
+                      Expanded(
+                        child: UdStat(
+                          value: _pkr(wallet['paidBalance']),
+                          label: 'Paid out',
+                          onDark: true,
+                        ),
                       ),
                     ],
                   ),
-                ),
+                ],
               ),
-              const SizedBox(height: 10),
-              FilledButton.icon(
-                onPressed: _busy ? null : () => _requestPayout(wallet),
-                icon: const Icon(Icons.account_balance),
-                label: const Text('Request payout'),
+            ),
+            const SizedBox(height: 14),
+            UdButton.primary(
+              label: 'Request payout',
+              icon: Icons.account_balance_rounded,
+              busy: _busy,
+              onPressed: _busy ? null : () => _requestPayout(wallet),
+            ),
+            const SizedBox(height: 26),
+
+            UdSectionHeader(
+              title: 'Wallet activity',
+              caption: entries.isEmpty ? null : '${entries.length}',
+            ),
+            const SizedBox(height: 12),
+            if (entries.isEmpty)
+              const UdEmptyState(
+                icon: Icons.receipt_long_outlined,
+                title: 'Nothing yet',
+                text: 'Commission, top-ups and payouts appear here.',
+              )
+            else
+              UdListGroup(
+                children: [
+                  for (final entry in entries) _entryRow(entry),
+                ],
               ),
-              const SizedBox(height: 18),
-              const Text(
-                'Wallet activity',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-              if (entries.isEmpty)
-                const Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text('No wallet activity is available yet.'),
-                  ),
-                )
-              else
-                ...entries.map(
-                  (entry) => Card(
-                    child: ListTile(
-                      leading: Icon(
-                        _number(entry['amount']) >= 0
-                            ? Icons.add_circle_outline
-                            : Icons.remove_circle_outline,
-                      ),
-                      title: Text(entry['description']?.toString() ?? 'Wallet entry'),
-                      subtitle: Text(
-                        '${entry['entryType'] ?? ''} • ${entry['createdAt'] ?? ''}',
-                      ),
-                      trailing: Text(
-                        _pkr(entry['amount']),
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
           ],
+        ],
+      ),
+    );
+  }
+
+  /// One wallet line.
+  ///
+  /// Money in is lime-ink and carries a plus; money out is navy and carries a
+  /// minus. Every row used to be the same weight and the same colour, so a
+  /// top-up and a commission charge read identically.
+  Widget _entryRow(Map<String, dynamic> entry) {
+    final amount = _number(entry['amount']);
+    final credit = amount >= 0;
+
+    return UdListRow(
+      title: entry['description']?.toString() ?? 'Wallet entry',
+      subtitle: '${entry['entryType'] ?? ''} · ${entry['createdAt'] ?? ''}',
+      leading: UdIconTile(
+        icon: credit
+            ? Icons.arrow_downward_rounded
+            : Icons.arrow_upward_rounded,
+        tone: credit ? UdIconTone.soft : UdIconTone.neutral,
+      ),
+      trailing: Text(
+        '${credit ? '+' : '-'}PKR '
+        '${NumberFormat('#,###').format(amount.abs().round())}',
+        style: AppType.listTitle.copyWith(
+          fontSize: 15.5,
+          color: credit ? AppColors.brandInk : AppText.primary,
         ),
       ),
     );
@@ -199,29 +243,37 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
 
   Future<void> _requestPayout(Map<String, dynamic> wallet) async {
     final controller = TextEditingController();
-    final amount = await showDialog<double>(
+    final amount = await showUdDialog<double>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Request payout'),
-        content: TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Amount (PKR)'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              double.tryParse(controller.text.trim()),
-            ),
-            child: const Text('Submit'),
-          ),
-        ],
+      title: 'Request payout',
+      message: 'Available: ${_pkr(wallet['availableBalance'])}.',
+      content: UdTextField(
+        controller: controller,
+        label: 'Amount',
+        labelSuffix: 'PKR',
+        icon: Icons.payments_rounded,
+        autofocus: true,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
       ),
+      actions: [
+        Builder(
+          builder: (dialogContext) => UdButtonRow(
+            children: [
+              UdButton.outline(
+                label: 'Cancel',
+                onPressed: () => Navigator.pop(dialogContext),
+              ),
+              UdButton.primary(
+                label: 'Submit',
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  double.tryParse(controller.text.trim()),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
     controller.dispose();
 
@@ -255,151 +307,160 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
   }
 }
 
-
-/// The Driver's own record: month, lifetime, rating, and recent reviews.
-///
-/// Moved off the dashboard, where it pushed the next ride below the fold. A
-/// Driver comes here to study; on the home screen they are working.
-class _DriverRecord extends StatelessWidget {
-  const _DriverRecord({required this.dashboard});
+/// This month's two numbers.
+class _MonthCard extends StatelessWidget {
+  const _MonthCard({required this.dashboard});
 
   final DriverDashboard dashboard;
 
-  static String _money(num value) =>
-      NumberFormat('#,###').format(value.round());
+  @override
+  Widget build(BuildContext context) => UdCard(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: UdStat(
+                value: 'PKR '
+                    '${NumberFormat('#,###').format(dashboard.earnedThisMonth.round())}',
+                label: 'This month',
+              ),
+            ),
+            Expanded(
+              child: UdStat(
+                value: '${dashboard.completedTrips}',
+                label: 'Rides completed',
+                align: CrossAxisAlignment.end,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// D-46 — the rating, and what passengers wrote.
+///
+/// Never a default score. A driver nobody has rated is shown as such, because
+/// a "5.0" that nobody gave is worse than a blank.
+class _RatingBlock extends StatelessWidget {
+  const _RatingBlock({required this.dashboard});
+
+  final DriverDashboard dashboard;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    final rating = dashboard.rating;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UdCard(
+          child: rating == null
+              ? Row(
                   children: [
-                    const Text(
-                      'This month',
-                      style: TextStyle(fontSize: 11, color: AppColors.muted),
+                    const UdIconTile(
+                      icon: Icons.star_outline_rounded,
+                      tone: UdIconTone.neutral,
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        'No ratings yet. Your first rated trip starts this.',
+                        style: AppType.small
+                            .copyWith(height: 1.45, color: AppText.secondary),
+                      ),
+                    ),
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(Icons.star_rounded, size: 34, color: AppTint.star),
+                    const SizedBox(width: 10),
                     Text(
-                      'PKR ${_money(dashboard.earnedThisMonth)}',
-                      style: const TextStyle(
-                        fontSize: 26,
-                        height: 1.05,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -.7,
-                        color: AppColors.success,
+                      rating.toStringAsFixed(1),
+                      style: AppType.display.copyWith(color: AppText.primary),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        'from ${dashboard.ratingCount} '
+                        'passenger${dashboard.ratingCount == 1 ? '' : 's'}',
+                        style: AppType.small.copyWith(
+                          height: 1.4,
+                          color: AppText.secondary,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    'Rides completed',
-                    style: TextStyle(fontSize: 11, color: AppColors.muted),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${dashboard.completedTrips}',
-                    style: const TextStyle(fontSize: 17, color: AppColors.navy),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 13),
-          const Divider(height: 1, color: AppColors.border),
-          const SizedBox(height: 11),
-
-          Row(
-            children: [
-              // Never a default score. A driver nobody has rated is shown as
-              // such, because "5.0" that nobody gave is worse than a blank.
-              if (dashboard.rating != null) ...[
-                const Icon(Icons.star_rounded,
-                    size: 17, color: AppTint.star),
-                const SizedBox(width: 4),
-                Text(
-                  dashboard.rating!.toStringAsFixed(1),
-                  style: const TextStyle(fontSize: 14, color: AppColors.navy),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  'from ${dashboard.ratingCount} passengers',
-                  style: const TextStyle(fontSize: 12, color: AppColors.muted),
-                ),
-              ] else
-                const Text(
-                  'No ratings yet',
-                  style: TextStyle(fontSize: 12.5, color: AppColors.muted),
-                ),
-            ],
-          ),
-
-          if (dashboard.recentReviews.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            for (final review in dashboard.recentReviews)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          for (var i = 1; i <= 5; i++)
-                            Icon(
-                              i <= review.rating
-                                  ? Icons.star_rounded
-                                  : Icons.star_outline_rounded,
-                              size: 12,
-                              color: AppTint.star,
-                            ),
-                          const SizedBox(width: 7),
-                          Text(
+        ),
+        if (dashboard.recentReviews.isNotEmpty) ...[
+          const SizedBox(height: 22),
+          const UdSectionHeader(title: 'What passengers say'),
+          const SizedBox(height: 12),
+          for (final review in dashboard.recentReviews)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: UdCard(
+                tone: UdCardTone.flat,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        UdAvatar(
+                          initials: _initials(review.reviewerFirstName),
+                          size: 40,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
                             review.reviewerFirstName,
-                            style: const TextStyle(
-                                fontSize: 11, color: AppColors.muted),
-                          ),
-                        ],
-                      ),
-                      if (review.text != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          review.text!,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            height: 1.4,
-                            color: AppColors.navy,
+                            style: AppType.listTitle.copyWith(
+                              fontSize: 15.5,
+                              color: AppText.primary,
+                            ),
                           ),
                         ),
+                        const SizedBox(width: 10),
+                        for (var i = 1; i <= 5; i++)
+                          Icon(
+                            i <= review.rating
+                                ? Icons.star_rounded
+                                : Icons.star_outline_rounded,
+                            size: 15,
+                            color: i <= review.rating
+                                ? AppTint.star
+                                : AppColors.borderStrong,
+                          ),
                       ],
+                    ),
+                    if (review.text != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        review.text!,
+                        style: AppType.small.copyWith(
+                          height: 1.5,
+                          color: AppText.secondary,
+                        ),
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
-          ],
+            ),
         ],
-      ),
+      ],
     );
+  }
+
+  static String _initials(String name) {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .take(2);
+    final value = parts.map((part) => part[0].toUpperCase()).join();
+    return value.isEmpty ? 'P' : value;
   }
 }
