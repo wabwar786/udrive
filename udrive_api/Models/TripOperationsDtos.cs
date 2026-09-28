@@ -29,7 +29,22 @@ public sealed record MobileTripDto(Guid BookingId,string BookingReference,string
 public sealed record DriverLocationUpdateRequest([Required] Guid ClientEventId,[Required] Guid TripId,[Range(-90,90)] double Latitude,[Range(-180,180)] double Longitude,[Range(0,10000)] double? Accuracy,[Range(0,360)] double? Heading,[Range(0,400)] double? SpeedKph,DateTimeOffset DeviceTimestamp,[Range(0,100)] int? BatteryLevel,[StringLength(32)] string? PermissionStatus,[StringLength(64)] string? Source);
 public sealed record LocationAcceptedDto(Guid ClientEventId,DateTimeOffset ServerTimestamp,bool Duplicate,bool Current,bool Stale);
 public sealed record TrackingPointDto(double Latitude,double Longitude,double? Accuracy,double? Heading,double? SpeedKph,int? BatteryLevel,DateTimeOffset DeviceTimestamp,DateTimeOffset ServerTimestamp,bool Stale,bool Online,bool Emergency);
-public sealed record TripTrackingDto(Guid BookingId,string BookingReference,string TripStatus,string PickupLabel,string DestinationLabel,double? PickupLatitude,double? PickupLongitude,double? DestinationLatitude,double? DestinationLongitude,string? DriverName,string? Vehicle,string? RegistrationNumber,string? VehicleCategory,string? VehicleImageUrl,bool DriverHasPhoto,string? TripOtp,TrackingPointDto? DriverLocation,IReadOnlyList<TrackingPointDto> RecentPath);
+/// <param name="VehicleImageUrl">
+/// <c>vehicles.image_url</c>. In practice only the demo seed ever sets it, so
+/// treat it as a fallback rather than the answer.
+/// </param>
+/// <param name="VehicleHasPhoto">
+/// True when this booking's vehicle has a <c>VEHICLE_FRONT</c> document that
+/// has not been rejected — the photograph the Driver actually uploaded of the
+/// car that is coming. The client fetches it from
+/// <c>/api/v1/bookings/{bookingId}/vehicle-photo</c>.
+///
+/// Sent as a flag rather than a URL for the same reason as
+/// <paramref name="DriverHasPhoto"/>: the file is access-controlled, so the
+/// route is built by the client and authorised per request, and the client
+/// needs to know whether asking for it is worth a round trip at all.
+/// </param>
+public sealed record TripTrackingDto(Guid BookingId,string BookingReference,string TripStatus,string PickupLabel,string DestinationLabel,double? PickupLatitude,double? PickupLongitude,double? DestinationLatitude,double? DestinationLongitude,string? DriverName,string? Vehicle,string? RegistrationNumber,string? VehicleCategory,string? VehicleImageUrl,bool DriverHasPhoto,bool VehicleHasPhoto,string? TripOtp,TrackingPointDto? DriverLocation,IReadOnlyList<TrackingPointDto> RecentPath);
 public sealed record ActiveTrackingListItemDto(Guid BookingId,string BookingReference,string DriverName,string Vehicle,string RegistrationNumber,string TripStatus,string City,DateTimeOffset? LastUpdate,bool Stale,bool Emergency,double? SpeedKph,double? Heading,double? Accuracy);
 public sealed record CreateTrackingLinkRequest([Range(5,1440)] int ExpiresInMinutes=120);
 public sealed record TrackingLinkDto(string Token,DateTimeOffset ExpiresAt);

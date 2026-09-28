@@ -83,6 +83,29 @@ public sealed class TripChatController(TripChatService service) : ControllerBase
             : PhysicalFile(file.File.Path, file.File.ContentType, file.File.DownloadName);
     }
 
+    /// <summary>The photograph of the vehicle carrying this booking.</summary>
+    /// <remarks>
+    /// Served rather than linked, for the same reason as the offer photograph:
+    /// the file is a driver's uploaded document, so every read is authorised
+    /// against the booking instead of being guessable from a URL.
+    /// </remarks>
+    [HttpGet("/api/v1/bookings/{bookingId:guid}/vehicle-photo")]
+    public async Task<IActionResult> BookingVehiclePhoto(
+        Guid bookingId,
+        [FromServices] VerificationFileLookupService fileLookup,
+        [FromServices] TripChatService chat,
+        CancellationToken ct)
+    {
+        var documentId = await chat.BookingVehiclePhotoDocumentIdAsync(
+            User.GetRequiredUserId(), bookingId, ct);
+        if (documentId is null) return NotFound();
+
+        var file = await fileLookup.FindVehicleDocumentAsync(documentId.Value, ct);
+        return file.File is null
+            ? NotFound()
+            : PhysicalFile(file.File.Path, file.File.ContentType, file.File.DownloadName);
+    }
+
     /// <summary>Documents the Driver has been asked to send again.</summary>
     [HttpGet("/api/v1/driver/pending-documents")]
     public async Task<IActionResult> PendingDocuments(CancellationToken ct) =>

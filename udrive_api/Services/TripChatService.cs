@@ -154,6 +154,53 @@ public sealed class TripChatService(string connectionString)
         return value is Guid id ? id : null;
     }
 
+    /// <summary>
+    /// The photograph of the vehicle carrying this booking.
+    /// </summary>
+    /// <remarks>
+    /// The booking-scoped twin of <see cref="OfferVehiclePhotoDocumentIdAsync"/>,
+    /// and it exists for the same reason. Once an offer is accepted the customer
+    /// moves to the tracking screen, which was reading
+    /// <c>vehicles.image_url</c> — a column only the demo seed ever fills — and
+    /// then falling back to the category picture an admin uploaded. So a
+    /// customer waiting for one Honda Civic was shown a row of five stock cars,
+    /// which is worse than no picture: it is a picture of the wrong vehicle.
+    ///
+    /// The real photograph was there the whole time, as the driver's
+    /// <c>VEHICLE_FRONT</c> document.
+    ///
+    /// Either party to the booking may fetch it. The customer needs to
+    /// recognise the car pulling up; the driver seeing their own vehicle is
+    /// harmless.
+    /// </remarks>
+    public async Task<Guid?> BookingVehiclePhotoDocumentIdAsync(
+        Guid userId,
+        Guid bookingId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        var role = await RoleOnBookingAsync(connection, bookingId, userId, cancellationToken);
+        if (role is null) return null;
+
+        const string sql = """
+            SELECT vd.id
+            FROM udrive.bookings b
+            JOIN udrive.vehicle_documents vd ON vd.vehicle_id = b.vehicle_id
+            WHERE b.id = @booking
+              AND vd.document_type = 'VEHICLE_FRONT'
+              AND COALESCE(vd.status, 'PendingReview') <> 'Rejected'
+            ORDER BY vd.created_at DESC
+            LIMIT 1;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("booking", bookingId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is Guid id ? id : null;
+    }
+
     /// <summary>Messages on a booking, oldest first.</summary>
     /// <param name="after">
     /// Only messages created after this instant. The app passes the timestamp

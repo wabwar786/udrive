@@ -237,6 +237,19 @@ class _DriverLiveNavigationScreenState
   Future<void> _startTripWithOtp() async {
     if (_actionBusy) return;
     final controller = TextEditingController();
+
+    // Why this dialog carries its own error line.
+    //
+    // It used to validate silently: "Start ride" ran the same regular
+    // expression, and on anything that was not four digits it simply did
+    // nothing — no message, no shake, nothing. A Driver who typed three
+    // digits, or whose keyboard slipped in a space, pressed the button and
+    // watched the screen sit there. From the outside the app looks broken and
+    // the ride never starts, which is exactly the report that brought us here.
+    //
+    // So: digits only at the keyboard, a reason shown the moment the button is
+    // pressed on a bad value, and the reason cleared as soon as they type.
+    final otpFieldKey = GlobalKey<_TripOtpFieldState>();
     final otp = await showUdDialog<String>(
       context: context,
       title: 'Start the trip',
@@ -250,13 +263,7 @@ class _DriverLiveNavigationScreenState
           'It confirms the right person is in your vehicle, and it starts '
           'the fare. Nobody can be charged for a trip they did not take, '
           'and you cannot be blamed for one you did not carry.',
-      content: UdTextField(
-        controller: controller,
-        autofocus: true,
-        keyboardType: TextInputType.number,
-        maxLength: 4,
-        hint: '0000',
-      ),
+      content: _TripOtpField(key: otpFieldKey, controller: controller),
       actions: [
         Builder(
           builder: (dialogContext) => UdButtonRow(
@@ -271,7 +278,15 @@ class _DriverLiveNavigationScreenState
                   final value = controller.text.trim();
                   if (RegExp(r'^\d{4}$').hasMatch(value)) {
                     Navigator.pop(dialogContext, value);
+                    return;
                   }
+                  // Say why nothing happened, instead of nothing happening.
+                  otpFieldKey.currentState?.showProblem(
+                    value.isEmpty
+                        ? 'Enter the 4-digit code from the passenger\'s app.'
+                        : 'That is ${value.length} digit'
+                            '${value.length == 1 ? '' : 's'} — the code is exactly 4.',
+                  );
                 },
               ),
             ],
@@ -803,7 +818,7 @@ class _DriverLiveNavigationScreenState
                                 '  ·  ${widget.trip.paymentStatus}',
                                 style: const TextStyle(
                                   color: AppText.secondary,
-                                  fontSize: 13,
+                                  fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -830,7 +845,7 @@ class _DriverLiveNavigationScreenState
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 11.5,
                                       height: 1.35,
                                       color: AppTint.warningText,
                                       fontWeight: FontWeight.w700,
@@ -874,7 +889,7 @@ class _DriverLiveNavigationScreenState
                       '${_etaMinutes == null ? '' : ' · ~$_etaMinutes min'}'
                       ' to ${_headingToPickup ? 'pickup' : 'destination'}'
                       ' · ${widget.trip.passengerCount} passenger(s)',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
                     // Turn-by-turn is handed to the phone's own navigation app.
@@ -1214,7 +1229,22 @@ class _CustomerFullScreenTrackingScreenState
   /// This vehicle's own picture first, the category picture second. A driver
   /// who uploaded photographs of their actual car should not have a stock
   /// image of a different one shown in their place.
+  /// The picture of the car that is actually coming, in order of how true it is.
+  ///
+  /// 1. The Driver's own `VEHICLE_FRONT` photograph, served per booking.
+  /// 2. `vehicles.image_url`, which only the demo seed sets.
+  /// 3. The category picture an admin uploaded.
+  ///
+  /// The order used to start at 2, which meant a customer waiting for one
+  /// Honda Civic was shown the admin's stock artwork of five different cars.
+  /// A picture of the wrong vehicle is worse than no picture at all: the whole
+  /// point of showing it is so somebody can recognise the car at the kerb.
   String? get _vehicleImageUrl {
+    if (_tracking?.vehicleHasPhoto == true) {
+      return '${ApiConfig.baseUrl}/api/v1/bookings/'
+          '${widget.trip.bookingId}/vehicle-photo';
+    }
+
     final own = _tracking?.vehicleImageUrl;
     if (own != null && own.trim().isNotEmpty) {
       return own.startsWith('http') ? own : '${ApiConfig.baseUrl}$own';
@@ -1894,6 +1924,16 @@ class _CustomerFullScreenTrackingScreenState
                                   ? Image.network(
                                       _vehicleImageUrl!,
                                       fit: BoxFit.contain,
+                                      // The VEHICLE_FRONT route is
+                                      // authenticated and Image.network cannot
+                                      // go through the API client, so it
+                                      // carries the header itself. The category
+                                      // picture is public; sending the header
+                                      // anyway is harmless and saves branching
+                                      // on which kind of URL this is.
+                                      headers: _token == null
+                                          ? null
+                                          : {'Authorization': 'Bearer $_token'},
                                       errorBuilder: (_, __, ___) =>
                                           const _VehicleFallback(),
                                       loadingBuilder: (context, child, progress) =>
@@ -2209,6 +2249,78 @@ class _PassengerRecord extends StatelessWidget {
 }
 
 /// Shown when there is no photograph for the vehicle on its way.
+/// The Trip OTP box inside the "Start the trip" dialog.
+///
+/// Its whole reason for existing is the error line underneath. The dialog's
+/// button can only pop or not pop; it has no way to say *why* it did not pop.
+/// Holding that one string here, behind a [GlobalKey], lets the button report
+/// the problem without dragging dialog state up into the screen.
+///
+/// The formatter matters as much as the message: with digits-only input a
+/// Driver cannot produce most of the invalid values in the first place, and
+/// the error is left to the one case that remains — a code of the wrong length.
+class _TripOtpField extends StatefulWidget {
+  const _TripOtpField({required this.controller, super.key});
+
+  final TextEditingController controller;
+
+  @override
+  State<_TripOtpField> createState() => _TripOtpFieldState();
+}
+
+class _TripOtpFieldState extends State<_TripOtpField> {
+  String? _problem;
+
+  /// Shown under the field. Called by the dialog's "Start ride" button.
+  void showProblem(String message) {
+    if (!mounted) return;
+    setState(() => _problem = message);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        UdTextField(
+          controller: widget.controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          maxLength: 4,
+          hint: '0000',
+          // Typing is the Driver correcting themselves; the complaint goes
+          // away at the first keystroke rather than sitting there accusingly.
+          onChanged: (_) {
+            if (_problem != null) setState(() => _problem = null);
+          },
+        ),
+        if (_problem != null) ...[
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 18,
+                color: AppColors.danger,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _problem!,
+                  style: AppType.caption.copyWith(color: AppColors.danger),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _VehicleFallback extends StatelessWidget {
   const _VehicleFallback();
 
@@ -2318,7 +2430,7 @@ class _ReviewCard extends StatelessWidget {
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 11.5,
                 height: 1.35,
                 fontStyle:
                     review.text == null ? FontStyle.italic : FontStyle.normal,
@@ -2435,7 +2547,7 @@ class _FloatingMessage extends StatelessWidget {
                 const SizedBox(height: 3),
                 const Text(
                   'Tap to reply',
-                  style: TextStyle(fontSize: 12.5, color: AppText.disabled),
+                  style: TextStyle(fontSize: 10, color: AppText.disabled),
                 ),
               ],
             ),
