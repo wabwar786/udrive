@@ -22,8 +22,10 @@ import '../../core/services/trip_location_service.dart';
 import '../../core/widgets/collapsible_map_sheet.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../core/state/app_controller.dart';
+import '../customer/driver_offers_screen.dart';
 import 'trip_chat_screen.dart';
 import 'trip_rating_screen.dart';
+import '../../models/booking_models.dart';
 import '../../models/trip_operations_models.dart';
 
 class DriverLiveNavigationScreen extends StatefulWidget {
@@ -214,8 +216,23 @@ class _DriverLiveNavigationScreenState
     setState(() => _passenger = standing);
   }
 
-  void _openChat() {
-    Navigator.push(
+  /// Opens the conversation, and stands this screen's polling down while it is.
+  ///
+  /// Nothing on this screen is visible behind the chat, so its refresh and its
+  /// own message check are spending requests nobody can see — on top of the
+  /// chat's own poll, against a per-IP budget that several phones on one
+  /// mobile network share. Spending it produced a rate-limit rejection that
+  /// surfaced in the conversation as "Please wait a moment and try again",
+  /// seconds after a message that had actually been sent.
+  ///
+  /// The location service is deliberately *not* paused: the customer is
+  /// watching this driver move on a map, and a chat window is no reason to
+  /// stop telling them where the car is.
+  Future<void> _openChat() async {
+    _timer?.cancel();
+    _messagePoll?.cancel();
+
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => TripChatScreen(
@@ -225,6 +242,14 @@ class _DriverLiveNavigationScreenState
         ),
       ),
     );
+    if (!mounted) return;
+
+    // Catch up on what changed while the conversation was open, then resume.
+    await _refresh();
+    if (!mounted) return;
+    _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
+    _messagePoll =
+        Timer.periodic(const Duration(seconds: 10), (_) => _pollMessages());
   }
 
   Future<void> _callCustomer() async {
@@ -1059,8 +1084,19 @@ class _CustomerFullScreenTrackingScreenState
   /// Bearer token for the driver photograph, which is an authenticated route.
   String? _token;
 
+  /// How often tracking is polled, in seconds.
+  ///
+  /// Held rather than recomputed because the server can change it, and the
+  /// timer is stopped and restarted when the chat opens and closes —
+  /// restarting it at the default would quietly undo an admin's setting.
+  int _trackingSeconds = ServiceAvailabilityRepository.defaultPingSeconds;
+
   /// Messages already announced, so each chimes once.
   final Set<String> _announcedMessages = <String>{};
+
+  /// True once the return to driver search has begun, so the poll that is
+  /// already in flight cannot start it a second time.
+  bool _returningToSearch = false;
 
   /// False until the first poll returns.
   bool _messagesLoadedOnce = false;
@@ -1100,8 +1136,9 @@ class _CustomerFullScreenTrackingScreenState
     // Polling slower than the driver reports throws away fixes that were paid
     // for in battery; polling faster returns the same point twice. They should
     // be the same number, and now they read it from the same place.
+    _trackingSeconds = ServiceAvailabilityRepository.defaultPingSeconds;
     _timer = Timer.periodic(
-      Duration(seconds: ServiceAvailabilityRepository.defaultPingSeconds),
+      Duration(seconds: _trackingSeconds),
       (_) => _load(),
     );
     _applyServerPingInterval();
@@ -1142,6 +1179,26 @@ class _CustomerFullScreenTrackingScreenState
             ),
           ),
         );
+        return;
+      }
+
+      // The driver walked away. Put the customer back in the queue rather than
+      // on a map of a ride that is not happening.
+      //
+      // The server has already returned their request to the pool and released
+      // the offers, so another driver can take it — but the customer was left
+      // watching a tracking screen labelled "Ride cancelled", with nothing on
+      // it to press and no sign that they were still being looked for. They
+      // had to work out for themselves that they should start again.
+      //
+      // Sent, not offered: the alternative is a dialog on a screen the person
+      // may not be looking at, and every second it waits is a second no driver
+      // is being asked.
+      if (tracking.tripStatus == 'Cancelled' && !_returningToSearch) {
+        _returningToSearch = true;
+        _timer?.cancel();
+        _messagePoll?.cancel();
+        await _returnToDriverSearch();
         return;
       }
 
@@ -1296,6 +1353,7 @@ class _CustomerFullScreenTrackingScreenState
       return;
     }
 
+    _trackingSeconds = seconds;
     _timer?.cancel();
     _timer = Timer.periodic(Duration(seconds: seconds), (_) => _load());
   }
@@ -1416,8 +1474,74 @@ class _CustomerFullScreenTrackingScreenState
     }
   }
 
-  void _openChat() {
-    Navigator.push(
+  /// Replaces this screen with the driver search, on the reopened request.
+  ///
+  /// The server put the request back to `ReceivingOffers` when the driver
+  /// cancelled, so it is the customer's one open request again — which is what
+  /// [AppController.openRideRequests] holds, and the same list the "resume
+  /// search" card on the bookings screen reads.
+  ///
+  /// If it is not there — the pickup time had already passed, so the server
+  /// left it closed — the customer goes back to where they were rather than to
+  /// a search that would find nobody, and is told why.
+  Future<void> _returnToDriverSearch() async {
+    final controller = AppControllerScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    try {
+      await controller.refreshCustomerRideState();
+    } catch (_) {
+      // Whatever the list already holds is better than nothing.
+    }
+    if (!mounted) return;
+
+    final open = controller.openRideRequests;
+    if (open.isEmpty) {
+      navigator.pop();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('The driver cancelled. Book again when you are ready.'),
+        ),
+      );
+      return;
+    }
+    final LiveRideRequest reopened = open.first;
+
+    await navigator.pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => DriverOffersScreen(
+          rideRequestId: reopened.id,
+          pickup: reopened.pickupLabel,
+          destination: reopened.destinationLabel,
+          customerOffer: reopened.customerOffer.round(),
+          vehicleName: reopened.vehicleCategory,
+          pickupPoint:
+              LatLng(reopened.pickupLatitude, reopened.pickupLongitude),
+          destinationPoint: LatLng(
+            reopened.destinationLatitude,
+            reopened.destinationLongitude,
+          ),
+        ),
+      ),
+    );
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('That driver cancelled. Looking for another one.'),
+      ),
+    );
+  }
+
+  /// Opens the conversation, and stands this screen's polling down while it is.
+  ///
+  /// Same reasoning as the driver's side, and it matters more here: this
+  /// screen polls tracking every two seconds, which is thirty requests a
+  /// minute that buy nothing at all while a chat window covers the map.
+  Future<void> _openChat() async {
+    _timer?.cancel();
+    _messagePoll?.cancel();
+
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => TripChatScreen(
@@ -1428,6 +1552,16 @@ class _CustomerFullScreenTrackingScreenState
         ),
       ),
     );
+    if (!mounted) return;
+
+    await _load();
+    if (!mounted) return;
+    _timer = Timer.periodic(
+      Duration(seconds: _trackingSeconds),
+      (_) => _load(),
+    );
+    _messagePoll =
+        Timer.periodic(const Duration(seconds: 10), (_) => _pollMessages());
   }
 
   Future<void> _callDriver() async {

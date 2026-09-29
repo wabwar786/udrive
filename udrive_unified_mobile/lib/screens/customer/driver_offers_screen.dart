@@ -581,10 +581,21 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     return text;
   }
 
+  /// Jumps to tracking if this request already has a live booking.
+  ///
+  /// "Live" is the important word, and it used to be missing: the match was on
+  /// the request id alone, so a booking a driver had cancelled still counted.
+  /// When that driver walked away and the request went back out for offers,
+  /// this screen opened, found the dead booking and pushed the customer
+  /// straight back to a tracking map that said "Ride cancelled" — the loop
+  /// they could not get out of.
+  static const _deadBookingStatuses = {'Cancelled', 'Completed', 'Expired'};
+
   Future<bool> _openExistingBookingIfAny(AppController controller) async {
     LiveBooking? booking;
     for (final item in controller.liveBookings) {
-      if (item.rideRequestId == widget.rideRequestId) {
+      if (item.rideRequestId == widget.rideRequestId &&
+          !_deadBookingStatuses.contains(item.status)) {
         booking = item;
         break;
       }
@@ -1315,42 +1326,43 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
               _ResultLine(label: _t('Total fare', 'کل کرایہ'), value: 'PKR ${NumberFormat('#,###').format(booking.totalAmount)}'),
               _ResultLine(label: _t('Trip OTP', 'ٹرپ او ٹی پی'), value: booking.tripOtp ?? '-'),
               const SizedBox(height: 16),
-              UdButtonRow(
+              Row(
                 children: [
                   if ((booking.driverPhone ?? '').trim().isNotEmpty)
-                    UdButton.outline(
-                      label: _t('Call Driver', 'ڈرائیور کو کال کریں'),
-                      icon: Icons.call_rounded,
-                      onPressed: () async {
-                        final uri = Uri(scheme: 'tel', path: booking.driverPhone!.trim());
-                        if (await canLaunchUrl(uri)) await launchUrl(uri);
-                      },
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final uri = Uri(scheme: 'tel', path: booking.driverPhone!.trim());
+                          if (await canLaunchUrl(uri)) await launchUrl(uri);
+                        },
+                        icon: const Icon(Icons.call_rounded),
+                        label: Text(_t('Call Driver', 'ڈرائیور کو کال کریں')),
+                      ),
                     ),
-                  UdButton.primary(
-                    label: _t('Track Driver', 'ڈرائیور کو ٹریک کریں'),
-                    icon: Icons.navigation_rounded,
-                    onPressed: () async {
-                      final navigator = Navigator.of(context);
-                      final repo = TripOperationsRepository(controller.apiClient);
-                      try {
-                        final trips = await repo.customerTrips();
-                        final trip =
-                            trips.firstWhere((x) => x.bookingId == booking.id);
-                        if (!context.mounted) return;
-                        navigator.pop();
-                        navigator.pushReplacement(MaterialPageRoute(
-                          builder: (_) => CustomerFullScreenTrackingScreen(
-                            trip: trip,
-                            repository: repo,
-                            tripOtp: booking.tripOtp,
-                          ),
-                        ));
-                      } catch (_) {
-                        if (!context.mounted) return;
-                        navigator.pop();
-                        navigator.popUntil((route) => route.isFirst);
-                      }
-                    },
+                  if ((booking.driverPhone ?? '').trim().isNotEmpty) const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        final navigator = Navigator.of(context);
+                        final repo = TripOperationsRepository(controller.apiClient);
+                        try {
+                          final trips = await repo.customerTrips();
+                          final trip = trips.firstWhere((x) => x.bookingId == booking.id);
+                          if (!context.mounted) return;
+                          navigator.pop();
+                          navigator.pushReplacement(MaterialPageRoute(
+                            builder: (_) => CustomerFullScreenTrackingScreen(trip: trip, repository: repo, tripOtp: booking.tripOtp),
+                          ));
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          navigator.pop();
+                          navigator.popUntil((route) => route.isFirst);
+                        }
+                      },
+                      icon: const Icon(Icons.navigation_rounded),
+                      label: Text(_t('Track Driver', 'ڈرائیور کو ٹریک کریں')),
+                    ),
                   ),
                 ],
               ),
@@ -1621,9 +1633,11 @@ class _OfferVehiclePhoto extends StatelessWidget {
                 ),
                 child: Text(
                   offer.registrationNumber,
-                  // A number plate the customer has to match against a real car
-                  // at a kerb. 9.5px was the smallest type in the app.
-                  style: AppType.overline.copyWith(color: AppText.primary),
+                  style: const TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppText.primary,
+                  ),
                 ),
               ),
             ),

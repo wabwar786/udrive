@@ -20,6 +20,7 @@ import '../../core/booking/booking_options.dart';
 import '../../core/booking/vehicle_booking_mode.dart';
 import '../../core/config/app_config.dart';
 import '../../core/places/recent_places_store.dart';
+import 'map_point_screen.dart';
 import '../../core/services/place_search_service.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/widgets/steering_wheel_icon.dart';
@@ -38,7 +39,6 @@ import 'place_search_screen.dart';
 import 'tour_map_screen.dart';
 import 'vehicle_choice_screen.dart';
 import 'udrive_route_flow_screen.dart';
-import '../../core/permissions/location_access.dart';
 
 /// Map-first, service-first Home.
 ///
@@ -105,6 +105,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// Destinations used before, newest first. Shown until a destination is
   /// chosen, because most trips repeat.
   List<RecentPlace> _recent = const [];
+
+  /// How many of them this screen shows. The store keeps more; the search
+  /// screen is where the longer list lives.
+  static const _maxHomeRecents = 2;
 
   /// True while the customer is dragging the map. The centre pin lifts and its
   /// label hides, the way a dropped pin behaves in every map app.
@@ -506,10 +510,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return;
       }
 
-      // Discloses before the system prompt, then asks. Google Play requires
-      // the app's own explanation to come first; see LocationAccess.
-      final permission =
-          await LocationAccess.ensure(context, LocationPurpose.customer);
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
       if (permission == LocationPermission.deniedForever) {
         _setPickupFailure('Location permission is blocked. Allow it in your browser or device settings.');
         return;
@@ -1043,13 +1047,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     // pin appeared on Street 20 while the blue dot — the real
                     // position — sat on Street 19: the dot was right, the pin
                     // was drawn a header's height away from what it meant.
-                    child: IgnorePointer(
-                      child: Center(
-                        child: _CentrePin(
-                          lifted: _draggingMap,
-                          label: _shortPlace(_pickup.text),
-                          resolving: _resolvingPin,
-                        ),
+                    //
+                    // Not wrapped in `IgnorePointer` any more: the label
+                    // bubble is the pickup control now, so it has to accept a
+                    // tap. Everything below it — head, stem, dot — is still
+                    // pointer-transparent, so a drag that starts on the pin
+                    // itself still moves the map.
+                    child: Center(
+                      child: _CentrePin(
+                        lifted: _draggingMap,
+                        label: _shortPlace(_pickup.text),
+                        resolving: _resolvingPin,
+                        uncertain: _pickupUncertain,
+                        onTap: () => _openSearch(RouteFieldKind.pickup),
                       ),
                     ),
                   ),
@@ -1379,23 +1389,25 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             // actually asks. A separate pickup row above it was two fields to
             // read before the customer could start.
             _SearchPill(onTap: () => _openSearch(RouteFieldKind.destination)),
-            const SizedBox(height: 10),
-            _PickupRow(
-              uncertain: _pickupUncertain,
-              label: _pickup.text,
-              busy: _locating || _resolvingPin,
-              onTap: () => _openSearch(RouteFieldKind.pickup),
-            ),
             if (_recent.isNotEmpty) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               // Most trips repeat, so the fastest path for a regular is the one
               // they took last time.
-              ..._recent.map(
-                (place) => _RecentRow(
-                  place: place,
-                  onTap: () => _useRecent(place),
-                ),
-              ),
+              //
+              // Two, and only ever two. This list is a shortcut under the
+              // question, not a history page: six of them pushed the service
+              // cards off the screen, and by the third entry the customer is
+              // reading rather than tapping. The rest are still in the search
+              // screen, which is where a list belongs.
+              //
+              // Destinations only. Nothing writes a pickup here — the pickup
+              // is the pin on the map above.
+              ..._recent.take(_maxHomeRecents).map(
+                    (place) => _RecentRow(
+                      place: place,
+                      onTap: () => _useRecent(place),
+                    ),
+                  ),
             ],
           ] else ...[
             if (!hotel) ...[
@@ -1410,6 +1422,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 onEditPickup: () => _openSearch(RouteFieldKind.pickup),
                 onEditDestination: () =>
                     _openSearch(RouteFieldKind.destination),
+                onMovePin: _moveDestinationPin,
               ),
               _TripSummary(
                 loading: _routeLoading,
@@ -1623,11 +1636,56 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ? _pickup.text.trim()
               : _destination.text.trim(),
           bias: _pickupPoint,
+          // "Choose on map" has been in this screen all along with nothing
+          // behind it, so the row never appeared. This is what it opens: the
+          // pin the customer drags to a spot no geocoder has a name for.
+          onChooseOnMap: () => _pickOnMap(field),
         ),
       ),
     );
     if (result == null || !mounted) return;
+    await _applyPlaceResult(result);
+  }
 
+  /// Opens the drag-a-pin map and returns what the customer dropped.
+  ///
+  /// Does not apply the answer itself: the search screen closes over this and
+  /// pops its own route with the result, so the caller stays the one place that
+  /// decides what a chosen place means.
+  Future<PlacePickResult?> _pickOnMap(RouteFieldKind field) {
+    final pickup = field == RouteFieldKind.pickup;
+    return Navigator.push<PlacePickResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MapPointScreen(
+          forPickup: pickup,
+          // Opens where the thing being moved already is, so the first drag is
+          // a correction rather than a journey across the district.
+          initialPoint: pickup
+              ? _pickupPoint
+              : (_destinationPoint ?? _pickupPoint),
+          initialLabel:
+              pickup ? _pickup.text.trim() : _destination.text.trim(),
+          pickupPoint: _pickupPoint,
+        ),
+      ),
+    );
+  }
+
+  /// The pin, straight from the route card — no search screen in between.
+  ///
+  /// This is the whole point of the feature: the customer can already see the
+  /// destination is in the wrong spot, and asking them to go and type a name
+  /// for a spot that has no name is what left them stuck.
+  Future<void> _moveDestinationPin() async {
+    final result = await _pickOnMap(RouteFieldKind.destination);
+    if (result == null || !mounted) return;
+    await _applyPlaceResult(result);
+  }
+
+  /// Takes a chosen place — typed, tapped from a list, or dropped on the map —
+  /// and makes it the route's pickup or destination.
+  Future<void> _applyPlaceResult(PlacePickResult result) async {
     // "Use my current location" re-reads GPS rather than trusting a label.
     if (result.useCurrentLocation) {
       await _loadLocation();
@@ -1957,7 +2015,7 @@ class _TourRateGuideCard extends StatelessWidget {
             'Each driver sets their own tour price. Offer what you think the '
             'trip is worth — drivers reply with theirs.',
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 12,
               height: 1.4,
               color: AppText.disabled,
             ),
@@ -2008,92 +2066,6 @@ class _SearchPill extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Pickup as one quiet line under the search control.
-///
-/// The map already shows the pickup on its own pin, so repeating it as a full
-/// field competed with the question above it. It stays tappable because a wrong
-/// pickup has to be fixable without first choosing a destination.
-class _PickupRow extends StatelessWidget {
-  const _PickupRow({
-    required this.label,
-    required this.busy,
-    required this.uncertain,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool busy;
-
-  /// The phone reported a fix too vague to name a street with.
-  final bool uncertain;
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = label.trim();
-
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: AppRadii.all(AppRadii.row),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-          child: Row(
-            children: [
-              // The route rail's start marker, on its own: a navy ring.
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppTint.pinPickupFill, width: 3),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  text.isEmpty ? 'Set a pickup point' : text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppType.small.copyWith(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w600,
-                    color: AppText.secondary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (busy)
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                Text(
-                  // Louder when the fix was vague. "Change" is an option;
-                  // "Check this" is a request, and the difference matters when
-                  // the address on screen may be a street out.
-                  uncertain ? 'Check this' : 'Change',
-                  style: AppType.caption.copyWith(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w800,
-                    color: uncertain
-                        ? AppTint.warningText
-                        : AppColors.brandInk,
-                  ),
-                ),
-            ],
           ),
         ),
       ),
@@ -2313,7 +2285,7 @@ class _NotificationsPopup extends StatelessWidget {
                 AppConfig.buildLabel,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 12.5,
+                  fontSize: 12,
                   color: AppText.disabled,
                 ),
               ),
@@ -2349,11 +2321,24 @@ class _CentrePin extends StatelessWidget {
     required this.lifted,
     required this.label,
     required this.resolving,
+    required this.uncertain,
+    required this.onTap,
   });
 
   final bool lifted;
   final String label;
   final bool resolving;
+
+  /// The phone reported a fix too vague to name a street with.
+  ///
+  /// Moved here from the row that used to sit under the search box. The warning
+  /// has to be next to the thing it is warning about, and that is the pin.
+  final bool uncertain;
+
+  /// Opens the pickup search. Only the label bubble takes the tap — the head
+  /// and the dot stay pointer-transparent so dragging the map still works when
+  /// a finger lands on the pin itself.
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2379,20 +2364,30 @@ class _CentrePin extends StatelessWidget {
     );
   }
 
-  Widget _pin() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedOpacity(
-          duration: const Duration(milliseconds: 150),
-          opacity: lifted ? 0 : 1,
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 230),
+  /// The tappable part: the address, and the warning when the fix was vague.
+  ///
+  /// This is the only pickup control on the screen now. The quiet row that used
+  /// to repeat it under the search box has gone: it asked the customer to read
+  /// the same address twice before they could answer the one question the
+  /// screen actually asks, and it sat directly above the recent destinations,
+  /// where a pickup looked like one of them.
+  Widget _bubble() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            constraints: const BoxConstraints(maxWidth: 240),
             padding: const EdgeInsets.fromLTRB(12, 7, 8, 7),
             decoration: BoxDecoration(
               color: AppColors.surfaceHigh,
               borderRadius: BorderRadius.circular(12),
               boxShadow: AppShadows.card,
+              border: uncertain
+                  ? Border.all(color: AppTint.warningText, width: 1.4)
+                  : null,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -2405,7 +2400,7 @@ class _CentrePin extends StatelessWidget {
                       const Text(
                         'Pickup point',
                         style: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w700,
                           color: AppText.secondary,
                         ),
@@ -2435,6 +2430,45 @@ class _CentrePin extends StatelessWidget {
                     size: 18, color: AppText.secondary),
               ],
             ),
+          ),
+          // "Change" is an option; "Check this" is a request, and the
+          // difference matters when the address on screen may be a street out.
+          if (uncertain && !resolving) ...[
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppTint.warning,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: AppTint.warningBorder),
+              ),
+              child: Text(
+                'Check this',
+                style: AppType.caption.copyWith(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: AppTint.warningText,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _pin() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedOpacity(
+          duration: const Duration(milliseconds: 150),
+          opacity: lifted ? 0 : 1,
+          // Lifted means the map is moving under the finger, so the bubble is
+          // invisible — and an invisible control must not be tappable.
+          child: IgnorePointer(
+            ignoring: lifted,
+            child: _bubble(),
           ),
         ),
         const SizedBox(height: 5),
@@ -2507,7 +2541,8 @@ class _ServiceCards extends StatelessWidget {
   bool get _rideSelected =>
       selected == HomeService.car ||
       selected == HomeService.bus ||
-      selected == HomeService.bike;
+      selected == HomeService.bike ||
+      selected == HomeService.rickshaw;
 
   @override
   Widget build(BuildContext context) {
@@ -2527,7 +2562,7 @@ class _ServiceCards extends StatelessWidget {
               // list is on the next screen anyway.
               subtitle: nearbyCount > 0
                   ? '$nearbyCount nearby now'
-                  : 'Car · Bike · Coster · Hiace',
+                  : 'Car · Bike · Rickshaw · Coster',
               icon: Icons.directions_car_rounded,
               surface: AppProduct.rideSurface,
               accent: AppProduct.rideAccent,
@@ -2864,7 +2899,7 @@ class _ProductCard extends StatelessWidget {
   /// Title at the top, artwork in the bottom-right corner, out of the words'
   /// way. It used to be oversized and bleeding behind them, which worked at the
   /// old type size and stopped working at this one: the car printed straight
-  /// through "Car · Bike · Coster · Hiace".
+  /// through the list of vehicle names underneath.
   Widget _large() => Stack(
         children: [
           Positioned(
@@ -3242,6 +3277,7 @@ class _RouteSummaryFields extends StatelessWidget {
     required this.onUseMyLocation,
     required this.onEditPickup,
     required this.onEditDestination,
+    required this.onMovePin,
   });
 
   final String pickupLabel;
@@ -3250,6 +3286,14 @@ class _RouteSummaryFields extends StatelessWidget {
   final VoidCallback onUseMyLocation;
   final VoidCallback onEditPickup;
   final VoidCallback onEditDestination;
+
+  /// Opens the map with the destination under a pin the customer can drag.
+  ///
+  /// Sits next to "Use my location" rather than inside the search screen,
+  /// because by the time somebody wants to nudge a pin they can already see
+  /// the destination is slightly wrong — and a place a geocoder put in the
+  /// wrong spot is not a place they can find by typing its name again.
+  final VoidCallback onMovePin;
 
   @override
   Widget build(BuildContext context) {
@@ -3273,17 +3317,31 @@ class _RouteSummaryFields extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: UdButton(
-            label: locating ? 'Locating…' : 'Use my location',
-            icon: Icons.my_location_rounded,
-            variant: UdButtonVariant.ghost,
-            size: UdButtonSize.small,
-            expand: false,
-            busy: locating,
-            onPressed: onUseMyLocation,
-          ),
+        Row(
+          children: [
+            Flexible(
+              child: UdButton(
+                label: locating ? 'Locating…' : 'Use my location',
+                icon: Icons.my_location_rounded,
+                variant: UdButtonVariant.ghost,
+                size: UdButtonSize.small,
+                expand: false,
+                busy: locating,
+                onPressed: onUseMyLocation,
+              ),
+            ),
+            if (destinationLabel.trim().isNotEmpty)
+              Flexible(
+                child: UdButton(
+                  label: 'Move the pin',
+                  icon: Icons.control_camera_rounded,
+                  variant: UdButtonVariant.ghost,
+                  size: UdButtonSize.small,
+                  expand: false,
+                  onPressed: onMovePin,
+                ),
+              ),
+          ],
         ),
       ],
     );

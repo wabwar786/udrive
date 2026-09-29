@@ -322,6 +322,26 @@ class VehicleOptionsRepository {
     // coaster rate was never found. Driver eligibility does not filter on
     // category, so the rename changes pricing only.
     _CatalogueEntry(
+      // Rickshaw sits between Bike and Car: cheaper than a car, covered,
+      // three seats. It was dropped from the picker by migration 033, which
+      // deactivated its rate rows when the four travel options were settled —
+      // the rows were left in place so an admin could flip them back, and this
+      // is that being flipped back.
+      //
+      // The numbers are the database's own: 3 seats from migration 049,
+      // 40 PKR/km from 025, an 850 floor from 023. Three seats keeps
+      // allowsPerSeat false, so no seat-fare work comes with it.
+      category: 'Rickshaw',
+      label: 'Rickshaw',
+      description: 'Up to 3 passengers, short local trips',
+      seats: 3,
+      icon: Icons.electric_rickshaw_rounded,
+      asset: 'assets/vehicles_photo/rickshaw_clean.png',
+      fallbackPerKm: 40,
+      minimumFare: 850,
+      service: HomeService.rickshaw,
+    ),
+    _CatalogueEntry(
       category: 'Coster',
       label: 'Coster',
       description: 'Up to 22 passengers, groups and tours',

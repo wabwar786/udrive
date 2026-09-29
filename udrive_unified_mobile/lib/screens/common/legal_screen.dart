@@ -3,7 +3,6 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/network/api_config.dart';
-import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
@@ -42,10 +41,15 @@ class _LegalScreenState extends State<LegalScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Opens in whatever language the app is already in, and stays there until
-    // the reader switches. Nobody should have to change the whole app's
-    // language to read a policy.
-    _language ??= AppControllerScope.of(context).locale.languageCode == 'ur' ? 'ur' : 'en';
+    // English only.
+    //
+    // The Roman Urdu files are translations for convenience, and the English
+    // text is the one that governs — which the reader was told in a banner
+    // *after* choosing the translation. Offering a choice whose every branch
+    // carries "this is not the binding version" is a choice not worth making,
+    // and it is the version the Play listing and the account-deletion page
+    // point at. The .ur.md files stay on disk; nothing reads them.
+    _language ??= 'en';
     if (_parsed == null && _error == null) _load();
   }
 
@@ -53,32 +57,33 @@ class _LegalScreenState extends State<LegalScreen> {
     final language = _language ?? 'en';
     try {
       final raw = await rootBundle.loadString('assets/legal/${widget.document}.$language.md');
+
+      // Prove it is a policy before showing it as one.
+      //
+      // On the web an asset request that misses can come back 200 with the
+      // app's own index.html — a server-side SPA fallback, or a service worker
+      // that cached one. `loadString` only throws on a non-200, so the reader
+      // happily rendered that HTML as the privacy policy: doctype, meta tags
+      // and the Google Maps key comments, under the heading "UDrive".
+      //
+      // The nginx rule that answers 404 for a missing asset fixes the server.
+      // This fixes the reader, which matters because an already-installed
+      // service worker keeps serving the old answer until its cache turns
+      // over — and because a page that cannot prove it is the policy has no
+      // business being displayed as the policy.
+      if (!raw.trimLeft().startsWith('---')) {
+        throw const FormatException('Not a legal document.');
+      }
+
       if (!mounted) return;
       setState(() {
         _parsed = _LegalDocument.parse(raw);
         _error = null;
       });
     } catch (_) {
-      // A missing translation falls back to English rather than showing an
-      // error: a policy that will not open is worse than one in the other
-      // language, and the English text is the one that governs anyway.
-      if (language != 'en') {
-        _language = 'en';
-        await _load();
-        return;
-      }
       if (!mounted) return;
-      setState(() => _error = 'This document could not be opened.');
+      setState(() => _error = 'This document could not be opened. Tap the \u2197 button above to read it online.');
     }
-  }
-
-  void _switchTo(String language) {
-    if (_language == language) return;
-    setState(() {
-      _language = language;
-      _parsed = null;
-    });
-    _load();
   }
 
   Future<void> _openOnline() async {
@@ -137,8 +142,6 @@ class _LegalScreenState extends State<LegalScreen> {
                   padding: const EdgeInsets.fromLTRB(
                       AppSizes.sidePadding, 16, AppSizes.sidePadding, 40),
                   children: [
-                    _LanguageToggle(language: _language ?? 'en', onChanged: _switchTo),
-                    const SizedBox(height: 18),
                     Text(
                       document.title,
                       style: AppType.h1.copyWith(
@@ -168,53 +171,6 @@ class _LegalScreenState extends State<LegalScreen> {
                     ...document.blocks.map((block) => block.build()),
                   ],
                 ),
-    );
-  }
-}
-
-class _LanguageToggle extends StatelessWidget {
-  const _LanguageToggle({required this.language, required this.onChanged});
-  final String language;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget option(String value, String label) {
-      final selected = language == value;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => onChanged(value),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 9),
-            decoration: BoxDecoration(
-              // Brand lime with navy on top. AppColors.primary is navy, and
-              // navy-on-navy is the invisible-label mistake this palette
-              // documents at the top of AppColors.
-              color: selected ? AppColors.brand : Colors.transparent,
-              borderRadius: AppRadii.all(AppRadii.cta),
-            ),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 13,
-                color: selected ? AppText.onBrand : AppText.secondary,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.card),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(children: [option('ur', 'Roman Urdu'), option('en', 'English')]),
     );
   }
 }
@@ -508,7 +464,7 @@ class _Table implements _Block {
                             Text(
                               header[c],
                               style: const TextStyle(
-                                fontSize: 12.5,
+                                fontSize: 10.5,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: .07,
                                 color: AppText.secondary,

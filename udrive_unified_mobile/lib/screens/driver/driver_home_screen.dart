@@ -18,7 +18,6 @@ import '../../models/booking_models.dart';
 import '../../models/trip_operations_models.dart';
 import '../operations/live_trip_navigation_screen.dart';
 import 'driver_documents_screen.dart';
-import '../../core/permissions/location_access.dart';
 
 /// D-10 / D-11 — the driver's dashboard, offline and online.
 ///
@@ -142,12 +141,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (!mounted || !_isOnline) return;
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return;
-      // The Driver's disclosure, not the customer one: going online starts a
-      // location trail that is uploaded while they are online, and the wording
-      // has to say that before the system prompt. See LocationAccess.
-      final permission =
-          await LocationAccess.ensure(context, LocationPurpose.driver);
-      if (!LocationAccess.granted(permission)) return;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
       // `best`: this is the position published as the driver's own, and it is
       // what decides which requests reach them and how far away a customer
       // thinks they are.
@@ -478,22 +474,39 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   /// The deadline is set the first time a request is seen rather than from its
   /// server timestamp, because what matters is how long *this* Driver has been
   /// looking at it.
+  /// The requests worth showing, each with a countdown to decide on.
+  ///
+  /// The countdown is a nudge, not a verdict. It used to be a verdict: the
+  /// deadline was set once per request id and never renewed, so fifteen seconds
+  /// after a card first appeared it vanished for good — even though the server
+  /// was still sending it, and would go on sending it until somebody took the
+  /// ride. A driver who glanced away, or was finishing another trip, lost that
+  /// customer permanently and had no way to ask for them back.
+  ///
+  /// Now an expired deadline is restarted rather than obeyed, so the card
+  /// returns to the top of the queue on the next poll. What removes a request
+  /// from this list is the server dropping it — because it was taken, expired,
+  /// or this driver rejected it — which is the only thing that should.
   List<LiveRideRequest> _liveRequests(List<LiveRideRequest> requests) {
     final now = DateTime.now();
     final visible = <LiveRideRequest>[];
 
     for (final request in requests) {
-      final deadline = _requestDeadline.putIfAbsent(
-        request.id,
-        () => now.add(const Duration(seconds: AppConfig.decisionSeconds)),
-      );
-      if (deadline.isAfter(now)) visible.add(request);
+      var deadline = _requestDeadline[request.id];
+      if (deadline == null || !deadline.isAfter(now)) {
+        deadline = now.add(const Duration(seconds: AppConfig.decisionSeconds));
+        _requestDeadline[request.id] = deadline;
+        // A fresh countdown is a fresh chance to notice it.
+        _announcedRequests.remove(request.id);
+      }
+      visible.add(request);
     }
 
     // Deadlines for requests the server has stopped sending would otherwise
     // accumulate for as long as the app is open.
     final ids = requests.map((request) => request.id).toSet();
     _requestDeadline.removeWhere((id, _) => !ids.contains(id));
+    _announcedRequests.removeWhere((id) => !ids.contains(id));
 
     return visible;
   }
@@ -710,8 +723,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       context: context,
       title: _t('Reject request?', 'درخواست مسترد کریں؟'),
       message: _t(
-        'This request will be removed only from your queue. Other eligible Drivers can still respond.',
-        'یہ درخواست صرف آپ کی فہرست سے ہٹے گی۔ دوسرے اہل ڈرائیور جواب دے سکیں گے۔',
+        'This request leaves your queue for two minutes. Other eligible Drivers can still respond, and if nobody has taken it by then it comes back to you.',
+        'یہ درخواست دو منٹ کے لیے آپ کی فہرست سے ہٹے گی۔ دوسرے اہل ڈرائیور جواب دے سکیں گے، اور اگر تب تک کسی نے نہ لی تو یہ دوبارہ آپ کو دکھائی دے گی۔',
       ),
       actions: [
         Builder(

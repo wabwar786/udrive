@@ -46,6 +46,9 @@ class _TripChatScreenState extends State<TripChatScreen> {
   bool _loading = true;
   String? _error;
 
+  /// Consecutive failed polls. Reset by any poll that succeeds.
+  int _failedPolls = 0;
+
   TripChatRepository get _repository =>
       TripChatRepository(AppControllerScope.of(context).apiClient);
 
@@ -53,10 +56,23 @@ class _TripChatScreenState extends State<TripChatScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(initial: true));
-    // Three seconds. A message that arrives while someone is standing on a
+    // Five seconds. A message that arrives while someone is standing on a
     // roadside looking for a car is worth a poll; a websocket for a
     // conversation that lasts one trip is not worth the infrastructure.
-    _poller = Timer.periodic(const Duration(seconds: 3), (_) => _load());
+    //
+    // It was three. This screen opens *on top of* a live map whose own timers
+    // keep running — tracking every two seconds, its message check every ten —
+    // so the chat's poll is added to roughly forty requests a minute already
+    // in flight. The API allows three hundred a minute per IP address, which a
+    // handful of phones on one mobile network share, and a fixed window with
+    // no queue rejects everything for the rest of the minute once it is spent.
+    // That rejection is what the reader saw as "Please wait a moment and try
+    // again" seconds after sending a message that had, in fact, been sent.
+    //
+    // The screen that pushed this one now pauses its own timers while the
+    // conversation is open, which is the larger part of the saving; this is
+    // the rest of it.
+    _poller = Timer.periodic(const Duration(seconds: 5), (_) => _load());
   }
 
   @override
@@ -84,14 +100,30 @@ class _TripChatScreenState extends State<TripChatScreen> {
         _messages = after == null ? fresh : [..._messages, ...fresh];
         _loading = false;
         _error = null;
+        _failedPolls = 0;
       });
       _scrollToEnd();
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = '$error'.replaceFirst('Exception: ', '');
-      });
+
+      // One failed poll is not worth a red banner.
+      //
+      // The conversation is already on screen and still correct — a poll that
+      // misses has cost the reader nothing. Shouting at them about it is how
+      // "Please wait a moment and try again" came to sit above a message that
+      // had been delivered, which reads as though the message failed.
+      //
+      // Three in a row is different: that is long enough to mean the
+      // conversation really has stopped updating, and worth saying so.
+      _failedPolls++;
+      if (initial || _failedPolls >= 3) {
+        setState(() {
+          _loading = false;
+          _error = '$error'.replaceFirst('Exception: ', '');
+        });
+      } else if (_loading) {
+        setState(() => _loading = false);
+      }
     }
   }
 

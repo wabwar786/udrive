@@ -75,9 +75,13 @@ class NearbyVehicle {
         value.contains('motor')) {
       return HomeService.bike;
     }
-    // Rickshaws are not offered on Home, so they are deliberately unmapped
-    // rather than lumped in with cars.
-    if (value.contains('rickshaw') || value.contains('auto')) return null;
+    // Rickshaws are offered on Home again, so they map to their own service
+    // rather than being dropped. Dropping them meant a rickshaw parked around
+    // the corner counted towards nothing: no marker on the map, and no "n
+    // nearby" against the option the customer was about to choose.
+    if (value.contains('rickshaw') || value.contains('auto')) {
+      return HomeService.rickshaw;
+    }
     return HomeService.car;
   }
 

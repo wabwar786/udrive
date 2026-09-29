@@ -142,7 +142,81 @@ from udrive.bookings b join udrive.trip_operations o on o.booking_id=b.id cross 
         // a cancellation is a different and more serious event, and belongs
         // with disputes rather than an automatic fee. `source` distinguishes
         // the Driver's own cancellation from an Admin or Customer one.
-        if(request.Status=="Cancelled"&&source=="Driver"&&current.Value.Status!="TripStarted"){await DriverWalletService.ChargeCancellationAsync(cn,tx,bookingId,ct);}await HistoryAsync(cn,tx,bookingId,current.Value.Status,request.Status,actor,source,request.Reason,ct);var notification=request.Status switch{"DriverEnRoute"=>("DriverOnTheWay","Your Driver is on the way","Your Driver has started travelling to your pickup location. Open live tracking to follow the vehicle."),"DriverArrived"=>("DriverArrived","Your Driver has arrived","Your Driver is waiting at the pickup location."),"TripStarted"=>("TripStarted","Your trip has started","Your trip is now in progress."),"TripCompleted"=>("TripCompleted","Trip completed","Your trip has been completed successfully."),_=> (request.Status,$"Trip status: {request.Status}",request.Reason??$"Trip status changed to {request.Status}.")};await NotifyBookingPartiesAsync(cn,tx,bookingId,notification.Item1,notification.Item2,notification.Item3,ct);await AuditAsync(cn,tx,actor,"trip.status.changed","Booking",bookingId.ToString(),request,ct);await tx.CommitAsync(ct);return ServiceResult<TripOperationsDetailDto>.Ok((await LoadDetailAsync(cn,bookingId,ct))!);
+        if(request.Status=="Cancelled"&&source=="Driver"&&current.Value.Status!="TripStarted"){await DriverWalletService.ChargeCancellationAsync(cn,tx,bookingId,ct);await ReopenRideRequestAsync(cn,tx,bookingId,ct);}await HistoryAsync(cn,tx,bookingId,current.Value.Status,request.Status,actor,source,request.Reason,ct);var notification=request.Status switch{"DriverEnRoute"=>("DriverOnTheWay","Your Driver is on the way","Your Driver has started travelling to your pickup location. Open live tracking to follow the vehicle."),"DriverArrived"=>("DriverArrived","Your Driver has arrived","Your Driver is waiting at the pickup location."),"TripStarted"=>("TripStarted","Your trip has started","Your trip is now in progress."),"TripCompleted"=>("TripCompleted","Trip completed","Your trip has been completed successfully."),_=> (request.Status,$"Trip status: {request.Status}",request.Reason??$"Trip status changed to {request.Status}.")};await NotifyBookingPartiesAsync(cn,tx,bookingId,notification.Item1,notification.Item2,notification.Item3,ct);await AuditAsync(cn,tx,actor,"trip.status.changed","Booking",bookingId.ToString(),request,ct);await tx.CommitAsync(ct);return ServiceResult<TripOperationsDetailDto>.Ok((await LoadDetailAsync(cn,bookingId,ct))!);
+    }
+
+    /// <summary>
+    /// Puts a ride back in front of drivers after the one who took it walks away.
+    /// </summary>
+    /// <remarks>
+    /// A driver cancellation used to end the customer's journey through the
+    /// app. Selecting an offer sets <c>ride_requests.status='Confirmed'</c> and
+    /// expires every other offer; cancelling then wrote only
+    /// <c>trip_operations</c> and <c>bookings</c>, so the request stayed
+    /// <c>Confirmed</c> — invisible to the driver feed, rejected by
+    /// <c>SubmitDriverOfferAsync</c>, and skipped by the expiry sweep, which
+    /// only touches Open/SearchingDrivers/ReceivingOffers. The customer was
+    /// left on a tracking screen labelled "Ride cancelled" with a dead request
+    /// behind it, and their only way forward was to notice and start again.
+    ///
+    /// Three statements, all inside the caller's transaction so the
+    /// cancellation and the reopening commit together:
+    ///
+    /// 1. The request returns to <c>ReceivingOffers</c> with its selected offer
+    ///    cleared and at least half an hour left to run.
+    /// 2. Every offer on it is spent. The cancelled driver's offer must not
+    ///    stay selectable, and the others were expired when the customer chose.
+    /// 3. The driver who walked away is marked <c>Rejected</c> on this request.
+    ///
+    /// <c>fare_updated_at</c> is what makes step 3 work and what re-exposes the
+    /// request to everyone else. The feed hides a request from a driver whose
+    /// decision is older than that timestamp; setting it to <c>now()</c> clears
+    /// every earlier dismissal, and the cancelling driver's decision — written
+    /// afterwards, in the same transaction — is not earlier, so they alone stay
+    /// out. The column is named for the customer raising their fare, but what
+    /// it actually means to the feed is "this request changed, show it again",
+    /// which is exactly what happened.
+    ///
+    /// "Stay out" means for the two minutes a rejection rests a request, the
+    /// same as any other decline. If nobody else has taken it by then the
+    /// driver who cancelled will see it again, which is the right answer: the
+    /// customer is still waiting, and a driver whose circumstances changed is
+    /// better than no driver.
+    ///
+    /// A pickup more than fifteen minutes past is left alone: re-offering a
+    /// ride whose moment has gone only wastes drivers' time.
+    /// </remarks>
+    private static async Task ReopenRideRequestAsync(NpgsqlConnection cn,NpgsqlTransaction tx,Guid bookingId,CancellationToken ct)
+    {
+        await ExecAsync(cn,tx,@"
+            update udrive.ride_requests rr
+            set status='ReceivingOffers',
+                selected_offer_id=null,
+                fare_updated_at=now(),
+                expires_at=greatest(rr.expires_at, now() + interval '30 minutes'),
+                version=rr.version+1,
+                updated_at=now()
+            from udrive.bookings b
+            where b.id=@booking
+              and rr.id=b.ride_request_id
+              and rr.status='Confirmed'
+              and rr.pickup_at > now() - interval '15 minutes'",ct,("booking",bookingId));
+
+        await ExecAsync(cn,tx,@"
+            update udrive.driver_offers o
+            set status='Expired', responded_at=now(), updated_at=now(), version=o.version+1
+            from udrive.bookings b
+            where b.id=@booking
+              and o.ride_request_id=b.ride_request_id
+              and o.status in ('Pending','Countered','Accepted','Selected')",ct,("booking",bookingId));
+
+        await ExecAsync(cn,tx,@"
+            update udrive.driver_ride_request_decisions d
+            set decision='Rejected', reason='Driver cancelled after accepting.', updated_at=now()
+            from udrive.bookings b
+            where b.id=@booking
+              and d.ride_request_id=b.ride_request_id
+              and d.driver_profile_id=b.driver_profile_id",ct,("booking",bookingId));
     }
 
     public async Task<ServiceResult<TripNoteDto>> AddNoteAsync(Guid actor,Guid bookingId,AddTripNoteRequest request,CancellationToken ct){await using var cn=Open();await cn.OpenAsync(ct);var id=Guid.NewGuid();await ExecAsync(cn,null,"insert into udrive.trip_notes(id,booking_id,author_user_id,note_type,note,is_customer_visible,created_at,updated_at) values(@id,@booking,@actor,@type,@note,@visible,now(),now())",ct,("id",id),("booking",bookingId),("actor",actor),("type",request.NoteType),("note",request.Note),("visible",request.IsCustomerVisible));var author=await ScalarStringAsync(cn,"select full_name from udrive.users where id=@id",ct,("id",actor))??"Admin";return ServiceResult<TripNoteDto>.Created(new(id,request.NoteType,request.Note,author,request.IsCustomerVisible,DateTimeOffset.UtcNow));}

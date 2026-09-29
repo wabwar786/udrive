@@ -35,7 +35,7 @@ public sealed class VehicleImageUploadController(
     private static readonly HashSet<string> Categories =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "bike", "car", "ac_car", "hiace", "coaster",
+            "bike", "car", "ac_car", "rickshaw", "hiace", "coaster",
         };
 
     [HttpPost("{category}")]

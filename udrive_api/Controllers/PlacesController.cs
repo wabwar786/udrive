@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Npgsql;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using UDrive.Api.Common;
 using UDrive.Api.Services;
 
@@ -794,7 +795,54 @@ public sealed class PlacesController(
         return Ok(ApiResponse<object>.Ok(new { latitude = (double?)null }));
     }
 
+    // --------------------------------------------------------- reverse geocode
+
+    /// <summary>
+    /// The name the customer would use for a point on the map.
+    /// </summary>
+    /// <remarks>
+    /// Taking <c>results[0].formatted_address</c> is what produced pickup labels
+    /// like <c>MV62+76W, Rd B, Muzaffarabad</c>. That is a plus code — Google's
+    /// answer for a spot with no street number — and it is the one string a
+    /// customer cannot check, cannot repeat to a driver on the phone, and cannot
+    /// recognise as the place they are standing in.
+    ///
+    /// So this makes three attempts, cheapest first:
+    ///
+    /// 1. The geocoder's results, ranked. A building, a shop or a numbered
+    ///    street address wins over a bare road, which wins over a
+    ///    neighbourhood. Anything that is only a plus code is set aside.
+    /// 2. If nothing above a bare road came back, the nearest named place
+    ///    within 200 m — this is what turns a plus code into "Unity Plaza".
+    ///    Only reached in the plus-code case, so the ordinary address costs no
+    ///    extra request.
+    /// 3. The plus code with its code stripped off the front, which at least
+    ///    leaves the road and the town.
+    /// </remarks>
     private static async Task<string?> GoogleReverseAsync(
+        HttpClient client,
+        double lat,
+        double lng,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        var (named, weak) =
+            await GoogleGeocodeReverseAsync(client, lat, lng, key, cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(named)) return named;
+
+        var landmark =
+            await GoogleNearestPlaceAsync(client, lat, lng, key, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(landmark)) return landmark;
+
+        return string.IsNullOrWhiteSpace(weak) ? null : weak;
+    }
+
+    /// <summary>
+    /// Runs the reverse geocode and splits its answer in two: a label good
+    /// enough to show as-is, and a fallback that is better than nothing.
+    /// </summary>
+    private static async Task<(string? Named, string? Weak)> GoogleGeocodeReverseAsync(
         HttpClient client,
         double lat,
         double lng,
@@ -808,17 +856,147 @@ public sealed class PlacesController(
                 $"?latlng={lat},{lng}&key={Uri.EscapeDataString(key)}";
 
             using var response = await client.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode) return (null, null);
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(body);
+
+            return PickGeocodeResult(document.RootElement);
+        }
+        catch
+        {
+            // Fall through.
+        }
+
+        return (null, null);
+    }
+
+    /// <summary>
+    /// Chooses which of the geocoder's results to show. Separated from the
+    /// request so it can be checked against real Google payloads.
+    /// </summary>
+    internal static (string? Named, string? Weak) PickGeocodeResult(JsonElement root)
+    {
+        if (!root.TryGetProperty("results", out var items) ||
+            items.ValueKind != JsonValueKind.Array)
+        {
+            return (null, null);
+        }
+
+        // The best result that can be shown as it stands, and the best of
+        // everything including the plus codes. They are tracked separately
+        // because a stripped plus code ("Rd B, Muzaffarabad") still says more
+        // than the town on its own, and would otherwise lose to it.
+        string? named = null;
+        var namedRank = -1;
+        string? any = null;
+        var anyRank = -1;
+
+        // Only the first handful are worth reading. Google orders reverse
+        // results from the most specific outwards, so by the time we are past
+        // six we are looking at the district and then the country.
+        var seen = 0;
+        foreach (var item in items.EnumerateArray())
+        {
+            if (seen++ >= 6) break;
+
+            var address = item.TryGetProperty("formatted_address", out var f)
+                ? f.GetString() ?? string.Empty
+                : string.Empty;
+            if (address.Length == 0) continue;
+
+            var types = new List<string>();
+            if (item.TryGetProperty("types", out var typeList) &&
+                typeList.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var type in typeList.EnumerateArray())
+                {
+                    var value = type.GetString();
+                    if (!string.IsNullOrEmpty(value)) types.Add(value);
+                }
+            }
+
+            var tidy = TidyAddress(address);
+            if (tidy.Length == 0) continue;
+
+            var rank = RankPlaceTypes(types);
+            if (rank > anyRank)
+            {
+                anyRank = rank;
+                any = tidy;
+            }
+
+            // A plus code is never the answer, however specific Google thinks
+            // it is. It survives only as the fallback above, with the code
+            // itself already stripped off the front by TidyAddress.
+            if (types.Contains("plus_code") || StartsWithPlusCode(address)) continue;
+
+            if (rank > namedRank)
+            {
+                namedRank = rank;
+                named = tidy;
+            }
+        }
+
+        // A bare road or a whole neighbourhood is not a pickup point the
+        // customer can stand at, so it goes in the same pile as the plus code:
+        // usable, but worth one more lookup to beat.
+        return namedRank >= 2 ? (named, any) : (null, any);
+    }
+
+    /// <summary>
+    /// How much a reverse-geocode result tells the customer. Higher is better.
+    /// </summary>
+    private static int RankPlaceTypes(IReadOnlyCollection<string> types)
+    {
+        if (types.Contains("point_of_interest") ||
+            types.Contains("establishment") ||
+            types.Contains("premise") ||
+            types.Contains("subpremise") ||
+            types.Contains("transit_station") ||
+            types.Contains("airport"))
+        {
+            return 4;
+        }
+
+        if (types.Contains("street_address")) return 3;
+        if (types.Contains("intersection")) return 2;
+        if (types.Contains("route")) return 1;
+        return 0;
+    }
+
+    /// <summary>
+    /// The nearest named place, used only when the geocoder had nothing but a
+    /// plus code or a road name.
+    /// </summary>
+    /// <remarks>
+    /// <c>rankby=distance</c> is what makes this usable: it returns the closest
+    /// places rather than the most prominent ones in a radius, so a shop across
+    /// the road wins over a landmark two kilometres away. The 200 m cut-off is
+    /// applied here, from the geometry Google returns, because a name from
+    /// further away would be worse than the road the customer is actually on.
+    /// </remarks>
+    private static async Task<string?> GoogleNearestPlaceAsync(
+        HttpClient client,
+        double lat,
+        double lng,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var url =
+                "https://maps.googleapis.com/maps/api/place/nearbysearch/json" +
+                $"?location={lat},{lng}&rankby=distance" +
+                $"&key={Uri.EscapeDataString(key)}";
+
+            using var response = await client.GetAsync(url, cancellationToken);
             if (!response.IsSuccessStatusCode) return null;
 
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             using var document = JsonDocument.Parse(body);
 
-            if (document.RootElement.TryGetProperty("results", out var items) &&
-                items.GetArrayLength() > 0 &&
-                items[0].TryGetProperty("formatted_address", out var formatted))
-            {
-                return formatted.GetString();
-            }
+            return PickNearestPlace(document.RootElement, lat, lng);
         }
         catch
         {
@@ -826,6 +1004,110 @@ public sealed class PlacesController(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Chooses a landmark from a Nearby Search payload. Separated from the
+    /// request so the 200 m rule can be checked without calling Google.
+    /// </summary>
+    internal static string? PickNearestPlace(JsonElement root, double lat, double lng)
+    {
+        if (!root.TryGetProperty("results", out var items) ||
+            items.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var seen = 0;
+        foreach (var item in items.EnumerateArray())
+        {
+            if (seen++ >= 5) break;
+
+            var name = item.TryGetProperty("name", out var n)
+                ? (n.GetString() ?? string.Empty).Trim()
+                : string.Empty;
+            if (name.Length == 0 || IsPlusCodeToken(name)) continue;
+
+            if (!item.TryGetProperty("geometry", out var geometry) ||
+                !geometry.TryGetProperty("location", out var location) ||
+                !location.TryGetProperty("lat", out var placeLat) ||
+                !location.TryGetProperty("lng", out var placeLng))
+            {
+                continue;
+            }
+
+            if (MetresBetween(lat, lng, placeLat.GetDouble(), placeLng.GetDouble()) > 200)
+            {
+                // Sorted by distance, so the first one too far away means every
+                // one after it is too.
+                break;
+            }
+
+            var area = item.TryGetProperty("vicinity", out var v)
+                ? (v.GetString() ?? string.Empty).Trim()
+                : string.Empty;
+
+            // "Unity Plaza, Blue Area" reads as a place. "Unity Plaza, Unity
+            // Plaza" reads as a bug, so the area is dropped when it is already
+            // part of the name.
+            if (area.Length == 0 ||
+                name.Contains(area, StringComparison.OrdinalIgnoreCase) ||
+                area.Contains(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return name;
+            }
+
+            return TidyAddress($"{name}, {area}");
+        }
+
+        return null;
+    }
+
+    private static readonly Regex PlusCodePattern = new(
+        @"^[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static bool IsPlusCodeToken(string value) =>
+        PlusCodePattern.IsMatch(value.Trim());
+
+    private static bool StartsWithPlusCode(string address)
+    {
+        var first = address.Split(',', 2)[0];
+        return IsPlusCodeToken(first);
+    }
+
+    /// <summary>
+    /// Trims a Google address down to what fits on the pickup pill: no plus
+    /// code, no country, no postcode, and at most three parts.
+    /// </summary>
+    private static string TidyAddress(string address)
+    {
+        var parts = address
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(part => !IsPlusCodeToken(part))
+            .Where(part => !part.Equals("Pakistan", StringComparison.OrdinalIgnoreCase))
+            // A bare number at the end is the postcode. A number at the front is
+            // a house number, which is worth keeping, so only the tail is cut.
+            .ToList();
+
+        while (parts.Count > 1 && parts[^1].All(char.IsDigit))
+        {
+            parts.RemoveAt(parts.Count - 1);
+        }
+
+        return string.Join(", ", parts.Take(3));
+    }
+
+    private static double MetresBetween(
+        double lat1, double lng1, double lat2, double lng2)
+    {
+        const double earthRadiusMetres = 6371000;
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLng = (lng2 - lng1) * Math.PI / 180;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
+                Math.Sin(dLng / 2) * Math.Sin(dLng / 2);
+        return earthRadiusMetres * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
     }
 
     // --------------------------------------------------------------- nominatim

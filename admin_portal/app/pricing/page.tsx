@@ -14,7 +14,7 @@ const SEAT_ENDPOINT = '/api/v1/admin/seat-fares';
 const SEAT_CATEGORIES = ['Coster', 'Hiace'] as const;
 
 const SERVICE_TYPES = ['City', 'PrivateVehicle'] as const;
-const CATEGORIES = ['Car', 'Bike', 'Coster', 'Hiace'] as const;
+const CATEGORIES = ['Car', 'Bike', 'Rickshaw', 'Coster', 'Hiace'] as const;
 
 /** ISO days: 1 = Monday … 7 = Sunday, matching what the API stores. */
 const DAYS: { value: number; label: string }[] = [
@@ -382,9 +382,10 @@ export default function Page() {
    * The plain per-km rate for each vehicle, with no day or area attached.
    *
    * This is the thing most visits to this page are about — a bike costs less
-   * per kilometre than a car, a car less than a Hiace, a Hiace less than a
-   * Coster — and making that a four-row grid means it can be set and compared
-   * in one place instead of opening four rules to read four numbers.
+   * per kilometre than a rickshaw, a rickshaw less than a car, a car less than
+   * a Hiace, a Hiace less than a Coster — and putting them in one grid means
+   * the ladder can be set and compared in one place instead of opening a rule
+   * at a time to read a number at a time.
    */
   const baseRules = useMemo(
     () =>

@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 
-/// The four services offered on the redesigned Home screen.
+/// The services offered on the redesigned Home screen.
 ///
-/// Bus/Car/Bike are vehicle categories; Hotel branches to the hotel search.
-/// Tour booking is a separate flag rather than a service — a customer can book
-/// a tour with any of the three vehicle types.
-enum HomeService { bus, car, bike, hotel, tour }
+/// Bus/Car/Bike/Rickshaw are vehicle categories; Hotel branches to the hotel
+/// search. Tour booking is a separate flag rather than a service — a customer
+/// can book a tour with any of the vehicle types.
+enum HomeService { bus, car, bike, rickshaw, hotel, tour }
 
 extension HomeServiceInfo on HomeService {
   String get label => switch (this) {
         HomeService.bus => 'Coster/Hiace',
         HomeService.car => 'Car',
         HomeService.bike => 'Bike',
+        HomeService.rickshaw => 'Rickshaw',
         HomeService.hotel => 'Hotel',
         HomeService.tour => 'Tour',
       };
@@ -20,6 +21,7 @@ extension HomeServiceInfo on HomeService {
         HomeService.bus => Icons.directions_bus_rounded,
         HomeService.car => Icons.directions_car_rounded,
         HomeService.bike => Icons.two_wheeler_rounded,
+        HomeService.rickshaw => Icons.electric_rickshaw_rounded,
         HomeService.hotel => Icons.apartment_rounded,
         HomeService.tour => Icons.terrain_rounded,
       };
@@ -29,6 +31,7 @@ extension HomeServiceInfo on HomeService {
         HomeService.bus => 'Coster / Hiace',
         HomeService.car => 'Car',
         HomeService.bike => 'Bike',
+        HomeService.rickshaw => 'Rickshaw',
         HomeService.hotel => 'Hotel',
         HomeService.tour => 'Tour',
       };
@@ -37,6 +40,7 @@ extension HomeServiceInfo on HomeService {
         HomeService.bus => 'Group travel across Kashmir',
         HomeService.car => 'Comfortable door-to-door rides',
         HomeService.bike => 'Quick and affordable',
+        HomeService.rickshaw => 'Short local trips, lowest fare',
         HomeService.hotel => 'Stay near your destination',
         HomeService.tour => 'Multi-day Kashmir trips',
       };
@@ -47,6 +51,7 @@ extension HomeServiceInfo on HomeService {
         HomeService.bus => 'coster',
         HomeService.car => 'car',
         HomeService.bike => 'bike',
+        HomeService.rickshaw => 'rickshaw',
         HomeService.hotel => null,
         // Tour is not one vehicle category — any tour-enabled vehicle qualifies,
         // so the search filters on availableForTour instead of a category.
@@ -58,6 +63,7 @@ extension HomeServiceInfo on HomeService {
         HomeService.bus => 'Coster',
         HomeService.car => 'Car',
         HomeService.bike => 'Bike',
+        HomeService.rickshaw => 'Rickshaw',
         HomeService.hotel => null,
         HomeService.tour => null,
       };
