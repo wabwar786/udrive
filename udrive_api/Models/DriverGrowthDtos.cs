@@ -156,6 +156,19 @@ public sealed record DriverHomeDto(
     decimal? AcceptanceRate,
     decimal WalletBalance,
     decimal BonusBalance,
+
+    /// <summary>
+    /// The platform's cut, so a request card can show what the driver actually
+    /// keeps.
+    /// </summary>
+    /// <remarks>
+    /// Sent with the home payload rather than fetched separately because the
+    /// request card needs it the moment a request arrives, and an app that has
+    /// to ask the server before it can show a net figure will show the gross
+    /// one — which is the number that makes a driver feel cheated at settlement.
+    /// </remarks>
+    decimal CommissionPercentage,
+
     MissionDto? ActiveMission,
     WelcomeBonusDto? WelcomeBonus,
     LaunchStatusDto? Launch,

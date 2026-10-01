@@ -11,6 +11,8 @@ import 'package:latlong2/latlong.dart';
 import '../../core/booking/trip_chat_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/config/app_config.dart';
+import '../../core/growth/driver_growth_repository.dart';
+import '../../models/driver_growth_models.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/ud_kit.dart';
@@ -62,6 +64,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   /// The Driver's own figures: earnings, rating, trips.
   DriverDashboard? _dashboard;
+
+  /// Everything the growth system knows about this driver — online time,
+  /// missions, welcome bonus, demand, launch status.
+  ///
+  /// Null until the first load, and null for good on an install where no admin
+  /// has configured a city. Every block that reads it is written to disappear
+  /// rather than to show an empty shell, because a dashboard full of zeroes is
+  /// a worse answer than no dashboard.
+  DriverGrowthHome? _growth;
 
   /// Documents an Admin has asked for again.
   ///
@@ -189,10 +200,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final repository = TripChatRepository(controller.apiClient);
     final dashboard = await repository.driverDashboard();
     final pending = await repository.pendingDocuments();
+
+    // One request for the whole growth side of the screen. It is deliberately
+    // not awaited alongside the two above with Future.wait: if the growth
+    // endpoint is slow or absent, the figures a driver actually needs should
+    // already be on screen.
+    final growth = await DriverGrowthRepository(controller.apiClient).home();
+
     if (!mounted) return;
     setState(() {
       if (dashboard != null) _dashboard = dashboard;
       _pendingDocuments = pending;
+      if (growth != null) _growth = growth;
     });
   }
 
@@ -262,7 +281,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final requests = controller.liveDriverRideRequests;
     final activeTrip = _acceptedTrips.isEmpty ? null : _acceptedTrips.first;
     final name = controller.currentUserName.trim();
-    final firstName = name.isEmpty ? 'driver' : name.split(' ').first;
+    final firstName = name.isEmpty ? 'Driver' : name.split(' ').first;
 
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -271,25 +290,35 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         padding: const EdgeInsets.fromLTRB(
             AppSizes.sidePadding, 6, AppSizes.sidePadding, 34),
         children: [
-          // "Hi, Usman" and one line saying what the switch above is doing.
+          // The online state, said once and said properly.
           //
-          // The switch itself is in the bar and not repeated here. It used to
-          // be in both places — one of them wired to a field that never
-          // changed — and two switches for one state is how they disagree.
-          Text(
-            'Hi, $firstName',
-            style: AppType.h1.copyWith(color: AppText.primary),
+          // This was a greeting and a sentence. The sentence was the only thing
+          // telling a driver whether they were taking work, and it sat in grey
+          // body text below their own name — on a phone propped on a dashboard
+          // that is not a state anyone can read at a glance. The switch is in
+          // the bar above and stays there; this card is the answer to "am I
+          // earning right now", with the two numbers that qualify it.
+          _OnlineHeroCard(
+            name: firstName,
+            online: _isOnline,
+            onlineSeconds: _growth?.presence.todaySeconds ??
+                controller.onlineSecondsToday,
+            acceptanceRate: _growth?.acceptanceRate,
+            cityName: _growth?.presence.cityName ?? controller.launchCityName,
+            onGoOnline: () => controller.toggleDriverOnline(true),
           ),
-          const SizedBox(height: 6),
-          Text(
-            _isOnline
-                ? "You're online. New requests within 5 KM will appear here "
-                    'automatically.'
-                : "You're offline. Turn the switch on above to start receiving "
-                    'nearby ride requests.',
-            style: AppType.body.copyWith(height: 1.45, color: AppText.secondary),
-          ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
+
+          // Today's three figures. Earnings first, because that is the one
+          // being asked.
+          //
+          // Hidden during an active ride, which is the rule this screen already
+          // followed: a driver on their way to a pickup has one thing to do,
+          // and today's takings are something to read past on the way to it.
+          if (activeTrip == null) ...[
+            _TodayTiles(growth: _growth, dashboard: _dashboard),
+            const SizedBox(height: 18),
+          ],
 
           // Above everything, including an active ride. It is the only block
           // on this screen with a consequence attached to ignoring it.
@@ -321,10 +350,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               trip: activeTrip,
               onOpen: () => _openAcceptedRide(activeTrip),
             ),
-          ] else ...[
-            // Today, in one line: rides done and money earned.
-            _TodayStrip(dashboard: _dashboard),
             const SizedBox(height: 14),
+          ],
+
+          // The reward blocks. Each one draws nothing at all when the server
+          // has configured nothing, so an install with no campaigns shows the
+          // same screen it always did.
+          if (activeTrip == null) ...[
+            if (_growth?.activeMission != null) ...[
+              _ActiveMissionCard(mission: _growth!.activeMission!),
+              const SizedBox(height: 12),
+            ],
+            if (_growth?.welcomeBonus != null) ...[
+              _WelcomeBonusStrip(bonus: _growth!.welcomeBonus!),
+              const SizedBox(height: 12),
+            ],
+            if ((_growth?.demand ?? const []).isNotEmpty) ...[
+              _DemandBlock(zones: _growth!.demand),
+              const SizedBox(height: 18),
+            ],
           ],
           if (_recentFares.isNotEmpty) ...[
             const SizedBox(height: 14),
@@ -395,8 +439,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 text: 'Verify at least one vehicle before sending fares.',
               )
             else if (requests.isEmpty)
-              _CompactWaitingState(
-                hasActiveTrip: activeTrip != null,
+              // Never just "no rides available".
+              //
+              // During launch this is the screen a driver sees most, and an
+              // empty state that says only that the platform has nothing is a
+              // screen that tells them to stop opening the app. This one answers
+              // the three questions they actually have: when does it get busy,
+              // where is it busy now, and what am I earning in the meantime.
+              _NoRideState(
+                growth: _growth,
                 onRefresh: _refreshNearbyRequests,
               )
             else
@@ -417,6 +468,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     request: request,
                     secondsLeft: _secondsLeft(request),
                     driverLocation: _myLocation,
+                    commissionPercentage: _growth?.commissionPercentage,
                     enabled:
                         verifiedVehicles.isNotEmpty && !controller.marketplaceBusy,
                     onAccept: () => _showOffer(request, verifiedVehicles),
@@ -425,6 +477,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   ),
                 ),
               ),
+          // Below the work, not above it. A driver opening this screen is
+          // looking for a ride; the wallet and the launch card are what they
+          // read while there is not one.
+          if (_growth != null) ...[
+            const SizedBox(height: 18),
+            _WalletRow(
+              balance: _growth!.walletBalance,
+              bonus: _growth!.bonusBalance,
+            ),
+            if (_growth!.launch != null) ...[
+              const SizedBox(height: 12),
+              _LaunchCard(launch: _growth!.launch!),
+            ],
+            if (_growth!.founding?.isFoundingDriver == true) ...[
+              const SizedBox(height: 12),
+              _FoundingRow(founding: _growth!.founding!),
+            ],
+          ],
+
           if (controller.marketplaceError != null) ...[
             const SizedBox(height: 14),
             UdBanner(
@@ -718,37 +789,69 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
   }
 
+  /// Asks why, then rejects.
+  ///
+  /// This was a yes/no dialog that sent "Driver declined from dashboard" every
+  /// time, which told operations nothing. A reason costs the driver one extra
+  /// tap and is the only signal that separates "the fare is too low" — a
+  /// pricing problem — from "the pickup is too far", which is a dispatch radius
+  /// problem. Both look identical in a rejection count.
+  ///
+  /// Still one tap to get out of it: dismissing the sheet rejects nothing.
   Future<void> _rejectRequest(LiveRideRequest request) async {
-    final result = await showUdDialog<bool>(
+    const reasons = <(String, String, IconData)>[
+      ('PickupTooFar', 'Pickup is too far', Icons.social_distance_rounded),
+      ('FareTooLow', 'Fare is too low', Icons.trending_down_rounded),
+      ('GoingOffline', 'Going offline', Icons.power_settings_new_rounded),
+      ('VehicleIssue', 'Vehicle issue', Icons.build_rounded),
+      ('Other', 'Other reason', Icons.more_horiz_rounded),
+    ];
+
+    final chosen = await showUdSheet<String>(
       context: context,
-      title: _t('Reject request?', 'درخواست مسترد کریں؟'),
-      message: _t(
-        'This request leaves your queue for two minutes. Other eligible Drivers can still respond, and if nobody has taken it by then it comes back to you.',
-        'یہ درخواست دو منٹ کے لیے آپ کی فہرست سے ہٹے گی۔ دوسرے اہل ڈرائیور جواب دے سکیں گے، اور اگر تب تک کسی نے نہ لی تو یہ دوبارہ آپ کو دکھائی دے گی۔',
-      ),
-      actions: [
-        Builder(
-          builder: (dialogContext) => UdButtonRow(
-            children: [
-              UdButton.outline(
-                label: _t('Cancel', 'منسوخ'),
-                onPressed: () => Navigator.pop(dialogContext, false),
-              ),
-              UdButton(
-                label: _t('Reject', 'مسترد'),
-                variant: UdButtonVariant.dangerSolid,
-                onPressed: () => Navigator.pop(dialogContext, true),
-              ),
-            ],
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            _t('Why are you rejecting?', 'آپ کیوں مسترد کر رہے ہیں؟'),
+            style: AppType.h3.copyWith(color: AppText.primary),
           ),
-        ),
-      ],
+          const SizedBox(height: 6),
+          Text(
+            _t(
+              'This request leaves your queue for two minutes. Other drivers '
+                  'can still take it, and if nobody does it comes back to you. '
+                  'Rejecting does not affect your rating.',
+              'یہ درخواست دو منٹ کے لیے آپ کی فہرست سے ہٹے گی۔ دوسرے ڈرائیور '
+                  'لے سکتے ہیں، اور اگر کسی نے نہ لی تو دوبارہ آپ کو ملے گی۔ '
+                  'مسترد کرنے سے آپ کی ریٹنگ متاثر نہیں ہوتی۔',
+            ),
+            style: AppType.caption.copyWith(
+              height: 1.45,
+              color: AppText.secondary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          for (final (code, label, icon) in reasons)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: UdListRow(
+                leading: UdIconTile(icon: icon, size: UdIconTileSize.sm),
+                title: label,
+                onTap: () => Navigator.pop(sheetContext, code),
+              ),
+            ),
+        ],
+      ),
     );
-    if (result != true || !mounted) return;
+
+    if (chosen == null || !mounted) return;
+
     try {
       await AppControllerScope.of(context).rejectLiveDriverRequest(
         rideRequestId: request.id,
-        reason: 'Driver declined from dashboard.',
+        reason: 'Driver rejected: $chosen',
       );
     } catch (error) {
       if (mounted) {
@@ -846,32 +949,6 @@ class _RecentFareSentCard extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Online, approved, with a vehicle — and still nothing to do.
-class _CompactWaitingState extends StatelessWidget {
-  const _CompactWaitingState(
-      {required this.hasActiveTrip, required this.onRefresh});
-
-  final bool hasActiveTrip;
-  final VoidCallback onRefresh;
-
-  @override
-  Widget build(BuildContext context) => UdEmptyState(
-        icon: hasActiveTrip ? Icons.route_rounded : Icons.radar_rounded,
-        title: hasActiveTrip
-            ? 'Next rides locked for now'
-            : 'No nearby ride right now',
-        text: hasActiveTrip
-            ? 'They unlock within 1 KM of your destination.'
-            : 'New 5 KM requests appear here automatically.',
-        action: UdButton.outline(
-          label: 'Refresh',
-          icon: Icons.refresh_rounded,
-          expand: false,
-          onPressed: onRefresh,
-        ),
-      );
 }
 
 /// The one ride that is happening, when one is.
@@ -1041,53 +1118,6 @@ class _DocumentRequestBanner extends StatelessWidget {
   }
 }
 
-/// Today's two numbers, in one line.
-///
-/// Rides and money, nothing else. Everything a Driver might want to study —
-/// the month, their rating, what passengers wrote — lives in Earnings, because
-/// studying it is not what they are doing while a request is coming in.
-class _TodayStrip extends StatelessWidget {
-  const _TodayStrip({required this.dashboard});
-
-  final DriverDashboard? dashboard;
-
-  @override
-  Widget build(BuildContext context) {
-    final trips = dashboard?.tripsToday ?? 0;
-    final earned = dashboard?.earnedToday ?? 0;
-
-    return UdCard(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: UdStat(
-              value: '$trips ride${trips == 1 ? '' : 's'}',
-              label: 'Today',
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Earned',
-                style: AppType.caption.copyWith(color: AppText.caption),
-              ),
-              const SizedBox(height: 2),
-              // The one bold thing on the strip.
-              Text(
-                'PKR ${NumberFormat('#,###').format(earned.round())}',
-                style: AppType.price.copyWith(color: AppText.primary),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// The pickup and destination of one request, on a map.
 ///
 /// Pushed, so it keeps its own `Scaffold`. The markers are the kit's own — an
@@ -1220,6 +1250,7 @@ class _DashboardRequestCard extends StatelessWidget {
     required this.request,
     required this.secondsLeft,
     required this.driverLocation,
+    required this.commissionPercentage,
     required this.enabled,
     required this.onAccept,
     required this.onMap,
@@ -1228,6 +1259,13 @@ class _DashboardRequestCard extends StatelessWidget {
 
   final LiveRideRequest request;
   final int secondsLeft;
+
+  /// The platform's cut, so the card can show what the driver keeps.
+  ///
+  /// Null until the growth endpoint has answered. The breakdown is then left
+  /// out entirely rather than computed from a guessed rate — a net figure that
+  /// turns out to be wrong at settlement costs more trust than no net figure.
+  final double? commissionPercentage;
 
   /// Null until presence has reported once. The distance line is then omitted
   /// rather than guessed — a wrong number here would send a Driver towards a
@@ -1350,6 +1388,22 @@ class _DashboardRequestCard extends StatelessWidget {
                   ),
                 ),
 
+                // What the fare is actually worth to this driver.
+                //
+                // The card showed the customer's offer and nothing else, so a
+                // driver compared a gross figure against a trip they would be
+                // paid the net of. The recommended minimum is the server's own
+                // quote — shown only when there is one, since older requests
+                // have none and a floor of zero is not a floor.
+                if (commissionPercentage != null) ...[
+                  const SizedBox(height: 14),
+                  _FareBreakdown(
+                    offer: request.customerOffer,
+                    recommended: request.quotedMinimum,
+                    commissionPercentage: commissionPercentage!,
+                  ),
+                ],
+
                 const SizedBox(height: 16),
 
                 Row(
@@ -1426,4 +1480,958 @@ class _RequestLeg extends StatelessWidget {
       ],
     );
   }
+}
+
+// ──────────────────────────────────────────────── the growth blocks
+
+String _hoursMinutes(int seconds) {
+  if (seconds <= 0) return '0m';
+  final hours = seconds ~/ 3600;
+  final minutes = (seconds % 3600) ~/ 60;
+  if (hours == 0) return '${minutes}m';
+  if (minutes == 0) return '${hours}h';
+  return '${hours}h ${minutes}m';
+}
+
+String _rupees(num value) => 'PKR ${NumberFormat('#,###').format(value.round())}';
+
+/// Online or offline, in the size that question deserves.
+///
+/// Navy when online and grey when not, because the two states have to be
+/// distinguishable from a phone clipped to a windscreen at arm's length. The
+/// switch itself stays in the bar above — one switch, one state — but when the
+/// driver is offline this card carries a button, since "turn on the switch
+/// above" is an instruction and a button is the thing it describes.
+class _OnlineHeroCard extends StatelessWidget {
+  const _OnlineHeroCard({
+    required this.name,
+    required this.online,
+    required this.onlineSeconds,
+    required this.acceptanceRate,
+    required this.cityName,
+    required this.onGoOnline,
+  });
+
+  final String name;
+  final bool online;
+  final int onlineSeconds;
+  final double? acceptanceRate;
+  final String? cityName;
+  final VoidCallback onGoOnline;
+
+  @override
+  Widget build(BuildContext context) {
+    // The name only appears when offline. Online, the two numbers below are
+    // what the driver is reading and a greeting is in the way; offline, there
+    // is nothing else on the card and addressing them directly is what makes it
+    // read as a prompt rather than a status.
+    final subtitle = [
+      'Ready for rides',
+      if (cityName != null && cityName!.isNotEmpty) cityName!,
+    ].join('  ·  ');
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      decoration: BoxDecoration(
+        color: online ? AppColors.navy : AppColors.inkTile,
+        borderRadius: AppRadii.all(AppRadii.largeCard),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: online ? AppColors.brand : AppColors.inkPanel,
+                  borderRadius: AppRadii.all(AppRadii.tile),
+                ),
+                child: Icon(
+                  online
+                      ? Icons.bolt_rounded
+                      : Icons.power_settings_new_rounded,
+                  size: 24,
+                  color: online ? AppColors.navy : AppText.onInkMuted,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      online ? "You're Online" : "You're Offline",
+                      style: AppType.h3.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppText.onInk,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      online
+                          ? subtitle
+                          : '$name — ride requests will not reach you',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.caption.copyWith(
+                        color: AppText.onInkMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          if (online) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _InkStat(
+                    label: 'Online today',
+                    value: _hoursMinutes(onlineSeconds),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InkStat(
+                    label: 'Acceptance',
+                    // Null until this driver has answered a request. A zero
+                    // here would read as a score, and it is not one.
+                    value: acceptanceRate == null
+                        ? '—'
+                        : '${acceptanceRate!.round()}%',
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            const SizedBox(height: 14),
+            UdButton.primary(label: 'Go online', onPressed: onGoOnline),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _InkStat extends StatelessWidget {
+  const _InkStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.inkPanel,
+          borderRadius: AppRadii.all(AppRadii.row),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: AppType.caption.copyWith(color: AppText.onInkMuted),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: AppType.h3.copyWith(
+                fontWeight: FontWeight.w800,
+                color: AppText.onInk,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// Earnings, rides and rating for today.
+///
+/// Falls back to the existing dashboard figures when the growth endpoint has
+/// not answered, so this strip shows the same numbers it always did on an
+/// install where no city has been configured.
+class _TodayTiles extends StatelessWidget {
+  const _TodayTiles({required this.growth, required this.dashboard});
+
+  final DriverGrowthHome? growth;
+  final DriverDashboard? dashboard;
+
+  @override
+  Widget build(BuildContext context) {
+    final earnings = growth?.todayEarnings ?? dashboard?.earnedToday ?? 0;
+    final rides = growth?.todayCompletedRides ?? dashboard?.tripsToday ?? 0;
+    final rating = growth?.rating ?? dashboard?.rating ?? 0;
+
+    return Row(
+      children: [
+        Expanded(
+          flex: 3,
+          child: _Tile(label: 'Today', value: _rupees(earnings)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: _Tile(label: 'Rides', value: '$rides')),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _Tile(
+            label: 'Rating',
+            // A driver with no ratings yet has no rating, and 0.0 would be the
+            // worst one on the platform.
+            value: rating <= 0 ? '—' : rating.toStringAsFixed(1),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Tile extends StatelessWidget {
+  const _Tile({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => UdCard(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: AppType.caption.copyWith(color: AppText.caption),
+            ),
+            const SizedBox(height: 3),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: AppType.h3.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: AppText.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// The one mission the driver is in the middle of.
+class _ActiveMissionCard extends StatelessWidget {
+  const _ActiveMissionCard({required this.mission});
+
+  final DriverMission mission;
+
+  @override
+  Widget build(BuildContext context) {
+    final qualified = mission.status == 'Qualified';
+
+    return UdCard(
+      tone: UdCardTone.plain,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  mission.isPeakHour ? 'PEAK HOUR REWARD' : "TODAY'S MISSION",
+                  style: AppType.overline.copyWith(color: AppColors.brandInk),
+                ),
+              ),
+              UdBadge(
+                label: _rupees(mission.rewardAmount),
+                tone: qualified ? UdTone.lime : UdTone.ok,
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Text(
+            mission.title,
+            style: AppType.listTitle.copyWith(color: AppText.primary),
+          ),
+          if (mission.zoneName != null) ...[
+            const SizedBox(height: 3),
+            Text(
+              mission.zoneName!,
+              style: AppType.caption.copyWith(color: AppText.secondary),
+            ),
+          ],
+          const SizedBox(height: 11),
+          UdProgress(value: mission.fraction, lime: !qualified),
+          const SizedBox(height: 7),
+          Text(
+            qualified
+                // Said plainly, because a driver who has finished the work and
+                // sees no money needs to know the money is coming rather than
+                // that something went wrong.
+                ? 'Done — the bonus is credited at the end of the day.'
+                : mission.progressLabel,
+            style: AppType.caption.copyWith(
+              fontWeight: qualified ? FontWeight.w800 : FontWeight.w600,
+              color: qualified ? AppColors.brandInk : AppText.secondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// How much of the welcome bonus is unlocked, and what unlocks next.
+class _WelcomeBonusStrip extends StatelessWidget {
+  const _WelcomeBonusStrip({required this.bonus});
+
+  final WelcomeBonus bonus;
+
+  @override
+  Widget build(BuildContext context) {
+    final next = bonus.nextMilestone;
+
+    return UdCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'WELCOME BONUS',
+                  style: AppType.overline.copyWith(color: AppText.caption),
+                ),
+              ),
+              Text.rich(
+                TextSpan(
+                  text: _rupees(bonus.unlockedAmount),
+                  style: AppType.small.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: '  of ${_rupees(bonus.totalAmount)}',
+                      style: AppType.small.copyWith(color: AppText.secondary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 11),
+          UdProgress(value: bonus.fraction, lime: true),
+          if (next != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Next ${_rupees(next.rewardAmount)} — ${next.title}',
+              maxLines: 2,
+              style: AppType.caption.copyWith(color: AppText.secondary),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Where the work is expected to be.
+class _DemandBlock extends StatelessWidget {
+  const _DemandBlock({required this.zones});
+
+  final List<DemandZone> zones;
+
+  static Color _colour(String level) => switch (level) {
+        'High' => AppTint.dangerText,
+        'Medium' => AppTint.warningText,
+        _ => AppText.disabled,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    // Three is what fits before this stops being a glance and starts being a
+    // list. The rest live on the demand screen.
+    final visible = zones.take(3).toList(growable: false);
+    final anyLive = visible.any((zone) => zone.isLive);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'DEMAND NEAR YOU',
+                style: AppType.overline.copyWith(color: AppText.caption),
+              ),
+            ),
+            // The honest label. Anything an admin forecast is "expected", and
+            // calling a forecast live is how a driver stops believing both.
+            UdBadge(
+              label: anyLive ? 'Live' : 'Expected',
+              tone: anyLive ? UdTone.ok : UdTone.gray,
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        UdCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Column(
+            children: [
+              for (var i = 0; i < visible.length; i++) ...[
+                if (i > 0)
+                  const Divider(height: 1, color: AppColors.border),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: _colour(visible[i].level),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              visible[i].zoneName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppType.small.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: AppText.primary,
+                              ),
+                            ),
+                            if (visible[i].reason != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                visible[i].reason!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppType.caption
+                                    .copyWith(color: AppText.caption),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        visible[i].level,
+                        style: AppType.caption.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: _colour(visible[i].level),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Online, and nothing to do.
+class _NoRideState extends StatelessWidget {
+  const _NoRideState({required this.growth, required this.onRefresh});
+
+  final DriverGrowthHome? growth;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final mission = growth?.activeMission;
+    final best = growth?.bestDemand;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UdCard(
+          child: Column(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: AppRadii.all(AppRadii.tile),
+                ),
+                child: const Icon(Icons.schedule_rounded,
+                    size: 25, color: AppText.secondary),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No ride requests right now',
+                textAlign: TextAlign.center,
+                style: AppType.h3.copyWith(color: AppText.primary),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                "You're online — a request will appear here as soon as one "
+                'comes in.',
+                textAlign: TextAlign.center,
+                style: AppType.caption.copyWith(
+                  height: 1.45,
+                  color: AppText.secondary,
+                ),
+              ),
+              const SizedBox(height: 14),
+              UdButton.outline(
+                label: 'Check again',
+                size: UdButtonSize.small,
+                icon: Icons.refresh_rounded,
+                onPressed: onRefresh,
+              ),
+            ],
+          ),
+        ),
+
+        // Everything below is only drawn when the server actually has something
+        // to say. Nothing here is invented to fill the space.
+        if (mission != null) ...[
+          const SizedBox(height: 10),
+          _HintRow(
+            icon: Icons.star_rounded,
+            tone: UdTone.ok,
+            title: 'Next reward ${_rupees(mission.rewardAmount)}',
+            text: mission.status == 'Qualified'
+                ? 'Already earned — credited at the end of the day.'
+                : mission.progressLabel,
+          ),
+        ],
+
+        if (best != null && best.level != 'Low') ...[
+          const SizedBox(height: 10),
+          _HintRow(
+            icon: Icons.place_rounded,
+            tone: UdTone.warn,
+            title: '${best.level} demand — ${best.zoneName}',
+            text: best.isLive
+                ? 'Live right now'
+                : [
+                    'Expected',
+                    if (best.startTime.isNotEmpty)
+                      '${best.startTime}–${best.endTime}',
+                    if (best.reason != null) best.reason!,
+                  ].join('  ·  '),
+          ),
+        ],
+
+        if ((growth?.updates ?? const []).isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _HintRow(
+            icon: Icons.campaign_rounded,
+            tone: UdTone.info,
+            title: growth!.updates.first.title,
+            text: growth!.updates.first.body,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _HintRow extends StatelessWidget {
+  const _HintRow({
+    required this.icon,
+    required this.tone,
+    required this.title,
+    required this.text,
+  });
+
+  final IconData icon;
+  final UdTone tone;
+  final String title;
+  final String text;
+
+  (Color, Color) get _colours => switch (tone) {
+        UdTone.ok => (AppTint.success, AppTint.successText),
+        UdTone.warn => (AppTint.warning, AppTint.warningText),
+        UdTone.err => (AppTint.danger, AppTint.dangerText),
+        _ => (AppTint.info, AppTint.infoText),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final (wash, ink) = _colours;
+
+    return UdCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: wash,
+              borderRadius: AppRadii.all(AppRadii.tile),
+            ),
+            child: Icon(icon, size: 19, color: ink),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  style: AppType.small.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  text,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.caption.copyWith(
+                    height: 1.4,
+                    color: AppText.secondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The wallet, with the bonus called out as what it is.
+class _WalletRow extends StatelessWidget {
+  const _WalletRow({required this.balance, required this.bonus});
+
+  final double balance;
+  final double bonus;
+
+  @override
+  Widget build(BuildContext context) => UdCard(
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.brandWash,
+                borderRadius: AppRadii.all(AppRadii.tile),
+              ),
+              child: const Icon(Icons.account_balance_wallet_outlined,
+                  size: 22, color: AppColors.brandInk),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Wallet  ${_rupees(balance)}',
+                    style: AppType.listTitle.copyWith(color: AppText.primary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    // Said here rather than only on the wallet screen. A driver
+                    // who thinks a bonus is cash finds out at payout, which is
+                    // the worst possible moment to learn it.
+                    bonus > 0
+                        ? 'Includes ${_rupees(bonus)} bonus — pays your '
+                            'commission, not withdrawable'
+                        : 'Commission balance and earnings',
+                    maxLines: 2,
+                    style: AppType.caption.copyWith(color: AppText.secondary),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// How the city's launch is going, in numbers that were counted.
+class _LaunchCard extends StatelessWidget {
+  const _LaunchCard({required this.launch});
+
+  final LaunchStatus launch;
+
+  @override
+  Widget build(BuildContext context) => UdCard(
+        tone: UdCardTone.tint,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    launch.cityName.isEmpty
+                        ? 'UDRIVE LAUNCH'
+                        : 'UDRIVE ${launch.cityName.toUpperCase()} LAUNCH',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppType.overline.copyWith(color: AppColors.brandInk),
+                  ),
+                ),
+                if (launch.customerCampaignActive)
+                  const UdBadge(label: 'Campaign active', tone: UdTone.ok),
+              ],
+            ),
+            const SizedBox(height: 7),
+            Text(
+              launch.label,
+              style: AppType.listTitle.copyWith(color: AppText.primary),
+            ),
+            const SizedBox(height: 11),
+            Row(
+              children: [
+                for (var stage = 1; stage <= 4; stage++) ...[
+                  if (stage > 1) const SizedBox(width: 5),
+                  Expanded(
+                    child: Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: stage <= launch.stage
+                            ? AppColors.navy
+                            : AppTint.successBorder,
+                        borderRadius: AppRadii.all(AppRadii.chip),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 13),
+            Row(
+              children: [
+                // Only counted figures. A metric with no data is left out
+                // entirely rather than shown as a zero that reads as failure.
+                Expanded(
+                  child: _MiniStat(
+                    value: '${launch.verifiedDrivers}',
+                    label: 'Drivers',
+                  ),
+                ),
+                Expanded(
+                  child: _MiniStat(
+                    value: '${launch.registeredCustomers}',
+                    label: 'Customers',
+                  ),
+                ),
+                Expanded(
+                  child: _MiniStat(
+                    value: '${launch.requestsThisWeek}',
+                    label: 'Requests / week',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+}
+
+class _MiniStat extends StatelessWidget {
+  const _MiniStat({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: AppType.h3.copyWith(
+              fontWeight: FontWeight.w800,
+              color: AppText.primary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 2,
+            style: AppType.caption.copyWith(color: AppText.secondary),
+          ),
+        ],
+      );
+}
+
+/// The founding driver badge, when this driver has one.
+class _FoundingRow extends StatelessWidget {
+  const _FoundingRow({required this.founding});
+
+  final FoundingDriver founding;
+
+  @override
+  Widget build(BuildContext context) => UdCard(
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.brand,
+                borderRadius: AppRadii.all(AppRadii.tile),
+              ),
+              child: const Icon(Icons.workspace_premium_rounded,
+                  size: 23, color: AppColors.navy),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'UDrive Founding Driver',
+                    style: AppType.listTitle.copyWith(color: AppText.primary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      if (founding.cityName != null) founding.cityName!,
+                      if (founding.sequenceNo != null) '#${founding.sequenceNo}',
+                    ].join('  ·  '),
+                    style: AppType.caption.copyWith(color: AppText.secondary),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// Offer, floor, commission and what is left.
+///
+/// Four lines rather than one net figure, because a driver who is only told
+/// "you keep 1,100" cannot tell whether the cut was the commission they agreed
+/// to or something else. Showing the arithmetic is what makes the number
+/// believable, and settlement disputes are almost always about a number nobody
+/// could check at the time.
+class _FareBreakdown extends StatelessWidget {
+  const _FareBreakdown({
+    required this.offer,
+    required this.recommended,
+    required this.commissionPercentage,
+  });
+
+  final double offer;
+  final double? recommended;
+  final double commissionPercentage;
+
+  @override
+  Widget build(BuildContext context) {
+    final commission = offer * commissionPercentage / 100;
+    final net = offer - commission;
+    final belowFloor = recommended != null && offer < recommended!;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadii.all(AppRadii.row),
+      ),
+      child: Column(
+        children: [
+          _FareLine(label: 'Customer offered', value: _rupees(offer)),
+          if (recommended != null) ...[
+            const SizedBox(height: 7),
+            _FareLine(
+              label: 'Recommended minimum',
+              value: _rupees(recommended!),
+              // Only coloured when the offer is under it. A floor the offer
+              // already clears is information, not a warning.
+              valueColor: belowFloor ? AppTint.warningText : null,
+            ),
+          ],
+          const SizedBox(height: 7),
+          _FareLine(
+            label: 'UDrive commission '
+                '(${commissionPercentage.toStringAsFixed(
+              commissionPercentage % 1 == 0 ? 0 : 1,
+            )}%)',
+            value: '− ${_rupees(commission)}',
+            valueColor: AppTint.dangerText,
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 9),
+            child: Divider(height: 1, color: AppColors.border),
+          ),
+          _FareLine(
+            label: 'You keep',
+            value: _rupees(net),
+            strong: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FareLine extends StatelessWidget {
+  const _FareLine({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.strong = false,
+  });
+
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppType.caption.copyWith(
+                fontWeight: strong ? FontWeight.w800 : FontWeight.w600,
+                color: strong ? AppText.primary : AppText.secondary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            value,
+            style: strong
+                ? AppType.listTitle.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: valueColor ?? AppText.primary,
+                  )
+                : AppType.caption.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: valueColor ?? AppText.primary,
+                  ),
+          ),
+        ],
+      );
 }

@@ -124,6 +124,7 @@ public sealed class DriverGrowthService(string connectionString)
             metrics.AcceptanceRate,
             metrics.AvailableBalance,
             metrics.BonusBalance,
+            metrics.CommissionPercentage,
             active,
             welcome,
             launch,
@@ -315,7 +316,8 @@ public sealed class DriverGrowthService(string connectionString)
         decimal BonusBalance,
         int ReferralsVerified,
         int ReferralsFirstRide,
-        int ReferralsActive);
+        int ReferralsActive,
+        decimal CommissionPercentage);
 
     private static async Task<DriverMetrics> LoadMetricsAsync(
         NpgsqlConnection connection,
@@ -376,7 +378,14 @@ public sealed class DriverGrowthService(string connectionString)
                     AND r.first_ride_at IS NOT NULL),
                 (SELECT count(*) FROM udrive.driver_referrals r
                   WHERE r.referrer_driver_profile_id = p.id
-                    AND r.active_at IS NOT NULL)
+                    AND r.active_at IS NOT NULL),
+                -- The same setting the wallet screen reads, clamped the same
+                -- way. Read here so the request card can show a net figure
+                -- without a second round trip.
+                COALESCE((SELECT LEAST(40, GREATEST(0,
+                            (s.value_json #>> '{}')::numeric))
+                          FROM udrive.system_settings s
+                          WHERE s.key = 'driver.commission.percentage'), 10)
             FROM udrive.driver_profiles p
             LEFT JOIN udrive.driver_wallets w ON w.driver_profile_id = p.id
             WHERE p.id = @driver;
@@ -389,7 +398,8 @@ public sealed class DriverGrowthService(string connectionString)
         if (!await reader.ReadAsync(cancellationToken))
         {
             return new DriverMetrics(
-                "Unknown", null, false, false, 0, 0, 0, 0m, 0m, null, 0m, 0m, 0, 0, 0);
+                "Unknown", null, false, false, 0, 0, 0, 0m, 0m, null, 0m, 0m,
+                0, 0, 0, 10m);
         }
 
         return new DriverMetrics(
@@ -407,7 +417,8 @@ public sealed class DriverGrowthService(string connectionString)
             reader.GetDecimal(11),
             (int)reader.GetInt64(12),
             (int)reader.GetInt64(13),
-            (int)reader.GetInt64(14));
+            (int)reader.GetInt64(14),
+            reader.GetDecimal(15));
     }
 
     // ────────────────────────────────────────────────────────────── the engine
