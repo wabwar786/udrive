@@ -78,7 +78,31 @@ public sealed record MissionDto(
     string Status,
     DateTimeOffset? WindowStartsAt,
     DateTimeOffset? WindowEndsAt,
-    string? ZoneName);
+    string? ZoneName,
+
+    /// <summary>The time of day a peak-hour reward runs, as "HH:mm".</summary>
+    string? DailyStartTime = null,
+    string? DailyEndTime = null,
+
+    /// <summary>
+    /// The conditions as the admin wrote them, so a detail screen can list what
+    /// qualifying actually requires.
+    /// </summary>
+    /// <remarks>
+    /// Sent even though only one of them drives the progress bar. A driver who
+    /// finishes two hours online and is then not paid because they cancelled
+    /// twice needs to have been able to read that rule beforehand — otherwise
+    /// the reward looks arbitrary, which is worse than no reward.
+    /// </remarks>
+    int? MinOnlineSeconds = null,
+    int? MinCompletedRides = null,
+    int? MinAcceptedRides = null,
+    int? MaxCancellations = null,
+    decimal? MinRating = null,
+    decimal? MinAcceptanceRate = null,
+
+    /// <summary>Why this reward is not being paid, when it is on hold.</summary>
+    string? HoldReason = null);
 
 public sealed record FoundingDriverDto(
     bool IsFoundingDriver,

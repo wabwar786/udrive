@@ -1322,7 +1322,12 @@ public sealed class DriverGrowthService(string connectionString)
                    COALESCE(g.progress_value, 0), COALESCE(g.target_value, 1),
                    COALESCE(g.status, 'InProgress'),
                    c.starts_at, COALESCE(g.expires_at, c.ends_at), z.name,
-                   c.daily_start_time, c.daily_end_time
+                   to_char(c.daily_start_time, 'HH24:MI'),
+                   to_char(c.daily_end_time, 'HH24:MI'),
+                   c.min_online_seconds, c.min_completed_rides,
+                   c.min_accepted_rides, c.max_cancellations,
+                   c.min_rating, c.min_acceptance_rate,
+                   CASE WHEN g.status = 'OnHold' THEN g.reason ELSE NULL END
             FROM udrive.growth_campaigns c
             LEFT JOIN udrive.pricing_zones z ON z.id = c.zone_id
             LEFT JOIN udrive.driver_campaign_progress g
@@ -1366,7 +1371,16 @@ public sealed class DriverGrowthService(string connectionString)
                 reader.GetString(7),
                 reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
                 reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9),
-                reader.IsDBNull(10) ? null : reader.GetString(10)));
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                reader.IsDBNull(11) ? null : reader.GetString(11),
+                reader.IsDBNull(12) ? null : reader.GetString(12),
+                reader.IsDBNull(13) ? null : reader.GetInt32(13),
+                reader.IsDBNull(14) ? null : reader.GetInt32(14),
+                reader.IsDBNull(15) ? null : reader.GetInt32(15),
+                reader.IsDBNull(16) ? null : reader.GetInt32(16),
+                reader.IsDBNull(17) ? null : reader.GetDecimal(17),
+                reader.IsDBNull(18) ? null : reader.GetDecimal(18),
+                reader.IsDBNull(19) ? null : reader.GetString(19)));
         }
 
         return rows;
@@ -1426,19 +1440,85 @@ public sealed class DriverGrowthService(string connectionString)
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("driver", driver.ProfileId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
-        if (!await reader.ReadAsync(cancellationToken))
+        int sequence;
+        string cityName;
+        DateTimeOffset granted;
+
+        // Scoped rather than declared with `await using var`: the benefits
+        // query below runs on this same connection, and Npgsql allows only one
+        // open reader at a time. The block closes this one first.
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
-            return new FoundingDriverDto(false, null, null, null, Array.Empty<MissionDto>());
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return new FoundingDriverDto(
+                    false, null, null, null, Array.Empty<MissionDto>());
+            }
+
+            sequence = reader.GetInt32(0);
+            cityName = reader.GetString(1);
+            granted = reader.GetFieldValue<DateTimeOffset>(2);
         }
 
         return new FoundingDriverDto(
             true,
-            reader.GetInt32(0),
-            reader.GetString(1),
-            reader.GetFieldValue<DateTimeOffset>(2),
-            Array.Empty<MissionDto>());
+            sequence,
+            cityName,
+            granted,
+            await LoadFoundingBenefitsAsync(connection, driver.CityId, cancellationToken));
+    }
+
+    /// <summary>
+    /// What founding status is actually worth, as configured.
+    /// </summary>
+    /// <remarks>
+    /// Read from FoundingBenefit campaigns rather than written into the app. A
+    /// badge with a list of benefits baked into a release is a promise nobody
+    /// can withdraw or change, and these are launch-period terms that will
+    /// change.
+    /// </remarks>
+    private static async Task<IReadOnlyList<MissionDto>> LoadFoundingBenefitsAsync(
+        NpgsqlConnection connection,
+        Guid? cityId,
+        CancellationToken cancellationToken)
+    {
+        if (cityId is null) return Array.Empty<MissionDto>();
+
+        const string sql = """
+            SELECT c.id, c.campaign_type, c.title, c.description, c.reward_amount,
+                   c.starts_at, c.ends_at
+            FROM udrive.growth_campaigns c
+            WHERE c.campaign_type = 'FoundingBenefit'
+              AND c.is_active
+              AND c.launch_city_id = @city
+              AND (c.starts_at IS NULL OR c.starts_at <= now())
+              AND (c.ends_at IS NULL OR c.ends_at >= now())
+            ORDER BY c.created_at;
+            """;
+
+        var rows = new List<MissionDto>();
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("city", cityId.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new MissionDto(
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.GetDecimal(4),
+                0,
+                1,
+                "Active",
+                reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTimeOffset>(5),
+                reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTimeOffset>(6),
+                null));
+        }
+
+        return rows;
     }
 
     private static async Task<IReadOnlyList<ExpectedDemandDto>> LoadDemandAsync(

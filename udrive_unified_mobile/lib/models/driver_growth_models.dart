@@ -131,6 +131,15 @@ class DriverMission {
     this.description,
     this.zoneName,
     this.windowEndsAt,
+    this.dailyStartTime,
+    this.dailyEndTime,
+    this.minOnlineSeconds,
+    this.minCompletedRides,
+    this.minAcceptedRides,
+    this.maxCancellations,
+    this.minRating,
+    this.minAcceptanceRate,
+    this.holdReason,
   });
 
   final String campaignId;
@@ -146,7 +155,43 @@ class DriverMission {
   final String? zoneName;
   final DateTime? windowEndsAt;
 
+  /// "17:00" and "21:00" for a peak-hour reward, null otherwise.
+  final String? dailyStartTime;
+  final String? dailyEndTime;
+
+  /// The conditions exactly as the admin configured them. Null means the admin
+  /// set no such condition, which is different from setting it to zero.
+  final int? minOnlineSeconds;
+  final int? minCompletedRides;
+  final int? minAcceptedRides;
+  final int? maxCancellations;
+  final double? minRating;
+  final double? minAcceptanceRate;
+
+  /// Why a finished mission has not paid — a rating or acceptance gate, or a
+  /// campaign that has spent its budget. Only set when the status is OnHold.
+  final String? holdReason;
+
   bool get isPeakHour => campaignType == 'PeakHourReward';
+
+  /// "5:00 PM – 9:00 PM", or null when this is not a windowed reward.
+  String? get windowLabel {
+    final from = dailyStartTime;
+    final to = dailyEndTime;
+    if (from == null || to == null) return null;
+    return '${_clock(from)} – ${_clock(to)}';
+  }
+
+  /// 24-hour "17:00" as "5:00 PM". Drivers here read clock faces, not rosters.
+  static String _clock(String value) {
+    final parts = value.split(':');
+    final hour = int.tryParse(parts.first);
+    if (hour == null) return value;
+    final minute = parts.length > 1 ? parts[1] : '00';
+    final suffix = hour >= 12 ? 'PM' : 'AM';
+    final display = hour % 12 == 0 ? 12 : hour % 12;
+    return '$display:$minute $suffix';
+  }
 
   double get fraction =>
       targetValue <= 0 ? 0 : (progressValue / targetValue).clamp(0, 1).toDouble();
@@ -183,6 +228,22 @@ class DriverMission {
         status: _text(json['status']) ?? 'InProgress',
         zoneName: _text(json['zoneName']),
         windowEndsAt: _date(json['windowEndsAt']),
+        dailyStartTime: _text(json['dailyStartTime']),
+        dailyEndTime: _text(json['dailyEndTime']),
+        minOnlineSeconds:
+            json['minOnlineSeconds'] == null ? null : _int(json['minOnlineSeconds']),
+        minCompletedRides: json['minCompletedRides'] == null
+            ? null
+            : _int(json['minCompletedRides']),
+        minAcceptedRides:
+            json['minAcceptedRides'] == null ? null : _int(json['minAcceptedRides']),
+        maxCancellations:
+            json['maxCancellations'] == null ? null : _int(json['maxCancellations']),
+        minRating: json['minRating'] == null ? null : _double(json['minRating']),
+        minAcceptanceRate: json['minAcceptanceRate'] == null
+            ? null
+            : _double(json['minAcceptanceRate']),
+        holdReason: _text(json['holdReason']),
       );
 }
 
@@ -240,6 +301,7 @@ class FoundingDriver {
     this.sequenceNo,
     this.cityName,
     this.grantedAt,
+    this.benefits = const [],
   });
 
   final bool isFoundingDriver;
@@ -247,11 +309,19 @@ class FoundingDriver {
   final String? cityName;
   final DateTime? grantedAt;
 
+  /// What the status is worth, as the admin configured it. Empty until they
+  /// have configured something, and the screen then says so rather than
+  /// listing benefits the business has not agreed to.
+  final List<DriverMission> benefits;
+
   factory FoundingDriver.fromJson(Map<String, dynamic> json) => FoundingDriver(
         isFoundingDriver: json['isFoundingDriver'] == true,
         sequenceNo: json['sequenceNo'] == null ? null : _int(json['sequenceNo']),
         cityName: _text(json['cityName']),
         grantedAt: _date(json['grantedAt']),
+        benefits: _list(json['benefits'])
+            .map(DriverMission.fromJson)
+            .toList(growable: false),
       );
 }
 

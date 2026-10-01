@@ -3,6 +3,7 @@ import '../core/localization/app_strings.dart';
 import '../core/state/app_controller.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/app_tokens.dart';
+import '../core/widgets/driver_location_coordinator.dart';
 import '../core/widgets/ud_kit.dart';
 import '../data/models.dart';
 import 'common/common_pages.dart';
@@ -28,6 +29,7 @@ import 'driver/tour_operations_screen.dart';
 import 'driver/live_driver_requests_screen.dart';
 import 'customer/tourism_booking_screen.dart';
 import 'driver/driver_home_screen.dart';
+import 'driver/driver_missions_screen.dart';
 import 'driver/driver_earnings_screen.dart';
 import 'feedback/feedback_center_screen.dart';
 import 'driver/driver_pages.dart';
@@ -184,7 +186,19 @@ class _MainShellState extends State<MainShell> {
     // canPop is false only while this shell has somewhere of its own to go.
     // On a root page it stays true, so back still leaves the app the way the
     // platform expects rather than trapping the customer inside it.
-    return PopScope(
+    // Publishes an approved driver's position for any trip already assigned to
+    // them, from the moment they accept it.
+    //
+    // This widget existed and was never mounted anywhere, so nothing in the app
+    // ever ran it: the only code publishing a driver's location was the live
+    // navigation screen, which starts when the driver opens it. Between
+    // accepting a ride and opening that screen the customer's tracking map had
+    // no car on it at all — which is the exact stretch the customer is staring
+    // at it. Wrapping the shell means tracking follows the driver around the
+    // app instead of living inside one screen.
+    return DriverLocationCoordinator(
+      enabled: driver && !driverNeedsVerification,
+      child: PopScope(
       canPop: !canGoBack,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
@@ -273,6 +287,7 @@ class _MainShellState extends State<MainShell> {
       ),
       bottomNavigationBar:
           driverNeedsVerification ? null : _bottomNavigation(driver),
+      ),
       ),
     );
   }
@@ -645,6 +660,18 @@ class _MainShellState extends State<MainShell> {
       );
       return;
     }
+    // Rewards ships its own Scaffold and top bar, so it is pushed rather than
+    // routed through this shell — the same reason Create package is. Routed, it
+    // would draw a second bar under this one. One drawer entry rather than
+    // four: the welcome bonus, a mission's detail and the founding badge are
+    // all reachable from it and from the dashboard.
+    if (page == 'driverRewards') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const DriverMissionsScreen()),
+      );
+      return;
+    }
     // Lands on Vehicles, where the third way in to documents lives.
     if (page == 'driverDocuments' || page == 'documents') {
       _goToDriver('vehicles');
@@ -880,6 +907,7 @@ class _PremiumDrawer extends StatelessWidget {
         // it is noise a driver has to read past.
         ('dashboard', Icons.dashboard_outlined, 'Dashboard'),
         ('driverWallet', Icons.account_balance_wallet_rounded, 'Wallet'),
+        ('driverRewards', Icons.star_outline_rounded, 'Rewards & missions'),
         ('earnings', Icons.payments_outlined, 'Earnings & reviews'),
         ('vehicles', Icons.directions_car_outlined, 'Vehicles'),
         ('driverDocuments', Icons.badge_outlined, 'My documents'),

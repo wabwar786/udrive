@@ -20,6 +20,10 @@ import '../../models/booking_models.dart';
 import '../../models/trip_operations_models.dart';
 import '../operations/live_trip_navigation_screen.dart';
 import 'driver_documents_screen.dart';
+import 'driver_founding_screen.dart';
+import 'driver_mission_detail_screen.dart';
+import 'driver_missions_screen.dart';
+import 'driver_welcome_bonus_screen.dart';
 
 /// D-10 / D-11 — the driver's dashboard, offline and online.
 ///
@@ -256,6 +260,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     }
   }
 
+  /// Opens a rewards screen and refreshes on the way back.
+  ///
+  /// The refresh matters: a milestone can be credited while that screen is
+  /// open, and a driver returning to a home card still showing the old figure
+  /// has been told two different things in ten seconds.
+  Future<void> _openGrowth(Widget screen) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+    if (mounted) await _loadDashboard();
+  }
+
   Future<void> _openAcceptedRide(MobileTrip trip) async {
     final repository = _tripRepository;
     if (repository == null) return;
@@ -358,11 +372,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           // same screen it always did.
           if (activeTrip == null) ...[
             if (_growth?.activeMission != null) ...[
-              _ActiveMissionCard(mission: _growth!.activeMission!),
+              _ActiveMissionCard(
+                mission: _growth!.activeMission!,
+                onTap: () => _openGrowth(
+                  DriverMissionDetailScreen(mission: _growth!.activeMission!),
+                ),
+              ),
               const SizedBox(height: 12),
             ],
             if (_growth?.welcomeBonus != null) ...[
-              _WelcomeBonusStrip(bonus: _growth!.welcomeBonus!),
+              _WelcomeBonusStrip(
+                bonus: _growth!.welcomeBonus!,
+                onTap: () => _openGrowth(const DriverWelcomeBonusScreen()),
+              ),
               const SizedBox(height: 12),
             ],
             if ((_growth?.demand ?? const []).isNotEmpty) ...[
@@ -492,8 +514,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             ],
             if (_growth!.founding?.isFoundingDriver == true) ...[
               const SizedBox(height: 12),
-              _FoundingRow(founding: _growth!.founding!),
+              _FoundingRow(
+                founding: _growth!.founding!,
+                onTap: () => _openGrowth(
+                  DriverFoundingScreen(founding: _growth!.founding!),
+                ),
+              ),
             ],
+            const SizedBox(height: 12),
+            // One way in to everything the growth system offers, for a driver
+            // who wants the list rather than the one card above.
+            UdButton.outline(
+              label: 'Rewards & missions',
+              icon: Icons.star_outline_rounded,
+              onPressed: () => _openGrowth(const DriverMissionsScreen()),
+            ),
           ],
 
           if (controller.marketplaceError != null) ...[
@@ -1728,9 +1763,10 @@ class _Tile extends StatelessWidget {
 
 /// The one mission the driver is in the middle of.
 class _ActiveMissionCard extends StatelessWidget {
-  const _ActiveMissionCard({required this.mission});
+  const _ActiveMissionCard({required this.mission, required this.onTap});
 
   final DriverMission mission;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1738,6 +1774,7 @@ class _ActiveMissionCard extends StatelessWidget {
 
     return UdCard(
       tone: UdCardTone.plain,
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1790,15 +1827,17 @@ class _ActiveMissionCard extends StatelessWidget {
 
 /// How much of the welcome bonus is unlocked, and what unlocks next.
 class _WelcomeBonusStrip extends StatelessWidget {
-  const _WelcomeBonusStrip({required this.bonus});
+  const _WelcomeBonusStrip({required this.bonus, required this.onTap});
 
   final WelcomeBonus bonus;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final next = bonus.nextMilestone;
 
     return UdCard(
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2281,12 +2320,14 @@ class _MiniStat extends StatelessWidget {
 
 /// The founding driver badge, when this driver has one.
 class _FoundingRow extends StatelessWidget {
-  const _FoundingRow({required this.founding});
+  const _FoundingRow({required this.founding, required this.onTap});
 
   final FoundingDriver founding;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => UdCard(
+        onTap: onTap,
         child: Row(
           children: [
             Container(
