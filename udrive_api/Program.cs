@@ -143,6 +143,17 @@ builder.Services.AddHttpClient<WhatsAppService>(client =>
     client.Timeout = TimeSpan.FromSeconds(20);
 });
 builder.Services.AddScoped<SafetyService>(_ => new SafetyService(connectionString));
+
+// The driver growth and retention system. Presence is the measurement every
+// time-based reward rests on, so it is registered alongside the engine that
+// reads it rather than with the other driver services.
+builder.Services.AddScoped<DriverPresenceService>(_ =>
+    new DriverPresenceService(connectionString));
+builder.Services.AddScoped<DriverGrowthService>(_ =>
+    new DriverGrowthService(connectionString));
+builder.Services.AddScoped<AdminGrowthService>(_ =>
+    new AdminGrowthService(connectionString));
+
 builder.Services.AddScoped<Phase18TourService>(_ => new Phase18TourService(connectionString));
 builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(connectionString));
 builder.Services.AddScoped<HotelService>(_ => new HotelService(connectionString));
@@ -152,28 +163,6 @@ builder.Services.AddScoped<VerificationFileLookupService>(serviceProvider =>
     new VerificationFileLookupService(
         connectionString,
         serviceProvider.GetRequiredService<LocalFileStorageService>()));
-
-// ---------------------------------------------------------------- self-test
-//
-// Registered whether or not SELFTEST_ENABLED is set, so the admin portal's page
-// can explain that it is switched off instead of receiving a 404. Nothing runs
-// and no account is created until an Admin presses Run — and the controller and
-// the scheduler both refuse while the variable is unset.
-builder.Services.AddHttpClient(SelfTestService.HttpClientName, client =>
-{
-    // Generous but finite. Every call is to this same process over loopback, so
-    // a slow answer means a slow query, which is exactly what the run is there
-    // to notice — but a hung request must not hold the harness open for ever.
-    client.Timeout = TimeSpan.FromSeconds(30);
-});
-builder.Services.AddScoped<SelfTestService>(serviceProvider =>
-    new SelfTestService(
-        connectionString,
-        serviceProvider.GetRequiredService<AuthSqlStore>(),
-        serviceProvider.GetRequiredService<JwtTokenService>(),
-        serviceProvider.GetRequiredService<IHttpClientFactory>(),
-        serviceProvider.GetRequiredService<ILogger<SelfTestService>>()));
-builder.Services.AddHostedService<SelfTestScheduler>();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

@@ -45,6 +45,19 @@ class AppController extends ChangeNotifier {
   Locale _locale = const Locale('en');
   UserMode _mode = UserMode.customer;
   bool _driverOnline = true;
+
+  /// Keeps the driver's online session alive on the server.
+  Timer? _presenceTimer;
+
+  /// How often to beat. The server sends this, so the interval can be changed
+  /// without a release if it turns out to cost drivers too much data.
+  int _presenceSeconds = 60;
+
+  /// Credited online seconds today, as the server counts them.
+  int _onlineSecondsToday = 0;
+  DateTime? _onlineSince;
+  String? _launchCityName;
+
   int _walletBalance = 15700;
   ShareDuration _shareDuration = ShareDuration.untilDestination;
 
@@ -219,6 +232,17 @@ class AppController extends ChangeNotifier {
   Locale get locale => _locale;
   UserMode get mode => _mode;
   bool get driverOnline => _driverOnline;
+
+  /// Credited online seconds today, counted by the server rather than guessed
+  /// from a timestamp on this phone.
+  int get onlineSecondsToday => _onlineSecondsToday;
+
+  /// When the current online session began, or null when offline.
+  DateTime? get onlineSince => _onlineSince;
+
+  /// The launch city this driver belongs to, once an admin has set one.
+  String? get launchCityName => _launchCityName;
+
   bool get driverApproved => _currentUser?.driverModeAvailable == true;
   int get walletBalance => _walletBalance;
   List<VehicleRecord> get vehicles => List.unmodifiable(_vehicles);
@@ -376,20 +400,28 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  // REMOVED for the Play Store release: the demo phone number and the fixed
-  // reviewer code, and the one-tap `login()` that used them.
-  //
-  // They were `static const`, so they shipped inside the AAB whatever the UI
-  // did — and anybody who unpacked the bundle could read them and sign in
-  // against production as a verified Approved Driver. The button that used them
-  // was hidden on release Android but its gate was `kIsWeb || kDebugMode`, so a
-  // production web build offered one-tap demo sign-in to the public.
-  //
-  // The Play reviewer still gets in, and by the route Google intends: the
-  // number and code go in Play Console -> App access, and the server honours
-  // them from system_settings (Admin portal -> Services -> WhatsApp OTP). That
-  // keeps the credential revocable in one place, out of the client, and lets it
-  // be switched off the day the listing is approved.
+  /// The one-tap demo sign-in behind the login screen's test-build button.
+  ///
+  /// Not a back door: it drives the ordinary OTP endpoints with the seeded
+  /// demo driver's number and the reviewer code configured under Services →
+  /// OTP settings. If that code is changed in the portal without being changed
+  /// here, this button stops working — which is the right failure, because the
+  /// alternative is a second code living in the app that nobody can revoke.
+  ///
+  /// The account is an Approved driver, so it lands in Customer mode and can
+  /// switch to Driver Mode from the home card. That is what a Play reviewer
+  /// needs from one sign-in.
+  static const String demoPhoneNumber = '03000000001';
+  static const String demoReviewerCode = '5095';
+
+  Future<void> login() async {
+    await requestOtp(demoPhoneNumber);
+    await verifyOtp(
+      phoneNumber: demoPhoneNumber,
+      code: demoReviewerCode,
+      fullName: 'Udrive Demo Driver',
+    );
+  }
 
   /// Loads everything the signed-in app needs.
   ///
@@ -473,6 +505,14 @@ class AppController extends ChangeNotifier {
     if (value == UserMode.driver) {
       await _loadDriverState();
       await loadDriverMarketplace();
+      // The server decides whether this driver is online, not the switch they
+      // last tapped on this phone.
+      unawaited(syncDriverPresence());
+    } else {
+      // Leaving driver mode is leaving the road. Nothing should keep counting
+      // minutes towards a reward while the app is showing customer screens.
+      _presenceTimer?.cancel();
+      _presenceTimer = null;
     }
     notifyListeners();
   }
@@ -590,6 +630,13 @@ class AppController extends ChangeNotifier {
       _driverProfile = null;
       _liveVehicles = const [];
     }
+
+    // Whenever driver state is loaded — a cold start, a sign-in, a mode switch
+    // — the online session is reconciled with the server. Without this an app
+    // reopened after a timeout shows "You're Online" over a session the server
+    // closed hours ago, and the driver sits waiting for requests that are being
+    // offered to somebody else.
+    unawaited(syncDriverPresence());
   }
 
   void _setAuthBusy(bool value) {
@@ -1015,11 +1062,107 @@ class AppController extends ChangeNotifier {
 
   String _message(Object error) => error is ApiException ? error.message : 'The live marketplace request could not be completed.';
 
+  /// Goes online or offline, on the server as well as on this phone.
+  ///
+  /// This used to write a boolean to SharedPreferences and stop there, which
+  /// meant "online" was a word the app said to itself. Nothing on the server
+  /// knew, so nothing could be measured — and every launch reward is measured
+  /// in minutes online.
+  ///
+  /// The local value is still written first and still kept. A driver who taps
+  /// the switch on a dead connection has to see it move; the server is caught
+  /// up by [syncDriverPresence] on the next launch or the next successful beat.
   Future<void> toggleDriverOnline(bool value) async {
     _driverOnline = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('driverOnline', value);
     notifyListeners();
+
+    try {
+      final response = value
+          ? await apiClient.postJson('/api/v1/driver/presence/online', const {})
+          : await apiClient.postJson('/api/v1/driver/presence/offline', const {});
+      _applyPresence(response['data']);
+    } catch (_) {
+      // Deliberately silent. The switch has already moved and the driver is
+      // either online or not; an error toast here would be about the network,
+      // not about anything they can act on.
+    }
+
+    if (value) {
+      _startPresenceHeartbeat();
+    } else {
+      _presenceTimer?.cancel();
+      _presenceTimer = null;
+      _onlineSince = null;
+    }
+  }
+
+  /// Takes the server's word for whether this driver is online.
+  ///
+  /// Called after sign-in and on resume. The server may have closed the session
+  /// while the phone was asleep — that is what the heartbeat timeout is for —
+  /// and a phone that still shows a lime "You're Online" after that is lying to
+  /// the person holding it.
+  Future<void> syncDriverPresence() async {
+    if (_mode != UserMode.driver) return;
+    try {
+      final response = await apiClient.getJson('/api/v1/driver/presence');
+      final changed = _applyPresence(response['data']);
+      if (changed) notifyListeners();
+      if (_driverOnline) _startPresenceHeartbeat();
+    } catch (_) {
+      // Keep whatever the phone last knew.
+    }
+  }
+
+  bool _applyPresence(Object? payload) {
+    if (payload is! Map) return false;
+    final data = Map<String, dynamic>.from(payload);
+
+    final online = data['isOnline'] == true;
+    final changed = online != _driverOnline;
+    _driverOnline = online;
+
+    _onlineSecondsToday = (data['todaySeconds'] as num?)?.toInt() ?? 0;
+    final seconds = (data['heartbeatSeconds'] as num?)?.toInt() ?? 60;
+    _presenceSeconds = seconds.clamp(15, 600);
+
+    final since = data['onlineSince'];
+    _onlineSince = since is String ? DateTime.tryParse(since) : null;
+    _launchCityName = '${data['cityName'] ?? ''}'.trim().isEmpty
+        ? null
+        : '${data['cityName']}';
+
+    return changed;
+  }
+
+  void _startPresenceHeartbeat() {
+    _presenceTimer?.cancel();
+    _presenceTimer = Timer.periodic(
+      Duration(seconds: _presenceSeconds),
+      (_) => _sendPresenceHeartbeat(),
+    );
+    unawaited(_sendPresenceHeartbeat());
+  }
+
+  Future<void> _sendPresenceHeartbeat() async {
+    if (!_driverOnline || _mode != UserMode.driver) {
+      _presenceTimer?.cancel();
+      _presenceTimer = null;
+      return;
+    }
+
+    try {
+      final response =
+          await apiClient.postJson('/api/v1/driver/presence/heartbeat', const {});
+      final changed = _applyPresence(response['data']);
+      if (changed) notifyListeners();
+    } catch (_) {
+      // One missed beat is not an event. The server credits a gap of up to two
+      // and a half beats as continuous, so a single failure costs the driver
+      // nothing at all.
+    }
   }
 
   void addVehicle(VehicleRecord vehicle) {
@@ -1183,6 +1326,13 @@ class AppController extends ChangeNotifier {
   }
 
   String buildShareLink() => 'https://track.udrive.app/${_liveTrip.id.toLowerCase()}?demo=1';
+
+  @override
+  void dispose() {
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+    super.dispose();
+  }
 }
 
 class AppControllerScope extends InheritedNotifier<AppController> {
