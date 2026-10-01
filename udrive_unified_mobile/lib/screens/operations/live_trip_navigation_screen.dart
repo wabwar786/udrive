@@ -20,7 +20,7 @@ import '../../core/routing/live_leg.dart';
 import '../../core/services/service_availability_repository.dart';
 import '../../core/services/trip_location_service.dart';
 import '../../core/widgets/collapsible_map_sheet.dart';
-import '../../core/widgets/driver_location_coordinator.dart';
+import '../../core/widgets/driver_tracking_suspension.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../core/state/app_controller.dart';
 import '../customer/driver_offers_screen.dart';
@@ -85,7 +85,7 @@ class _DriverLiveNavigationScreenState
     // This screen publishes the position itself, so the app-wide coordinator
     // steps aside while it is open rather than both of them sending the same
     // fixes.
-    DriverLocationCoordinator.suspendBackgroundTracking();
+    DriverTrackingSuspension.suspend();
     _locationService = TripLocationService(widget.repository);
     _currentStatus = widget.trip.tripStatus;
     _begin();
@@ -617,7 +617,7 @@ class _DriverLiveNavigationScreenState
     // Hands tracking back to the shell-wide coordinator, which picks it up on
     // its next tick — leaving the ride tracked after the driver closes this
     // screen, which is the whole reason the coordinator exists.
-    DriverLocationCoordinator.resumeBackgroundTracking();
+    DriverTrackingSuspension.resume();
     super.dispose();
   }
 

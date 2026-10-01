@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../booking/trip_operations_repository.dart';
 import '../services/trip_location_service.dart';
+import 'driver_tracking_suspension.dart';
 import '../state/app_controller.dart';
 
 /// Keeps authenticated Driver GPS sharing active while the app is open.
@@ -49,19 +50,12 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
     'Emergency',
   };
 
-  /// Held while the driver's own live-navigation screen is open.
+  /// The live-navigation screen raises [DriverTrackingSuspension] while it is
+  /// open, because it publishes the same trip itself. Without that, both would
+  /// send the same fixes and the driver would pay twice in battery and data.
   ///
-  /// That screen runs its own [TripLocationService] against the same trip, so
-  /// without this both would publish and the driver would pay twice in battery
-  /// and data for the same fixes. A count rather than a flag because two of
-  /// those screens can briefly overlap during a push.
-  static int _suspensions = 0;
-
-  static void suspendBackgroundTracking() => _suspensions++;
-
-  static void resumeBackgroundTracking() {
-    if (_suspensions > 0) _suspensions--;
-  }
+  /// The flag lives in its own file rather than here so neither of these two
+  /// screens has to compile against the other's latest copy.
 
   @override
   void didChangeDependencies() {
@@ -97,7 +91,7 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
     // Stand down while the live screen is publishing. The timer keeps ticking,
     // so tracking picks itself back up within one interval of that screen
     // closing — no listener, nothing to forget to call.
-    if (_suspensions > 0) {
+    if (DriverTrackingSuspension.isSuspended) {
       _stopTracking();
       return;
     }
