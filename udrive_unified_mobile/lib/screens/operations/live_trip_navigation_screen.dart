@@ -20,6 +20,7 @@ import '../../core/routing/live_leg.dart';
 import '../../core/services/service_availability_repository.dart';
 import '../../core/services/trip_location_service.dart';
 import '../../core/widgets/collapsible_map_sheet.dart';
+import '../../core/widgets/driver_location_coordinator.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../core/state/app_controller.dart';
 import '../customer/driver_offers_screen.dart';
@@ -81,6 +82,10 @@ class _DriverLiveNavigationScreenState
   @override
   void initState() {
     super.initState();
+    // This screen publishes the position itself, so the app-wide coordinator
+    // steps aside while it is open rather than both of them sending the same
+    // fixes.
+    DriverLocationCoordinator.suspendBackgroundTracking();
     _locationService = TripLocationService(widget.repository);
     _currentStatus = widget.trip.tripStatus;
     _begin();
@@ -609,6 +614,10 @@ class _DriverLiveNavigationScreenState
     _messagePoll?.cancel();
     _timer?.cancel();
     _locationService.stop();
+    // Hands tracking back to the shell-wide coordinator, which picks it up on
+    // its next tick — leaving the ride tracked after the driver closes this
+    // screen, which is the whole reason the coordinator exists.
+    DriverLocationCoordinator.resumeBackgroundTracking();
     super.dispose();
   }
 
@@ -1120,6 +1129,20 @@ class _CustomerFullScreenTrackingScreenState
   /// screen would be pushed again every five seconds.
   bool _ratingShown = false;
 
+  /// True once the camera has been put on the pickup while waiting for the
+  /// driver's first fix, so it is done once rather than on every poll.
+  bool _framedPickup = false;
+
+  /// Whether the big countdown belongs on screen.
+  ///
+  /// Only while the car is on its way to the pickup. Once the customer is
+  /// aboard the map is about the journey, and a large number over it would be
+  /// answering a question nobody is asking any more.
+  bool get _showEtaBanner {
+    final status = _tracking?.tripStatus ?? widget.trip.tripStatus;
+    return status == 'DriverAccepted' || status == 'DriverEnRoute';
+  }
+
   /// True once the Customer has moved the map themselves.
   ///
   /// The camera used to recentre on the Driver every five seconds, which meant
@@ -1222,7 +1245,30 @@ class _CustomerFullScreenTrackingScreenState
       }
 
       final location = tracking.driverLocation;
-      if (location == null) return;
+
+      // No position published yet. This used to return here and leave the map
+      // wherever it opened — which, with no tracking on the first frame, was a
+      // hard-coded point in Islamabad. A customer in Muzaffarabad watching a
+      // map of another city reads that as a broken app, not as "waiting".
+      //
+      // So the camera goes to the pickup: the one place that is certainly
+      // right, and the place they are standing.
+      if (location == null) {
+        if (_cameraHeld || _framedPickup) return;
+        if (tracking.pickupLatitude == null ||
+            tracking.pickupLongitude == null) {
+          return;
+        }
+        _framedPickup = true;
+        final pickup =
+            LatLng(tracking.pickupLatitude!, tracking.pickupLongitude!);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _cameraHeld) return;
+          _mapController.move(pickup, 16);
+        });
+        return;
+      }
+
       final driver = LatLng(location.latitude, location.longitude);
 
       // Route to whichever end matters now: the pickup while the Driver is on
@@ -1849,6 +1895,40 @@ class _CustomerFullScreenTrackingScreenState
               ),
             ),
           ),
+
+          // How long until the car is here, in the size that question deserves.
+          //
+          // The only figure on this screen was "12 min away" at 13.5px inside a
+          // collapsed sheet, next to the driver's name. A customer standing on a
+          // roadside holding the phone at arm's length could not read it, and it
+          // is the one thing they opened the screen for.
+          //
+          // It goes as soon as the driver arrives: at that point the number is
+          // zero and the instruction is "go outside", not "keep waiting".
+          if (_showEtaBanner)
+            Positioned(
+              left: 14,
+              right: 14,
+              top: MediaQuery.paddingOf(context).top + 72,
+              child: Center(
+                child: _EtaBanner(
+                  minutes: eta,
+                  distanceKm: roadKm ?? distanceKm,
+                  waiting: driver == null,
+                  stale: t?.driverLocation?.stale ?? false,
+                ),
+              ),
+            ),
+
+          // Arrival gets the same space the countdown had, so the change is
+          // impossible to miss on a glance.
+          if (t?.tripStatus == 'DriverArrived')
+            Positioned(
+              left: 14,
+              right: 14,
+              top: MediaQuery.paddingOf(context).top + 72,
+              child: const Center(child: _ArrivedBanner()),
+            ),
           // Back to following the car, for the same reason as on the driver's
           // map: one accidental swipe should not end live tracking.
           if (_cameraHeld)
@@ -2707,4 +2787,140 @@ class _MapMarker extends StatelessWidget {
         ),
         child: Icon(icon, color: color, size: 26),
       );
+}
+
+/// "8 min away", in the size a person can read at arm's length.
+///
+/// Three states in one card, because they are the same fact at different
+/// certainties and swapping between three separate widgets made the card jump:
+///
+///   * waiting  — the driver has accepted but has published no position yet.
+///     Says so plainly instead of leaving a blank map to be read as a broken
+///     app. It is a normal few seconds, not a fault.
+///   * live     — minutes, large, with the road distance under it.
+///   * stale    — the same number, marked, because a position that stopped
+///     updating two minutes ago produces an estimate that is quietly wrong,
+///     and a wrong number stated confidently is worse than an honest doubt.
+class _EtaBanner extends StatelessWidget {
+  const _EtaBanner({
+    required this.minutes,
+    required this.distanceKm,
+    required this.waiting,
+    required this.stale,
+  });
+
+  final int? minutes;
+  final double? distanceKm;
+  final bool waiting;
+  final bool stale;
+
+  @override
+  Widget build(BuildContext context) {
+    final unknown = waiting || minutes == null;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh,
+        borderRadius: AppRadii.all(AppRadii.card),
+        boxShadow: AppShadows.panel,
+        border: stale && !unknown
+            ? Border.all(color: AppTint.warningBorder, width: 1.4)
+            : null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            unknown ? 'Your driver is on the way' : 'Driver arrives in',
+            style: AppType.caption.copyWith(
+              fontWeight: FontWeight.w800,
+              color: AppText.secondary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          if (unknown)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Getting their location…',
+                  style: AppType.listTitle.copyWith(color: AppText.primary),
+                ),
+              ],
+            )
+          else
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  '$minutes',
+                  style: AppType.display.copyWith(
+                    fontSize: 42,
+                    color: AppText.primary,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    'min',
+                    style: AppType.h3.copyWith(color: AppText.secondary),
+                  ),
+                ),
+              ],
+            ),
+          if (!unknown && distanceKm != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              stale
+                  ? '${distanceKm!.toStringAsFixed(1)} km away · last known position'
+                  : '${distanceKm!.toStringAsFixed(1)} km away',
+              style: AppType.caption.copyWith(
+                fontWeight: FontWeight.w700,
+                color: stale ? AppTint.warningText : AppText.secondary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Replaces the countdown the moment the car is outside.
+class _ArrivedBanner extends StatelessWidget {
+  const _ArrivedBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.brand,
+        borderRadius: AppRadii.all(AppRadii.card),
+        boxShadow: AppShadows.panel,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.check_circle_rounded,
+              size: 24, color: AppColors.navy),
+          const SizedBox(width: 10),
+          Text(
+            'Your driver is here',
+            style: AppType.h3.copyWith(color: AppText.onBrand),
+          ),
+        ],
+      ),
+    );
+  }
 }
