@@ -22,14 +22,29 @@ class LiveCreatePackageScreen extends StatefulWidget {
 }
 
 class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
-  static const destinations = <String, String>{
-    '10000000-0000-0000-0000-000000000001': 'Muzaffarabad',
-    '10000000-0000-0000-0000-000000000002': 'Neelum Valley',
-    '10000000-0000-0000-0000-000000000003': 'Sharda',
-    '10000000-0000-0000-0000-000000000004': 'Rawalakot',
-    '10000000-0000-0000-0000-000000000005': 'Banjosa Lake',
-    '10000000-0000-0000-0000-000000000006': 'Pir Chinasi',
-  };
+  /// The destinations, read from the catalogue the server actually holds.
+  ///
+  /// These six used to be written into the app:
+  ///
+  ///     '10000000-0000-0000-0000-000000000001': 'Muzaffarabad',
+  ///     '10000000-0000-0000-0000-000000000002': 'Neelum Valley',
+  ///     ...
+  ///
+  /// Not one of those ids exists. The live catalogue is keyed
+  /// `11000000-...`, thirty-five destinations of it, so every package a Driver
+  /// filled in here was posted against a destination the database had never
+  /// heard of; the insert broke the foreign key and the Driver was handed a
+  /// 409. Creating a tour package has therefore not worked at all — not
+  /// sometimes, not for some routes, never — and nothing on the screen could
+  /// hint at why, because the form looked perfectly filled in.
+  ///
+  /// Hard-coded ids cannot be right for longer than it takes an Admin to add a
+  /// destination, which is the whole point of the Admin having that screen. So
+  /// the list is fetched, and a Driver sees every route the Admin has
+  /// published rather than six that were true once.
+  List<_Destination> _destinations = const [];
+  bool _loadingDestinations = true;
+  String? _destinationsError;
 
   final _form = GlobalKey<FormState>();
   final _title =
@@ -46,7 +61,7 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
           'Day 3: Return to Muzaffarabad');
 
   String? _vehicleId;
-  String _destinationId = destinations.keys.elementAt(1);
+  String? _destinationId;
   DateTime _departure = DateTime.now().add(const Duration(days: 14));
   DateTime _return = DateTime.now().add(const Duration(days: 17));
   int _seats = 7;
@@ -60,6 +75,65 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
   bool _guide = false;
   bool _jeep = false;
   bool _busy = false;
+  bool _requestedDestinations = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Once. didChangeDependencies runs again on every inherited-widget change,
+    // and this screen reads AppControllerScope, which notifies often.
+    if (_requestedDestinations) return;
+    _requestedDestinations = true;
+    _loadDestinations();
+  }
+
+  String? _selectedDestinationName() {
+    for (final destination in _destinations) {
+      if (destination.id == _destinationId) return destination.name;
+    }
+    return null;
+  }
+
+  Future<void> _loadDestinations() async {
+    setState(() {
+      _loadingDestinations = true;
+      _destinationsError = null;
+    });
+    try {
+      final controller = AppControllerScope.of(context);
+      final response = await controller.apiClient.getJson(
+        '/api/v1/catalog/destinations'
+        '?language=${controller.locale.languageCode}',
+        authenticated: false,
+      );
+      final raw = response['data'] as List? ?? const [];
+      final list = raw
+          .whereType<Map>()
+          .map((e) => _Destination(
+                id: '${e['id']}',
+                name: '${e['name']}',
+                district: e['district'] == null ? null : '${e['district']}',
+              ))
+          .where((d) => d.id.isNotEmpty && d.id != 'null')
+          .toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+      if (!mounted) return;
+      setState(() {
+        _destinations = list;
+        // Keep whatever the Driver already picked if it survived the reload.
+        if (!list.any((d) => d.id == _destinationId)) {
+          _destinationId = list.isEmpty ? null : list.first.id;
+        }
+        _loadingDestinations = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _destinationsError = '$error'.replaceFirst('Exception: ', '');
+        _loadingDestinations = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -79,9 +153,17 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 'Verified' or 'Approved', either case.
+    //
+    // The server treats both as a usable vehicle — every check in
+    // TripOperationsService reads `lower(v.status) in ('verified','approved')`
+    // — but this screen matched the one exact string 'Verified'. A Driver
+    // whose vehicle an Admin had approved saw "No verified vehicle is
+    // available", with the Save button dead and nothing to do about it.
     final vehicles = AppControllerScope.of(context)
         .liveVehicles
-        .where((v) => v.status == 'Verified')
+        .where((v) => const {'verified', 'approved'}
+            .contains('${v.status}'.toLowerCase()))
         .toList();
     _vehicleId ??= vehicles.isEmpty ? null : vehicles.first.id;
 
@@ -126,9 +208,31 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
             const SizedBox(height: 8),
             _PickerField(
               icon: Icons.landscape_rounded,
-              value: destinations[_destinationId] ?? 'Select',
-              onTap: _busy ? null : _pickDestination,
+              value: _loadingDestinations
+                  ? 'Loading routes…'
+                  : _destinationsError != null
+                      ? 'Could not load routes'
+                      : _selectedDestinationName() ?? 'Select',
+              onTap: _busy || _loadingDestinations || _destinations.isEmpty
+                  ? null
+                  : _pickDestination,
             ),
+            if (_destinationsError != null) ...[
+              const SizedBox(height: 10),
+              UdBanner(
+                tone: UdTone.warn,
+                icon: Icons.wifi_off_rounded,
+                text: 'Routes could not be loaded. Tap to try again. '
+                    '$_destinationsError',
+                onTap: _loadDestinations,
+              ),
+            ] else if (!_loadingDestinations && _destinations.isEmpty)
+              const UdBanner(
+                tone: UdTone.warn,
+                icon: Icons.landscape_outlined,
+                text: 'No tour destination has been published yet. Admin must '
+                    'add a destination before a package can be created.',
+              ),
             const SizedBox(height: 14),
 
             if (vehicles.isEmpty)
@@ -275,7 +379,9 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
               label: 'Save live draft',
               icon: Icons.save_rounded,
               busy: _busy,
-              onPressed: _busy || _vehicleId == null ? null : _save,
+              onPressed: _busy || _vehicleId == null || _destinationId == null
+                  ? null
+                  : _save,
             ),
           ],
         ),
@@ -311,11 +417,12 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
             const SizedBox(height: 14),
             UdListGroup(
               children: [
-                for (final entry in destinations.entries)
+                for (final destination in _destinations)
                   UdListRow(
-                    title: entry.value,
-                    onTap: () => Navigator.pop(sheetContext, entry.key),
-                    trailing: entry.key == _destinationId
+                    title: destination.name,
+                    subtitle: destination.district,
+                    onTap: () => Navigator.pop(sheetContext, destination.id),
+                    trailing: destination.id == _destinationId
                         ? const Icon(Icons.check_rounded,
                             size: 22, color: AppColors.brandInk)
                         : null,
@@ -388,12 +495,14 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
+    final destinationId = _destinationId;
+    if (destinationId == null) return;
     setState(() => _busy = true);
     try {
       final p =
           await AppControllerScope.of(context).createLiveDriverPackage({
         'vehicleId': _vehicleId,
-        'destinationId': _destinationId,
+        'destinationId': destinationId,
         'title': _title.text.trim(),
         'startingCity': _start.text.trim(),
         'pickupPoint': _pickup.text.trim(),
@@ -529,4 +638,21 @@ class _DateField extends StatelessWidget {
           ),
         ],
       );
+}
+
+/// One row of the destination catalogue, as the server sent it.
+///
+/// The id is carried through untouched: it is the only thing the server
+/// matches on, and the last time this screen invented one, no package could be
+/// created at all.
+class _Destination {
+  const _Destination({
+    required this.id,
+    required this.name,
+    this.district,
+  });
+
+  final String id;
+  final String name;
+  final String? district;
 }

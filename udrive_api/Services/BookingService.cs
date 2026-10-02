@@ -1311,7 +1311,34 @@ public sealed class BookingService(
             bookingCommand.Parameters.AddWithValue("destinationLabel", destinationLabel);
             bookingCommand.Parameters.AddWithValue("partyType", partyType);
             bookingCommand.Parameters.AddWithValue("offerId", offerId);
-            await bookingCommand.ExecuteNonQueryAsync(cancellationToken);
+
+            // One live booking per ride request, and say so in those words.
+            //
+            // ux_bookings_ride_request is what stops two devices accepting two
+            // Drivers for the same ride at the same moment. Until migration 058
+            // it also counted cancelled bookings, so the ordinary case — the
+            // Driver cancels, the request reopens, the Customer picks someone
+            // else — hit it every single time and the Customer was handed the
+            // generic unique-violation message, which talks about a CNIC or a
+            // registration number already being registered. For a ride. That
+            // message made the failure look like a data problem on their
+            // profile, so retrying or editing anything never helped.
+            //
+            // The index is now narrow enough that reaching here means a real
+            // race, and this says what actually happened.
+            try
+            {
+                await bookingCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+            catch (PostgresException ex) when (
+                ex.SqlState == PostgresErrorCodes.UniqueViolation &&
+                ex.ConstraintName == "ux_bookings_ride_request")
+            {
+                return ServiceResult<BookingDto>.Fail(
+                    StatusCodes.Status409Conflict,
+                    "ride_already_booked",
+                    "This ride is already booked with a Driver. Refresh to see the current trip.");
+            }
         }
 
         await using (var operationCommand = new NpgsqlCommand(
@@ -1616,6 +1643,33 @@ public sealed class BookingService(
         {
             cancelOperations.Parameters.AddWithValue("bookingId", bookingId);
             await cancelOperations.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // And release the Driver and the vehicle.
+        //
+        // Same story as the trip_operations row above, one table along. Every
+        // overlap check keys off trip_assignments.status='Active', so a row
+        // left Active by a cancellation made that Driver and vehicle read as
+        // busy for that pickup window permanently. An Admin assigning them was
+        // told "Driver or vehicle has an overlapping active booking" about a
+        // ride the Customer had called off weeks before, and there was nothing
+        // anyone could do about it from inside the product.
+        await using (var endAssignments = new NpgsqlCommand(
+            """
+            UPDATE udrive.trip_assignments
+               SET status='Ended',
+                   ended_at=now(),
+                   end_reason='Booking cancelled',
+                   version=version+1,
+                   updated_at=now()
+             WHERE booking_id=@bookingId
+               AND status='Active';
+            """,
+            connection,
+            transaction))
+        {
+            endAssignments.Parameters.AddWithValue("bookingId", bookingId);
+            await endAssignments.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await AddHistoryAsync(

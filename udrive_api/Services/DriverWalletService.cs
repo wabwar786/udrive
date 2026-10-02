@@ -517,105 +517,57 @@ public sealed class DriverWalletService(
         Guid driverProfileId,
         CancellationToken cancellationToken)
     {
+        // The wallet row is created first, in a statement of its own.
+        //
+        // It used to be a CTE in the statement below, and that silently broke
+        // everything: Postgres will not let a second CTE update a row that an
+        // earlier CTE in the same statement has already inserted or updated, and
+        // sibling CTEs all read the same snapshot. So `credited` matched nothing,
+        // the balance never moved and no ledger row was written — with no error,
+        // which is why it went unnoticed. Proven against the live database:
+        // balance 5000.00 before, `INSERT 0 0`, balance 5000.00 after.
         await EnsureWalletForDriverAsync(
             connection, transaction, driverProfileId, cancellationToken);
 
         const string sql = """
-            WITH bonus AS (
+            WITH amount AS (
                 SELECT COALESCE((SELECT (value_json #>> '{}')::numeric
                                    FROM udrive.system_settings
                                   WHERE key = 'driver.welcome.bonus'), 1000) AS value
-            ), entry AS (
-                INSERT INTO udrive.driver_wallet_entries
-                    (id, wallet_id, entry_type, amount, balance_bucket,
-                     description, idempotency_key, created_at)
-                SELECT gen_random_uuid(), w.id, 'CommissionTopup',
-                       bonus.value, 'Commission',
-                       'Welcome credit on approval',
-                       'welcome:' || @driver, now()
-                FROM udrive.driver_wallets w
-                CROSS JOIN bonus
-                WHERE w.driver_profile_id = @driver AND bonus.value > 0
-                ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
-                DO NOTHING
-                RETURNING wallet_id, amount
+            ), credited AS (
+                UPDATE udrive.driver_wallets w
+                SET commission_balance = w.commission_balance + amount.value,
+                    version = w.version + 1,
+                    updated_at = now()
+                FROM amount
+                WHERE w.driver_profile_id = @driver
+                  AND amount.value > 0
+                  -- The balance is guarded by the same key as the ledger row.
+                  -- Without this only the ledger was idempotent, so a retry
+                  -- would have moved the balance again and left it disagreeing
+                  -- with its own history.
+                  AND NOT EXISTS (
+                      SELECT 1 FROM udrive.driver_wallet_entries e
+                      WHERE e.idempotency_key = 'welcome:' || @driver)
+                RETURNING w.id AS wallet_id, amount.value AS credited
             )
-            UPDATE udrive.driver_wallets w
-            SET commission_balance = w.commission_balance + entry.amount,
-                version = w.version + 1,
-                updated_at = now()
-            FROM entry
-            WHERE w.id = entry.wallet_id
-            RETURNING w.id;
+            INSERT INTO udrive.driver_wallet_entries
+                (id, wallet_id, entry_type, amount, balance_bucket,
+                 description, idempotency_key, created_at)
+            SELECT gen_random_uuid(), credited.wallet_id, 'CommissionTopup',
+                   credited.credited, 'Commission',
+                   'Welcome credit on approval',
+                   'welcome:' || @driver, now()
+            FROM credited
+            ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
+            DO NOTHING
+            RETURNING id;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("driver", driverProfileId);
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is not null and not DBNull;
-    }
-
-    /// <summary>
-    /// Makes sure the Driver has a wallet row, as a statement of its own.
-    /// </summary>
-    /// <remarks>
-    /// It has to be its own statement, and that is the whole point of this
-    /// method existing.
-    ///
-    /// All three money movements below used to create the wallet in a CTE of
-    /// the same statement that then moved the balance — an
-    /// `INSERT ... ON CONFLICT DO UPDATE` feeding an `UPDATE` of the same
-    /// table. PostgreSQL runs every sub-statement of a WITH against one
-    /// snapshot, and it will not apply two modifications to the same row in a
-    /// single statement: only one of them happens, and which one is not
-    /// something you get to choose. The `INSERT ... DO UPDATE` won, and the
-    /// UPDATE that carried the money was dropped — with no error and no
-    /// warning, because from PostgreSQL's point of view nothing went wrong.
-    ///
-    /// The result was that no commission was ever charged, no cancellation fee
-    /// was ever taken and no welcome credit was ever paid. Three separate
-    /// features, all silently doing nothing, for one shared reason.
-    ///
-    /// Splitting the wallet's creation out leaves each statement below writing
-    /// to two different tables — the ledger in a CTE, the balance in the main
-    /// query — so nothing collides. DO NOTHING rather than DO UPDATE, because
-    /// nothing here needs the row touched; it only needs it to exist.
-    /// </remarks>
-    private static async Task EnsureWalletForDriverAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        Guid driverProfileId,
-        CancellationToken cancellationToken)
-    {
-        await using var command = new NpgsqlCommand("""
-            INSERT INTO udrive.driver_wallets
-                (id, driver_profile_id, created_at, updated_at)
-            VALUES (gen_random_uuid(), @driver, now(), now())
-            ON CONFLICT (driver_profile_id) DO NOTHING;
-            """, connection, transaction);
-        command.Parameters.AddWithValue("driver", driverProfileId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// The same, for the Driver who is carrying a given booking.
-    /// </summary>
-    private static async Task EnsureWalletForBookingAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        Guid bookingId,
-        CancellationToken cancellationToken)
-    {
-        await using var command = new NpgsqlCommand("""
-            INSERT INTO udrive.driver_wallets
-                (id, driver_profile_id, created_at, updated_at)
-            SELECT gen_random_uuid(), b.driver_profile_id, now(), now()
-            FROM udrive.bookings b
-            WHERE b.id = @booking AND b.driver_profile_id IS NOT NULL
-            ON CONFLICT (driver_profile_id) DO NOTHING;
-            """, connection, transaction);
-        command.Parameters.AddWithValue("booking", bookingId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     internal static async Task<bool> ChargeCancellationAsync(
@@ -624,6 +576,8 @@ public sealed class DriverWalletService(
         Guid bookingId,
         CancellationToken cancellationToken)
     {
+        // Wallet first, in its own statement — see CreditWelcomeBonusAsync for
+        // why a CTE here made this whole method a no-op.
         await EnsureWalletForBookingAsync(
             connection, transaction, bookingId, cancellationToken);
 
@@ -632,34 +586,38 @@ public sealed class DriverWalletService(
                 SELECT b.id, b.driver_profile_id, b.total_amount
                 FROM udrive.bookings b
                 WHERE b.id = @booking AND b.driver_profile_id IS NOT NULL
-            ), entry AS (
-                INSERT INTO udrive.driver_wallet_entries
-                    (id, wallet_id, booking_id, entry_type, amount,
-                     balance_bucket, description, idempotency_key, created_at)
-                SELECT gen_random_uuid(), w.id, booking.id,
-                       'CancellationCharge',
-                       -round(booking.total_amount * 0.02, 2), 'Commission',
-                       'Cancelled after accepting the ride (2%)',
-                       'cancel:' || booking.id, now()
+            ), charged AS (
+                UPDATE udrive.driver_wallets w
+                SET commission_balance =
+                        w.commission_balance
+                        - round(booking.total_amount * 0.02, 2),
+                    version = w.version + 1,
+                    updated_at = now()
                 FROM booking
-                JOIN udrive.driver_wallets w
-                  ON w.driver_profile_id = booking.driver_profile_id
-                WHERE booking.total_amount > 0
-                -- Keyed on the booking: a cancellation that is retried, or a
-                -- status set twice, must not charge twice. The ledger row is
-                -- the guard, and the balance below moves only when this insert
-                -- actually happened — so a repeat cannot move the money either.
-                ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
-                DO NOTHING
-                RETURNING wallet_id, amount
+                WHERE w.driver_profile_id = booking.driver_profile_id
+                  AND booking.total_amount > 0
+                  -- Same key as the ledger row below, so a cancellation that is
+                  -- retried — or a status set twice, which the transition table
+                  -- allows — cannot deduct 2% a second time.
+                  AND NOT EXISTS (
+                      SELECT 1 FROM udrive.driver_wallet_entries e
+                      WHERE e.idempotency_key = 'cancel:' || @booking)
+                RETURNING w.id AS wallet_id,
+                          round(booking.total_amount * 0.02, 2) AS charge
             )
-            UPDATE udrive.driver_wallets w
-            SET commission_balance = w.commission_balance + entry.amount,
-                version = w.version + 1,
-                updated_at = now()
-            FROM entry
-            WHERE w.id = entry.wallet_id
-            RETURNING w.id;
+            INSERT INTO udrive.driver_wallet_entries
+                (id, wallet_id, booking_id, entry_type, amount, balance_bucket,
+                 description, idempotency_key, created_at)
+            SELECT gen_random_uuid(), charged.wallet_id, @booking,
+                   'CancellationCharge', -charged.charge, 'Commission',
+                   'Cancelled after accepting the ride (2%)',
+                   'cancel:' || @booking, now()
+            FROM charged
+            -- Keyed on the booking: a cancellation that is retried, or a status
+            -- set twice, must not charge twice.
+            ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
+            DO NOTHING
+            RETURNING id;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
@@ -668,12 +626,67 @@ public sealed class DriverWalletService(
         return result is not null and not DBNull;
     }
 
+    /// <summary>
+    /// Makes sure this driver has a wallet row, as a statement of its own.
+    /// </summary>
+    /// <remarks>
+    /// Separate from the statement that then moves money, and that separation is
+    /// the whole point. A CTE cannot insert a row and have a later CTE in the
+    /// same statement update it — Postgres simply does not apply the second
+    /// change, and returns no error while doing so. Three methods here were
+    /// written that way and all three were silently doing nothing: no
+    /// commission, no cancellation fee, no welcome credit.
+    ///
+    /// DO NOTHING rather than DO UPDATE: the only purpose is existence, and
+    /// touching `updated_at` for a row that already exists is a write for
+    /// nothing.
+    /// </remarks>
+    private static async Task EnsureWalletForDriverAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid driverProfileId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO udrive.driver_wallets
+                (id, driver_profile_id, created_at, updated_at)
+            VALUES (gen_random_uuid(), @driver, now(), now())
+            ON CONFLICT (driver_profile_id) DO NOTHING;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("driver", driverProfileId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>The same, for the driver a booking is assigned to.</summary>
+    private static async Task EnsureWalletForBookingAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid bookingId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO udrive.driver_wallets
+                (id, driver_profile_id, created_at, updated_at)
+            SELECT gen_random_uuid(), b.driver_profile_id, now(), now()
+            FROM udrive.bookings b
+            WHERE b.id = @booking AND b.driver_profile_id IS NOT NULL
+            ON CONFLICT (driver_profile_id) DO NOTHING;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("booking", bookingId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     internal static async Task<bool> ChargeCommissionAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid bookingId,
         CancellationToken cancellationToken)
     {
+        // Wallet first — see EnsureWalletForDriverAsync.
         await EnsureWalletForBookingAsync(
             connection, transaction, bookingId, cancellationToken);
 
@@ -687,44 +700,42 @@ public sealed class DriverWalletService(
                     (SELECT (value_json #>> '{}')::numeric
                        FROM udrive.system_settings
                       WHERE key = 'driver.commission.percentage'), 10) AS pct
-            ), entry AS (
-                INSERT INTO udrive.driver_wallet_entries
-                    (id, wallet_id, booking_id, entry_type, amount,
-                     balance_bucket, description, idempotency_key, created_at)
-                SELECT gen_random_uuid(), w.id, booking.id, 'CommissionCharge',
-                       -round(booking.total_amount * rate.pct / 100, 2),
-                       'Commission',
-                       'Platform commission ' || rate.pct || '% on started trip',
-                       'commission:' || booking.id, now()
-                FROM booking
-                JOIN udrive.driver_wallets w
-                  ON w.driver_profile_id = booking.driver_profile_id
-                CROSS JOIN rate
-                WHERE booking.total_amount > 0
-                -- Keyed on the booking. A start that is retried, or a status
-                -- that is set twice, must not charge the Driver twice. The
-                -- ledger row is the guard: the balance below moves only when
-                -- this insert actually happened, so a repeat is a no-op on both
-                -- the ledger and the money. The old version updated the balance
-                -- first and let only the ledger row conflict, which would have
-                -- charged twice had it charged at all.
-                --
-                -- The predicate is repeated because the index behind it is
-                -- partial (`WHERE idempotency_key IS NOT NULL`). Postgres only
-                -- accepts a partial index as an arbiter when the statement says
-                -- so, and without it this raises 42P10 and rolls back the trip
-                -- transition it is running inside.
-                ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
-                DO NOTHING
-                RETURNING wallet_id, amount
+            ), charged AS (
+                UPDATE udrive.driver_wallets w
+                SET commission_balance =
+                        w.commission_balance
+                        - round(booking.total_amount * rate.pct / 100, 2),
+                    version = w.version + 1,
+                    updated_at = now()
+                FROM booking, rate
+                WHERE w.driver_profile_id = booking.driver_profile_id
+                  AND booking.total_amount > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM udrive.driver_wallet_entries e
+                      WHERE e.idempotency_key = 'commission:' || @booking)
+                RETURNING w.id AS wallet_id,
+                          round(booking.total_amount * rate.pct / 100, 2) AS charge,
+                          rate.pct AS pct
             )
-            UPDATE udrive.driver_wallets w
-            SET commission_balance = w.commission_balance + entry.amount,
-                version = w.version + 1,
-                updated_at = now()
-            FROM entry
-            WHERE w.id = entry.wallet_id
-            RETURNING w.id;
+            INSERT INTO udrive.driver_wallet_entries
+                (id, wallet_id, booking_id, entry_type, amount, balance_bucket,
+                 description, idempotency_key, created_at)
+            SELECT gen_random_uuid(), charged.wallet_id, @booking,
+                   'CommissionCharge', -charged.charge, 'Commission',
+                   'Platform commission ' || charged.pct || '% on completed trip',
+                   'commission:' || @booking, now()
+            FROM charged
+            -- Keyed on the booking. A completion that is retried, or a status
+            -- that is set twice, must not charge the Driver twice.
+            --
+            -- The predicate is repeated because the index behind it is partial
+            -- (`WHERE idempotency_key IS NOT NULL`). Postgres only accepts a
+            -- partial index as an arbiter when the statement says so, and
+            -- without it this raises 42P10 and rolls back the trip completion
+            -- it is running inside.
+            ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
+            DO NOTHING
+            RETURNING id;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);

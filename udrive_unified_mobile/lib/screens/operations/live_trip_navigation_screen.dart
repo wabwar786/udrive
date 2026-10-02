@@ -1725,19 +1725,51 @@ class _CustomerFullScreenTrackingScreenState
             ? detail
             : chosen;
 
+    // Claim the cancellation before the request goes out.
+    //
+    // The poll that watches for a cancelled trip cannot tell who cancelled it;
+    // it only sees trip_status. So a Customer who cancelled their own ride was
+    // overtaken by their own request: the POST set the status, the 10-second
+    // tick read it back, found _returningToSearch still false and ran the
+    // driver-cancelled path — "The driver cancelled. Book again when you are
+    // ready." to the person who had just pressed Cancel ride, then a
+    // pushReplacement onto the offers screen of whatever other open request
+    // happened to be first in the list, because the server only reopens a
+    // request when the *Driver* walks away. Then _cancelRide resumed and popped
+    // again, so the second pop landed on a route it never opened.
+    //
+    // Setting the flag and stopping both timers here, before the await, means
+    // the tick cannot fire during the request and cannot mistake this for the
+    // driver's doing. The navigator is captured for the same reason: after the
+    // await, this screen's own context may no longer be the one on top.
+    _returningToSearch = true;
+    _timer?.cancel();
+    _messagePoll?.cancel();
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
     try {
       await widget.repository
           .customerStatus(widget.trip.bookingId, 'Cancelled', reason: text);
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
+      messenger
           .showSnackBar(const SnackBar(content: Text('Ride cancelled.')));
-      Navigator.pop(context);
+      navigator.pop();
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
-        );
-      }
+      // The ride is still live, so put the watch back — otherwise a Customer
+      // whose cancellation failed sits on a screen that has stopped updating.
+      if (!mounted) return;
+      _returningToSearch = false;
+      _timer = Timer.periodic(
+        Duration(seconds: _trackingSeconds),
+        (_) => _load(),
+      );
+      _messagePoll =
+          Timer.periodic(const Duration(seconds: 10), (_) => _pollMessages());
+      messenger.showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
     }
   }
 

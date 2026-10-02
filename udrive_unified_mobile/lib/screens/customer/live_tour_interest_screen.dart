@@ -21,13 +21,21 @@ class LiveTourInterestScreen extends StatefulWidget {
 }
 
 class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
-  static const destinations = <String, String>{
-    '10000000-0000-0000-0000-000000000002': 'Neelum Valley',
-    '10000000-0000-0000-0000-000000000003': 'Sharda',
-    '10000000-0000-0000-0000-000000000004': 'Rawalakot',
-    '10000000-0000-0000-0000-000000000005': 'Banjosa Lake',
-    '10000000-0000-0000-0000-000000000006': 'Pir Chinasi',
-  };
+  /// The destinations, read from the catalogue the server actually holds.
+  ///
+  /// Five ids used to be written in here, `10000000-...-0002` upwards. None of
+  /// them exists: the live catalogue is keyed `11000000-...`, with thirty-five
+  /// destinations in it. So every tour interest a Customer submitted named a
+  /// destination the database had never heard of, the foreign key refused the
+  /// row, and the Customer got an error on a form they had filled in
+  /// correctly. Joining a tour has not worked at all.
+  ///
+  /// It is also the Admin's list to decide, not the app's: a destination added
+  /// in the Admin panel should appear here without anyone shipping a build.
+  List<_Destination> _destinations = const [];
+  bool _loadingDestinations = true;
+  String? _destinationsError;
+  bool _requestedDestinations = false;
 
   /// The four values the API takes, with the label each one shows.
   static const preferences = <String, String>{
@@ -37,13 +45,70 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
     'Group': 'Group',
   };
 
-  String _destinationId = destinations.keys.first;
+  String? _destinationId;
   String _preference = 'Family';
   DateTime _date = DateTime.now().add(const Duration(days: 7));
   int _persons = 2;
   final _pickup = TextEditingController(text: 'Muzaffarabad');
   final _budget = TextEditingController(text: '5000');
   bool _busy = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Once: this runs again on every inherited-widget change, and the screen
+    // reads AppControllerScope, which notifies often.
+    if (_requestedDestinations) return;
+    _requestedDestinations = true;
+    _loadDestinations();
+  }
+
+  String? _selectedDestinationName() {
+    for (final destination in _destinations) {
+      if (destination.id == _destinationId) return destination.name;
+    }
+    return null;
+  }
+
+  Future<void> _loadDestinations() async {
+    setState(() {
+      _loadingDestinations = true;
+      _destinationsError = null;
+    });
+    try {
+      final controller = AppControllerScope.of(context);
+      final response = await controller.apiClient.getJson(
+        '/api/v1/catalog/destinations'
+        '?language=${controller.locale.languageCode}',
+        authenticated: false,
+      );
+      final raw = response['data'] as List? ?? const [];
+      final list = raw
+          .whereType<Map>()
+          .map((e) => _Destination(
+                id: '${e['id']}',
+                name: '${e['name']}',
+                district: e['district'] == null ? null : '${e['district']}',
+              ))
+          .where((d) => d.id.isNotEmpty && d.id != 'null')
+          .toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+      if (!mounted) return;
+      setState(() {
+        _destinations = list;
+        if (!list.any((d) => d.id == _destinationId)) {
+          _destinationId = list.isEmpty ? null : list.first.id;
+        }
+        _loadingDestinations = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _destinationsError = '$error'.replaceFirst('Exception: ', '');
+        _loadingDestinations = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -101,10 +166,26 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
           const SizedBox(height: 14),
           _PickerField(
             label: 'Destination',
-            value: destinations[_destinationId] ?? '',
+            value: _loadingDestinations
+                ? 'Loading destinations…'
+                : _destinationsError != null
+                    ? 'Could not load destinations'
+                    : _selectedDestinationName() ?? 'Select',
             icon: Icons.landscape_rounded,
-            onTap: _pickDestination,
+            onTap: _loadingDestinations || _destinations.isEmpty
+                ? null
+                : _pickDestination,
           ),
+          if (_destinationsError != null) ...[
+            const SizedBox(height: 10),
+            UdBanner(
+              tone: UdTone.warn,
+              icon: Icons.wifi_off_rounded,
+              text: 'Destinations could not be loaded. Tap to try again. '
+                  '$_destinationsError',
+              onTap: _loadDestinations,
+            ),
+          ],
           const SizedBox(height: 14),
           UdTextField(
             controller: _pickup,
@@ -156,7 +237,7 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
                 'رجسٹر کریں اور میچنگ ٹور تلاش کریں'),
             icon: Icons.notifications_active_rounded,
             busy: _busy,
-            onPressed: _register,
+            onPressed: _destinationId == null ? null : _register,
           ),
           const SizedBox(height: 26),
           const UdSectionHeader(title: 'Matching departures'),
@@ -198,18 +279,19 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
             const SizedBox(height: 16),
             UdListGroup(
               children: [
-                for (final entry in destinations.entries)
+                for (final destination in _destinations)
                   UdListRow(
-                    title: entry.value,
+                    title: destination.name,
+                    subtitle: destination.district,
                     leading: const UdIconTile(
                       icon: Icons.landscape_rounded,
                       size: UdIconTileSize.sm,
                     ),
-                    trailing: entry.key == _destinationId
+                    trailing: destination.id == _destinationId
                         ? const Icon(Icons.check_circle_rounded,
                             size: 22, color: AppColors.brandInk)
                         : null,
-                    onTap: () => Navigator.pop(sheetContext, entry.key),
+                    onTap: () => Navigator.pop(sheetContext, destination.id),
                   ),
               ],
             ),
@@ -231,10 +313,12 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
   }
 
   Future<void> _register() async {
+    final destinationId = _destinationId;
+    if (destinationId == null) return;
     setState(() => _busy = true);
     try {
       await AppControllerScope.of(context).createLiveTourInterest({
-        'destinationId': _destinationId,
+        'destinationId': destinationId,
         'preferredStartDate': DateFormat('yyyy-MM-dd').format(_date),
         'preferredEndDate': DateFormat('yyyy-MM-dd')
             .format(_date.add(const Duration(days: 5))),
@@ -277,7 +361,10 @@ class _PickerField extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
-  final VoidCallback onTap;
+
+  /// Nullable so the field can sit quiet while its list is still loading.
+  /// Tapping into an empty picker sheet only looks broken.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -418,4 +505,21 @@ class _MatchCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One row of the destination catalogue, as the server sent it.
+///
+/// The id is carried through untouched: it is the only thing the server
+/// matches on, and the last time this screen carried ids of its own, no tour
+/// interest could be registered at all.
+class _Destination {
+  const _Destination({
+    required this.id,
+    required this.name,
+    this.district,
+  });
+
+  final String id;
+  final String name;
+  final String? district;
 }

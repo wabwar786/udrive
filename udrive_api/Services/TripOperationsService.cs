@@ -55,7 +55,7 @@ coalesce(dp.service_areas[1],''),v.id,case when v.id is null then null else conc
 (select count(*) from udrive.trip_assignments a join udrive.trip_operations o on o.booking_id=a.booking_id where a.driver_profile_id=dp.id and a.status='Active' and o.trip_status in ('DriverAssigned','DriverAccepted','DriverEnRoute','DriverArrived','TripStarted','Emergency')) active_trips,
 case when v.id is null then false when lower(dp.verification_status) not in ('approved','verified') or lower(v.status) not in ('verified','approved') or u.status in ('Suspended','Rejected') then false
 when v.passenger_capacity < b.seats_booked then false
-when exists(select 1 from udrive.trip_assignments a2 join udrive.trip_operations o2 on o2.booking_id=a2.booking_id where a2.status='Active' and (a2.driver_profile_id=dp.id or a2.vehicle_id=v.id) and a2.booking_id<>b.id and tstzrange(o2.pickup_at,coalesce(o2.return_at,o2.pickup_at+interval '8 hours'),'[]') && tstzrange(o.pickup_at,coalesce(o.return_at,o.pickup_at+interval '8 hours'),'[]')) then false else true end available
+when exists(select 1 from udrive.trip_assignments a2 join udrive.trip_operations o2 on o2.booking_id=a2.booking_id where a2.status='Active' and (a2.driver_profile_id=dp.id or a2.vehicle_id=v.id) and a2.booking_id<>b.id and o2.trip_status not in ('TripCompleted','Cancelled','NoShow') and tstzrange(o2.pickup_at,coalesce(o2.return_at,o2.pickup_at+interval '8 hours'),'[]') && tstzrange(o.pickup_at,coalesce(o.return_at,o.pickup_at+interval '8 hours'),'[]')) then false else true end available
 from udrive.bookings b join udrive.trip_operations o on o.booking_id=b.id cross join udrive.driver_profiles dp join udrive.users u on u.id=dp.user_id left join lateral(select * from udrive.vehicles vx where vx.driver_profile_id=dp.id order by case when vx.status='Verified' then 0 else 1 end,vx.created_at desc limit 1)v on true where b.id=@id order by available desc,dp.average_rating desc,u.full_name";
         var list=new List<SuitableDriverDto>(); await using var cmd=new NpgsqlCommand(sql,cn);cmd.Parameters.AddWithValue("id",bookingId);
         await using var r=await cmd.ExecuteReaderAsync(ct);while(await r.ReadAsync(ct))
@@ -137,6 +137,18 @@ from udrive.bookings b join udrive.trip_operations o on o.booking_id=b.id cross 
         //
         // Keyed on the booking, so a status set twice cannot charge twice.
         if(request.Status=="TripStarted"){await DriverWalletService.ChargeCommissionAsync(cn,tx,bookingId,ct);}
+        // A finished trip must hand the Driver and the vehicle back.
+        //
+        // The assignment row was the only thing left behind: cancelling wrote
+        // trip_operations and bookings and stopped there, so the row stayed
+        // 'Active' for ever. Every overlap check keys off a.status='Active',
+        // so one cancelled ride made that Driver and vehicle read as busy for
+        // that time window permanently — an Admin assigning them was told
+        // "Driver or vehicle has an overlapping active booking" about a ride
+        // that had been called off weeks earlier. Ending the row here closes
+        // it for all three terminal states, whoever triggered them.
+        if(request.Status is "Cancelled" or "NoShow" or "TripCompleted")
+            await EndAssignmentsAsync(cn,tx,bookingId,request.Status=="TripCompleted"?"Trip completed":request.Status=="NoShow"?"Customer no-show":"Trip cancelled",ct);
         // Abandoning a ride already accepted costs the Driver 2% of the fare —
         // but only before the trip starts. Once the Customer is in the vehicle
         // a cancellation is a different and more serious event, and belongs
@@ -186,6 +198,21 @@ from udrive.bookings b join udrive.trip_operations o on o.booking_id=b.id cross 
     /// A pickup more than fifteen minutes past is left alone: re-offering a
     /// ride whose moment has gone only wastes drivers' time.
     /// </remarks>
+    /// <summary>Closes the active assignment rows for a finished booking.</summary>
+    /// <remarks>
+    /// Only rows still 'Active' are touched, so calling this twice is harmless
+    /// and a row already 'Replaced' by a reassignment keeps its own history.
+    /// </remarks>
+    internal static Task EndAssignmentsAsync(NpgsqlConnection cn,NpgsqlTransaction tx,Guid bookingId,string reason,CancellationToken ct)
+        => ExecAsync(cn,tx,@"
+            update udrive.trip_assignments
+            set status='Ended',
+                ended_at=now(),
+                end_reason=@reason,
+                version=version+1,
+                updated_at=now()
+            where booking_id=@booking and status='Active'",ct,("booking",bookingId),("reason",reason));
+
     private static async Task ReopenRideRequestAsync(NpgsqlConnection cn,NpgsqlTransaction tx,Guid bookingId,CancellationToken ct)
     {
         await ExecAsync(cn,tx,@"

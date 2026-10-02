@@ -99,9 +99,16 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
     _syncing = true;
     try {
       final trips = await _repository!.driverTrips();
-      final active = trips.where((trip) {
-        return _trackableStatuses.contains(trip.tripStatus);
-      }).cast<dynamic>().firstOrNull;
+      // A plain loop, not `.firstOrNull`: that getter lives in
+      // package:collection, which nothing in this app imports, so it would
+      // only compile by accident.
+      dynamic active;
+      for (final trip in trips) {
+        if (_trackableStatuses.contains(trip.tripStatus)) {
+          active = trip;
+          break;
+        }
+      }
 
       if (active == null) {
         _stopTracking();
