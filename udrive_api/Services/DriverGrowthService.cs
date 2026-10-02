@@ -65,6 +65,25 @@ public sealed class DriverGrowthService(string connectionString)
     private static DateTimeOffset NowLocal() =>
         TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Local);
 
+    /// <summary>Local midnight that opens the day <paramref name="moment"/> is in.</summary>
+    /// <remarks>
+    /// This exists because <c>DateTimeOffset.Date</c> hands back a plain
+    /// <see cref="DateTime"/> with <c>Kind.Unspecified</c>, and the implicit
+    /// conversion back to <see cref="DateTimeOffset"/> then stamps it with the
+    /// *machine's* zone. On Railway the machine is UTC, so every local
+    /// midnight silently became a UTC midnight — five hours adrift — and
+    /// anything compared against it was wrong by those five hours.
+    ///
+    /// The peak-hour window is where that showed. For a 10pm–2am reward the
+    /// "has tonight's window started yet" test read five hours early, so it
+    /// always concluded the window belonged to the previous night. A driver
+    /// working the peak hours was measured against last night's window, scored
+    /// zero, and the reward could not be paid — not on some nights, on every
+    /// night. Keeping the offset explicit here is the whole fix.
+    /// </remarks>
+    internal static DateTimeOffset LocalDayStart(DateTimeOffset moment) =>
+        new(moment.Year, moment.Month, moment.Day, 0, 0, 0, moment.Offset);
+
     // ─────────────────────────────────────────────────────────────── the home
 
     public async Task<ServiceResult<DriverHomeDto>> HomeAsync(
@@ -317,7 +336,16 @@ public sealed class DriverGrowthService(string connectionString)
         int ReferralsVerified,
         int ReferralsFirstRide,
         int ReferralsActive,
-        decimal CommissionPercentage);
+        decimal CommissionPercentage,
+
+        /// <summary>A live, unrevoked row in founding_drivers.</summary>
+        bool IsFoundingDriver,
+
+        /// <summary>Their last completed ride, or null if they never had one.</summary>
+        DateTimeOffset? LastRideAt,
+
+        /// <summary>Rides this driver cancelled today, Pakistan time.</summary>
+        int CancellationsToday);
 
     private static async Task<DriverMetrics> LoadMetricsAsync(
         NpgsqlConnection connection,
@@ -333,8 +361,14 @@ public sealed class DriverGrowthService(string connectionString)
                 (p.residential_address IS NOT NULL
                  AND p.emergency_contact_phone IS NOT NULL
                  AND p.payout_method IS NOT NULL) AS profile_complete,
+                -- 'Verified' or 'Approved', either case: the admin panel writes
+                -- one, the API's own checks accept both, and matching only the
+                -- exact string 'Approved' here meant a driver whose vehicle had
+                -- been verified never completed the VehicleApproved milestone.
+                -- Their welcome bonus stopped on that step and stayed there.
                 EXISTS (SELECT 1 FROM udrive.vehicles v
-                        WHERE v.driver_profile_id = p.id AND v.status = 'Approved'),
+                        WHERE v.driver_profile_id = p.id
+                          AND lower(v.status) IN ('verified', 'approved')),
                 (SELECT count(*) FROM udrive.trip_assignments ta
                    JOIN udrive.trip_operations t ON t.booking_id = ta.booking_id
                   WHERE ta.driver_profile_id = p.id
@@ -385,7 +419,31 @@ public sealed class DriverGrowthService(string connectionString)
                 COALESCE((SELECT LEAST(40, GREATEST(0,
                             (s.value_json #>> '{}')::numeric))
                           FROM udrive.system_settings s
-                          WHERE s.key = 'driver.commission.percentage'), 10)
+                          WHERE s.key = 'driver.commission.percentage'), 10),
+                -- Founding status, for the Founding segment. A revoked row is
+                -- not a founding driver any more.
+                EXISTS (SELECT 1 FROM udrive.founding_drivers f
+                        WHERE f.driver_profile_id = p.id
+                          AND f.revoked_at IS NULL),
+                -- Last completed ride, for the Inactive segment.
+                (SELECT MAX(t.completed_at)
+                   FROM udrive.trip_assignments ta
+                   JOIN udrive.trip_operations t ON t.booking_id = ta.booking_id
+                  WHERE ta.driver_profile_id = p.id
+                    AND t.trip_status = 'TripCompleted'),
+                -- Rides this driver called off today, for max_cancellations.
+                -- Read from the status history because that is the only place
+                -- that records *who* cancelled; the booking row only knows that
+                -- someone did.
+                (SELECT count(*)
+                   FROM udrive.trip_status_history h
+                   JOIN udrive.trip_assignments ta
+                     ON ta.booking_id = h.booking_id
+                  WHERE ta.driver_profile_id = p.id
+                    AND h.source = 'Driver'
+                    AND h.to_status IN ('Cancelled', 'NoShow')
+                    AND (h.created_at AT TIME ZONE 'Asia/Karachi')::date
+                        = (now() AT TIME ZONE 'Asia/Karachi')::date)
             FROM udrive.driver_profiles p
             LEFT JOIN udrive.driver_wallets w ON w.driver_profile_id = p.id
             WHERE p.id = @driver;
@@ -399,7 +457,7 @@ public sealed class DriverGrowthService(string connectionString)
         {
             return new DriverMetrics(
                 "Unknown", null, false, false, 0, 0, 0, 0m, 0m, null, 0m, 0m,
-                0, 0, 0, 10m);
+                0, 0, 0, 10m, false, null, 0);
         }
 
         return new DriverMetrics(
@@ -418,12 +476,15 @@ public sealed class DriverGrowthService(string connectionString)
             (int)reader.GetInt64(12),
             (int)reader.GetInt64(13),
             (int)reader.GetInt64(14),
-            reader.GetDecimal(15));
+            reader.GetDecimal(15),
+            reader.GetBoolean(16),
+            reader.IsDBNull(17) ? null : reader.GetFieldValue<DateTimeOffset>(17),
+            (int)reader.GetInt64(18));
     }
 
     // ────────────────────────────────────────────────────────────── the engine
 
-    private sealed record CampaignRow(
+    internal sealed record CampaignRow(
         Guid Id,
         string CampaignType,
         string Title,
@@ -468,8 +529,36 @@ public sealed class DriverGrowthService(string connectionString)
     {
         var campaigns = await LoadLiveCampaignsAsync(
             connection, driver, metrics, cancellationToken);
-        if (campaigns.Count == 0) return;
 
+        // Note what is NOT here any more: an early return when there are no
+        // live campaigns.
+        //
+        // Crediting used to sit at the bottom of this method, after that
+        // return. So a reward already earned and sitting at 'Qualified' was
+        // only ever paid on a visit where the driver *also* had a live
+        // campaign. Finish a peak-hour reward at 1:59am and the window closes
+        // at 2am: from then on there is no live campaign, the method returns
+        // early, and the money is never moved. The one that mattered most was
+        // a driver whose only campaign was switched off by an admin the next
+        // morning — earned the night before, never paid, and nothing in the
+        // app or the panel to show it had been withheld.
+        if (campaigns.Count > 0)
+        {
+            await MeasureCampaignsAsync(
+                connection, driver, metrics, campaigns, cancellationToken);
+        }
+
+        await CreditQualifiedAsync(
+            connection, driver.ProfileId, metrics, cancellationToken);
+    }
+
+    private static async Task MeasureCampaignsAsync(
+        NpgsqlConnection connection,
+        DriverPresenceService.DriverContext driver,
+        DriverMetrics metrics,
+        List<CampaignRow> campaigns,
+        CancellationToken cancellationToken)
+    {
         var milestones = await LoadMilestonesAsync(
             connection, campaigns.Select(c => c.Id).ToArray(), cancellationToken);
 
@@ -522,9 +611,6 @@ public sealed class DriverGrowthService(string connectionString)
                 value, target, campaign.RewardAmount, expires,
                 campaign.Title, cancellationToken);
         }
-
-        await CreditQualifiedAsync(
-            connection, driver.ProfileId, metrics, cancellationToken);
     }
 
     private static async Task<List<CampaignRow>> LoadLiveCampaignsAsync(
@@ -551,8 +637,14 @@ public sealed class DriverGrowthService(string connectionString)
               AND city.id = @city
               AND (c.starts_at IS NULL OR c.starts_at <= now())
               AND (c.ends_at IS NULL OR c.ends_at >= now())
+              -- Every type an admin can save. This list used to stop at
+              -- 'Referral', so a WeeklyReward or a Reactivation campaign could
+              -- be created, funded and switched on in the admin panel and then
+              -- sat there measuring nothing for ever — no progress row, no
+              -- payment, and no error anywhere to say why.
               AND c.campaign_type IN
-                  ('WelcomeBonus', 'DailyMission', 'PeakHourReward', 'Referral')
+                  ('WelcomeBonus', 'DailyMission', 'PeakHourReward', 'Referral',
+                   'WeeklyReward', 'Reactivation', 'FoundingBenefit')
             ORDER BY c.campaign_type, c.created_at;
             """;
 
@@ -597,15 +689,44 @@ public sealed class DriverGrowthService(string connectionString)
         return rows.Where(c => MatchesSegment(c, metrics) && MatchesDay(c, now)).ToList();
     }
 
-    private static bool MatchesSegment(CampaignRow campaign, DriverMetrics metrics) =>
+    /// <summary>How many days of silence makes a driver inactive.</summary>
+    /// <remarks>
+    /// Fourteen. Short enough that the reactivation nudge still means
+    /// something, long enough that a driver away for Eid or a week of rain is
+    /// not "won back" with the company's money for coming to work.
+    /// </remarks>
+    private const int InactiveAfterDays = 14;
+
+    /// <remarks>
+    /// Founding and Inactive used to return <c>true</c> with a comment
+    /// promising they were narrowed somewhere else. They were not: nothing
+    /// anywhere joined founding_drivers or looked at a last-ride date at
+    /// crediting time. So a campaign aimed at the city's founding drivers paid
+    /// every driver in the city, and a reactivation bonus meant to win back
+    /// drivers who had stopped was paid to the ones who had never stopped — the
+    /// two most expensive campaign types to get wrong, both wide open.
+    /// </remarks>
+    internal static bool MatchesSegment(CampaignRow campaign, DriverMetrics metrics) =>
         campaign.DriverSegment switch
         {
             // "New" is measured from approval, not from registration. A driver
             // who signed up in July and was approved yesterday is new today.
             "New" => metrics.ApprovedAt is not null
                      && metrics.ApprovedAt > DateTimeOffset.UtcNow.AddDays(-30),
-            "Founding" => true, // narrowed by the founding_drivers join at credit time
-            "Inactive" => true, // reactivation is admin-targeted, not self-selected
+
+            // A founding driver is a row in founding_drivers that has not been
+            // revoked. Nothing else counts, whatever an admin wishes.
+            "Founding" => metrics.IsFoundingDriver,
+
+            // Inactive means they have actually been away: no completed ride
+            // for InactiveAfterDays, or never a ride at all since approval.
+            "Inactive" => metrics.LastRideAt is null
+                ? metrics.ApprovedAt is not null
+                  && metrics.ApprovedAt
+                     < DateTimeOffset.UtcNow.AddDays(-InactiveAfterDays)
+                : metrics.LastRideAt
+                  < DateTimeOffset.UtcNow.AddDays(-InactiveAfterDays),
+
             _ => true,
         };
 
@@ -617,13 +738,32 @@ public sealed class DriverGrowthService(string connectionString)
     /// Which bucket of time this award belongs to — the thing that makes a
     /// repeating reward repeat and a one-off reward one-off.
     /// </summary>
-    private static string PeriodKey(CampaignRow campaign)
+    internal static string PeriodKey(CampaignRow campaign)
     {
         var now = NowLocal();
         return campaign.CampaignType switch
         {
-            "DailyMission" or "PeakHourReward" =>
+            "DailyMission" =>
                 now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+
+            // A peak-hour window is keyed by the day it STARTED, not by today.
+            //
+            // A 10pm–2am window spans two calendar dates, and keying it by the
+            // date at evaluation time gave last night's window and tonight's
+            // the same key: finish last night's at 1am (key the 3rd), and at
+            // 10pm on the 3rd tonight's window — also key the 3rd — lands on
+            // the same progress row, overwrites a Qualified night with a fresh
+            // zero and drops it back to InProgress. The reward earned last
+            // night is gone, and the only trace is a row that now says the
+            // driver has done nothing.
+            //
+            // Keying by the window's start makes the two nights two rows,
+            // which is what they are.
+            "PeakHourReward" =>
+                campaign.DailyStart is not null && campaign.DailyEnd is not null
+                    ? Window(campaign).From
+                        .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                    : now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             "WeeklyReward" => string.Create(
                 CultureInfo.InvariantCulture,
                 $"{ISOWeek.GetYear(now.DateTime)}-W{ISOWeek.GetWeekOfYear(now.DateTime):00}"),
@@ -631,15 +771,42 @@ public sealed class DriverGrowthService(string connectionString)
         };
     }
 
-    private static DateTimeOffset? PeriodExpiry(CampaignRow campaign)
+    /// <summary>When an unpaid award for this period stops being payable.</summary>
+    /// <remarks>
+    /// A peak-hour award expires at midnight after the window closed, not when
+    /// the window closed.
+    /// <para>
+    /// The old expiry was the window's own end, which made the award unpayable
+    /// almost exactly when it was earned. Crediting happens on the driver's
+    /// next request — a heartbeat, opening the home screen — and a driver who
+    /// finishes a 10pm–2am window and goes straight to bed makes no request
+    /// until the evening. By then expires_at had passed, CreditQualifiedAsync
+    /// skipped the row, and the money was never moved. The driver had done the
+    /// work, the app had told them they qualified, and the reward quietly
+    /// aged out. Finishing a window right at its end is the normal way to earn
+    /// one of these, so this was most of them.
+    /// </para>
+    /// <para>
+    /// Midnight after the window gives roughly a day of slack, which is enough
+    /// for any real driver to open the app, and still short enough that a stale
+    /// row cannot be paid a week later.
+    /// </para>
+    /// </remarks>
+    internal static DateTimeOffset? PeriodExpiry(CampaignRow campaign)
     {
         var now = NowLocal();
         return campaign.CampaignType switch
         {
-            "DailyMission" => now.Date.AddDays(1).AddTicks(-1),
-            "PeakHourReward" => campaign.DailyEnd is { } end
-                ? now.Date.Add(end)
-                : now.Date.AddDays(1).AddTicks(-1),
+            "DailyMission" => LocalDayStart(now).AddDays(1),
+            "PeakHourReward" =>
+                campaign.DailyStart is not null && campaign.DailyEnd is not null
+                    ? LocalDayStart(Window(campaign).To).AddDays(1)
+                    : LocalDayStart(now).AddDays(1),
+            // Monday 00:00 after this ISO week — which is what PeriodKey
+            // buckets by. Sunday is day 0 in .NET but the last day of an ISO
+            // week, so it gets one day, not eight.
+            "WeeklyReward" => LocalDayStart(now).AddDays(
+                now.DayOfWeek == DayOfWeek.Sunday ? 1 : 8 - (int)now.DayOfWeek),
             _ => campaign.EndsAt,
         };
     }
@@ -673,31 +840,54 @@ public sealed class DriverGrowthService(string connectionString)
         };
 
     /// <summary>The window a campaign measures over, in local time.</summary>
-    private static (DateTimeOffset From, DateTimeOffset To) Window(CampaignRow campaign)
+    internal static (DateTimeOffset From, DateTimeOffset To) Window(CampaignRow campaign)
     {
         var now = NowLocal();
 
         if (campaign.CampaignType is "PeakHourReward"
             && campaign.DailyStart is { } start && campaign.DailyEnd is { } end)
         {
+            // Every value here stays a DateTimeOffset carrying Pakistan's
+            // offset, so the comparison below means what it reads as. See
+            // LocalDayStart for what happened when it did not.
+            var today = LocalDayStart(now);
+
             // A window that ends before it starts crosses midnight — 10pm to
             // 2am is one window, not a negative one.
-            var from = now.Date.Add(start);
-            var to = end > start ? now.Date.Add(end) : now.Date.AddDays(1).Add(end);
-            if (now < from && end <= start)
+            var from = today + start;
+            var to = end > start ? today + end : today.AddDays(1) + end;
+
+            // Before tonight's window opens, the window to measure is the most
+            // recent one, which for a midnight-crossing campaign began
+            // yesterday: at 1am the 10pm–2am window is last night's, and it is
+            // still running. Between 2am and 10pm it is last night's and
+            // finished, which is still the right one to measure — rolling
+            // forward early would zero a driver's progress hours after they
+            // earned it. PeriodExpiry is what keeps the earned award payable.
+            if (end <= start && now < from)
             {
                 from = from.AddDays(-1);
                 to = to.AddDays(-1);
             }
 
-            return (new DateTimeOffset(from, now.Offset),
-                    new DateTimeOffset(to, now.Offset));
+            return (from, to);
         }
 
         if (campaign.CampaignType is "DailyMission")
         {
-            return (new DateTimeOffset(now.Date, now.Offset),
-                    new DateTimeOffset(now.Date.AddDays(1), now.Offset));
+            var today = LocalDayStart(now);
+            return (today, today.AddDays(1));
+        }
+
+        // A weekly reward measures this ISO week, Monday to Monday — the same
+        // bucket PeriodKey names. Measuring it from the campaign's start date
+        // instead, as this used to, meant week two counted week one's rides
+        // again and every driver qualified for ever.
+        if (campaign.CampaignType is "WeeklyReward")
+        {
+            var monday = LocalDayStart(now).AddDays(
+                now.DayOfWeek == DayOfWeek.Sunday ? -6 : 1 - (int)now.DayOfWeek);
+            return (monday, monday.AddDays(7));
         }
 
         // Everything else measures from when the campaign opened.
@@ -937,7 +1127,10 @@ public sealed class DriverGrowthService(string connectionString)
             SELECT g.id, g.reward_amount, g.reason, c.min_rating,
                    c.min_acceptance_rate, c.max_cancellations, c.total_budget,
                    c.id AS campaign_id,
-                   COALESCE(spent.amount, 0)
+                   COALESCE(spent.amount, 0),
+                   c.max_awards_per_driver,
+                   COALESCE(awarded.count, 0),
+                   c.campaign_type
             FROM udrive.driver_campaign_progress g
             JOIN udrive.growth_campaigns c ON c.id = g.campaign_id
             LEFT JOIN LATERAL (
@@ -945,6 +1138,15 @@ public sealed class DriverGrowthService(string connectionString)
                 FROM udrive.driver_campaign_progress p
                 WHERE p.campaign_id = c.id AND p.status = 'Credited'
             ) AS spent ON true
+            -- How many times THIS driver has already been paid by THIS
+            -- campaign, which is what max_awards_per_driver limits.
+            LEFT JOIN LATERAL (
+                SELECT count(*) AS count
+                FROM udrive.driver_campaign_progress p
+                WHERE p.campaign_id = c.id
+                  AND p.driver_profile_id = g.driver_profile_id
+                  AND p.status = 'Credited'
+            ) AS awarded ON true
             WHERE g.driver_profile_id = @driver
               AND g.status = 'Qualified'
               AND g.reward_amount > 0
@@ -952,7 +1154,7 @@ public sealed class DriverGrowthService(string connectionString)
             ORDER BY g.qualified_at;
             """;
 
-        var payable = new List<(Guid Id, decimal Amount, string Reason, string? Block)>();
+        var payable = new List<PayableRow>();
 
         await using (var command = new NpgsqlCommand(selectSql, connection))
         {
@@ -963,8 +1165,12 @@ public sealed class DriverGrowthService(string connectionString)
                 var amount = reader.GetDecimal(1);
                 var minRating = reader.IsDBNull(3) ? null : (decimal?)reader.GetDecimal(3);
                 var minAcceptance = reader.IsDBNull(4) ? null : (decimal?)reader.GetDecimal(4);
+                var maxCancellations = reader.IsDBNull(5) ? null : (int?)reader.GetInt32(5);
                 var budget = reader.IsDBNull(6) ? null : (decimal?)reader.GetDecimal(6);
+                var campaignId = reader.GetGuid(7);
                 var spent = reader.GetDecimal(8);
+                var alreadyAwarded = (int)reader.GetInt64(10);
+                var maxAwards = LifetimeCap(reader.GetInt32(9), reader.GetString(11));
 
                 string? block = null;
                 if (minRating is not null && metrics.Rating < minRating)
@@ -977,15 +1183,40 @@ public sealed class DriverGrowthService(string connectionString)
                     block = $"Acceptance rate {metrics.AcceptanceRate ?? 0}% is below "
                           + $"the required {minAcceptance}%.";
                 }
+                // max_cancellations was read from the database and then never
+                // looked at. A campaign could say "no more than two
+                // cancellations" and a driver who cancelled eleven rides that
+                // day was paid in full — the one rule most of these campaigns
+                // exist to enforce.
+                else if (maxCancellations is not null
+                         && metrics.CancellationsToday > maxCancellations)
+                {
+                    block = $"{metrics.CancellationsToday} cancellations today is "
+                          + $"above the limit of {maxCancellations}.";
+                }
+                // Same story: max_awards_per_driver was loaded into the campaign
+                // row and never consulted, so "once per driver" meant once per
+                // period, for ever. A daily mission capped at one award paid
+                // every day of the month.
+                else if (maxAwards > 0 && alreadyAwarded >= maxAwards)
+                {
+                    block = maxAwards == 1
+                        ? "This reward is paid once per driver and has already been paid."
+                        : $"This reward is capped at {maxAwards} per driver and "
+                          + $"{alreadyAwarded} have already been paid.";
+                }
                 else if (budget is not null && spent + amount > budget)
                 {
                     block = "This campaign's budget is fully committed.";
                 }
 
-                payable.Add((
+                payable.Add(new PayableRow(
                     reader.GetGuid(0),
+                    campaignId,
                     amount,
                     reader.IsDBNull(2) ? "UDrive reward" : reader.GetString(2),
+                    budget,
+                    maxAwards,
                     block));
             }
         }
@@ -999,10 +1230,47 @@ public sealed class DriverGrowthService(string connectionString)
             }
 
             await CreditAsync(
-                connection, driverProfileId, row.Id, row.Amount, row.Reason,
-                cancellationToken);
+                connection, driverProfileId, row, cancellationToken);
         }
     }
+
+    private sealed record PayableRow(
+        Guid Id,
+        Guid CampaignId,
+        decimal Amount,
+        string Reason,
+        decimal? Budget,
+        int MaxAwards,
+        string? Block);
+
+    /// <summary>
+    /// How many times in total this campaign may pay one driver — 0 for no
+    /// lifetime limit.
+    /// </summary>
+    /// <remarks>
+    /// The column is called max_awards_per_driver and the validator insists on
+    /// at least 1, so 1 is what an admin saving a form will almost always end
+    /// up with. Read literally that would make a *daily* mission pay once and
+    /// never again, which is the opposite of a daily mission — a trap built
+    /// into the default value.
+    /// <para>
+    /// A repeating campaign already has a per-period guarantee: the unique
+    /// index on (driver, campaign, milestone, period_key) means one award per
+    /// day, per peak window or per week, whatever else happens. So for those
+    /// types a 1 means that guarantee and nothing more, and only a number above
+    /// 1 is read as a lifetime cap — which is the only way an admin would ever
+    /// type one.
+    /// </para>
+    /// <para>
+    /// For a welcome bonus, a referral, a reactivation offer or a founding
+    /// benefit there is no period at all. There, 1 means once, for ever, which
+    /// is exactly what those campaigns are for.
+    /// </para>
+    /// </remarks>
+    internal static int LifetimeCap(int configured, string campaignType) =>
+        campaignType is "DailyMission" or "PeakHourReward" or "WeeklyReward"
+            ? configured > 1 ? configured : 0
+            : configured;
 
     private static async Task HoldAsync(
         NpgsqlConnection connection,
@@ -1036,13 +1304,101 @@ public sealed class DriverGrowthService(string connectionString)
     private static async Task CreditAsync(
         NpgsqlConnection connection,
         Guid driverProfileId,
-        Guid progressId,
-        decimal amount,
-        string description,
+        PayableRow row,
         CancellationToken cancellationToken)
     {
+        var progressId = row.Id;
+        var amount = row.Amount;
+        var description = row.Reason;
+
         await using var transaction =
             await connection.BeginTransactionAsync(cancellationToken);
+
+        // The budget and the per-driver cap are re-checked here, inside the
+        // transaction, with the campaign row locked.
+        //
+        // CreditQualifiedAsync checks them too, but it reads every qualified
+        // award in one SELECT and then pays them one transaction at a time. The
+        // figures it read go stale the moment the first one is paid, so a
+        // driver holding three awards against a budget with room for one had
+        // all three pass the check and all three paid. Two phones, or two
+        // overlapping requests, did the same thing to a one-per-driver reward.
+        //
+        // Locking the campaign row serialises every payment from that campaign,
+        // so the second caller reads what the first one actually spent.
+        if (row.Budget is not null || row.MaxAwards > 0)
+        {
+            const string recheckSql = """
+                WITH locked AS (
+                    SELECT c.id, c.total_budget, c.max_awards_per_driver,
+                           c.campaign_type
+                    FROM udrive.growth_campaigns c
+                    WHERE c.id = @campaign
+                    FOR UPDATE
+                )
+                SELECT
+                    locked.total_budget,
+                    locked.max_awards_per_driver,
+                    COALESCE((SELECT SUM(p.reward_amount)
+                              FROM udrive.driver_campaign_progress p
+                              WHERE p.campaign_id = locked.id
+                                AND p.status = 'Credited'), 0),
+                    COALESCE((SELECT count(*)
+                              FROM udrive.driver_campaign_progress p
+                              WHERE p.campaign_id = locked.id
+                                AND p.driver_profile_id = @driver
+                                AND p.status = 'Credited'), 0),
+                    locked.campaign_type
+                FROM locked;
+                """;
+
+            decimal? budget = null;
+            var maxAwards = 0;
+            var spent = 0m;
+            var awarded = 0L;
+
+            await using (var recheck =
+                new NpgsqlCommand(recheckSql, connection, transaction))
+            {
+                recheck.Parameters.AddWithValue("campaign", row.CampaignId);
+                recheck.Parameters.AddWithValue("driver", driverProfileId);
+                await using var reader =
+                    await recheck.ExecuteReaderAsync(cancellationToken);
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    budget = reader.IsDBNull(0) ? null : reader.GetDecimal(0);
+                    spent = reader.GetDecimal(2);
+                    awarded = reader.GetInt64(3);
+                    maxAwards = LifetimeCap(reader.GetInt32(1), reader.GetString(4));
+                }
+            }
+
+            var stop = maxAwards > 0 && awarded >= maxAwards
+                ? maxAwards == 1
+                    ? "This reward is paid once per driver and has already been paid."
+                    : $"This reward is capped at {maxAwards} per driver and "
+                      + $"{awarded} have already been paid."
+                : budget is not null && spent + amount > budget
+                    ? "This campaign's budget is fully committed."
+                    : null;
+
+            if (stop is not null)
+            {
+                const string holdSql = """
+                    UPDATE udrive.driver_campaign_progress
+                    SET status = 'OnHold', reason = @reason, updated_at = now()
+                    WHERE id = @id AND status = 'Qualified';
+                    """;
+
+                await using var hold =
+                    new NpgsqlCommand(holdSql, connection, transaction);
+                hold.Parameters.AddWithValue("id", progressId);
+                hold.Parameters.AddWithValue("reason", stop);
+                await hold.ExecuteNonQueryAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return;
+            }
+        }
 
         // A driver may have no wallet row yet — nothing creates one until their
         // first earning — and a reward is a perfectly good first entry.

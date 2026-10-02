@@ -294,13 +294,27 @@ public sealed record GrowthCampaignRequest(
     bool IsActive,
     IReadOnlyList<GrowthMilestoneRequest>? Milestones);
 
+/// <param name="Id">
+/// The milestone being edited, as it came back in <see cref="GrowthMilestoneDto"/>.
+/// Null means a new milestone.
+/// <para>
+/// This is here because position used to be identity. The upsert keyed on
+/// <c>(campaign_id, sort_order)</c>, so reordering the list in the panel did
+/// not move the rows — it overwrote their contents. Since a progress row that
+/// has already paid out is never reopened, a reorder left one milestone
+/// permanently unpayable and paid another a second time under a new id.
+/// Sending the id back makes "the milestone the admin is looking at"
+/// unambiguous, and leaves sort_order an ordinary editable field.
+/// </para>
+/// </param>
 public sealed record GrowthMilestoneRequest(
     int SortOrder,
     string Title,
     string? Description,
     decimal RewardAmount,
     string ConditionType,
-    decimal ConditionValue);
+    decimal ConditionValue,
+    Guid? Id = null);
 
 public sealed record ExpectedDemandRequest(
     Guid? CityId,

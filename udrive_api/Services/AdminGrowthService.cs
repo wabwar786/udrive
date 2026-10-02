@@ -415,12 +415,41 @@ public sealed class AdminGrowthService(string connectionString)
 
         if (request.Milestones is not null)
         {
-            // Milestones a driver has already been paid for are left alone. The
-            // alternative — delete and reinsert — would orphan the progress rows
-            // that point at them and lose the record of what was paid for what.
+            // A milestone is identified by its id, not by its position.
+            //
+            // The old code keyed the upsert on (campaign_id, sort_order), which
+            // made "the milestone at position 2" the thing being edited rather
+            // than "the milestone the admin is looking at". Reordering the list
+            // therefore rewrote the rows' contents instead of moving the rows —
+            // and because a progress row that has already paid is never
+            // reopened, one milestone became permanently unpayable while
+            // another was paid a second time under a fresh id. Migration 059
+            // and the Id on GrowthMilestoneRequest exist for this.
+            //
+            // Swapping two positions passes through a moment where both rows
+            // claim the same sort_order, so the uniqueness check is deferred to
+            // COMMIT. It still refuses a list that genuinely has a duplicate.
+            await using (var defer = new NpgsqlCommand(
+                "SET CONSTRAINTS udrive.ux_growth_milestone_position DEFERRED;",
+                connection,
+                transaction))
+            {
+                await defer.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // Anything the admin did not send back is a milestone they removed.
+            // One a driver has already been paid for is kept regardless:
+            // deleting it would cascade away the progress rows that record what
+            // was paid for what.
+            var keep = request.Milestones
+                .Where(m => m.Id is not null)
+                .Select(m => m.Id!.Value)
+                .ToArray();
+
             const string deleteSql = """
                 DELETE FROM udrive.growth_campaign_milestones m
                 WHERE m.campaign_id = @campaign
+                  AND NOT (m.id = ANY(@keep))
                   AND NOT EXISTS (
                       SELECT 1 FROM udrive.driver_campaign_progress g
                       WHERE g.milestone_id = m.id AND g.status = 'Credited');
@@ -429,8 +458,22 @@ public sealed class AdminGrowthService(string connectionString)
             await using (var command = new NpgsqlCommand(deleteSql, connection, transaction))
             {
                 command.Parameters.AddWithValue("campaign", campaignId);
+                command.Parameters.AddWithValue("keep", keep);
                 await command.ExecuteNonQueryAsync(cancellationToken);
             }
+
+            const string updateSql = """
+                UPDATE udrive.growth_campaign_milestones
+                SET sort_order = @sort,
+                    title = @title,
+                    description = @desc,
+                    reward_amount = @reward,
+                    condition_type = @condition,
+                    condition_value = @value,
+                    updated_at = now()
+                WHERE id = @id AND campaign_id = @campaign
+                RETURNING id;
+                """;
 
             const string insertSql = """
                 INSERT INTO udrive.growth_campaign_milestones
@@ -438,34 +481,52 @@ public sealed class AdminGrowthService(string connectionString)
                      reward_amount, condition_type, condition_value,
                      created_at, updated_at)
                 VALUES (gen_random_uuid(), @campaign, @sort, @title, @desc,
-                        @reward, @condition, @value, now(), now())
-                ON CONFLICT (campaign_id, sort_order) DO UPDATE SET
-                    title = EXCLUDED.title,
-                    description = EXCLUDED.description,
-                    reward_amount = EXCLUDED.reward_amount,
-                    condition_type = EXCLUDED.condition_type,
-                    condition_value = EXCLUDED.condition_value,
-                    updated_at = now();
+                        @reward, @condition, @value, now(), now());
                 """;
 
             foreach (var milestone in request.Milestones)
             {
-                await using var command =
-                    new NpgsqlCommand(insertSql, connection, transaction);
-                command.Parameters.AddWithValue("campaign", campaignId);
-                command.Parameters.AddWithValue("sort", milestone.SortOrder);
-                command.Parameters.AddWithValue("title", milestone.Title.Trim());
-                command.Parameters.AddWithValue("desc",
-                    (object?)milestone.Description ?? DBNull.Value);
-                command.Parameters.AddWithValue("reward", milestone.RewardAmount);
-                command.Parameters.AddWithValue("condition", milestone.ConditionType);
-                command.Parameters.AddWithValue("value", milestone.ConditionValue);
-                await command.ExecuteNonQueryAsync(cancellationToken);
+                var updated = false;
+
+                if (milestone.Id is { } milestoneId)
+                {
+                    await using var command =
+                        new NpgsqlCommand(updateSql, connection, transaction);
+                    command.Parameters.AddWithValue("id", milestoneId);
+                    command.Parameters.AddWithValue("campaign", campaignId);
+                    AddMilestoneValues(command, milestone);
+                    updated = await command.ExecuteScalarAsync(cancellationToken)
+                              is Guid;
+                }
+
+                // No id, or an id that belongs to some other campaign: treat it
+                // as new rather than silently editing nothing.
+                if (!updated)
+                {
+                    await using var command =
+                        new NpgsqlCommand(insertSql, connection, transaction);
+                    command.Parameters.AddWithValue("campaign", campaignId);
+                    AddMilestoneValues(command, milestone);
+                    await command.ExecuteNonQueryAsync(cancellationToken);
+                }
             }
         }
 
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(campaignId);
+    }
+
+    private static void AddMilestoneValues(
+        NpgsqlCommand command,
+        GrowthMilestoneRequest milestone)
+    {
+        command.Parameters.AddWithValue("sort", milestone.SortOrder);
+        command.Parameters.AddWithValue("title", milestone.Title.Trim());
+        command.Parameters.AddWithValue(
+            "desc", (object?)milestone.Description ?? DBNull.Value);
+        command.Parameters.AddWithValue("reward", milestone.RewardAmount);
+        command.Parameters.AddWithValue("condition", milestone.ConditionType);
+        command.Parameters.AddWithValue("value", milestone.ConditionValue);
     }
 
     private static (string Code, string Message)? Validate(GrowthCampaignRequest request)
@@ -878,6 +939,43 @@ public sealed class AdminGrowthService(string connectionString)
         Guid driverProfileId,
         CancellationToken cancellationToken)
     {
+        await using var connection = Open();
+        await connection.OpenAsync(cancellationToken);
+        var result = await TryGrantFoundingAsync(
+            connection, null, driverProfileId, cancellationToken);
+
+        if (result is null)
+        {
+            return ServiceResult<int>.Fail(
+                StatusCodes.Status409Conflict,
+                "not_eligible",
+                "This driver already has founding status, or their city is not "
+                + "accepting founding drivers.");
+        }
+
+        return ServiceResult<int>.Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Gives this driver the next founding number in their city, if their city
+    /// is still handing them out. Returns the number, or null if it is not.
+    /// </summary>
+    /// <remarks>
+    /// Shared with the approval path so the promise in migration 057 — "a
+    /// driver approved while the window is open and the city is active gets the
+    /// next number in that city" — is actually kept. Before, founding status
+    /// only ever existed if an admin went and granted it by hand, one driver at
+    /// a time, which no one was ever going to do.
+    ///
+    /// Safe to call repeatedly: ON CONFLICT leaves an existing grant alone and
+    /// returns nothing, so a second call cannot renumber a founding driver.
+    /// </remarks>
+    internal static async Task<int?> TryGrantFoundingAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        Guid driverProfileId,
+        CancellationToken cancellationToken)
+    {
         const string sql = """
             WITH target AS (
                 SELECT p.id AS driver, c.id AS city, c.founding_limit
@@ -888,6 +986,10 @@ public sealed class AdminGrowthService(string connectionString)
                   AND c.founding_enabled
                   AND (c.founding_window_ends_at IS NULL
                        OR c.founding_window_ends_at > now())
+                  -- Only an approved driver can be a founding driver. The
+                  -- approval path calls this in the same transaction that sets
+                  -- the status, so by this point it is already 'Approved'.
+                  AND lower(p.verification_status) IN ('approved', 'verified')
             ), next AS (
                 SELECT target.driver, target.city, target.founding_limit,
                        COALESCE(MAX(f.sequence_no), 0) + 1 AS seq
@@ -904,21 +1006,9 @@ public sealed class AdminGrowthService(string connectionString)
             RETURNING sequence_no;
             """;
 
-        await using var connection = Open();
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("driver", driverProfileId);
         var result = await command.ExecuteScalarAsync(cancellationToken);
-
-        if (result is null or DBNull)
-        {
-            return ServiceResult<int>.Fail(
-                StatusCodes.Status409Conflict,
-                "not_eligible",
-                "This driver already has founding status, or their city is not "
-                + "accepting founding drivers.");
-        }
-
-        return ServiceResult<int>.Ok(Convert.ToInt32(result));
+        return result is null or DBNull ? null : Convert.ToInt32(result);
     }
 }

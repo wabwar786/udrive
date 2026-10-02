@@ -108,10 +108,28 @@ public sealed record VehicleDocumentDto(
     string Status,
     string? ReviewNotes);
 
+/// <param name="LaunchCityId">
+/// Which launch city this driver belongs to, set when they are approved.
+/// <para>
+/// Nothing in the API ever wrote driver_profiles.launch_city_id, so every
+/// driver had none — and the whole rewards engine reaches a driver only
+/// through their city: no city, no campaigns loaded, no progress measured,
+/// nothing ever paid. Founding numbers are per city too, so those could not be
+/// granted either. The entire Driver Growth system was inert for want of this
+/// one column.
+/// </para>
+/// <para>
+/// Optional. Left out, the city is inferred — from the driver's own service
+/// area if it names an active city, otherwise from the single active city if
+/// the business is only running one. Sent explicitly, it wins, which is how an
+/// admin says "I am opening Rawalakot, approve this driver into Rawalakot".
+/// </para>
+/// </param>
 public sealed record VerificationReviewRequest(
     [Required, StringLength(32)] string Decision,
     [StringLength(1000)] string? Notes,
-    bool DeleteAttachments = false);
+    bool DeleteAttachments = false,
+    Guid? LaunchCityId = null);
 
 public sealed record DeleteVerificationEntityRequest(
     [Required, StringLength(1000, MinimumLength = 3)] string Reason);

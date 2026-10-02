@@ -163,17 +163,41 @@ public sealed class DriverPresenceService(string connectionString)
 
         // The whole crediting rule, in one statement so there is no window in
         // which another beat could be counted against the same gap.
+        // floor, not round — and the clock only moves by what was credited.
+        //
+        // `::int` on a numeric rounds. So a beat 0.6 seconds after the last one
+        // credited a whole second and reset the clock, and a driver beating
+        // twice a second was paid about two seconds of online time for every
+        // second they were actually online. Online seconds are what the daily
+        // missions and the peak-hour rewards are measured in, so that was a
+        // way to be paid for time not worked, from the app, with no access to
+        // anything.
+        //
+        // Flooring alone would fix the inflation and introduce a smaller
+        // unfairness — the discarded fraction is lost every beat. So
+        // last_heartbeat_at advances by exactly the seconds credited and keeps
+        // the remainder for the next beat. Credited time can then never exceed
+        // the real elapsed time, and never silently falls behind it either. A
+        // beat inside the same second credits nothing and leaves the anchor
+        // alone, so hammering the endpoint gains precisely nothing.
         const string sql = """
             UPDATE udrive.driver_online_sessions s
             SET credited_seconds = s.credited_seconds +
                     CASE WHEN EXTRACT(EPOCH FROM (now() - s.last_heartbeat_at)) <= @maxgap
-                         THEN GREATEST(0, EXTRACT(EPOCH FROM (now() - s.last_heartbeat_at)))::int
+                         THEN floor(GREATEST(0,
+                                  EXTRACT(EPOCH FROM (now() - s.last_heartbeat_at))))::int
                          ELSE 0 END,
                 gap_count = s.gap_count +
                     CASE WHEN EXTRACT(EPOCH FROM (now() - s.last_heartbeat_at)) > @maxgap
                          THEN 1 ELSE 0 END,
                 heartbeat_count = s.heartbeat_count + 1,
-                last_heartbeat_at = now(),
+                last_heartbeat_at =
+                    CASE WHEN EXTRACT(EPOCH FROM (now() - s.last_heartbeat_at)) > @maxgap
+                         THEN now()
+                         ELSE s.last_heartbeat_at + make_interval(secs =>
+                                  floor(GREATEST(0,
+                                      EXTRACT(EPOCH FROM (now() - s.last_heartbeat_at)))))
+                         END,
                 last_latitude = COALESCE(@lat, s.last_latitude),
                 last_longitude = COALESCE(@lng, s.last_longitude),
                 mock_location_seen = s.mock_location_seen OR @mock,
@@ -250,7 +274,8 @@ public sealed class DriverPresenceService(string connectionString)
             UPDATE udrive.driver_online_sessions s
             SET credited_seconds = s.credited_seconds +
                     CASE WHEN EXTRACT(EPOCH FROM (now() - s.last_heartbeat_at)) <= @maxgap
-                         THEN GREATEST(0, EXTRACT(EPOCH FROM (now() - s.last_heartbeat_at)))::int
+                         THEN floor(GREATEST(0,
+                                  EXTRACT(EPOCH FROM (now() - s.last_heartbeat_at))))::int
                          ELSE 0 END,
                 ended_at = now(),
                 end_reason = 'DriverOffline',

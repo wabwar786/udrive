@@ -289,6 +289,27 @@ public sealed class AdminVerificationService(
                       + "open the vehicle and set it to Verified first");
             }
 
+            // A city that does not exist, or one that is switched off, would
+            // park the driver somewhere no campaign can reach — the same dead
+            // end as having no city at all, only harder to spot afterwards.
+            if (request.LaunchCityId is { } requestedCity)
+            {
+                await using var cityCheck = new NpgsqlCommand("""
+                    SELECT is_active FROM udrive.launch_cities WHERE id = @city;
+                    """, connection, transaction);
+                cityCheck.Parameters.AddWithValue("city", requestedCity);
+                var cityActive = await cityCheck.ExecuteScalarAsync(cancellationToken);
+                if (cityActive is null or DBNull)
+                {
+                    problems.Add("the launch city selected for them does not exist");
+                }
+                else if (!(bool)cityActive)
+                {
+                    problems.Add("the launch city selected for them is not active yet — "
+                                 + "switch the city on first");
+                }
+            }
+
             if (problems.Count > 0)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -332,14 +353,69 @@ public sealed class AdminVerificationService(
             roleCommand.Parameters.AddWithValue("userId", driverUserId.Value);
             await roleCommand.ExecuteNonQueryAsync(cancellationToken);
 
-            await using var documentsCommand = new NpgsqlCommand("""
+            await using (var documentsCommand = new NpgsqlCommand("""
                 UPDATE udrive.driver_documents
                 SET status = 'Verified', review_notes = @notes, updated_at = now()
                 WHERE driver_profile_id = @driverProfileId;
-                """, connection, transaction);
-            documentsCommand.Parameters.AddWithValue("notes", (object?)request.Notes?.Trim() ?? DBNull.Value);
-            documentsCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
-            await documentsCommand.ExecuteNonQueryAsync(cancellationToken);
+                """, connection, transaction))
+            {
+                documentsCommand.Parameters.AddWithValue("notes", (object?)request.Notes?.Trim() ?? DBNull.Value);
+                documentsCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+                await documentsCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // Stamp the approval date and put the driver in a launch city.
+            //
+            // Neither was ever written. approved_at stayed null, so the "New
+            // driver" segment — measured from approval — matched nobody; and
+            // launch_city_id stayed null, which is worse, because a campaign
+            // reaches a driver only through their city. No city meant no
+            // campaign was ever loaded for them, no progress was ever measured
+            // and no reward was ever paid. The welcome bonus, the daily
+            // missions, the peak-hour rewards, the founding numbers: all of it
+            // sat idle waiting for a column nothing filled in.
+            //
+            // COALESCE order is the policy. What the admin sent wins, because
+            // they are the one opening the city. Then whatever the driver
+            // already had, so re-approving never moves them. Then their own
+            // service area if it names a city that is live. Then, if the
+            // business is only running one city, that one — the common case
+            // today, and the one where asking would be theatre.
+            await using (var cityCommand = new NpgsqlCommand("""
+                UPDATE udrive.driver_profiles dp
+                SET approved_at = COALESCE(dp.approved_at, now()),
+                    launch_city_id = COALESCE(
+                        @city,
+                        dp.launch_city_id,
+                        (SELECT c.id
+                           FROM udrive.launch_cities c
+                          WHERE c.is_active
+                            AND EXISTS (
+                                SELECT 1 FROM unnest(dp.service_areas) AS area
+                                 WHERE lower(btrim(area)) = lower(c.name))
+                          ORDER BY c.created_at
+                          LIMIT 1),
+                        (SELECT c.id
+                           FROM udrive.launch_cities c
+                          WHERE c.is_active
+                            AND (SELECT count(*) FROM udrive.launch_cities x
+                                  WHERE x.is_active) = 1)),
+                    updated_at = now()
+                WHERE dp.id = @driverProfileId;
+                """, connection, transaction))
+            {
+                cityCommand.Parameters.AddWithValue(
+                    "city", (object?)request.LaunchCityId ?? DBNull.Value);
+                cityCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
+                await cityCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // And the founding number, if that city is still giving them out.
+            // Migration 057 says a driver approved inside the window gets the
+            // next number; until now that only happened if an admin remembered
+            // to grant it by hand, one driver at a time.
+            await AdminGrowthService.TryGrantFoundingAsync(
+                connection, transaction, driverProfileId, cancellationToken);
         }
         else
         {
