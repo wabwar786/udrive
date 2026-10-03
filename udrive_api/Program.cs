@@ -168,6 +168,23 @@ builder.Services.AddScoped<CustomerDocumentsService>(sp =>
 builder.Services.AddScoped<AdminGrowthService>(_ =>
     new AdminGrowthService(connectionString));
 
+// Territory partners (migration 065).
+//
+// Three services rather than one because three different audiences read the same
+// rows: the admin portal, the partner's own portal, and the customer app's
+// "Become a partner" screen. `PartnerMetricsService` is not registered — it is
+// the one place the monthly figures are worked out, and all three reach it
+// through static methods on the connection they already hold, so a partner and
+// an admin cannot end up looking at two different numbers for the same month.
+builder.Services.AddScoped<PartnerDirectoryService>(_ =>
+    new PartnerDirectoryService(connectionString));
+builder.Services.AddScoped<AdminPartnerService>(_ =>
+    new AdminPartnerService(connectionString));
+builder.Services.AddScoped<PartnerPortalService>(sp =>
+    new PartnerPortalService(
+        connectionString,
+        sp.GetRequiredService<LocalFileStorageService>()));
+
 builder.Services.AddScoped<Phase18TourService>(_ => new Phase18TourService(connectionString));
 builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(connectionString));
 builder.Services.AddScoped<HotelService>(_ => new HotelService(connectionString));

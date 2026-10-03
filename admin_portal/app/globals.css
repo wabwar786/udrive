@@ -154,3 +154,64 @@
 @media(max-width:900px){
   .collapsed .sidebar nav .navGroupHead{display:flex}
 }
+
+/* ─────────────────────────────── the partner portal (migration 065)
+   A frame of its own, not a variant of .adminShell. A partner must never see
+   the admin menu — not greyed out, not collapsed, not present — because the way
+   somebody discovers that /drivers exists is by seeing it in a sidebar and
+   trying it. Separate classes is the cheap way to make that impossible. */
+.partnerShell{min-height:100vh;background:#f4f7f6}
+.partnerBar{height:70px;position:sticky;top:0;z-index:30;background:#ffffffee;backdrop-filter:blur(18px);border-bottom:1px solid #dfe9e5;display:flex;align-items:center;gap:18px;padding:0 24px}
+.partnerBrand{display:flex;align-items:center;gap:11px}
+.partnerBrand>span{height:40px;width:40px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(145deg,#24c88c,#0d8f65);color:#fff;font-weight:900}
+.partnerBrand strong{display:block;font-size:14px}
+.partnerBrand small{display:block;color:#72827c;font-size:11px}
+.partnerNav{flex:1;display:flex;gap:6px}
+.partnerNav a{display:flex;align-items:center;gap:8px;padding:9px 13px;border-radius:11px;font-weight:700;font-size:12px;color:#4a5f58}
+.partnerNav a:hover{background:#eef6f2}
+.partnerNav a.active{background:#dff6ec;color:#07684a}
+.partnerNav svg{width:16px}
+.partnerContent{padding:22px 24px 48px;max-width:1180px;margin:auto}
+.partnerHead h1{margin:0;font-size:22px;letter-spacing:-.03em}
+.partnerHead p{margin:6px 0 18px;color:#6a7d76;font-size:12px}
+
+/* The contract, as the partner reads it. Scrollable rather than collapsed: the
+   whole text has to be in front of somebody who is about to say out loud that
+   they have read all of it. */
+.contractText{background:#f4f8f6;border-radius:14px;padding:4px 20px;max-height:420px;overflow:auto;font-size:13px}
+.contractDoc h2{font-size:17px;margin:18px 0 10px;letter-spacing:-.02em}
+.contractDoc h3{font-size:14px;margin:20px 0 8px;color:#22594a}
+.contractDoc p{margin:0 0 11px;line-height:1.75}
+.contractDoc ul{margin:0 0 12px;padding-left:20px}
+.contractDoc li{line-height:1.75;margin-bottom:5px}
+.contractDoc strong{color:#12231e}
+/* A button that cannot be pressed has to look like one. Scoped to the partner
+   portal rather than set globally: "Complete the signature" sitting there in
+   full colour while it does nothing is a worse lie than anywhere else in the
+   product, and changing every button in the admin portal is not this change. */
+.partnerShell .primaryButton:disabled,.partnerShell .secondaryButton:disabled,.partnerShell .dangerButton:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;transform:none}
+.signCheck{display:flex;gap:11px;align-items:flex-start;background:#f0f8f5;border:1px solid #d5ebe2;border-radius:14px;padding:14px}
+.signCheck input{margin-top:2px;width:18px;height:18px}
+.signCheck span{font-weight:650;line-height:1.6}
+
+/* The capture area. The video element is the live camera, not a file picker —
+   a gallery photograph proves nothing about who was sitting there. */
+.captureGrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(220px,.8fr);gap:16px;padding:0 22px 22px;align-items:start}
+.captureBox{position:relative;background:#071d17;border-radius:16px;overflow:hidden;aspect-ratio:4/3;display:grid;place-items:center}
+.captureVideo{width:100%;height:100%;object-fit:cover;display:block}
+.captureOverlay{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:8px;color:#8bb8a8}
+.captureOverlay svg{width:30px}
+.captureOverlay p{margin:0;font-size:12px}
+.capturePreview{width:100%;border-radius:14px;margin-top:12px}
+.captureSide{display:grid;gap:10px}
+.captureHint{color:#71827b;font-size:12px;line-height:1.6;margin:0}
+.recordingDot{position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:7px;background:#b5192fdd;color:#fff;padding:6px 11px;border-radius:999px;font-size:11px;font-weight:800}
+.recordingDot svg{width:11px;fill:currentColor;animation:bounce 1s infinite}
+.scriptBox{background:#eef4ff;border:1px solid #d4e2ff;border-radius:14px;padding:16px;line-height:1.8;font-weight:650;color:#24406e;margin:0 0 10px}
+
+@media(max-width:900px){
+  .partnerBar{height:auto;flex-wrap:wrap;padding:12px 16px;gap:12px}
+  .partnerNav{order:3;width:100%}
+  .partnerContent{padding:18px 16px 40px}
+  .captureGrid{grid-template-columns:1fr}
+}

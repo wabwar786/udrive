@@ -8,6 +8,7 @@ import '../core/widgets/ud_kit.dart';
 import '../data/models.dart';
 import 'common/common_pages.dart';
 import 'common/help_guide_screen.dart';
+import 'customer/partner_apply_screen.dart';
 import 'customer/customer_home_screen.dart';
 import 'customer/customer_pages.dart';
 // family_tour_planner_screen.dart and join_tour_screen.dart were deleted before
@@ -787,6 +788,26 @@ class _PremiumDrawer extends StatelessWidget {
                       label: entry.$3,
                       selected: current == entry.$1,
                       onTap: () => onSelected(entry.$1),
+                    ),
+
+                  // Not a tab, so it is not in `entries` — this one pushes a
+                  // screen. It sits in the customer menu because any customer
+                  // may ask: the people who can actually run UDrive in a town
+                  // are the people already using it there, and an admin typing
+                  // names into a panel never meets them.
+                  if (!driver)
+                    UdDrawerRow(
+                      icon: Icons.handshake_outlined,
+                      label: 'Become a partner',
+                      onTap: () {
+                        final navigator = Navigator.of(context);
+                        navigator.pop();
+                        navigator.push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PartnerApplyScreen(),
+                          ),
+                        );
+                      },
                     ),
                 ],
               ),

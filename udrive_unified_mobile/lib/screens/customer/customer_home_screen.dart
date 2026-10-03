@@ -21,6 +21,7 @@ import '../../core/booking/vehicle_booking_mode.dart';
 import '../../core/config/app_config.dart';
 import '../../core/places/recent_places_store.dart';
 import 'map_point_screen.dart';
+import '../../core/partner/partner_repository.dart';
 import '../../core/services/place_search_service.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/widgets/steering_wheel_icon.dart';
@@ -29,6 +30,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/brand.dart';
 import '../../core/widgets/route_fields.dart';
 import '../../core/widgets/home_service.dart';
+import 'city_status_card.dart';
 import '../../core/widgets/ud_controls.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../data/models.dart';
@@ -122,6 +124,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// Guards against reverse-geocoding on every tiny camera settle. Only a move
   /// of real distance is worth a request — each one is billed.
   LatLng? _lastResolvedCentre;
+
+  /// Whether UDrive runs where the customer is standing.
+  ///
+  /// Starts empty, which renders nothing: until the server answers, the home
+  /// screen is exactly the screen it has always been. A gate that guesses while
+  /// it waits would tell somebody in Muzaffarabad that UDrive is not available
+  /// there, for a second, every time they open the app.
+  CityStatus _cityStatus = CityStatus.empty;
 
   /// The pin writes the pickup only after the customer has actually dragged the
   /// map.
@@ -496,6 +506,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   // ----------------------------------------------------------------- location
 
+  /// Asks the server which city this point is in.
+  ///
+  /// Never throws — the repository swallows failures and returns the empty
+  /// status, so a city lookup that times out costs nothing but the card.
+  Future<void> _loadCityStatus() async {
+    final point = _pickupPoint;
+    final status = await PartnerRepository(
+      AppControllerScope.of(context).apiClient,
+    ).cityStatus(latitude: point?.latitude, longitude: point?.longitude);
+    if (mounted) setState(() => _cityStatus = status);
+  }
+
   Future<void> _loadLocation() async {
     if (_locating) return;
     if (mounted) {
@@ -598,6 +620,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _lastResolvedCentre = point;
 
       await _mapController.moveTo(point, zoom: AppConfig.pickupZoom);
+
+      // The point is known now, so the city can be. Not awaited into the
+      // location path: the map should move whether or not this answers.
+      unawaited(_loadCityStatus());
     } catch (_) {
       _setPickupFailure('Could not read your location. Try again, or set a pickup manually.');
     } finally {
@@ -1358,6 +1384,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Before anything else, if we are somewhere UDrive does not run.
+            // Above the booking form on purpose: "Where to?" is the wrong first
+            // question in a city with no drivers.
+            CityStatusCard(status: _cityStatus, onChanged: _loadCityStatus),
+
             // The hero slot. A ride already under way takes it: booking a
             // second one is refused by `_blockedByActiveRide` anyway, so the
             // ordinary "Where to?" form here would be a question with a

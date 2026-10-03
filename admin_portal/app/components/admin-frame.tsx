@@ -28,9 +28,11 @@ import {
   MapPinned,
   Megaphone,
   Gift,
+  Handshake,
   Menu,
   MessageSquareWarning,
   Mountain,
+  Network,
   Navigation,
   PackageCheck,
   Radar,
@@ -125,6 +127,8 @@ const groups = [
     items: [
       ['/campaigns', 'Campaigns', Gift],
       ['/launch-cities', 'Launch cities', TowerControl],
+      ['/partners', 'Territory partners', Handshake],
+      ['/territories', 'Territories & areas', Network],
     ],
   },
   {

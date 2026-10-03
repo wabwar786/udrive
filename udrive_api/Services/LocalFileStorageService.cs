@@ -446,4 +446,214 @@ public sealed class LocalFileStorageService
             _ => false
         };
     }
+
+    // ══════════════════════════════════ partner signature evidence
+    //
+    // A separate path from everything above, on purpose.
+    //
+    // `AllowedExtensions` is images and PDF, and the verification route that
+    // serves them is open to every verification officer. Signature evidence is
+    // neither of those things: it includes a video, and it is SuperAdmin-only.
+    // Widening `AllowedExtensions` to fit the video would have let a video
+    // through every other upload in the application, and reusing the
+    // verification URL would have let every verification officer watch it.
+    //
+    // So these three methods stand alone. They share the upload root and nothing
+    // else.
+
+    private static readonly HashSet<string> EvidenceImageExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".webp" };
+
+    private static readonly HashSet<string> EvidenceVideoExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".m4v", ".mov", ".3gp", ".webm" };
+
+    /// <summary>Where signature evidence lives, under the same upload root.</summary>
+    private const string EvidenceCategory = "partner-signature";
+
+    /// <param name="kind">"selfie" or "video".</param>
+    /// <remarks>
+    /// Twenty-five megabytes for the video, which is a minute of phone footage
+    /// with room to spare, and ten for the photograph — both under the 30 MB
+    /// request limit Kestrel applies by default, so a partner on a slow line gets
+    /// a clear message from this method rather than a connection dropped by the
+    /// server with nothing said.
+    /// </remarks>
+    public async Task<StoredFile> SaveSignatureEvidenceAsync(
+        IFormFile file,
+        Guid contractId,
+        string kind,
+        CancellationToken cancellationToken)
+    {
+        if (StorageFault is not null)
+        {
+            throw new InvalidOperationException(
+                "The server cannot store files right now. "
+                + $"Upload directory '{_uploadRoot}': {StorageFault}");
+        }
+
+        var isVideo = string.Equals(kind, "video", StringComparison.OrdinalIgnoreCase);
+        var allowed = isVideo ? EvidenceVideoExtensions : EvidenceImageExtensions;
+        var limit = isVideo ? 25 * 1024 * 1024 : 10 * 1024 * 1024;
+
+        if (file.Length <= 0)
+        {
+            throw new InvalidDataException(
+                isVideo
+                    ? "The video did not record. Please try again."
+                    : "The photograph did not save. Please take it again.");
+        }
+
+        if (file.Length > limit)
+        {
+            // Says the actual size, as the document upload above does. "Too
+            // large" leaves somebody guessing whether a retake will help.
+            throw new InvalidDataException(
+                $"That file is {file.Length / (1024.0 * 1024.0):0.#} MB. The limit is "
+                + $"{limit / (1024 * 1024)} MB — please "
+                + (isVideo ? "record a shorter video." : "send a smaller photograph."));
+        }
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!allowed.Contains(extension))
+        {
+            throw new InvalidDataException(
+                isVideo
+                    ? "The video has to be an MP4 or WebM recording."
+                    : "The photograph has to be a JPG, PNG or WebP image.");
+        }
+
+        await using var memory = new MemoryStream();
+        await file.CopyToAsync(memory, cancellationToken);
+        var bytes = memory.ToArray();
+
+        // The extension is whatever the client typed. The first bytes are not.
+        var signatureOk = isVideo
+            ? LooksLikeVideo(bytes, extension)
+            : MatchesSignature(bytes, extension);
+        if (!signatureOk)
+        {
+            throw new InvalidDataException(
+                "That file does not look like "
+                + (isVideo ? "a video recording." : "an image."));
+        }
+
+        var folder = Path.Combine(_uploadRoot, EvidenceCategory, contractId.ToString("N"));
+        Directory.CreateDirectory(folder);
+        var fileName = $"{(isVideo ? "video" : "selfie")}-{Guid.NewGuid():N}{extension}";
+        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes, cancellationToken);
+
+        // SuperAdmin-only route, and the only one that serves these files.
+        var url = $"/api/v1/admin/partners/evidence/{contractId:N}/{fileName}";
+        return new StoredFile(url, file.Length, EvidenceContentType(extension));
+    }
+
+    /// <summary>
+    /// Resolves one evidence file, by contract and exact filename only.
+    /// </summary>
+    /// <remarks>
+    /// No legacy fallback and no search across roots: the caller has been
+    /// authorised for one contract's evidence, and a filename-only search would
+    /// let them reach another contract's video by guessing a name.
+    /// </remarks>
+    public ResolvedStoredFile? ResolveSignatureEvidence(Guid contractId, string fileName)
+    {
+        var safeFile = Path.GetFileName(fileName);
+        if (safeFile != fileName || string.IsNullOrWhiteSpace(safeFile))
+        {
+            return null;
+        }
+
+        var extension = Path.GetExtension(safeFile);
+        if (!EvidenceImageExtensions.Contains(extension)
+            && !EvidenceVideoExtensions.Contains(extension))
+        {
+            return null;
+        }
+
+        foreach (var root in GetSearchRoots())
+        {
+            var candidate = Path.Combine(
+                root, EvidenceCategory, contractId.ToString("N"), safeFile);
+            if (File.Exists(candidate))
+            {
+                return new ResolvedStoredFile(
+                    candidate, EvidenceContentType(extension), safeFile);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Deletes one evidence file by the URL stored against the contract.</summary>
+    public bool DeleteSignatureEvidence(string? storedUrl)
+    {
+        if (string.IsNullOrWhiteSpace(storedUrl))
+        {
+            return false;
+        }
+
+        // The URL this class wrote: .../partners/evidence/{contract}/{file}
+        var parts = storedUrl.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2
+            || !Guid.TryParse(parts[^2], out var contractId))
+        {
+            return false;
+        }
+
+        try
+        {
+            var resolved = ResolveSignatureEvidence(contractId, parts[^1]);
+            if (resolved is null)
+            {
+                return false;
+            }
+
+            File.Delete(resolved.Path);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string EvidenceContentType(string extension) =>
+        extension.ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".mp4" or ".m4v" => "video/mp4",
+            ".mov" => "video/quicktime",
+            ".3gp" => "video/3gpp",
+            ".webm" => "video/webm",
+            _ => "application/octet-stream",
+        };
+
+    /// <summary>
+    /// The container signature, not the codec.
+    /// </summary>
+    /// <remarks>
+    /// MP4, MOV and 3GP all carry an `ftyp` box at offset 4; WebM is a Matroska
+    /// file and starts with the EBML magic number. That is as far as this goes —
+    /// it is here to stop something that is not a video at all, not to validate
+    /// the stream.
+    /// </remarks>
+    private static bool LooksLikeVideo(byte[] bytes, string extension)
+    {
+        if (bytes.Length < 12)
+        {
+            return false;
+        }
+
+        var isWebm = bytes[0] == 0x1A && bytes[1] == 0x45
+            && bytes[2] == 0xDF && bytes[3] == 0xA3;
+
+        var isIsoBmff = bytes[4] == 0x66 && bytes[5] == 0x74
+            && bytes[6] == 0x79 && bytes[7] == 0x70;
+
+        return extension.Equals(".webm", StringComparison.OrdinalIgnoreCase)
+            ? isWebm
+            : isIsoBmff;
+    }
 }
