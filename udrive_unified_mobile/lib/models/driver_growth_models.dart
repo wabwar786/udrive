@@ -645,3 +645,156 @@ DateTime? _date(Object? value) {
   if (value is! String || value.isEmpty) return null;
   return DateTime.tryParse(value)?.toLocal();
 }
+
+/// One driver this Driver brought to the platform, and how far they have got.
+///
+/// Four milestones rather than one status, because the referrer is paid at
+/// three of them and "pending" on its own tells them nothing about which.
+class ReferralEntry {
+  const ReferralEntry({
+    required this.id,
+    required this.name,
+    required this.status,
+    required this.verifiedAt,
+    required this.firstRideAt,
+    required this.rewardEarned,
+    required this.rewardPending,
+  });
+
+  final String id;
+  final String name;
+  final String status;
+  final DateTime? verifiedAt;
+  final DateTime? firstRideAt;
+  final double rewardEarned;
+  final double rewardPending;
+
+  bool get isVerified => verifiedAt != null;
+  bool get hasRidden => firstRideAt != null;
+  bool get isActive => status == 'Active';
+
+  factory ReferralEntry.fromJson(Map<String, dynamic> json) => ReferralEntry(
+        id: '${json['id'] ?? ''}',
+        name: '${json['driverName'] ?? json['name'] ?? 'Driver'}',
+        status: '${json['status'] ?? 'Pending'}',
+        verifiedAt: _time(json['verifiedAt']),
+        firstRideAt: _time(json['firstRideAt']),
+        rewardEarned: _amount(json['rewardEarned']),
+        rewardPending: _amount(json['rewardPending']),
+      );
+
+  static DateTime? _time(Object? value) =>
+      value == null ? null : DateTime.tryParse('$value');
+
+  static double _amount(Object? value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0;
+    return 0;
+  }
+}
+
+/// The Driver's own code, and everyone who has used it.
+class ReferralSummary {
+  const ReferralSummary({
+    required this.code,
+    required this.totalInvited,
+    required this.verified,
+    required this.active,
+    required this.earnedAmount,
+    required this.pendingAmount,
+    required this.entries,
+  });
+
+  final String code;
+  final int totalInvited;
+  final int verified;
+  final int active;
+  final double earnedAmount;
+  final double pendingAmount;
+  final List<ReferralEntry> entries;
+
+  factory ReferralSummary.fromJson(Map<String, dynamic> json) => ReferralSummary(
+        code: '${json['referralCode'] ?? ''}',
+        totalInvited: (json['totalInvited'] as num?)?.toInt() ?? 0,
+        verified: (json['verified'] as num?)?.toInt() ?? 0,
+        active: (json['active'] as num?)?.toInt() ?? 0,
+        earnedAmount: ReferralEntry._amount(json['earnedAmount']),
+        pendingAmount: ReferralEntry._amount(json['pendingAmount']),
+        entries: (json['entries'] is List)
+            ? (json['entries'] as List)
+                .whereType<Map>()
+                .map((item) => ReferralEntry.fromJson(
+                    Map<String, dynamic>.from(item)))
+                .toList(growable: false)
+            : const [],
+      );
+}
+
+/// This week's target, and what last week came to.
+class DriverWeekly {
+  const DriverWeekly({
+    required this.weekLabel,
+    required this.targetRides,
+    required this.ridesThisWeek,
+    required this.rewardAmount,
+    required this.rewardEarned,
+    required this.lastWeekEarnings,
+    required this.lastWeekRides,
+    required this.lastWeekOnlineSeconds,
+    required this.lastWeekReward,
+    required this.lastWeekRewardEarned,
+    required this.lastWeekBestDay,
+    required this.lastWeekBestDayEarnings,
+    required this.lastWeekBestDayRides,
+  });
+
+  final String weekLabel;
+
+  /// Null when the city has no live weekly campaign. The screen says so rather
+  /// than drawing an empty bar — a target of zero reads as a bug.
+  final int? targetRides;
+
+  final int ridesThisWeek;
+  final double rewardAmount;
+  final bool rewardEarned;
+
+  final double lastWeekEarnings;
+  final int lastWeekRides;
+  final int lastWeekOnlineSeconds;
+  final double lastWeekReward;
+  final bool lastWeekRewardEarned;
+  final String? lastWeekBestDay;
+  final double lastWeekBestDayEarnings;
+  final int lastWeekBestDayRides;
+
+  bool get hasTarget => (targetRides ?? 0) > 0;
+
+  int get ridesLeft =>
+      hasTarget ? (targetRides! - ridesThisWeek).clamp(0, targetRides!) : 0;
+
+  double get progress => hasTarget
+      ? (ridesThisWeek / targetRides!).clamp(0.0, 1.0).toDouble()
+      : 0;
+
+  factory DriverWeekly.fromJson(Map<String, dynamic> json) => DriverWeekly(
+        weekLabel: '${json['weekLabel'] ?? ''}',
+        targetRides: (json['targetRides'] as num?)?.toInt(),
+        ridesThisWeek: (json['ridesThisWeek'] as num?)?.toInt() ?? 0,
+        rewardAmount: ReferralEntry._amount(json['rewardAmount']),
+        rewardEarned: json['rewardEarned'] == true,
+        lastWeekEarnings: ReferralEntry._amount(json['lastWeekEarnings']),
+        lastWeekRides: (json['lastWeekRides'] as num?)?.toInt() ?? 0,
+        lastWeekOnlineSeconds:
+            (json['lastWeekOnlineSeconds'] as num?)?.toInt() ?? 0,
+        lastWeekReward: ReferralEntry._amount(json['lastWeekReward']),
+        lastWeekRewardEarned: json['lastWeekRewardEarned'] == true,
+        lastWeekBestDay: () {
+          final value = '${json['lastWeekBestDay'] ?? ''}'.trim();
+          return value.isEmpty ? null : value;
+        }(),
+        lastWeekBestDayEarnings:
+            ReferralEntry._amount(json['lastWeekBestDayEarnings']),
+        lastWeekBestDayRides:
+            (json['lastWeekBestDayRides'] as num?)?.toInt() ?? 0,
+      );
+}

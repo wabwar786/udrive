@@ -12,6 +12,7 @@ import '../../core/widgets/ud_kit.dart';
 import '../../models/communication_models.dart';
 import 'delete_account_screen.dart';
 import 'legal_screen.dart';
+import 'notification_settings_screen.dart';
 
 /// G-10 — Notifications.
 ///
@@ -283,6 +284,25 @@ class SettingsScreen extends StatelessWidget {
         // online" button for that.
         UdListGroup(
           children: [
+            // The switches have existed in the database since the first schema
+            // and there has never been a screen, so every one of them has sat
+            // at its default. This is the way in — for Drivers and Customers
+            // both, because the preferences are about the account rather than
+            // about which half of the app it uses.
+            UdListRow(
+              title: context.tr('notifications'),
+              subtitle: 'Choose what UDrive tells you, and how',
+              leading: const UdIconTile(
+                icon: Icons.notifications_active_rounded,
+              ),
+              showChevron: true,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const NotificationSettingsScreen(),
+                ),
+              ),
+            ),
             UdListRow(
               title: context.tr('privacy'),
               leading: const UdIconTile(icon: Icons.lock_rounded),

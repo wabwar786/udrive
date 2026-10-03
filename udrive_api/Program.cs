@@ -151,6 +151,8 @@ builder.Services.AddScoped<DriverPresenceService>(_ =>
     new DriverPresenceService(connectionString));
 builder.Services.AddScoped<DriverGrowthService>(_ =>
     new DriverGrowthService(connectionString));
+builder.Services.AddScoped<DriverReferralService>(_ =>
+    new DriverReferralService(connectionString));
 builder.Services.AddScoped<VehicleUsageService>(sp =>
     new VehicleUsageService(
         connectionString,

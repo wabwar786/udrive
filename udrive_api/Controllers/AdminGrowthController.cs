@@ -103,6 +103,14 @@ public sealed class AdminGrowthController(AdminGrowthService service) : Controll
 
     // ──────────────────────────────────────────────────────────────  updates
 
+    [HttpGet("updates")]
+    public async Task<IActionResult> ListUpdates(CancellationToken ct) =>
+        Result(await service.ListUpdatesAsync(ct));
+
+    [HttpDelete("updates/{id:guid}")]
+    public async Task<IActionResult> DeleteUpdate(Guid id, CancellationToken ct) =>
+        Result(await service.DeleteUpdateAsync(id, ct));
+
     [HttpPost("updates")]
     public async Task<IActionResult> CreateUpdate(
         DriverUpdateRequest request,

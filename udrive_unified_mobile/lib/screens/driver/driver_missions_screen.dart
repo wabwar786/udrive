@@ -7,7 +7,10 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/driver_growth_models.dart';
 import 'driver_mission_detail_screen.dart';
+import 'driver_referral_screen.dart';
 import 'driver_rewards_shared.dart';
+import 'driver_updates_screen.dart';
+import 'driver_weekly_screen.dart';
 import 'driver_welcome_bonus_screen.dart';
 
 /// Everything a driver can earn today that is not a fare.
@@ -48,6 +51,13 @@ class _DriverMissionsScreenState extends State<DriverMissionsScreen> {
       _bonus = bonus;
       _loading = false;
     });
+  }
+
+  /// Pushes a reward screen and reloads on the way back, because a milestone
+  /// can be credited while one of them is open.
+  Future<void> _open(Widget screen) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+    if (mounted) await _load();
   }
 
   static const _openStatuses = {'InProgress', 'Qualified', 'OnHold'};
@@ -96,6 +106,47 @@ class _DriverMissionsScreenState extends State<DriverMissionsScreen> {
                     ),
                     const SizedBox(height: 20),
                   ],
+
+                  // The three screens this release adds. They live here rather
+                  // than on the dashboard because this is the screen a Driver
+                  // opens when they are looking for something to earn, and
+                  // because the dashboard already carries one card per reward
+                  // and cannot take three more rows.
+                  UdListGroup(
+                    children: [
+                      UdListRow(
+                        title: 'This week',
+                        subtitle: "The weekly target, and what last week came to",
+                        leading: const UdIconTile(
+                          icon: Icons.calendar_today_rounded,
+                          tone: UdIconTone.lime,
+                        ),
+                        showChevron: true,
+                        onTap: () => _open(const DriverWeeklyScreen()),
+                      ),
+                      UdListRow(
+                        title: 'Invite a driver',
+                        subtitle: 'Your code, and what each invite has earned',
+                        leading: const UdIconTile(
+                          icon: Icons.group_add_rounded,
+                          tone: UdIconTone.navy,
+                        ),
+                        showChevron: true,
+                        onTap: () => _open(const DriverReferralScreen()),
+                      ),
+                      UdListRow(
+                        title: 'Updates',
+                        subtitle: 'Roads, busy days and policy for your city',
+                        leading: const UdIconTile(
+                          icon: Icons.campaign_rounded,
+                          tone: UdIconTone.soft,
+                        ),
+                        showChevron: true,
+                        onTap: () => _open(const DriverUpdatesScreen()),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
 
                   if (_missions.isNotEmpty) ...[
                     Row(

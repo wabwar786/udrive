@@ -778,6 +778,70 @@ public sealed class AdminGrowthService(string connectionString)
 
     // ───────────────────────────────────────────────────────────────  updates
 
+    /// <summary>Every driver update, published or not.</summary>
+    /// <remarks>
+    /// There has never been a way to read these back. An Admin could write one
+    /// — the save endpoint has existed since the growth system shipped — and
+    /// then had no way to see what was already out there, fix a typo, or take a
+    /// stale one down. Which is most of why none were ever written.
+    /// </remarks>
+    public async Task<ServiceResult<IReadOnlyList<AdminDriverUpdateDto>>> ListUpdatesAsync(
+        CancellationToken cancellationToken)
+    {
+        const string listSql = """
+            SELECT u.id, u.launch_city_id, COALESCE(c.name, 'All cities'),
+                   u.category, u.title, u.body, u.action_path,
+                   u.publish_at, u.expires_at, u.is_published,
+                   COALESCE(NULLIF(a.full_name, ''), 'Admin')
+            FROM udrive.driver_updates u
+            LEFT JOIN udrive.launch_cities c ON c.id = u.launch_city_id
+            LEFT JOIN udrive.users a ON a.id = u.created_by_user_id
+            ORDER BY u.publish_at DESC
+            LIMIT 200;
+            """;
+
+        var list = new List<AdminDriverUpdateDto>();
+        await using var connection = Open();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(listSql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            list.Add(new AdminDriverUpdateDto(
+                reader.GetGuid(0),
+                reader.IsDBNull(1) ? null : reader.GetGuid(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.GetFieldValue<DateTimeOffset>(7),
+                reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
+                reader.GetBoolean(9),
+                reader.GetString(10)));
+        }
+
+        return ServiceResult<IReadOnlyList<AdminDriverUpdateDto>>.Ok(list);
+    }
+
+    /// <summary>Takes one down.</summary>
+    public async Task<ServiceResult<bool>> DeleteUpdateAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = Open();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "DELETE FROM udrive.driver_updates WHERE id = @id;", connection);
+        command.Parameters.AddWithValue("id", id);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0
+            ? ServiceResult<bool>.Ok(true)
+            : ServiceResult<bool>.Fail(
+                StatusCodes.Status404NotFound,
+                "update_not_found",
+                "That update was not found.");
+    }
+
     public async Task<ServiceResult<Guid>> SaveUpdateAsync(
         Guid? id,
         DriverUpdateRequest request,

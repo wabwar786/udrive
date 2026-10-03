@@ -137,6 +137,7 @@ const groups = [
     label: 'SETUP',
     items: [
       ['/services', 'Services', ToggleLeft],
+      ['/driver-updates', 'Driver updates', Megaphone],
       ['/notifications', 'Notifications', Megaphone],
       ['/settings', 'Settings', Settings],
       ['/places', 'Map places', MapPinned],

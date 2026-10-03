@@ -276,6 +276,193 @@ public sealed class DriverGrowthService(string connectionString)
             entries));
     }
 
+    /// <summary>This week's target, and what last week came to.</summary>
+    /// <remarks>
+    /// The engine has understood <c>WeeklyReward</c> from the start — it has a
+    /// period key, an expiry that lands on Monday, and a place in every list of
+    /// campaign types. What it never had was anywhere to appear. A target a
+    /// Driver cannot see is not a target; it is a rule the platform applies to
+    /// them privately, and nobody changes their week for one of those.
+    ///
+    /// Last week is here as well, and deliberately short: what was earned, how
+    /// many rides, whether the reward landed, and the single day that paid
+    /// best. That last line is the only part a Driver can act on — it tells
+    /// them which day to keep clear next week.
+    /// </remarks>
+    public async Task<ServiceResult<DriverWeeklyDto>> WeeklyAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = Open();
+        await connection.OpenAsync(cancellationToken);
+
+        var driver = await DriverPresenceService.ResolveDriverAsync(
+            connection, userId, cancellationToken);
+        if (driver is null)
+        {
+            return ServiceResult<DriverWeeklyDto>.Fail(
+                StatusCodes.Status404NotFound,
+                "driver_not_found",
+                "This account does not have a driver profile.");
+        }
+
+        // Weeks run Monday to Sunday in Pakistan time, which is also what the
+        // engine's ISO period key buckets by. Measuring either of them in UTC
+        // would put Sunday night's rides in the wrong week for every driver.
+        const string sql = """
+            WITH bounds AS (
+                SELECT date_trunc('week', now() AT TIME ZONE 'Asia/Karachi') AS this_start,
+                       date_trunc('week', now() AT TIME ZONE 'Asia/Karachi')
+                           - interval '7 days' AS last_start
+            ),
+            rides AS (
+                SELECT b.updated_at AT TIME ZONE 'Asia/Karachi' AS at,
+                       COALESCE(e.net_amount, 0) AS net
+                FROM udrive.bookings b
+                LEFT JOIN udrive.driver_earnings e ON e.booking_id = b.id
+                WHERE b.driver_profile_id = @driver
+                  AND b.status = 'Completed'
+            )
+            SELECT
+                (SELECT count(*) FROM rides, bounds
+                  WHERE rides.at >= bounds.this_start),
+                (SELECT count(*) FROM rides, bounds
+                  WHERE rides.at >= bounds.last_start AND rides.at < bounds.this_start),
+                (SELECT COALESCE(sum(net), 0) FROM rides, bounds
+                  WHERE rides.at >= bounds.last_start AND rides.at < bounds.this_start),
+                (SELECT COALESCE(sum(s.credited_seconds), 0)::int
+                   FROM udrive.driver_online_sessions s, bounds
+                  WHERE s.driver_profile_id = @driver
+                    AND s.started_at AT TIME ZONE 'Asia/Karachi' >= bounds.last_start
+                    AND s.started_at AT TIME ZONE 'Asia/Karachi' < bounds.this_start),
+                (SELECT to_char(bounds.this_start + interval '7 days', 'YYYY-MM-DD')
+                   FROM bounds);
+            """;
+
+        int ridesThisWeek, ridesLastWeek, onlineLastWeek;
+        decimal earningsLastWeek;
+
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("driver", driver.Value.ProfileId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            await reader.ReadAsync(cancellationToken);
+            ridesThisWeek = (int)reader.GetInt64(0);
+            ridesLastWeek = (int)reader.GetInt64(1);
+            earningsLastWeek = reader.GetDecimal(2);
+            onlineLastWeek = reader.GetInt32(3);
+        }
+
+        // Best day of last week, as a day name and its two numbers.
+        const string bestSql = """
+            SELECT to_char(day, 'FMDay'), COALESCE(sum(net), 0), count(*)
+            FROM (
+                SELECT date_trunc('day', b.updated_at AT TIME ZONE 'Asia/Karachi') AS day,
+                       COALESCE(e.net_amount, 0) AS net
+                FROM udrive.bookings b
+                LEFT JOIN udrive.driver_earnings e ON e.booking_id = b.id
+                WHERE b.driver_profile_id = @driver
+                  AND b.status = 'Completed'
+                  AND b.updated_at AT TIME ZONE 'Asia/Karachi'
+                      >= date_trunc('week', now() AT TIME ZONE 'Asia/Karachi')
+                         - interval '7 days'
+                  AND b.updated_at AT TIME ZONE 'Asia/Karachi'
+                      < date_trunc('week', now() AT TIME ZONE 'Asia/Karachi')
+            ) AS d
+            GROUP BY day
+            ORDER BY 2 DESC
+            LIMIT 1;
+            """;
+
+        string? bestDay = null;
+        decimal bestDayEarnings = 0;
+        var bestDayRides = 0;
+
+        await using (var command = new NpgsqlCommand(bestSql, connection))
+        {
+            command.Parameters.AddWithValue("driver", driver.Value.ProfileId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                bestDay = reader.GetString(0).Trim();
+                bestDayEarnings = reader.GetDecimal(1);
+                bestDayRides = (int)reader.GetInt64(2);
+            }
+        }
+
+        // The live weekly campaign, if the city has one, and whether this week's
+        // and last week's awards landed.
+        const string campaignSql = """
+            SELECT c.id, c.reward_amount,
+                   COALESCE(MAX(m.condition_value), c.min_completed_rides, 0)::int,
+                   bool_or(g.status = 'Credited' AND g.period_key = @thisWeek),
+                   bool_or(g.status = 'Credited' AND g.period_key = @lastWeek),
+                   COALESCE(MAX(g.reward_amount) FILTER (
+                       WHERE g.period_key = @lastWeek AND g.status = 'Credited'), 0)
+            FROM udrive.growth_campaigns c
+            JOIN udrive.launch_cities city ON city.id = c.launch_city_id
+            LEFT JOIN udrive.growth_campaign_milestones m ON m.campaign_id = c.id
+            LEFT JOIN udrive.driver_campaign_progress g
+                   ON g.campaign_id = c.id AND g.driver_profile_id = @driver
+            WHERE c.campaign_type = 'WeeklyReward'
+              AND c.is_active AND city.is_active
+              AND city.id = @city
+              AND (c.starts_at IS NULL OR c.starts_at <= now())
+              AND (c.ends_at IS NULL OR c.ends_at >= now())
+            GROUP BY c.id, c.reward_amount, c.min_completed_rides
+            ORDER BY c.created_at
+            LIMIT 1;
+            """;
+
+        int? target = null;
+        decimal reward = 0, lastWeekReward = 0;
+        bool earned = false, lastWeekEarned = false;
+
+        if (driver.Value.CityId is not null)
+        {
+            var now = NowLocal();
+            await using var command = new NpgsqlCommand(campaignSql, connection);
+            command.Parameters.AddWithValue("driver", driver.Value.ProfileId);
+            command.Parameters.AddWithValue("city", driver.Value.CityId.Value);
+            command.Parameters.AddWithValue("thisWeek", IsoWeek(now));
+            command.Parameters.AddWithValue("lastWeek", IsoWeek(now.AddDays(-7)));
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                reward = reader.GetDecimal(1);
+                var configured = reader.GetInt32(2);
+                target = configured > 0 ? configured : null;
+                earned = !reader.IsDBNull(3) && reader.GetBoolean(3);
+                lastWeekEarned = !reader.IsDBNull(4) && reader.GetBoolean(4);
+                lastWeekReward = reader.GetDecimal(5);
+            }
+        }
+
+        var localNow = NowLocal();
+        return ServiceResult<DriverWeeklyDto>.Ok(new DriverWeeklyDto(
+            IsoWeek(localNow),
+            target,
+            ridesThisWeek,
+            reward,
+            earned,
+            LocalDayStart(localNow).AddDays(
+                localNow.DayOfWeek == DayOfWeek.Sunday ? 1 : 8 - (int)localNow.DayOfWeek),
+            earningsLastWeek,
+            ridesLastWeek,
+            onlineLastWeek,
+            lastWeekReward,
+            lastWeekEarned,
+            bestDay,
+            bestDayEarnings,
+            bestDayRides));
+    }
+
+    /// <summary>The same ISO week string the engine uses as a period key.</summary>
+    private static string IsoWeek(DateTimeOffset moment) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{ISOWeek.GetYear(moment.DateTime)}-W{ISOWeek.GetWeekOfYear(moment.DateTime):00}");
+
     public async Task<ServiceResult<IReadOnlyList<ExpectedDemandDto>>> DemandAsync(
         Guid userId,
         CancellationToken cancellationToken)
@@ -825,6 +1012,15 @@ public sealed class DriverGrowthService(string connectionString)
                 connection, driver, metrics, campaigns, cancellationToken);
         }
 
+        // Referral is reconciled rather than measured: the pass asks the
+        // database which of this driver's invitees have since been verified,
+        // taken a ride or become active, stamps those dates, and writes the
+        // reward rows. It runs here so the money arrives the next time the
+        // driver so much as opens the app, with no hook in admin verification
+        // or trip completion to be forgotten or routed around.
+        await DriverReferralService.SyncAsync(
+            connection, driver.ProfileId, cancellationToken);
+
         await CreditQualifiedAsync(
             connection, driver.ProfileId, metrics, cancellationToken);
     }
@@ -841,6 +1037,15 @@ public sealed class DriverGrowthService(string connectionString)
 
         foreach (var campaign in campaigns)
         {
+            // Referral is measured by DriverReferralService, not here.
+            //
+            // Its rewards are written one per referred driver, keyed by that
+            // driver's id. Letting the generic loop run as well would add a
+            // second row keyed '-' measuring "referrals >= 1", which pays a
+            // referrer once in their life on top of the per-person rewards —
+            // the same money twice, for the first invitee only.
+            if (campaign.CampaignType == "Referral") continue;
+
             var period = PeriodKey(campaign);
             var expires = PeriodExpiry(campaign);
             var campaignMilestones = milestones
@@ -1545,7 +1750,14 @@ public sealed class DriverGrowthService(string connectionString)
     /// </para>
     /// </remarks>
     internal static int LifetimeCap(int configured, string campaignType) =>
+        // Referral joined this family when referral rewards started carrying
+        // the referred driver's id as their period key. A referral campaign has
+        // a period in exactly the sense the remarks above describe — one award
+        // per person brought in — so a configured 1 is that guarantee, not a
+        // lifetime cap. Left out of this list, a referrer was paid for their
+        // first invitee and for nobody else, ever.
         campaignType is "DailyMission" or "PeakHourReward" or "WeeklyReward"
+            or "Referral"
             ? configured > 1 ? configured : 0
             : configured;
 

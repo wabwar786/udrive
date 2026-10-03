@@ -62,7 +62,9 @@ public sealed class DriverPresenceController(DriverPresenceService service)
 [ApiController]
 [Authorize]
 [Route("api/v1/driver/growth")]
-public sealed class DriverGrowthController(DriverGrowthService service)
+public sealed class DriverGrowthController(
+    DriverGrowthService service,
+    DriverReferralService referrals)
     : ControllerBase
 {
     /// <summary>Everything the home screen needs, in one request.</summary>
@@ -89,6 +91,25 @@ public sealed class DriverGrowthController(DriverGrowthService service)
     [HttpGet("updates")]
     public async Task<IActionResult> Updates(CancellationToken ct) =>
         Result(await service.UpdatesAsync(User.GetRequiredUserId(), ct));
+
+    /// <summary>This week's target, and what last week came to.</summary>
+    [HttpGet("weekly")]
+    public async Task<IActionResult> Weekly(CancellationToken ct) =>
+        Result(await service.WeeklyAsync(User.GetRequiredUserId(), ct));
+
+    /// <summary>Records who brought this Driver to the platform.</summary>
+    /// <remarks>
+    /// On <c>DriverGrowthController</c> rather than a controller of its own
+    /// because a Driver reaches it from the referral screen, which is a growth
+    /// screen. It is the first route in the codebase that writes
+    /// <c>driver_referrals</c> at all.
+    /// </remarks>
+    [HttpPost("referrals/apply")]
+    public async Task<IActionResult> ApplyReferral(
+        ApplyReferralCodeRequest request,
+        CancellationToken ct) =>
+        Result(await referrals.ApplyCodeAsync(
+            User.GetRequiredUserId(), request.Code, ct));
 
     /// <summary>Today, this week, this month — and every live way to earn.</summary>
     [HttpGet("earnings")]

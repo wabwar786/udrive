@@ -75,6 +75,44 @@ class DriverGrowthRepository {
     }
   }
 
+  /// The Driver's own code, and everyone who has used it.
+  Future<ReferralSummary?> referrals() async {
+    try {
+      final response = await api.getJson('/api/v1/driver/growth/referrals');
+      final data = response['data'];
+      if (data is! Map) return null;
+      return ReferralSummary.fromJson(Map<String, dynamic>.from(data));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Records who brought this Driver to the platform.
+  ///
+  /// Unlike the reads above this one rethrows: a code that was refused has a
+  /// reason, and swallowing it would leave the Driver typing the same wrong
+  /// code again.
+  Future<String> applyReferralCode(String code) async {
+    final response = await api.postJson(
+      '/api/v1/driver/growth/referrals/apply',
+      {'code': code},
+    );
+    final message = '${response['message'] ?? ''}'.trim();
+    return message.isEmpty ? 'Added.' : message;
+  }
+
+  /// This week's target, and what last week came to.
+  Future<DriverWeekly?> weekly() async {
+    try {
+      final response = await api.getJson('/api/v1/driver/growth/weekly');
+      final data = response['data'];
+      if (data is! Map) return null;
+      return DriverWeekly.fromJson(Map<String, dynamic>.from(data));
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<DriverUpdate>> updates() async {
     try {
       final response = await api.getJson('/api/v1/driver/growth/updates');

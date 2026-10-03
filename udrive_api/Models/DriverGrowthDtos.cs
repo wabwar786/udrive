@@ -437,3 +437,48 @@ public sealed record WayToEarnDto(
 
     /// <summary>Where the Driver goes to act on it, if anywhere.</summary>
     string? ActionPath);
+
+/// <summary>What happened when a Driver entered somebody's referral code.</summary>
+public sealed record ReferralApplyResultDto(string ReferrerName, string Code);
+
+public sealed record ApplyReferralCodeRequest(string? Code);
+
+/// <summary>This week's target, and what last week came to.</summary>
+/// <param name="TargetRides">
+/// Null when the city has no live weekly campaign. The screen says so rather
+/// than drawing an empty bar — a target of zero reads as a bug.
+/// </param>
+/// <param name="LastWeekBestDay">
+/// The day that earned most. The one line of a weekly summary a Driver acts on:
+/// it tells them which day to clear their diary for next week.
+/// </param>
+public sealed record DriverWeeklyDto(
+    string WeekLabel,
+    int? TargetRides,
+    int RidesThisWeek,
+    decimal RewardAmount,
+    bool RewardEarned,
+    DateTimeOffset? WeekEndsAt,
+
+    decimal LastWeekEarnings,
+    int LastWeekRides,
+    int LastWeekOnlineSeconds,
+    decimal LastWeekReward,
+    bool LastWeekRewardEarned,
+    string? LastWeekBestDay,
+    decimal LastWeekBestDayEarnings,
+    int LastWeekBestDayRides);
+
+/// <summary>A driver update as the admin portal lists it.</summary>
+public sealed record AdminDriverUpdateDto(
+    Guid Id,
+    Guid? CityId,
+    string CityName,
+    string Category,
+    string Title,
+    string Body,
+    string? ActionPath,
+    DateTimeOffset PublishAt,
+    DateTimeOffset? ExpiresAt,
+    bool IsPublished,
+    string CreatedBy);
