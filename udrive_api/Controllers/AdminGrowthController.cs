@@ -80,6 +80,10 @@ public sealed class AdminGrowthController(AdminGrowthService service) : Controll
 
     // ──────────────────────────────────────────────────────── demand windows
 
+    [HttpGet("demand-windows")]
+    public async Task<IActionResult> DemandWindows(CancellationToken ct) =>
+        Result(await service.DemandWindowsAsync(ct));
+
     [HttpPost("demand-windows")]
     public async Task<IActionResult> CreateDemandWindow(
         ExpectedDemandRequest request,

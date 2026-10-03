@@ -27,6 +27,7 @@ import {
   LogOut,
   MapPinned,
   Megaphone,
+  Gift,
   Menu,
   MessageSquareWarning,
   Mountain,
@@ -35,10 +36,12 @@ import {
   Radar,
   Route,
   Search,
+  ShieldQuestion,
   Settings,
   ShieldAlert,
   Stethoscope,
   ToggleLeft,
+  TowerControl,
   TrendingUp,
   TriangleAlert,
   Users,
@@ -118,9 +121,17 @@ const groups = [
     ],
   },
   {
+    label: 'GROWTH',
+    items: [
+      ['/campaigns', 'Campaigns', Gift],
+      ['/launch-cities', 'Launch cities', TowerControl],
+    ],
+  },
+  {
     label: 'TRUST & SAFETY',
     items: [
       ['/safety', 'Safety incidents', ShieldAlert],
+      ['/fraud-flags', 'Fraud review', ShieldQuestion],
       ['/disputes', 'Complaints & disputes', MessageSquareWarning],
       ['/support', 'Support tickets', Headphones],
     ],

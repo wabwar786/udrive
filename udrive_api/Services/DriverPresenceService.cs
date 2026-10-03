@@ -52,6 +52,31 @@ public sealed class DriverPresenceService(string connectionString)
     /// <summary>After this long with no heartbeat the session is closed.</summary>
     private const int StaleSessionSeconds = HeartbeatSeconds * 5;
 
+    /// <summary>Above this, between two heartbeats, the position is not real.</summary>
+    /// <remarks>
+    /// 120 km/h. The fastest road in Azad Kashmir does not support it for a
+    /// minute at a stretch, and a driver who appears to hold it between two
+    /// beats is either reporting a faked position or running the app on a
+    /// device that is not in the car.
+    /// <para>
+    /// Deliberately not a ban. The flag goes in the review queue and an admin
+    /// decides, which is the same rule the whole growth system follows.
+    /// </para>
+    /// </remarks>
+    private const double MaxPlausibleKmh = 120;
+
+    /// <summary>
+    /// Below this gap, GPS jitter alone produces absurd speeds, so nothing is
+    /// judged.
+    /// </summary>
+    private const int MinSpeedCheckSeconds = 20;
+
+    /// <summary>
+    /// Below this distance the two points are the same place as far as a phone
+    /// can tell, whatever the arithmetic says.
+    /// </summary>
+    private const double MinSpeedCheckMetres = 400;
+
     private NpgsqlConnection Open() => new(connectionString);
 
     // ───────────────────────────────────────────────────────────────── online
@@ -180,7 +205,21 @@ public sealed class DriverPresenceService(string connectionString)
         // the real elapsed time, and never silently falls behind it either. A
         // beat inside the same second credits nothing and leaves the anchor
         // alone, so hammering the endpoint gains precisely nothing.
+        // `prev` carries the position and the beat gap as they were *before*
+        // this statement overwrites them. RETURNING sees the new row, so
+        // without the CTE there is no way to know where the driver was a minute
+        // ago — and that is the whole of the speed check below. One statement
+        // rather than a SELECT and then an UPDATE, so no second beat can slip
+        // between the two and be measured against a position already replaced.
         const string sql = """
+            WITH prev AS (
+                SELECT id,
+                       last_latitude  AS plat,
+                       last_longitude AS plng,
+                       EXTRACT(EPOCH FROM (now() - last_heartbeat_at))::float8 AS psecs
+                FROM udrive.driver_online_sessions
+                WHERE driver_profile_id = @driver AND ended_at IS NULL
+            )
             UPDATE udrive.driver_online_sessions s
             SET credited_seconds = s.credited_seconds +
                     CASE WHEN EXTRACT(EPOCH FROM (now() - s.last_heartbeat_at)) <= @maxgap
@@ -202,11 +241,16 @@ public sealed class DriverPresenceService(string connectionString)
                 last_longitude = COALESCE(@lng, s.last_longitude),
                 mock_location_seen = s.mock_location_seen OR @mock,
                 updated_at = now()
-            WHERE s.driver_profile_id = @driver AND s.ended_at IS NULL
-            RETURNING s.id;
+            FROM prev
+            WHERE s.id = prev.id
+            RETURNING s.id, prev.plat, prev.plng, prev.psecs;
             """;
 
         Guid? sessionId = null;
+        double? previousLatitude = null;
+        double? previousLongitude = null;
+        double previousGapSeconds = 0;
+
         await using (var command = new NpgsqlCommand(sql, connection, transaction))
         {
             command.Parameters.AddWithValue("driver", driver.Value.ProfileId);
@@ -216,8 +260,15 @@ public sealed class DriverPresenceService(string connectionString)
             command.Parameters.AddWithValue("lng",
                 (object?)request.Longitude ?? DBNull.Value);
             command.Parameters.AddWithValue("mock", request.MockLocation);
-            var result = await command.ExecuteScalarAsync(cancellationToken);
-            if (result is Guid id) sessionId = id;
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                sessionId = reader.GetGuid(0);
+                previousLatitude = reader.IsDBNull(1) ? null : reader.GetDouble(1);
+                previousLongitude = reader.IsDBNull(2) ? null : reader.GetDouble(2);
+                previousGapSeconds = reader.IsDBNull(3) ? 0 : reader.GetDouble(3);
+            }
         }
 
         // A beat with no open session means the app thinks it is online and the
@@ -237,6 +288,17 @@ public sealed class DriverPresenceService(string connectionString)
                 "MockLocation",
                 "The device reported a mocked position during an online session.",
                 cancellationToken);
+        }
+
+        var jump = ImplausibleJump(
+            previousLatitude, previousLongitude, previousGapSeconds,
+            request.Latitude, request.Longitude);
+
+        if (jump is not null)
+        {
+            await RaiseFlagAsync(
+                connection, transaction, driver.Value.ProfileId, sessionId.Value,
+                "ImpossibleSpeed", jump, cancellationToken, severity: "Severe");
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -385,6 +447,82 @@ public sealed class DriverPresenceService(string connectionString)
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// The sentence for the review queue when two beats cannot both be true,
+    /// or null when they can.
+    /// </summary>
+    /// <remarks>
+    /// Four things have to hold before this says anything, and each of them
+    /// exists to keep an honest driver out of the queue:
+    /// <list type="bullet">
+    /// <item>Both positions are known. A beat with no fix proves nothing.</item>
+    /// <item>The gap is at least <see cref="MinSpeedCheckSeconds"/>. Over two
+    /// seconds, ordinary GPS drift in a valley reads as 300 km/h.</item>
+    /// <item>The gap is within <see cref="MaxCreditedGapSeconds"/>. A longer one
+    /// means the app was closed or the signal was gone, and a driver who drove
+    /// to Islamabad with the app shut is not a fraud.</item>
+    /// <item>The distance is at least <see cref="MinSpeedCheckMetres"/>. Below
+    /// that the two points are the same place as far as a phone can tell.</item>
+    /// </list>
+    /// What it does not do is decide anything. It writes a sentence an admin
+    /// reads.
+    /// </remarks>
+    internal static string? ImplausibleJump(
+        double? fromLatitude,
+        double? fromLongitude,
+        double gapSeconds,
+        double? toLatitude,
+        double? toLongitude)
+    {
+        if (fromLatitude is null || fromLongitude is null
+            || toLatitude is null || toLongitude is null)
+        {
+            return null;
+        }
+
+        if (gapSeconds < MinSpeedCheckSeconds || gapSeconds > MaxCreditedGapSeconds)
+        {
+            return null;
+        }
+
+        var metres = DistanceMetres(
+            fromLatitude.Value, fromLongitude.Value,
+            toLatitude.Value, toLongitude.Value);
+
+        if (metres < MinSpeedCheckMetres) return null;
+
+        var kmh = metres / gapSeconds * 3.6;
+        if (kmh <= MaxPlausibleKmh) return null;
+
+        return $"{Math.Round(kmh)} km/h between two heartbeats "
+             + $"{Math.Round(gapSeconds)}s apart "
+             + $"({Math.Round(metres / 1000, 1)} km).";
+    }
+
+    /// <summary>Great-circle metres between two points.</summary>
+    /// <remarks>
+    /// Haversine rather than PostGIS: this runs on every heartbeat of every
+    /// online driver, and a round trip to the database to measure a straight
+    /// line is a round trip for nothing. Over the distances involved here the
+    /// difference between the two is centimetres.
+    /// </remarks>
+    private static double DistanceMetres(
+        double fromLatitude, double fromLongitude,
+        double toLatitude, double toLongitude)
+    {
+        const double earthRadiusMetres = 6_371_000;
+        static double Radians(double degrees) => degrees * Math.PI / 180;
+
+        var dLat = Radians(toLatitude - fromLatitude);
+        var dLng = Radians(toLongitude - fromLongitude);
+
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+              + Math.Cos(Radians(fromLatitude)) * Math.Cos(Radians(toLatitude))
+                * Math.Sin(dLng / 2) * Math.Sin(dLng / 2);
+
+        return 2 * earthRadiusMetres * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+    }
+
     internal static async Task RaiseFlagAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction? transaction,
@@ -392,14 +530,17 @@ public sealed class DriverPresenceService(string connectionString)
         Guid? sessionId,
         string flagType,
         string detail,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string severity = "Review")
     {
         // One flag per kind per local day — the unique index does the work, and
         // DO NOTHING keeps a repeating signal from filling the review queue.
         const string sql = """
             INSERT INTO udrive.driver_fraud_flags
-                (id, driver_profile_id, session_id, flag_type, detail, created_at)
-            VALUES (gen_random_uuid(), @driver, @session, @type, @detail, now())
+                (id, driver_profile_id, session_id, flag_type, detail,
+                 severity, created_at)
+            VALUES (gen_random_uuid(), @driver, @session, @type, @detail,
+                    @severity, now())
             ON CONFLICT DO NOTHING;
             """;
 
@@ -410,6 +551,7 @@ public sealed class DriverPresenceService(string connectionString)
         command.Parameters.AddWithValue("session", (object?)sessionId ?? DBNull.Value);
         command.Parameters.AddWithValue("type", flagType);
         command.Parameters.AddWithValue("detail", detail);
+        command.Parameters.AddWithValue("severity", severity);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 

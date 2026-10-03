@@ -955,6 +955,99 @@ export const guideGroups: GuideGroup[] = [
 
   // ------------------------------------------------------ trust & safety
   {
+    label: 'GROWTH',
+    blurb: {
+      ur: 'Driver ko kaam par lane wali har cheez — bonus, mission, referral, shehar.',
+      en: 'Everything that brings a driver to work — bonuses, missions, referrals, cities.',
+    },
+    sections: [
+      {
+        path: '/campaigns',
+        title: 'Campaigns',
+        purpose: {
+          ur: 'Har driver reward yahin se banta hai. Is page se pehle koi campaign banayi hi nahi ja sakti thi.',
+          en: 'Every driver reward is created here. Before this page no campaign could be created at all.',
+        },
+        steps: [
+          {
+            ur: 'New campaign dabayein. Type aur Condition dono dropdown hain — list se bahar koi lafz engine nahi parhta.',
+            en: 'Press New campaign. Type and Condition are both dropdowns — the engine reads nothing outside those lists.',
+          },
+          {
+            ur: 'Shehar chunein. Khaali chhorne ka matlab har shehar.',
+            en: 'Choose a city. Leaving it blank means every city.',
+          },
+          {
+            ur: 'Agar reward kai qiston mein dena hai to Steps shamil karein — phir oopar wala single reward istemal nahi hota.',
+            en: 'Add Steps if the reward is paid in parts — the single reward above is then ignored.',
+          },
+          {
+            ur: 'Budget daalna behtar hai. Budget khatam hone par reward "OnHold" ho jata hai, ghayab nahi hota.',
+            en: 'Set a budget. When it runs out a reward goes OnHold rather than disappearing.',
+          },
+          {
+            ur: 'Save ke baad Start dabayein. Save karne se campaign chalti nahi — Running alag cheez hai.',
+            en: 'Press Start after saving. Saving does not run a campaign — Running is a separate thing.',
+          },
+          {
+            ur: 'Paid dabayein to dikh jata hai kis driver ko kya mila aur kab.',
+            en: 'Press Paid to see which driver received what, and when.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Reward ki raqam badalne se woh rows nahi badalti jo pehle pay ho chuki hain. Purani qeemat purane awards par hi rahegi.',
+            en: 'Changing a reward amount does not change rows already paid. The old amount stands on old awards.',
+          },
+          {
+            ur: 'Steps ki tarteeb badalna mehfooz hai, kyunke page har step ki id wapis bhejta hai — magar step delete karna wapis nahi hota.',
+            en: 'Reordering steps is safe, because the page sends each step id back — but deleting a step cannot be undone.',
+          },
+        ],
+      },
+      {
+        path: '/launch-cities',
+        title: 'Launch cities',
+        purpose: {
+          ur: 'Shehar, uska marhala, founding numbers, aur kis zone mein kab rush expected hai.',
+          en: 'A city, its stage, its founding numbers, and which zone is expected to be busy when.',
+        },
+        steps: [
+          {
+            ur: 'Shehar ki row par click kar ke marhala badlein. Sirf chaar jaiz hain: BuildingNetwork, CampaignSoon, CampaignActive, PublicLaunch.',
+            en: 'Click a city row to change its stage. Only four are valid: BuildingNetwork, CampaignSoon, CampaignActive, PublicLaunch.',
+          },
+          {
+            ur: 'Founding window khula rakhein to hi number diye ja sakte hain, aur limit se zyada nahi.',
+            en: 'Numbers can only be given while the founding window is open, and never past the limit.',
+          },
+          {
+            ur: 'Founding numbers panel se driver chun kar agla number dein. Number shehar ke hisaab se chalta hai.',
+            en: 'Use the Founding numbers panel to give a driver the next number. Numbers run per city.',
+          },
+          {
+            ur: 'Expected demand mein window banayein — driver ke home screen par "High demand — Domel" yahin se aata hai.',
+            en: 'Add a window under Expected demand — "High demand — Domel" on the driver home screen comes from here.',
+          },
+          {
+            ur: 'Koi din na chunne ka matlab har din.',
+            en: 'Choosing no day means every day.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Shehar band karne se us shehar ke driver naapne band ho jate hain. Chalti campaign pehle dekh lein.',
+            en: 'Switching a city off stops measuring its drivers. Check running campaigns first.',
+          },
+          {
+            ur: 'Founding number wapis nahi liya jata. Dene se pehle driver confirm kar lein.',
+            en: 'A founding number is not taken back. Confirm the driver before giving one.',
+          },
+        ],
+      },
+    ],
+  },
+  {
     label: 'TRUST & SAFETY',
     blurb: {
       ur: 'Jab kuch ghalat ho jaye.',
@@ -986,6 +1079,46 @@ export const guideGroups: GuideGroup[] = [
           {
             ur: 'Yeh qatar poore portal mein sab se pehle aati hai.',
             en: 'This queue comes before everything else in the portal.',
+          },
+        ],
+      },
+      {
+        path: '/fraud-flags',
+        title: 'Fraud review',
+        purpose: {
+          ur: 'System ke uthaye hue shak — jhooti location, ya do heartbeat ke beech na-mumkin raftar.',
+          en: 'Signals the system raised — a faked position, or an impossible speed between two heartbeats.',
+        },
+        steps: [
+          {
+            ur: 'Driver ka shehar aur rides dekh kar faisla karein. Aik hi flag 400 rides wale aur 2 rides wale par alag matlab rakhta hai.',
+            en: 'Decide using the city and ride count. The same flag means different things against 400 rides and against 2.',
+          },
+          {
+            ur: 'Confirm dabane se us driver ke woh rewards ruk jate hain jo abhi tak pay nahi huay.',
+            en: 'Confirm holds the rewards this driver has earned but not yet been paid.',
+          },
+          {
+            ur: 'Clear dabane se woh rewards wapis chal parte hain — bashart ke koi doosra confirmed flag khula na ho.',
+            en: 'Clear releases them again — unless another confirmed flag is still open.',
+          },
+          {
+            ur: 'Wajah hamesha likhein. Agli dafa yehi parha jayega.',
+            en: 'Always write the reason. It is what gets read next time.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Jo paisa wallet mein ja chuka hai woh wapis nahi liya jata, Confirm ke baad bhi.',
+            en: 'Money already in a wallet is never taken back, even after Confirm.',
+          },
+          {
+            ur: 'Driver block nahi hota. Woh gaari chalata rehta hai aur kiraya kamata rehta hai — sirf reward ruka hai.',
+            en: 'The driver is not blocked. They keep driving and keep earning fares — only the reward is held.',
+          },
+          {
+            ur: 'MockLocation Android khud batata hai, hamara andaza nahi. ImpossibleSpeed 120 km/h se oopar par uthta hai.',
+            en: 'MockLocation is reported by Android itself, not inferred by us. ImpossibleSpeed is raised above 120 km/h.',
           },
         ],
       },
@@ -1128,6 +1261,34 @@ export const guideGroups: GuideGroup[] = [
           {
             ur: 'Yeh switch sirf customer app ka darwaza band karta hai. Driver app par koi asar nahi, chalti hui bookings bhi nahi rukteen, aur server khud aisi service ki booking rad nahi karta — is liye isay technical rok na samjhein.',
             en: 'This switch closes the door in the customer app only. It does not touch the driver app, it does not end trips already running, and the server itself does not refuse bookings for a closed service — so do not treat it as a technical block.',
+          },
+        ],
+      },
+      {
+        path: '/driver-updates',
+        title: 'Driver updates',
+        purpose: {
+          ur: 'Jo baat drivers ko batani hai — raasta khula, rush, policy.',
+          en: 'What drivers need told — a road open, a rush, a policy change.',
+        },
+        steps: [
+          {
+            ur: 'Shehar aur category chun kar title aur tafseel likhein, phir Publish.',
+            en: 'Choose the city and category, write the title and body, then Publish.',
+          },
+          {
+            ur: 'Shehar khaali chhorne ka matlab har shehar — commission ki tabdeeli aik dafa likhne se poore mulk tak jati hai.',
+            en: 'Leaving the city blank means every city — a commission change is written once and reaches everywhere.',
+          },
+          {
+            ur: 'Likhi hui update row par click kar ke badli ja sakti hai, ya delete.',
+            en: 'A published update can be edited by clicking its row, or deleted.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Sirf woh baat likhein jis par driver aaj kuch kar sake.',
+            en: 'Write only what a driver can act on today.',
           },
         ],
       },

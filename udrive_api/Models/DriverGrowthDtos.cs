@@ -316,6 +316,28 @@ public sealed record GrowthMilestoneRequest(
     decimal ConditionValue,
     Guid? Id = null);
 
+/// <summary>A demand window as the admin portal lists it.</summary>
+/// <remarks>
+/// Deliberately not <see cref="ExpectedDemandDto"/>, which is the driver-facing
+/// shape — that one carries a map pin and whether the level was measured or
+/// guessed, and carries no id, because a driver has nothing to edit. This one
+/// is the row an admin edits and deletes.
+/// </remarks>
+public sealed record AdminDemandWindowDto(
+    Guid Id,
+    Guid? CityId,
+    string? CityName,
+    Guid ZoneId,
+    string ZoneName,
+    string Level,
+    string? Reason,
+    IReadOnlyList<int> DaysOfWeek,
+    string StartTime,
+    string EndTime,
+    DateOnly? ValidFrom,
+    DateOnly? ValidTo,
+    bool IsActive);
+
 public sealed record ExpectedDemandRequest(
     Guid? CityId,
     Guid ZoneId,
@@ -339,6 +361,17 @@ public sealed record DriverUpdateRequest(
     DateTimeOffset? ExpiresAt,
     bool IsPublished);
 
+/// <param name="CityName">
+/// The driver's launch city, and <paramref name="CompletedRides"/> their
+/// lifetime completed rides. Both are here so the queue can be worked from the
+/// list: the same flag means something different against a driver with four
+/// hundred rides and against one with two.
+/// </param>
+/// <param name="HeldAmount">
+/// What is currently on hold for this driver, so an admin can see the cost of
+/// the decision they are about to make — and see it fall to zero when they
+/// clear the flag.
+/// </param>
 public sealed record FraudFlagDto(
     Guid Id,
     Guid DriverProfileId,
@@ -349,7 +382,10 @@ public sealed record FraudFlagDto(
     string Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset? ReviewedAt,
-    string? ReviewNotes);
+    string? ReviewNotes,
+    string? CityName,
+    int CompletedRides,
+    decimal HeldAmount);
 
 public sealed record FraudReviewRequest(string Status, string? Notes);
 

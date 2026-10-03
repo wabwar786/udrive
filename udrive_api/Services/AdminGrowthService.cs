@@ -678,6 +678,60 @@ public sealed class AdminGrowthService(string connectionString)
 
     // ───────────────────────────────────────────────────────── demand windows
 
+    /// <summary>Every demand window, so the ones already written can be seen.</summary>
+    /// <remarks>
+    /// There was a save, an update and a delete, and no way to read. An admin
+    /// could write a window and then never find it again — and could not delete
+    /// one either, because deleting needs the id that only a list can give. In
+    /// practice that meant the whole feature was write-only and therefore
+    /// unused, which is the same shape of gap the driver updates had.
+    /// </remarks>
+    public async Task<ServiceResult<IReadOnlyList<AdminDemandWindowDto>>> DemandWindowsAsync(
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT w.id, w.launch_city_id, c.name, w.zone_id, z.name,
+                   w.level, w.reason, w.days_of_week,
+                   to_char(w.start_time, 'HH24:MI'),
+                   to_char(w.end_time, 'HH24:MI'),
+                   w.valid_from, w.valid_to, w.is_active
+            FROM udrive.expected_demand_windows w
+            JOIN udrive.pricing_zones z ON z.id = w.zone_id
+            LEFT JOIN udrive.launch_cities c ON c.id = w.launch_city_id
+            ORDER BY c.name NULLS FIRST, z.name, w.start_time;
+            """;
+
+        await using var connection = Open();
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = new List<AdminDemandWindowDto>();
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var days = reader.IsDBNull(7)
+                ? Array.Empty<int>()
+                : reader.GetFieldValue<short[]>(7).Select(d => (int)d).ToArray();
+
+            rows.Add(new AdminDemandWindowDto(
+                reader.GetGuid(0),
+                reader.IsDBNull(1) ? null : reader.GetGuid(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.GetGuid(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                days,
+                reader.GetString(8),
+                reader.GetString(9),
+                reader.IsDBNull(10) ? null : reader.GetFieldValue<DateOnly>(10),
+                reader.IsDBNull(11) ? null : reader.GetFieldValue<DateOnly>(11),
+                reader.GetBoolean(12)));
+        }
+
+        return ServiceResult<IReadOnlyList<AdminDemandWindowDto>>.Ok(rows);
+    }
+
     public async Task<ServiceResult<Guid>> SaveDemandWindowAsync(
         Guid? id,
         ExpectedDemandRequest request,
@@ -914,13 +968,28 @@ public sealed class AdminGrowthService(string connectionString)
         string? status,
         CancellationToken cancellationToken)
     {
+        // The city and the ride count are here because without them the queue
+        // cannot be worked. "Naveed Akhtar — MockLocation" is not a decision;
+        // "Naveed Akhtar, Muzaffarabad, 41 completed rides — MockLocation" is.
+        // A flag against a driver with four hundred rides reads very differently
+        // from the same flag against one with two.
         const string sql = """
             SELECT f.id, f.driver_profile_id, COALESCE(u.full_name, 'Driver'),
                    f.flag_type, f.detail, f.severity, f.status, f.created_at,
-                   f.reviewed_at, f.review_notes
+                   f.reviewed_at, f.review_notes,
+                   c.name,
+                   (SELECT count(*) FROM udrive.bookings b
+                     WHERE b.driver_profile_id = f.driver_profile_id
+                       AND b.status = 'Completed'),
+                   COALESCE((
+                       SELECT sum(g.reward_amount)
+                         FROM udrive.driver_campaign_progress g
+                        WHERE g.driver_profile_id = f.driver_profile_id
+                          AND g.status = 'OnHold'), 0)
             FROM udrive.driver_fraud_flags f
             JOIN udrive.driver_profiles p ON p.id = f.driver_profile_id
             LEFT JOIN udrive.users u ON u.id = p.user_id
+            LEFT JOIN udrive.launch_cities c ON c.id = p.launch_city_id
             WHERE (@status::text IS NULL OR f.status = @status)
             ORDER BY f.created_at DESC
             LIMIT 300;
@@ -945,7 +1014,10 @@ public sealed class AdminGrowthService(string connectionString)
                 reader.GetString(6),
                 reader.GetFieldValue<DateTimeOffset>(7),
                 reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
-                reader.IsDBNull(9) ? null : reader.GetString(9)));
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                (int)reader.GetInt64(11),
+                reader.GetDecimal(12)));
         }
 
         return ServiceResult<IReadOnlyList<FraudFlagDto>>.Ok(rows);
@@ -970,22 +1042,118 @@ public sealed class AdminGrowthService(string connectionString)
             UPDATE udrive.driver_fraud_flags
             SET status = @status, review_notes = @notes,
                 reviewed_by_user_id = @actor, reviewed_at = now()
-            WHERE id = @id;
+            WHERE id = @id
+            RETURNING driver_profile_id;
             """;
 
         await using var connection = Open();
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("status", request.Status);
-        command.Parameters.AddWithValue("notes", (object?)request.Notes ?? DBNull.Value);
-        command.Parameters.AddWithValue("actor", (object?)actorUserId ?? DBNull.Value);
-        var rows = await command.ExecuteNonQueryAsync(cancellationToken);
 
-        return rows == 0
-            ? ServiceResult<bool>.Fail(
-                StatusCodes.Status404NotFound, "not_found", "No such flag.")
-            : ServiceResult<bool>.Ok(true);
+        Guid driverProfileId;
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("id", id);
+            command.Parameters.AddWithValue("status", request.Status);
+            command.Parameters.AddWithValue("notes",
+                (object?)request.Notes ?? DBNull.Value);
+            command.Parameters.AddWithValue("actor",
+                (object?)actorUserId ?? DBNull.Value);
+
+            var result = await command.ExecuteScalarAsync(cancellationToken);
+            if (result is not Guid found)
+            {
+                return ServiceResult<bool>.Fail(
+                    StatusCodes.Status404NotFound, "not_found", "No such flag.");
+            }
+
+            driverProfileId = found;
+        }
+
+        await ApplyFlagDecisionAsync(
+            connection, driverProfileId, request.Status, cancellationToken);
+
+        return ServiceResult<bool>.Ok(true);
+    }
+
+    /// <summary>The text an admin's confirmation puts on a held reward.</summary>
+    private const string FraudHoldReason =
+        "Under review — a fraud flag on this account was confirmed.";
+
+    /// <summary>
+    /// Makes a review decision mean something.
+    /// </summary>
+    /// <remarks>
+    /// Until this existed, confirming a flag wrote a word in a column and
+    /// changed nothing else: the driver's qualified rewards were credited to
+    /// their wallet that same evening, exactly as if the flag had been cleared.
+    /// The review queue was a notebook.
+    ///
+    /// <para>
+    /// Three deliberate limits, and each of them is the reason this is safe to
+    /// run from a button:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><b>Only money not yet paid.</b> The filter is
+    /// <c>status = 'Qualified'</c>, so anything already <c>Credited</c> is left
+    /// alone. Taking money back out of a wallet is the single most expensive
+    /// argument a launch can have, and it is not worth winning.</item>
+    /// <item><b>Nothing is blocked.</b> The driver keeps driving and keeps
+    /// earning fares. One reward is held, not an account.</item>
+    /// <item><b>It is reversible by the same button.</b> Clearing the flag puts
+    /// the rows back to <c>Qualified</c> and the next evaluation credits them,
+    /// so an admin who was wrong costs the driver a day, not a bonus.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// Only rows held for <i>this</i> reason are released, so a reward on hold
+    /// because the campaign's budget ran out stays on hold — clearing a flag
+    /// must not quietly pay something the budget never covered.
+    /// </para>
+    ///
+    /// <para>
+    /// A driver with a second confirmed flag still open is not released either.
+    /// Clearing one of two suspicions is not clearing the account.
+    /// </para>
+    /// </remarks>
+    private static async Task ApplyFlagDecisionAsync(
+        NpgsqlConnection connection,
+        Guid driverProfileId,
+        string status,
+        CancellationToken cancellationToken)
+    {
+        if (status == "Confirmed")
+        {
+            const string holdSql = """
+                UPDATE udrive.driver_campaign_progress
+                SET status = 'OnHold', reason = @reason, updated_at = now()
+                WHERE driver_profile_id = @driver AND status = 'Qualified';
+                """;
+
+            await using var hold = new NpgsqlCommand(holdSql, connection);
+            hold.Parameters.AddWithValue("driver", driverProfileId);
+            hold.Parameters.AddWithValue("reason", FraudHoldReason);
+            await hold.ExecuteNonQueryAsync(cancellationToken);
+            return;
+        }
+
+        if (status != "Cleared") return;
+
+        const string releaseSql = """
+            UPDATE udrive.driver_campaign_progress
+            SET status = 'Qualified', reason = NULL, updated_at = now()
+            WHERE driver_profile_id = @driver
+              AND status = 'OnHold'
+              AND reason = @reason
+              AND NOT EXISTS (
+                  SELECT 1 FROM udrive.driver_fraud_flags f
+                   WHERE f.driver_profile_id = @driver
+                     AND f.status = 'Confirmed');
+            """;
+
+        await using var release = new NpgsqlCommand(releaseSql, connection);
+        release.Parameters.AddWithValue("driver", driverProfileId);
+        release.Parameters.AddWithValue("reason", FraudHoldReason);
+        await release.ExecuteNonQueryAsync(cancellationToken);
     }
 
     // ────────────────────────────────────────────────────────── founding grant
