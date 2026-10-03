@@ -209,3 +209,116 @@ public sealed record VehicleReviewDetailDto(
     VehicleReviewListItemDto Vehicle,
     IReadOnlyList<VehicleDocumentDto> Documents);
 
+
+// ─────────────────────────────────────────────── what a vehicle is used for
+
+/// <summary>One approved vehicle and the three things it may be used for.</summary>
+/// <remarks>
+/// This is not registration. The vehicle already exists and an Admin has
+/// already verified it; there is one way onto the platform and it has not
+/// changed. What this carries is the step after that — city rides, tours,
+/// rent — together with everything a Driver needs on screen to understand why
+/// a switch will or will not move.
+/// </remarks>
+/// <param name="LivePackageCount">
+/// Active packages departing in the future. Tour needs at least one, and the
+/// count is sent so the screen can say "no package yet" instead of leaving the
+/// Driver to find out at save time.
+/// </param>
+public sealed record VehicleUsageDto(
+    Guid VehicleId,
+    string Name,
+    string RegistrationNumber,
+    string Status,
+
+    /// <summary>Takes ordinary city ride requests.</summary>
+    /// <remarks>
+    /// On for every vehicle that exists today, because that is what a verified
+    /// vehicle has always done. Turning rent on turns this off; the two cannot
+    /// both be true, and the database says so as well.
+    /// </remarks>
+    bool AvailableForCity,
+
+    /// <summary>Carries tour packages.</summary>
+    /// <remarks>
+    /// Needs readiness *and* a package, and it stays in the city pool: a tour
+    /// vehicle is still a vehicle on the road between departures.
+    /// </remarks>
+    bool AvailableForTour,
+
+    /// <summary>Goes out on rent, by the day.</summary>
+    /// <remarks>
+    /// Needs a rate. Costs the vehicle its city requests, because a car on rent
+    /// is with somebody else and cannot pick anyone up.
+    /// </remarks>
+    bool AvailableForRent,
+
+    int TourReadinessScore,
+    int TourReadinessRequired,
+
+    /// <summary>The cheapest missing equipment that would reach the bar.</summary>
+    IReadOnlyList<TourReadinessItemDto> TourReadinessMissing,
+
+    int LivePackageCount,
+
+    decimal? RentWithDriverDaily,
+    decimal? RentSelfDriveDaily,
+    decimal? RentSecurityDeposit,
+    int RentMinimumDays,
+    int? RentKmPerDay,
+    bool RentFuelIncluded,
+    string? RentPickupPoint)
+{
+    /// <summary>Whether tour could be switched on right now.</summary>
+    public bool CanCarryTour =>
+        TourReadinessScore >= TourReadinessRequired && LivePackageCount > 0;
+
+    /// <summary>Whether rent could be switched on right now.</summary>
+    public bool CanBeRented =>
+        RentWithDriverDaily is > 0 || RentSelfDriveDaily is > 0;
+}
+
+/// <summary>A switch the Driver moved. Null means "leave this one alone".</summary>
+/// <remarks>
+/// Every field is nullable so the app can send one switch rather than the
+/// whole set. Sending all three would make two screens race: the Driver turns
+/// rent on from one, and a stale copy of the other turns it back off.
+/// </remarks>
+public sealed record VehicleUsageRequest(
+    bool? AvailableForCity = null,
+    bool? AvailableForTour = null,
+    bool? AvailableForRent = null);
+
+/// <summary>What renting this vehicle costs and requires.</summary>
+/// <param name="WithDriverDaily">
+/// Per day with the owner's own driver. No customer documents are needed on
+/// this path — nobody hands the car over.
+/// </param>
+/// <param name="SelfDriveDaily">
+/// Per day with the customer driving. At least one of the two rates must be
+/// set; leaving one empty means that option is not offered.
+/// </param>
+public sealed record VehicleRentSettingsRequest(
+    decimal? WithDriverDaily,
+    decimal? SelfDriveDaily,
+    decimal? SecurityDeposit = null,
+    int MinimumDays = 1,
+    int? KmPerDay = null,
+    bool FuelIncluded = false,
+    [StringLength(200)] string? PickupPoint = null);
+
+/// <summary>The equipment a vehicle carries, which is what the score counts.</summary>
+/// <remarks>
+/// The whole set is sent every time rather than one item at a time: the score is
+/// computed from all eight together, and a partial update would have to guess at
+/// the rest.
+/// </remarks>
+public sealed record VehicleEquipmentRequest(
+    bool FourByFour = false,
+    bool FirstAidKit = false,
+    bool SpareTyre = false,
+    bool FireExtinguisher = false,
+    bool SnowChains = false,
+    bool Heating = false,
+    bool AirConditioning = false,
+    bool ChildSeat = false);

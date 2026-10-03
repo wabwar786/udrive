@@ -68,6 +68,19 @@ public sealed class TourRatesService(string connectionString)
     /// approves what the vehicle is; the price is not part of that, and locking
     /// it would mean a Driver had to ask an Admin before changing what they
     /// charge.
+    ///
+    /// It no longer writes <c>available_for_tour</c>. That switch now belongs to
+    /// the usage screen, which will not turn it on without the readiness score
+    /// and a live package behind it. This route had no such checks, so a Driver
+    /// saving a price here could switch tour on regardless — two doors to the
+    /// same flag, one of them unguarded, and the rule was whichever screen the
+    /// Driver happened to use last. The value is still returned, so the price
+    /// screen can show the state without being able to change it.
+    /// <para>
+    /// <see cref="UpsertTourRateRequest.AvailableForTour"/> is therefore
+    /// ignored. The field stays on the request so an older app build keeps
+    /// working rather than failing to deserialise.
+    /// </para>
     /// </remarks>
     public async Task<ServiceResult<TourRateDto>> UpdateAsync(
         Guid userId,
@@ -81,7 +94,6 @@ public sealed class TourRatesService(string connectionString)
                 tour_per_km_rate = @perKm,
                 tour_minimum_fare = @minimum,
                 tour_notes = @notes,
-                available_for_tour = @available,
                 updated_at = now()
             FROM udrive.driver_profiles dp
             WHERE v.id = @vehicleId
@@ -99,7 +111,8 @@ public sealed class TourRatesService(string connectionString)
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("vehicleId", vehicleId);
         command.Parameters.AddWithValue("userId", userId);
-        command.Parameters.AddWithValue("available", request.AvailableForTour);
+        // request.AvailableForTour is deliberately not bound: see the remarks
+        // above. The usage screen owns that switch now.
         AddDecimal(command, "perDay", request.PerDayRate);
         AddDecimal(command, "perKm", request.PerKmRate);
         AddDecimal(command, "minimum", request.MinimumFare);

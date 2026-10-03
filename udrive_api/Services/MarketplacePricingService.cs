@@ -227,15 +227,6 @@ public sealed class MarketplacePricingService(string connectionString)
             WHERE v.status = 'Verified'
               AND dp.verification_status = 'Approved'
               AND u.status = 'Approved'
-              -- The self-test vehicle is never a car a customer can book.
-              --
-              -- Unconditional here, unlike the ride-request guard: no step in
-              -- the run asserts that this vehicle appears in the public list,
-              -- so there is nothing to keep visible.
-              --
-              -- COALESCE because NULL NOT LIKE 'x' is NULL, not true, and a
-              -- bare NOT LIKE would drop every driver with no email address.
-              AND COALESCE(u.email, '') NOT LIKE 'selftest.%@udrive.local'
               AND (
                     (lower(@service) = 'privatevehicle' AND lower(v.category) <> 'rickshaw')
                     OR (lower(@service) = 'tours' AND v.passenger_capacity >= 4)
@@ -248,6 +239,11 @@ public sealed class MarketplacePricingService(string connectionString)
                                       array_to_string(dp.service_areas, ' '))
                        ILIKE '%' || @query || '%'
                   )
+              -- Out on rent means out of this list. Every service here ends in
+              -- the Driver turning up with the car, which is the one thing a
+              -- rented-out car cannot do. Rental gets its own listing, where the
+              -- vehicle is the product rather than the ride.
+              AND COALESCE(v.available_for_rent, false) = false
             -- The second sort key used to be
             --   COALESCE(u.email LIKE 'demo.%@udrive.local', false) DESC
             -- which put seeded demo accounts AHEAD of every real driver in the
@@ -390,11 +386,21 @@ public sealed class MarketplacePricingService(string connectionString)
               AND dp.verification_status = 'Approved'
               AND u.status = 'Approved'
               AND v.status = 'Verified'
-              -- The self-test Driver posts a presence ping during a run, which
-              -- would otherwise put a car on a real customer's map.
-              AND COALESCE(u.email, '') NOT LIKE 'selftest.%@udrive.local'
               AND (@category = '' OR lower(v.category) = lower(@category))
               AND (@tourOnly = false OR COALESCE(v.available_for_tour, false) = true)
+              -- A vehicle set to go out on rent is not on the map.
+              --
+              -- It is somewhere in a customer's driveway for the next three
+              -- days. Showing it as a car waiting nearby is a promise the
+              -- platform cannot keep, and the Driver would have to refuse every
+              -- request it brought.
+              --
+              -- Tour vehicles stay on the map. A published package does not take
+              -- a car off the road between departures, and the destination on
+              -- that package has nothing to do with where this customer wants
+              -- to go.
+              AND COALESCE(v.available_for_rent, false) = false
+              AND COALESCE(v.available_for_city, true) = true
             ORDER BY distance_km
             LIMIT @limit;
             """;

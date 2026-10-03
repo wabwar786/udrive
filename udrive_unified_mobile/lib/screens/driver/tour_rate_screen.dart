@@ -73,7 +73,7 @@ class _TourRateScreenState extends State<TourRateScreen> {
     final perKm = TextEditingController(text: _text(vehicle['perKmRate']));
     final minimum = TextEditingController(text: _text(vehicle['minimumFare']));
     final notes = TextEditingController(text: '${vehicle['notes'] ?? ''}');
-    var available = vehicle['availableForTour'] == true;
+    final available = vehicle['availableForTour'] == true;
 
     final saved = await showUdSheet<bool>(
       context: context,
@@ -90,22 +90,28 @@ class _TourRateScreenState extends State<TourRateScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Was a `SwitchListTile`. Its subtitle is the important half —
-              // it says what turning this off actually does — so it keeps it.
+              // Reads the tour switch, no longer sets it.
+              //
+              // This sheet used to own it, with no checks of any kind behind
+              // it: a Driver saving a price here could put a vehicle on tours
+              // whatever its readiness score and with no package published,
+              // which the vehicle's usage screen refuses. Two doors to one
+              // flag, one of them unguarded, and the rule became whichever
+              // screen the Driver used last. The server ignores it from this
+              // route now, so showing a switch here would be a lie.
               UdListGroup(
                 children: [
                   UdListRow(
                     title: _t('Available for tours', 'ٹور کے لیے دستیاب'),
                     subtitle: _t(
-                      'Turn this off and this vehicle never appears in a tour '
-                      'search.',
-                      'یہ بند کریں تو یہ گاڑی ٹور تلاش میں نظر نہیں آئے گی۔',
+                      'Set on the vehicle, under "What this vehicle is for".',
+                      'گاڑی پر مقرر ہوتا ہے، "یہ گاڑی کس کام کے لیے ہے" میں۔',
                     ),
-                    trailing: UdSwitch(
-                      value: available,
-                      onChanged: (value) =>
-                          setSheetState(() => available = value),
-                      semanticLabel: 'Available for tours',
+                    trailing: UdBadge(
+                      label: available
+                          ? _t('ON', 'چالو')
+                          : _t('OFF', 'بند'),
+                      tone: available ? UdTone.ok : UdTone.gray,
                     ),
                   ),
                 ],

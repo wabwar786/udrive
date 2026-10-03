@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/vehicles/vehicle_usage_repository.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/auth_models.dart';
 import 'driver_documents_screen.dart';
+import 'live_vehicle_usage_screen.dart';
 import 'onboarding/live_vehicle_registration_screen.dart';
 import 'tour_rate_screen.dart';
 
@@ -20,7 +22,38 @@ class LiveVehicleListScreen extends StatefulWidget {
 }
 
 class _LiveVehicleListScreenState extends State<LiveVehicleListScreen> {
-  Future<void> _refresh() => AppControllerScope.of(context).refreshAccount();
+  /// What each vehicle is used for, keyed by vehicle id.
+  ///
+  /// Loaded alongside the vehicles rather than folded into them: a Driver
+  /// opening this list wants to see at a glance which car is on what, and
+  /// before this there was nowhere in the app that said.
+  Map<String, VehicleUsage> _usage = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadUsage());
+  }
+
+  Future<void> _loadUsage() async {
+    try {
+      final list =
+          await VehicleUsageRepository(AppControllerScope.of(context).apiClient)
+              .list();
+      if (!mounted) return;
+      setState(() {
+        _usage = {for (final vehicle in list) vehicle.vehicleId: vehicle};
+      });
+    } catch (_) {
+      // The pills are a convenience. Losing them must not cost the Driver the
+      // list of their own vehicles.
+    }
+  }
+
+  Future<void> _refresh() async {
+    await AppControllerScope.of(context).refreshAccount();
+    await _loadUsage();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -96,12 +129,26 @@ class _LiveVehicleListScreenState extends State<LiveVehicleListScreen> {
             ...vehicles.map(
               (vehicle) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: _VehicleCard(vehicle: vehicle),
+                child: _VehicleCard(
+                  vehicle: vehicle,
+                  usage: _usage[vehicle.id],
+                  onOpenUsage: () => _openUsage(vehicle.id),
+                ),
               ),
             ),
         ],
       ),
     );
+  }
+
+  Future<void> _openUsage(String vehicleId) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LiveVehicleUsageScreen(vehicleId: vehicleId),
+      ),
+    );
+    if (mounted) await _loadUsage();
   }
 
   String _t(String en, String ur) =>
@@ -111,8 +158,18 @@ class _LiveVehicleListScreenState extends State<LiveVehicleListScreen> {
 /// One vehicle: its photograph if there is one, what it is, and its four
 /// facts.
 class _VehicleCard extends StatelessWidget {
-  const _VehicleCard({required this.vehicle});
+  const _VehicleCard({
+    required this.vehicle,
+    required this.usage,
+    required this.onOpenUsage,
+  });
+
   final LiveVehicle vehicle;
+
+  /// Null until the usage request lands, or if it failed.
+  final VehicleUsage? usage;
+
+  final VoidCallback onOpenUsage;
 
   static UdTone _tone(String status) => switch (status) {
         'Verified' || 'Approved' => UdTone.ok,
@@ -202,6 +259,33 @@ class _VehicleCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 _TourReadiness(vehicle: vehicle),
+
+                // What the vehicle is actually for. Three pills, because one
+                // glance should answer "which car is on what" — a question the
+                // app could not answer anywhere before this.
+                if (usage != null && usage!.isVerified) ...[
+                  const SizedBox(height: 12),
+                  UdListGroup(
+                    children: [
+                      UdListRow(
+                        title: 'What this vehicle is for',
+                        subtitle: _usageSentence(usage!),
+                        onTap: onOpenUsage,
+                        showChevron: true,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _UsagePill(label: 'CITY', on: usage!.availableForCity),
+                      _UsagePill(label: 'TOUR', on: usage!.availableForTour),
+                      _UsagePill(label: 'RENT', on: usage!.availableForRent),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -209,6 +293,45 @@ class _VehicleCard extends StatelessWidget {
       ),
     );
   }
+
+  static String _usageSentence(VehicleUsage usage) {
+    final on = <String>[
+      if (usage.availableForCity) 'city rides',
+      if (usage.availableForTour) 'tours',
+      if (usage.availableForRent) 'rent',
+    ];
+    if (on.isEmpty) return 'Nothing switched on — no work will come';
+    if (on.length == 1) return 'On ${on.first}';
+    return 'On ${on.sublist(0, on.length - 1).join(', ')} and ${on.last}';
+  }
+}
+
+/// One of the three usages, on or off.
+class _UsagePill extends StatelessWidget {
+  const _UsagePill({required this.label, required this.on});
+
+  final String label;
+  final bool on;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: on ? AppColors.brandWash : AppColors.surfaceAlt,
+          borderRadius: AppRadii.all(999),
+          border: Border.all(
+            color: on ? AppTint.successBorder : AppColors.border,
+          ),
+        ),
+        child: Text(
+          label,
+          style: AppType.caption.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.6,
+            color: on ? AppColors.brandInk : AppText.caption,
+          ),
+        ),
+      );
 }
 
 /// Whether this vehicle may carry a tour, and what is missing if not.

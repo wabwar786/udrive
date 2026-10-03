@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Npgsql;
 using NpgsqlTypes;
 using UDrive.Api.Common;
+using UDrive.Api.Domain;
 using UDrive.Api.Domain.Enums;
 using UDrive.Api.Models;
 using UDrive.Api.Security;
@@ -371,17 +372,60 @@ public sealed class BookingService(
               AND rr.pickup_at > now() - interval '15 minutes'
               AND (rr.expires_at IS NULL OR rr.expires_at > now())
               AND rr.customer_user_id <> @driverUserId
+              -- A trip already running stops the feed, with two ways out of it.
+              --
+              -- The point of the ways out is the Driver's next job. A Driver
+              -- carrying a party to Neelum knows well before arriving that they
+              -- will be free; that is when the return load should reach them.
+              -- Waiting for the trip to be marked complete means the next
+              -- customer has booked somebody else and the Driver drives back
+              -- empty.
+              --
+              --   by distance — inside `fleet.near_destination_metres` of the
+              --     drop-off, which is minutes away. The request may be for
+              --     right now. This rule existed already, at a hard-coded
+              --     kilometre; it is a setting now because a kilometre of
+              --     switchbacks is not a kilometre.
+              --
+              --   by the clock — the trip ends inside
+              --     `fleet.lead_window_minutes`, *and* the request's own pickup
+              --     is after this trip ends plus the turnaround. This is the
+              --     rule that opens the feed at all for a tour or package
+              --     booking: those have no ride request behind them, so
+              --     `active_rr` is null and the distance rule can never fire —
+              --     a Driver on a three-day package saw nothing for three days
+              --     and came home to an empty diary.
+              --
+              -- Neither permits overlapping work. The distance rule needs the
+              -- Driver to be physically arriving; the clock rule refuses any
+              -- request that starts before this trip ends plus the turnaround.
               AND NOT EXISTS (
                   SELECT 1
                   FROM udrive.bookings active_b
                   JOIN udrive.trip_operations active_o ON active_o.booking_id = active_b.id
                   LEFT JOIN udrive.ride_requests active_rr ON active_rr.id = active_b.ride_request_id
+                  CROSS JOIN LATERAL (
+                      SELECT COALESCE(
+                                 active_o.return_at,
+                                 active_o.pickup_at
+                                   + (@assumedTripMinutes * interval '1 minute')
+                             ) AS ends_at
+                  ) AS active_end
                   WHERE active_b.driver_profile_id = @driverProfileId
                     AND active_o.trip_status IN ('DriverAccepted','DriverEnRoute','DriverArrived','TripStarted','Emergency')
-                    AND (
-                      active_o.trip_status <> 'TripStarted'
-                      OR active_rr.destination_location IS NULL
-                      OR NOT ST_DWithin(dpl.location, active_rr.destination_location, 1000)
+                    AND NOT (
+                      -- about to arrive
+                      (active_o.trip_status = 'TripStarted'
+                       AND active_rr.destination_location IS NOT NULL
+                       AND ST_DWithin(dpl.location,
+                                      active_rr.destination_location,
+                                      @nearDestinationMetres))
+                      -- about to finish, and this request starts after it does
+                      OR (active_end.ends_at
+                            <= now() + (@leadWindowMinutes * interval '1 minute')
+                          AND rr.pickup_at
+                            >= active_end.ends_at
+                               + (@turnaroundMinutes * interval '1 minute'))
                     )
               )
               AND NOT EXISTS (
@@ -438,6 +482,8 @@ public sealed class BookingService(
         command.Parameters.AddWithValue(
             "requestRadiusMetres",
             await settings.RequestRadiusKmAsync(cancellationToken) * 1000);
+        (await FleetTiming.LoadAsync(connection, null, cancellationToken))
+            .AddFeedTo(command);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -619,6 +665,42 @@ public sealed class BookingService(
 
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
+
+        // A vehicle out on rent cannot answer a ride request.
+        //
+        // This is the one exclusion the three usages create, and it is physical
+        // rather than a policy: the car is parked at somebody else's house with
+        // somebody else's hand on the key. Nothing can be dispatched to it.
+        //
+        // A **tour** vehicle is deliberately not excluded here, and that is the
+        // whole point of keeping the two usages compatible. A Driver whose
+        // vehicle carries a Neelum package is still a Driver with a car, and a
+        // Customer asking to go to Islamabad should reach them and be able to
+        // book them. Publishing a package is not a declaration that the vehicle
+        // only ever goes where the package goes — the destination on the package
+        // has no bearing on which requests the vehicle may answer. Treating it
+        // otherwise would punish exactly the Drivers who did the most work on
+        // the platform.
+        await using (var usageCommand = new NpgsqlCommand(
+            """
+            SELECT COALESCE(available_for_rent, false)
+            FROM udrive.vehicles
+            WHERE id = @vehicleId;
+            """,
+            connection))
+        {
+            usageCommand.Parameters.AddWithValue("vehicleId", request.VehicleId);
+            if (await usageCommand.ExecuteScalarAsync(cancellationToken) is true)
+            {
+                return ServiceResult<DriverOfferDto>.Fail(
+                    StatusCodes.Status409Conflict,
+                    "vehicle_on_rent",
+                    "This vehicle is set to go out on rent, so it does not take "
+                    + "ride requests. Change it to city rides first, or offer a "
+                    + "different vehicle.");
+            }
+        }
+
         await using var transaction = await connection.BeginTransactionAsync(
             IsolationLevel.ReadCommitted,
             cancellationToken);
