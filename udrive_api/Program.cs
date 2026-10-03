@@ -157,6 +157,8 @@ builder.Services.AddScoped<VehicleUsageService>(sp =>
         sp.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<RentalService>(_ =>
     new RentalService(connectionString));
+builder.Services.AddScoped<AdminRentalService>(_ =>
+    new AdminRentalService(connectionString));
 builder.Services.AddScoped<CustomerDocumentsService>(sp =>
     new CustomerDocumentsService(
         connectionString,

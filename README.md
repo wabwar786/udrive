@@ -1,150 +1,134 @@
-# UDrive — Car rental
+# UDrive — Admin ka Car rentals page
 
-19 files. Screenshot alag bheja hai: **UDrive_shipped_rental.png**.
+10 files. Screenshot alag bheja hai: **UDrive_shipped_admin_rental.png**.
 
-> ## Pehle `udrive_vehicle_usage.zip` lagayein
+> ## Tarteeb
 >
-> Yeh zip us ke **upar** aata hai. Aath files dono zips mein hain — un ki
-> **nayi** copy isi zip mein hai, to tarteeb yeh rahe:
+> **1.** `udrive_vehicle_usage.zip` → **2.** `udrive_car_rental.zip` → **3.** yeh zip.
 >
-> **1.** `udrive_vehicle_usage.zip` → **2.** yeh zip.
->
-> Ulta kiya to rental ka kaam adhoora reh jayega.
+> Paanch files pichle zip mein bhi theen; un ki **nayi** copy isi mein hai.
 
 ---
 
 ## Pehle yeh karein
 
-Extract se **pehle** yeh 10 purani files delete kar dein:
+Extract se **pehle** yeh 6 purani files delete kar dein:
 
 ```
-udrive_api\Models\DriverDtos.cs
-udrive_api\Services\VehicleUsageService.cs
-udrive_api\Services\TripOperationsService.cs
-udrive_api\Services\PackageMarketplaceService.cs
-udrive_api\Controllers\VehicleUsageController.cs
-udrive_api\Program.cs
-udrive_unified_mobile\lib\core\vehicles\vehicle_usage_repository.dart
-udrive_unified_mobile\lib\screens\customer\customer_home_screen.dart
-udrive_unified_mobile\lib\screens\driver\live_vehicle_usage_screen.dart
-udrive_unified_mobile\lib\screens\driver\live_vehicle_list_screen.dart
-```
-
-Yeh **nau nayi** files hain, bas rakh dein:
-
-```
-udrive_api\Infrastructure\Persistence\Migrations\062_car_rental.sql
 udrive_api\Models\RentalDtos.cs
-udrive_api\Services\RentalService.cs
-udrive_api\Services\CustomerDocumentsService.cs
-udrive_api\Controllers\RentalController.cs
+udrive_api\Services\VehicleUsageService.cs
+udrive_api\Program.cs
+admin_portal\app\components\admin-frame.tsx
 udrive_unified_mobile\lib\core\rental\rental_repository.dart
-udrive_unified_mobile\lib\screens\customer\rental_list_screen.dart
 udrive_unified_mobile\lib\screens\customer\rental_booking_screen.dart
-udrive_unified_mobile\lib\screens\driver\driver_rentals_screen.dart
+```
+
+Yeh **chaar nayi** files hain, bas rakh dein:
+
+```
+udrive_api\Infrastructure\Persistence\Migrations\063_rental_admin.sql
+udrive_api\Services\AdminRentalService.cs
+udrive_api\Controllers\AdminRentalController.cs
+admin_portal\app\rentals\page.tsx
 ```
 
 ---
 
-## Aap ke teen faisle, jaisa tay hua
+## Page kahan hai
 
-### 1 · Tasweer — aik, driver ki apni zimmedari
+Admin portal → **Daily operations → Car rentals** (Bookings ke theek neeche).
+Rental bhi aik booking hai — sirf ghanton ke bajaye dinon ki.
 
-`vehicles.image_url` column **pehle se schema mein tha**, pehli migration se.
-Aaj tak usay sirf demo seed bharta tha, kyun ke driver ke liye koi upload raasta
-hi nahi tha. Ab wohi column bharta hai:
-
-- **Aik tasweer per gaari.** Naya table nahi, gallery nahi, naya column nahi.
-- Driver daalta hai, **seedha live** — koi admin review nahi.
-- Rent ka switch tasweer ke baghair **chalta hi nahi**.
-- Stock tasweer kabhi nahi lagti. Jis gaari ki tasweer nahi, wo rental list mein
-  **aati hi nahi** — yeh server rokta hai, app nahi.
-
-Serve karne ke liye maujooda **anonymous** route istemal hota hai
-(`/api/v1/vehicle-images/...`), kyun ke `img` tag token nahi bhej sakta. Driver
-ke documents apne protected route par hi rehte hain.
-
-**Aik upload, chaar jagah faida:** `image_url` ko vehicle card, trip aur booking
-DTOs pehle se parhte hain — asli gaari ab city rides aur tour par bhi dikhegi.
-
-### 2 · Paisa — 20% advance app se, baqi maalik ko
-
-| | |
-|---|---|
-| Booking par, app se | `rental.advance_percent` = **20%** |
-| Gaari lete waqt, maalik ko naqd | baqi kiraya **+ poora deposit** |
-
-Deposit UDrive ke paas **kabhi nahi** aata. Rakhne ka matlab hota: har khuronch
-aur har wapsi ka jhagra hamari support queue se guzre, jis ka na kisi ko faida
-hai na koi kamai.
-
-Customer ki screen par deposit **apni line par**, "refundable" ke saath — total
-mein chupa dena wohi cheez hai jis par handover ke waqt jhagra hota hai.
-
-### 3 · Cancel — 48 ghante
-
-| Kaun | Kab | Natija |
-|---|---|---|
-| Customer | 48 ghante se pehle | advance poora wapas |
-| Customer | 48 ghante ke andar | advance maalik ko |
-| Maalik | kabhi bhi | advance poora wapas |
-
-`rental.free_cancel_hours` = 48. App apne aap yeh hisaab **nahi** karti — server
-har booking ke saath `advanceRefundableNow` bhejta hai, to button par seedha
-likha aata hai *"Cancel — advance returned"* ya *"advance not returned"*.
+Chaar hissay: **numbers → list → settings → rent par lagi gaariyan**.
 
 ---
 
-## Database — jo bana, aur jo jaan bujh kar nahi banaya
+## Aap ke teen sawalon ke jawab — wohi jo maine tajweez kiye thay
 
-Aap ne kaha tha DB overload nahi karni. Is liye:
+### 1 · Customer ke kaghaz — admin ko **nishan** dikhte hain, tasweer nahi
 
-| Cheez | Faisla |
-|---|---|
-| `rental_bookings` | **Aik naya table** — bas yehi |
-| Disclaimer ka record | **Table nahi** — do column booking par hi (`disclaimer_version`, `disclaimer_accepted_at`) |
-| Customer ke documents | **Table nahi** — chaar column `customer_profiles` par |
-| Listing photos | **Table nahi** — maujooda `vehicles.image_url` |
-| Settings | Teen: `rental.advance_percent`, `rental.free_cancel_hours`, `rental.disclaimer_version` |
+Detail screen par likha aata hai *"CNIC front · CNIC back · Licence · Photo"* aur
+saath yeh jumla: **"The owner sees the images. We see only whether they were
+given."**
 
-Disclaimer ka alag table banana aasan tha aur us ka faida sifar: aik booking ka
-aik hi iqrar hota hai, usi waqt, aur us se kabhi sirf aik sawal poocha jata hai —
-*"kon sa text mana tha"*. Version yeh bata deta hai.
+Tasweer dekhne ka matlab hai platform us check ka hissa ban gaya jo us ki apni
+shartein kehti hain wo nahi karta. Aur asli check wo hai jo gaari dene wala
+saamne khare shakhs ke chehre se milata hai — us ki naql kisi daftar mein baithe
+shakhs ki screen par mumkin hi nahi.
 
-Customer documents ke table ke saath status, reviewer, review notes aur poori
-queue aati — us cheez ke liye jisay **koi review karta hi nahi**. Review jaan
-bujh kar nahi hai: gaari dene wala kaghaz saamne khare shakhs se milata hai, aur
-yehi aik check hai jo waqai kuch sabit karta hai. Admin ka hafta pehle aik CNIC
-ki tasweer dekh lena kuch sabit nahi karta, aur platform ko aisa dikhata hai
-jaise us ne zamanat di ho.
+### 2 · Admin cancel — haan, magar wajah laazmi
 
-**Double booking:** gaari + tareekhon par `EXCLUDE USING gist` (`btree_gist`),
-aur us se pehle booking ke waqt vehicle row ka `FOR UPDATE` lock. Agar managed
-Postgres extension ki ijazat na de to migration **rukti nahi** — constraint
-chhoot jata hai aur lock kaam karta rehta hai.
+Khali box par button hi nahi chalta, aur server bhi `cancel_reason_required` keh
+kar mana karta hai.
+
+Record mein `cancelled_by = Admin` likha jata hai — **maalik par dagh nahi,
+customer par bhi nahi** — aur advance customer ko wapas. "Owner cancelled"
+likhna platform ka apne hi driver ke bare mein jhoot hota.
+
+Har admin cancel `audit_logs` mein bhi jata hai (`rental.cancelled`), wajah ke
+saath.
+
+### 3 · Deposit — **maximum**, jaisa maine kaha tha
+
+`rental.maximum_deposit`. **0 = koi had nahi**, jahan se yeh shuru hota hai.
+
+Had lagate hi driver app bhi maanti hai: zyada deposit rakhne par
+`rent_deposit_too_high` — *"The most you can ask as a deposit is PKR 50,000."*
+Pehle koi had nahi thi, aur 2 lakh deposit maang kar gaari ko listing mein
+rakhte huay bhi na-qabil-e-booking banaya ja sakta tha.
 
 ---
 
-## Rental ab teen jagah asar daalti hai
+## Aik cheez jo maine saath hi theek kar di
 
-**1 · City dispatch.** Admin ki "suitable drivers" list us gaari ko `available =
-f` dikhati hai, aur assignment validator saaf mana karta hai — *"That vehicle is
-out on rent across these dates."*
+**Terms ka text ab database mein hai**, app ke andar nahi.
 
-**2 · Tour packages (dono taraf).**
+Pehle aik jumla badalne ke liye naya build, Play Store review aur intezar chahiye
+tha — us lafz ke liye jo wakeel usi dopahar badalwana chahe. Is se bhi buri baat:
+**version pehle se har booking par mehfooz tha**, yani database bari ehtiyat se
+likh raha tha ke customer ne kon sa text mana, jab ke text wahan tha jahan
+database dekh hi nahi sakta.
 
-| Package ki haalat | Rental | Package ka kya |
-|---|---|---|
-| Koi seat nahi biki | ho jati hai | departure public search se **chup** jati hai, rental khatam hote hi **khud wapas** |
-| Seat bik chuki hai | **mana** | jaisi hai waisi |
+- Do nayi public settings: `rental.disclaimer_text_en` aur `_ur`.
+- App unhein usi **public settings route** se parhti hai jo pehle se chal raha
+  hai — koi naya plumbing nahi, aur login se pehle bhi parhi ja sakti hain.
+- **Version khud barhta hai** jab text badalta hai. Admin ke haath mein chhorne
+  ka matlab: jis din koi lafz badal kar number bhool gaya, us ke baad ki har
+  booking aise version par ishara karti hai jis ka text ab mojood hi nahi — aur
+  acceptance record, jis ke liye version rakha hi gaya tha, bekaar ho jata hai.
+- App wohi version bhejti hai jo **us ne screen par dikhaya**. Agar admin terms
+  usi waqt badal de jab customer screen khole baitha hai, server booking mana kar
+  deta hai — jo theek hai: customer ne wo lafz manay thay jo ab lafz nahi rahe.
+- Settings call na chale to app `version 0` wala purana text dikhati hai, jis par
+  booking **ho hi nahi sakti**. Aise lafzon par razamandi jinhein platform baad
+  mein pehchan na sake, dono mein se kisi ke kaam ki nahi.
 
-Mana karte waqt wajah likhi aati hai: *"carrying the Neelum departure on 20 Jun
-with 4 seat(s) already sold"*. Sirf "not available" kehna driver ko soch mein
-daal deta hai ke app kharab hai.
+---
 
-**3 · Self-drive par sirf gaari band, driver nahi.** Customer khud chala raha hai
-to gaari chali gayi magar driver ghar par hai — us ki **doosri** gaari city rides
-leti rahegi.
+## Jo admin yahan se **nahi** kar sakta
+
+- Kisi ki booking ki tareekhein, rate ya deposit badalna. Wo do doosray logon ka
+  tay kiya hua mamla hai; us mein haath dalna, aur wo bhi dono ko batai baghair,
+  is page ka kaam nahi.
+- Customer ke kaghaz ki tasweer kholna.
+- Maalik ki taraf se cancel dikhana.
+
+---
+
+## Chhoti cheezein jo kaam ki hain
+
+- **Deposit kabhi "paid" nahi likha.** List mein likha aata hai
+  *"+ PKR 20,000 deposit, with the owner"*. Wo raqam platform ke paas aati hi
+  nahi, aur aisa refund dhoondna jo humne liya hi nahi — aik lamba bekaar din
+  hota hai.
+- **CSV export** wohi rows deta hai jo screen par hain, filter samet. Server se
+  dobara query karne ka matlab hota ke export aur table chupke se alag ho jayein.
+- **Hidden ki wajah** poori likhi hoti hai — *"No photograph of this vehicle."* —
+  un lafzon mein jo agent phone par dohra sakta hai. Sirf "hidden" kehna call ko
+  shuru se shuru karwa deta hai.
+- **Advance collected** sirf advance ginta hai. Balance aur deposit platform tak
+  pohonchte hi nahi; unhein revenue dikhana aisa number hota jis par koi na koi
+  aakhir amal kar baithta.
 
 ---
 
@@ -152,53 +136,33 @@ leti rahegi.
 
 | File | Yeh text milna chahiye |
 |---|---|
-| `062_car_rental.sql` | `ex_rental_bookings_no_overlap` |
-| `RentalDtos.cs` | `RentalBlockedDayDto` |
-| `RentalService.cs` | `rental_clashes_with_package` |
-| `CustomerDocumentsService.cs` | `customer-documents` |
-| `RentalController.cs` | `DriverRentalController` |
-| `VehicleUsageService.cs` | `vehicle_photo_required` |
-| `VehicleUsageController.cs` | `UploadPhoto` |
-| `DriverDtos.cs` | `PhotoUrl` |
-| `TripOperationsService.cs` | `rental_bookings` |
-| `PackageMarketplaceService.cs` | `rb.status IN ('Confirmed', 'HandedOver')` |
-| `Program.cs` | `RentalService` |
-| `rental_repository.dart` | `RentalBlockedDay` |
-| `rental_list_screen.dart` | `_VehicleCard` |
-| `rental_booking_screen.dart` | `_ModeTile` |
-| `driver_rentals_screen.dart` | `DriverRentalsScreen` |
-| `vehicle_usage_repository.dart` | `uploadPhoto` |
-| `live_vehicle_usage_screen.dart` | `_uploadPhoto` |
-| `live_vehicle_list_screen.dart` | `DriverRentalsScreen` |
-| `customer_home_screen.dart` | `_openCarRental` |
+| `063_rental_admin.sql` | `rental.maximum_deposit` |
+| `AdminRentalService.cs` | `cancel_reason_required` |
+| `AdminRentalController.cs` | `admin/rentals` |
+| `RentalDtos.cs` | `AdminRentalSummaryDto` |
+| `VehicleUsageService.cs` | `rent_deposit_too_high` |
+| `Program.cs` | `AdminRentalService` |
+| `admin_portal/app/rentals/page.tsx` | `Vehicles on offer for rent` |
+| `admin_portal/app/components/admin-frame.tsx` | `Car rentals` |
+| `rental_repository.dart` | `class RentalTerms` |
+| `rental_booking_screen.dart` | `_terms.version` |
 
-Repo ke checkers saaf: `audit_structure.py` → AUDIT CLEAN, `check_imports.py` →
-WRONG API 0 / MISSING WIDGET FIELDS 0 / AMBIGUOUS 0 (`driver_home_screen.dart:
-uses 'S'` purana false-positive hai), `check_const_colours.py` → 0. Readiness ke
-17 test sab pass.
-
-> Checker ne is baar aik asli ghalti pakri: maine `FilePicker.platform.pickFiles`
-> likha tha, is project ka file_picker static form deta hai. Theek kar diya —
-> warna build toot-ti.
+Admin portal par `tsc --noEmit` saaf. Readiness ke 17 test pass.
+Dart checkers saaf (`driver_home_screen.dart: uses 'S'` purana false-positive).
 
 ---
 
-## Live Postgres par kya kya chala kar dekha
+## Live Postgres par kya chala kar dekha
 
-1. Migration 062 **do baar** — saaf. Exclusion constraint bana.
-2. Overlapping booking **mana**; agle din wali **manzoor**; **cancelled** purani
-   booking rokti nahi.
-3. Ghalat mode, ulti tareekhein, rate 0 — teenon database ne roke.
-4. Rent on + rate set magar **tasweer nahi** → list mein nahi aayi. Tasweer lagte
-   hi aa gayi.
-5. 11–13 Jun par rent → 10–12 Jun ki search ne kuch nahi dia; blocked days ne
-   teen din `rented` ke saath wapas kiye.
-6. Package par seat na biki → koi clash nahi. 4 seat biki → clash, naam aur
-   tareekh ke saath.
-7. Dispatch: rental se pehle `available = t`, rental par `f`, validator ka rental
-   flag `t`, rental cancel karte hi wapas `t`.
-8. Package public search: rental se pehle nazar aaya, rental par gayab, rental
-   khatam hote hi khud wapas.
+1. Migration 063 **do baar** — saaf. Chhe `rental.*` settings, sab `is_public`.
+2. Summary ke number: aik gaari bahar, aik self-drive, aik is hafte shuru,
+   advance **9,300** — cancelled booking ka 5,400 isi liye shamil nahi.
+3. Fleet: tasweer wali gaari `listed`, baghair tasweer wali `hidden` +
+   *"no photo"*.
+4. Settings upsert: version 1 → 2, text badla, `maximum_deposit` 50,000 — aur
+   wohi value jo `VehicleUsageService` ceiling ke taur par parhti hai.
+5. Admin cancel: pehli baar 1 row, **doosri baar 0** (do dafa cancel nahi hota),
+   audit row likhi gayi, aur cancelled booking ne apni tareekhein chhor deen.
 
 ---
 
@@ -206,17 +170,13 @@ uses 'S'` purana false-positive hai), `check_const_colours.py` → 0. Readiness 
 
 Migration khud lag jayegi. Us ke baad:
 
-1. **Admin portal → Services → Car rental** khol dein. Band hone par tile par
-   "SOON" aata rahega, bilkul pehle ki tarah.
-2. Driver ko batana hoga: **Vehicles → gaari → tasweer lagayein**, phir
-   **"What this vehicle is for" → Rent a car**.
-3. Advance, cancel window aur disclaimer version `system_settings` mein
-   `rental.*` se badalte hain. In ka admin page agle package mein daal sakta
-   hoon — bolein to.
+1. Admin portal → **Car rentals** kholein. Settings mein deposit ki had rakh dein
+   (abhi 0 = koi had nahi).
+2. Terms ka text parh lein — jo abhi hai wo wohi hai jo app mein likha tha. Badal
+   dein to version khud 2 ho jayega.
 
 ---
 
 ## Agla
 
-**Growth zip 5** — referral, weekly, updates, notifications. Ya rental ka
-admin page (bookings ki list, settings ke field). Jo kahein.
+**Growth zip 5** — referral, weekly, updates, notifications. Jo kahein.

@@ -39,6 +39,7 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
   late String _mode = widget.vehicle.offersWithDriver ? 'WithDriver' : 'SelfDrive';
 
   List<RentalBlockedDay> _blocked = const [];
+  RentalTerms _terms = RentalTerms.fallback;
   RentalQuote? _quote;
   CustomerDocuments _documents = CustomerDocuments.empty;
 
@@ -72,10 +73,12 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
     try {
       final blocked = await _repository.blockedDays(widget.vehicle.vehicleId);
       final documents = await _repository.documents();
+      final terms = await _repository.terms();
       if (!mounted) return;
       setState(() {
         _blocked = blocked;
         _documents = documents;
+        _terms = terms;
         _busy = false;
       });
       if (_dates != null) await _refreshQuote();
@@ -204,7 +207,11 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
         from: dates.start,
         to: dates.end,
         mode: _mode,
-        disclaimerVersion: quote.disclaimerVersion,
+        // The version belonging to the text on screen, not the one the
+        // quote happened to carry. If an Admin edits the terms while this
+        // screen is open the server refuses the booking, which is right: the
+        // Customer agreed to words that are no longer the words.
+        disclaimerVersion: _terms.version,
       );
       if (!mounted) return;
       Navigator.pop(context, true);
@@ -358,18 +365,14 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
           // ── the terms
           UdSectionHeader(title: _t('Terms', 'شرائط')),
           const SizedBox(height: 10),
+          // The wording comes from the server, not from this file. An Admin
+          // changes it in the portal and every app sees the new text on the
+          // next booking — without a release, a review and a wait.
           UdBanner(
             tone: UdTone.warn,
             icon: Icons.warning_amber_rounded,
-            text: _t(
-              'The car goes out in your care. UDrive introduces you to the '
-              'owner and nothing more: we do not inspect the car, we do not '
-              'check its papers, and we are not responsible for a fine, a '
-              'crash, theft or damage.',
-              'گاڑی آپ کی ذمہ داری میں جاتی ہے۔ UDrive صرف آپ کو مالک سے ملاتا '
-                  'ہے: نہ ہم گاڑی جانچتے ہیں، نہ اس کے کاغذات، اور چالان، '
-                  'حادثے، چوری یا نقصان کے ذمہ دار نہیں۔',
-            ),
+            text: _terms.text(
+                AppControllerScope.of(context).locale.languageCode),
           ),
           const SizedBox(height: 10),
           _Check(

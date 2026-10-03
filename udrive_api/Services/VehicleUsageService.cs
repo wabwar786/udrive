@@ -347,6 +347,25 @@ public sealed class VehicleUsageService(
                 "The minimum rental is at least one day.");
         }
 
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        // A ceiling on the deposit, set by an Admin.
+        //
+        // Nothing capped it before. An owner could list a car at a fair daily
+        // rate and ask two hundred thousand rupees as a deposit, which is not a
+        // deposit — it is a way of appearing in the listing without ever being
+        // booked, and it makes the whole rental page look dishonest to anyone
+        // scrolling it. Zero means no ceiling, which is where it starts.
+        var ceiling = await MaximumDepositAsync(connection, cancellationToken);
+        if (ceiling > 0 && request.SecurityDeposit > ceiling)
+        {
+            return ServiceResult<VehicleUsageDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "rent_deposit_too_high",
+                $"The most you can ask as a deposit is PKR {ceiling}.");
+        }
+
         const string sql = """
             UPDATE udrive.vehicles v
             SET rent_with_driver_daily = @withDriver,
@@ -362,9 +381,6 @@ public sealed class VehicleUsageService(
               AND v.driver_profile_id = dp.id
               AND dp.user_id = @userId;
             """;
-
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
 
         await using (var command = new NpgsqlCommand(sql, connection))
         {
@@ -568,6 +584,21 @@ public sealed class VehicleUsageService(
             dto.TourReadinessRequired,
             dto.RentWithDriverDaily,
             dto.RentSelfDriveDaily);
+    }
+
+    /// <summary>The Admin's ceiling on deposits. Zero means none.</summary>
+    private static async Task<int> MaximumDepositAsync(
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT COALESCE((SELECT GREATEST(0, (value_json #>> '{}')::int)
+                             FROM udrive.system_settings
+                             WHERE key = 'rental.maximum_deposit'), 0);
+            """,
+            connection);
+        return await command.ExecuteScalarAsync(cancellationToken) is int value ? value : 0;
     }
 
     private static bool HasAnyRentRate(Row row) =>

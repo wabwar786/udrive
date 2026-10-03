@@ -3,20 +3,6 @@ import 'package:file_picker/file_picker.dart';
 import '../../models/auth_models.dart';
 import '../network/api_client.dart';
 
-// ── shared JSON helpers (top-level so every model in this file can use them) ──
-
-double? _number(Object? value) {
-  if (value is num) return value.toDouble();
-  if (value is String) return double.tryParse(value);
-  return null;
-}
-
-String? _text(Object? value) {
-  if (value == null) return null;
-  final text = '$value'.trim();
-  return text.isEmpty ? null : text;
-}
-
 /// One car on offer, as the rental list shows it.
 class RentalVehicle {
   const RentalVehicle({
@@ -274,6 +260,44 @@ class CustomerDocuments {
   );
 }
 
+/// The rental terms, as the admin currently has them worded.
+///
+/// Fetched rather than compiled in. The wording used to live inside the app,
+/// which made changing a single sentence a release: a new build, a Play Store
+/// review and a wait, for a line of text a lawyer may want altered the same
+/// afternoon. Worse, the version was already stored on every booking — the
+/// database was carefully recording which text a Customer agreed to while the
+/// text itself lived where the database could not see it.
+class RentalTerms {
+  const RentalTerms({
+    required this.version,
+    required this.textEn,
+    required this.textUr,
+  });
+
+  final int version;
+  final String textEn;
+  final String textUr;
+
+  String text(String languageCode) =>
+      languageCode == 'ur' && textUr.isNotEmpty ? textUr : textEn;
+
+  /// What the app shows if the settings call fails.
+  ///
+  /// Version 0, deliberately: the server refuses a booking whose accepted
+  /// version is not the current one, so a Customer can read this but cannot
+  /// book against it. Agreeing to wording the platform cannot identify later
+  /// is worth nothing to either side.
+  static const fallback = RentalTerms(
+    version: 0,
+    textEn: 'The car goes out in your care. UDrive introduces you to the owner '
+        'and nothing more: we do not inspect the car, we do not check its '
+        'papers, and we are not responsible for a fine, a crash, theft or '
+        'damage.',
+    textUr: '',
+  );
+}
+
 /// Raised when the server refuses, carrying the reason it gave.
 class RentalRefused implements Exception {
   const RentalRefused(this.code, this.message);
@@ -388,6 +412,32 @@ class RentalRepository {
         RentalBooking.fromJson,
       );
 
+  /// The current terms text and its version.
+  ///
+  /// Read from the public settings route the app already uses, so there is no
+  /// new plumbing and no token needed — the terms are meant to be readable
+  /// before anybody signs in.
+  Future<RentalTerms> terms() async {
+    try {
+      final response =
+          await api.getJson('/api/v1/settings/public', authenticated: false);
+      final payload = response['data'] ?? response;
+      if (payload is! Map) return RentalTerms.fallback;
+
+      final version = payload['rental.disclaimer_version'];
+      final english = '${payload['rental.disclaimer_text_en'] ?? ''}'.trim();
+      if (english.isEmpty) return RentalTerms.fallback;
+
+      return RentalTerms(
+        version: version is num ? version.toInt() : 1,
+        textEn: english,
+        textUr: '${payload['rental.disclaimer_text_ur'] ?? ''}'.trim(),
+      );
+    } catch (_) {
+      return RentalTerms.fallback;
+    }
+  }
+
   // ── the customer's own documents ──────────────────────────────────────────
 
   Future<CustomerDocuments> documents() async {
@@ -451,4 +501,16 @@ class RentalRepository {
       '${value.year.toString().padLeft(4, '0')}-'
       '${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
+
+  static double? _number(Object? value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  static String? _text(Object? value) {
+    if (value == null) return null;
+    final text = '$value'.trim();
+    return text.isEmpty ? null : text;
+  }
 }

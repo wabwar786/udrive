@@ -132,3 +132,120 @@ public sealed record CustomerDocumentsDto(
     bool Selfie,
     bool Complete,
     DateTimeOffset? UpdatedAt);
+
+// ────────────────────────────────────────────────────── the admin's side
+
+/// <summary>The four numbers at the top of the admin rental page.</summary>
+/// <param name="AdvanceThisMonth">
+/// Only the advance. The balance and the deposit never reach the platform, so
+/// counting them as revenue would be a fiction an Admin might act on.
+/// </param>
+public sealed record AdminRentalSummaryDto(
+    int CarsOutNow,
+    int SelfDriveOutNow,
+    int WithDriverOutNow,
+    int StartingThisWeek,
+    int HandoversToday,
+    decimal AdvanceThisMonth,
+    int CancellationsLast30Days);
+
+public sealed record AdminRentalRowDto(
+    Guid Id,
+    string BookingReference,
+    string RentalMode,
+    string VehicleName,
+    string RegistrationNumber,
+    string CustomerName,
+    string? CustomerPhone,
+    string OwnerName,
+    string? OwnerPhone,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    int Days,
+    decimal AdvanceAmount,
+    decimal BalanceDue,
+    decimal SecurityDeposit,
+    string Status,
+    string? CancelledBy,
+    DateTimeOffset CreatedAt);
+
+/// <param name="CnicFront">
+/// Whether it was provided — never the picture. An Admin looking at a CNIC
+/// would make the platform a party to a check its own disclaimer says it does
+/// not perform, and the check that matters is the owner holding the card next
+/// to the face in front of them.
+/// </param>
+public sealed record AdminRentalDetailDto(
+    Guid Id,
+    string BookingReference,
+    string RentalMode,
+    string VehicleName,
+    string RegistrationNumber,
+    string CustomerName,
+    string? CustomerPhone,
+    string OwnerName,
+    string? OwnerPhone,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    int Days,
+    decimal DailyRate,
+    decimal Subtotal,
+    decimal AdvanceAmount,
+    decimal BalanceDue,
+    decimal SecurityDeposit,
+    int? KmPerDay,
+    bool FuelIncluded,
+    string? PickupPoint,
+    string Status,
+    string? CancelledBy,
+    DateTimeOffset? CancelledAt,
+    string? CancelReason,
+    int DisclaimerVersion,
+    DateTimeOffset DisclaimerAcceptedAt,
+    DateTimeOffset CreatedAt,
+    bool CnicFront,
+    bool CnicBack,
+    bool DrivingLicence,
+    bool Selfie);
+
+/// <param name="HiddenReason">
+/// Why this vehicle is not in the customer's rental list, in words a support
+/// agent can repeat down the phone. Null when it is listed.
+/// </param>
+public sealed record AdminRentalVehicleDto(
+    Guid VehicleId,
+    string Name,
+    string RegistrationNumber,
+    string OwnerName,
+    string? OwnerPhone,
+    decimal? WithDriverDaily,
+    decimal? SelfDriveDaily,
+    decimal SecurityDeposit,
+    int MinimumDays,
+    bool HasPhoto,
+    int BookingCount,
+    bool Listed,
+    string? HiddenReason);
+
+public sealed record AdminRentalSettingsDto(
+    int AdvancePercent,
+    int FreeCancelHours,
+    int MaximumDeposit,
+    int DisclaimerVersion,
+    string DisclaimerTextEn,
+    string DisclaimerTextUr);
+
+/// <remarks>
+/// The version is not in here. It moves by itself when the text changes —
+/// leaving it to the Admin means the day somebody edits the wording and forgets
+/// the number, every later booking points at a version whose text no longer
+/// exists, and the acceptance record becomes worthless.
+/// </remarks>
+public sealed record AdminRentalSettingsRequest(
+    int AdvancePercent,
+    int FreeCancelHours,
+    int MaximumDeposit,
+    string DisclaimerTextEn,
+    string? DisclaimerTextUr);
+
+public sealed record AdminCancelRentalRequest(string? Reason);
