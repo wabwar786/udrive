@@ -501,16 +501,16 @@ class RentalRepository {
       '${value.year.toString().padLeft(4, '0')}-'
       '${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
+}
 
-  static double? _number(Object? value) {
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value);
-    return null;
-  }
+double? _number(Object? value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
+}
 
-  static String? _text(Object? value) {
-    if (value == null) return null;
-    final text = '$value'.trim();
-    return text.isEmpty ? null : text;
-  }
+String? _text(Object? value) {
+  if (value == null) return null;
+  final text = '$value'.trim();
+  return text.isEmpty ? null : text;
 }
