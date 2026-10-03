@@ -25,6 +25,18 @@ dependencies:
   google_maps_flutter: ^2.10.0
   share_plus: ^11.0.0
   url_launcher: ^6.3.2
+  # The ride-request and offer chime.
+  #
+  # Added because the two screens that needed a sound were already asking for
+  # one — `SystemSound.play(SystemSoundType.alert)` — and that call does nothing
+  # on Android: Flutter's Android embedding implements `click` and ignores
+  # `alert`. It threw no error, so the silence looked like a device problem for
+  # as long as it was there.
+  #
+  # Caret on the 6 line rather than an exact version: 6.x is the API this app is
+  # written against (`AudioPlayer`, `AssetSource`, `ReleaseMode`), and the caret
+  # takes patch fixes without a breaking change arriving on its own.
+  audioplayers: ^6.0.0
   # google_fonts was removed with design system v2. It fetched Poppins at
   # run time, so a first launch on a weak connection rendered the whole app
   # in the platform fallback font. Plus Jakarta Sans is bundled below
@@ -51,6 +63,10 @@ flutter:
     - assets/images/home_services/
     - assets/vehicles/
     - assets/vehicles_photo/
+    # One file: the half-second chime for a new ride request and for a driver's
+    # offer arriving. See lib/core/media/alert_sound.dart for why it is bundled
+    # rather than using the phone's own notification tone.
+    - assets/sounds/
 
   fonts:
     # Plus Jakarta Sans, the typeface of design system v2. SIL Open Font

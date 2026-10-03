@@ -26,7 +26,19 @@ class AppConfig {
   /// Kept short on purpose: a stale request answered four minutes late reaches
   /// a Customer who has already booked, and a Driver who has already driven
   /// away.
-  static const int decisionSeconds = 15;
+  ///
+  /// Thirty, not fifteen. Fifteen seconds is enough to *read* a request and not
+  /// enough to answer one: the driver has to take in the pickup, the drop and
+  /// the customer's figure, decide whether their own number is different, and
+  /// type it — often one-handed, often while parked badly. The countdown ran out
+  /// mid-typing and the card went back to the queue.
+  ///
+  /// Comfortably inside what the server allows. An offer is valid for 120
+  /// seconds from the moment it is sent (BookingService), and the ride request
+  /// itself lives an hour, so neither side of this window is the binding
+  /// constraint — this number is purely about how long a person is given to
+  /// think.
+  static const int decisionSeconds = 30;
   static const String referralShareUrl = 'https://udrive.pk/app';
 
   // ------------------------------------------------------------- tour policy

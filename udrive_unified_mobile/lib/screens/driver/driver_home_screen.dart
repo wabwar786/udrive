@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../core/theme/app_tokens.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
@@ -11,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/booking/trip_chat_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/config/app_config.dart';
+import '../../core/media/alert_sound.dart';
 import '../../core/growth/driver_growth_repository.dart';
 import '../../models/driver_growth_models.dart';
 import '../../core/state/app_controller.dart';
@@ -633,10 +633,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   /// Sounds once for each request the Driver has not yet seen.
   ///
-  /// `SystemSound` rather than a bundled clip: the phone's own notification
-  /// tone already respects silent mode and the volume the person has set, where
-  /// an audio file would ignore both. The haptic covers a silenced phone, which
-  /// on a driver's handset is the usual state.
+  /// This used to call `SystemSound.play(SystemSoundType.alert)`, on the
+  /// reasoning that the phone's own notification tone respects silent mode and
+  /// the volume the person has set, where a bundled clip ignores both. Sound
+  /// reasoning — and it bought nothing, because that call **does nothing on
+  /// Android**: Flutter's Android embedding implements `click` and ignores
+  /// `alert`. It threw no error, so for as long as it was there a driver heard
+  /// silence and had no way to tell whether the app or the phone was at fault.
+  ///
+  /// [AlertSound] plays a bundled half-second chime instead. The trade is now
+  /// made on purpose: a missed ride request costs the driver the fare, which is
+  /// worse than a beep at an awkward moment.
   void _announceRequests(List<LiveRideRequest> requests) {
     final fresh = requests
         .where((request) => !_announcedRequests.contains(request.id))
@@ -651,8 +658,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     // work they have declined to receive.
     if (!_isOnline) return;
 
-    SystemSound.play(SystemSoundType.alert);
-    HapticFeedback.mediumImpact();
+    unawaited(AlertSound.chime());
   }
 
   /// Requests still inside their decision window.
@@ -752,9 +758,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     // string is legal Dart that nobody should have to read.
     final offerLabel = _t("Customer's offer", 'کسٹمر کی پیشکش');
 
+    // The sheet keeps its own `sending` flag.
+    //
+    // Without one the Send button stayed fully live while the request was in
+    // flight, so a driver watching nothing happen tapped it again — and sent a
+    // second offer for the same ride.
+    var sending = false;
+
     await showUdSheet<void>(
       context: context,
-      builder: (sheetContext) => SingleChildScrollView(
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -839,15 +853,20 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               children: [
                 UdButton.outline(
                   label: _t('Decline', 'مسترد'),
-                  onPressed: () {
-                    Navigator.pop(sheetContext);
-                    _rejectRequest(request);
-                  },
+                  onPressed: sending
+                      ? null
+                      : () {
+                          Navigator.pop(sheetContext);
+                          _rejectRequest(request);
+                        },
                 ),
                 UdButton.primary(
                   label: _t('Send fare', 'کرایہ بھیجیں'),
                   trailingIcon: Icons.send_rounded,
-                  onPressed: () async {
+                  busy: sending,
+                  onPressed: sending
+                      ? null
+                      : () async {
                     final parsedAmount = double.tryParse(amount.text.trim());
                     if (parsedAmount == null || parsedAmount <= 0) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -885,17 +904,28 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     final sheetRoute = ModalRoute.of(sheetContext);
                     final navigator = Navigator.of(sheetContext);
 
+                    setSheetState(() => sending = true);
+
                     try {
+                      // `refresh: false` — the six-call marketplace reload used
+                      // to run *inside* this await, between the offer landing
+                      // on the server and this sheet closing. That reload is
+                      // still wanted, just not while a driver is staring at a
+                      // sheet that will not shut.
                       await AppControllerScope.of(context).submitLiveDriverOffer(
                         rideRequestId: request.id,
                         vehicleId: selectedVehicle.id as String,
                         amount: parsedAmount,
                         etaMinutes: 1,
+                        refresh: false,
                       );
-                      if (!mounted) return;
+
+                      // Closed the moment the offer is on the server. Everything
+                      // below is bookkeeping and can happen behind the sheet.
                       if (sheetRoute != null && sheetRoute.isActive) {
                         navigator.removeRoute(sheetRoute);
                       }
+                      if (!mounted) return;
                       setState(() {
                         _recentFares[request.id] = _RecentFareSent(
                           rideRequestId: request.id,
@@ -905,8 +935,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           visibleUntil: DateTime.now().add(const Duration(seconds: 20)),
                         );
                       });
-                      await _refreshNearbyRequests();
+
+                      // Not awaited, and ride requests only. The driver is
+                      // already back on their home screen with "fare sent"
+                      // showing; the list catching up a second later is not
+                      // something they are waiting on. Packages keep their own
+                      // two-minute timer — pulling them in here would be the
+                      // same six calls this fix just took out, moved.
+                      unawaited(_refreshNearbyRequests());
                     } catch (error) {
+                      // The sheet stays open on failure, with the typed figure
+                      // still in it, so the driver can simply press again.
+                      //
+                      // Guarded: the driver may have tapped the scrim while the
+                      // request was in flight, and setState on a sheet that has
+                      // gone throws.
+                      if (sheetRoute?.isActive ?? false) {
+                        setSheetState(() => sending = false);
+                      }
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
                       }
@@ -916,6 +962,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               ],
             ),
           ],
+        ),
         ),
       ),
     );

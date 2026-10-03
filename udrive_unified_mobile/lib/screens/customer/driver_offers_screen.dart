@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,6 +13,7 @@ import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/booking/booking_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/config/app_config.dart';
+import '../../core/media/alert_sound.dart';
 import '../../core/maps/ud_map.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -387,10 +387,16 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   /// offer lives for seconds, so arriving silently means it is often gone
   /// before it is seen.
   ///
-  /// `SystemSound` rather than an audio file: it uses the phone's own
-  /// notification tone, which already respects silent mode and the volume the
-  /// person has set. A bundled clip would ignore both and play at full volume
-  /// in a mosque. The haptic covers the case where the phone *is* silenced.
+  /// This used to call `SystemSound.play(SystemSoundType.alert)`, so that the
+  /// phone's own notification tone would respect silent mode and the volume the
+  /// person had set — a bundled clip ignores both. That reasoning was right and
+  /// it bought nothing: the call **does nothing on Android**, where Flutter's
+  /// embedding implements `click` and ignores `alert`. No error, no sound.
+  ///
+  /// [AlertSound] plays a bundled half-second chime instead, quietly and at
+  /// most once every two seconds. An offer lives for seconds; one that arrives
+  /// silently is usually gone before it is seen, which is the whole reason this
+  /// method exists.
   void _announce(List<LiveDriverOffer> offers) {
     final fresh = offers
         .where((offer) => !_announced.contains(offer.id))
@@ -401,8 +407,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       _announced.add(offer.id);
     }
 
-    SystemSound.play(SystemSoundType.alert);
-    HapticFeedback.mediumImpact();
+    unawaited(AlertSound.chime());
   }
 
   void _registerDecisionWindows(List<LiveDriverOffer> offers) {

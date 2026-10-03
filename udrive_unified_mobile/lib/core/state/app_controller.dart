@@ -831,12 +831,28 @@ class AppController extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
+  /// Sends the Driver's fare for one request.
+  ///
+  /// Set [refresh] to false when the caller will refresh for itself.
+  ///
+  /// This is the whole fix for the "Send fare hangs" report, and the cause was
+  /// not the send. The POST succeeded in its usual second or two — and then this
+  /// method awaited `loadDriverMarketplace`, which is **six more HTTP calls**:
+  /// ride requests, offer statuses, tour packages, package offers, package
+  /// bookings and the package waitlist. Five of those have nothing to do with
+  /// having just quoted a fare.
+  ///
+  /// The caller was awaiting all seven before closing its sheet, so on the
+  /// connection a working driver actually has — the bug report came in at
+  /// 4.5 KB/s — the sheet sat there, apparently frozen, with the button still
+  /// looking tappable. Tapping it again sent a second offer.
   Future<LiveDriverOffer> submitLiveDriverOffer({
     required String rideRequestId,
     required String vehicleId,
     required double amount,
     int etaMinutes = 20,
     String? message,
+    bool refresh = true,
   }) async {
     return _runMarketplace(() async {
       final offer = await _bookingRepository.submitDriverOffer(
@@ -846,7 +862,9 @@ class AppController extends ChangeNotifier {
         estimatedArrivalMinutes: etaMinutes,
         message: message,
       );
-      await loadDriverMarketplace(notify: false);
+      if (refresh) {
+        await loadDriverMarketplace(notify: false);
+      }
       return offer;
     });
   }

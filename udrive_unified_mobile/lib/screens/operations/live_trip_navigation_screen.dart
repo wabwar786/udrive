@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/booking/trip_operations_repository.dart';
+import '../../core/media/alert_sound.dart';
 import '../../core/booking/trip_chat_repository.dart';
 import '../../core/maps/ud_vehicle_sprites.dart';
 import '../../core/network/api_config.dart';
@@ -643,8 +644,8 @@ class _DriverLiveNavigationScreenState
       // Not on the first poll: everything is unseen then, and chiming through
       // a conversation already read is noise.
       if (unseen.isNotEmpty && _messagesLoadedOnce) {
-        SystemSound.play(SystemSoundType.alert);
-        HapticFeedback.mediumImpact();
+        // `SystemSound` was silent on Android — see AlertSound.
+        unawaited(AlertSound.chime());
       }
       _messagesLoadedOnce = true;
 
@@ -1231,7 +1232,9 @@ class _CustomerFullScreenTrackingScreenState
         final previous = _announcedStatus;
         _announcedStatus = tracking.tripStatus;
         if (previous != null && tracking.tripStatus == 'DriverArrived') {
-          SystemSound.play(SystemSoundType.alert);
+          // The heavier buzz is this screen's own: the driver arriving is
+          // the one event worth a stronger nudge than a message.
+          unawaited(AlertSound.chime(haptics: false));
           HapticFeedback.heavyImpact();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1442,8 +1445,7 @@ class _CustomerFullScreenTrackingScreenState
       // Not on the first load: everything is unseen then, and chiming for a
       // conversation the customer has already read is noise.
       if (unseen.isNotEmpty && _messagesLoadedOnce) {
-        SystemSound.play(SystemSoundType.alert);
-        HapticFeedback.mediumImpact();
+        unawaited(AlertSound.chime());
       }
       _messagesLoadedOnce = true;
 
