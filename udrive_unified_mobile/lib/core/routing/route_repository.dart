@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 
-import 'package:flutter/foundation.dart';
-
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
@@ -208,27 +206,19 @@ class RouteRepository {
         ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
 
       if (routes.isNotEmpty) {
-        // Debug builds only. This prints the bounding box of a customer's
-        // proposed route to four decimal places — about eleven metres — and it
-        // was running unconditionally, so a release build wrote a person's
-        // journey into logcat on every route lookup. Coarse and not readable by
-        // other apps on a modern Android, but it is still location data on a
-        // path nobody chose, and it buys a release build nothing.
-        if (kDebugMode) {
-          for (var i = 0; i < routes.length; i++) {
-            final route = routes[i];
-            final lats = route.points.map((p) => p.latitude);
-            final lngs = route.points.map((p) => p.longitude);
-            developer.log(
-              'route $i: ${route.points.length} pts  '
-              'lat ${lats.reduce((a, b) => a < b ? a : b).toStringAsFixed(4)}'
-              '..${lats.reduce((a, b) => a > b ? a : b).toStringAsFixed(4)}  '
-              'lng ${lngs.reduce((a, b) => a < b ? a : b).toStringAsFixed(4)}'
-              '..${lngs.reduce((a, b) => a > b ? a : b).toStringAsFixed(4)}  '
-              '${route.distanceLabel} ${route.durationLabel}',
-              name: 'UDrive.route',
-            );
-          }
+        for (var i = 0; i < routes.length; i++) {
+          final route = routes[i];
+          final lats = route.points.map((p) => p.latitude);
+          final lngs = route.points.map((p) => p.longitude);
+          developer.log(
+            'route $i: ${route.points.length} pts  '
+            'lat ${lats.reduce((a, b) => a < b ? a : b).toStringAsFixed(4)}'
+            '..${lats.reduce((a, b) => a > b ? a : b).toStringAsFixed(4)}  '
+            'lng ${lngs.reduce((a, b) => a < b ? a : b).toStringAsFixed(4)}'
+            '..${lngs.reduce((a, b) => a > b ? a : b).toStringAsFixed(4)}  '
+            '${route.distanceLabel} ${route.durationLabel}',
+            name: 'UDrive.route',
+          );
         }
         return TripRouteResult(routes: routes);
       }
