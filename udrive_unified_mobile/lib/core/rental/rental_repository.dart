@@ -3,6 +3,20 @@ import 'package:file_picker/file_picker.dart';
 import '../../models/auth_models.dart';
 import '../network/api_client.dart';
 
+// ── shared JSON helpers (top-level so every model in this file can use them) ──
+
+double? _number(Object? value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
+}
+
+String? _text(Object? value) {
+  if (value == null) return null;
+  final text = '$value'.trim();
+  return text.isEmpty ? null : text;
+}
+
 /// One car on offer, as the rental list shows it.
 class RentalVehicle {
   const RentalVehicle({
@@ -437,16 +451,4 @@ class RentalRepository {
       '${value.year.toString().padLeft(4, '0')}-'
       '${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
-
-  static double? _number(Object? value) {
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value);
-    return null;
-  }
-
-  static String? _text(Object? value) {
-    if (value == null) return null;
-    final text = '$value'.trim();
-    return text.isEmpty ? null : text;
-  }
 }
