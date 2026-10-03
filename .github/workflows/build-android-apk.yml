@@ -44,6 +44,10 @@ jobs:
         env:
           IN_NAME: ${{ inputs.version_name }}
           IN_CODE: ${{ inputs.version_code }}
+          # Through the environment, never interpolated into the script. A note
+          # containing a quote or a backtick would otherwise be pasted straight
+          # into the shell.
+          IN_NOTE: ${{ inputs.note }}
         run: |
           set -euo pipefail
 
@@ -87,7 +91,7 @@ jobs:
             echo "| Version code | \`$CODE\` |"
             echo "| Commit | \`$GITHUB_SHA\` |"
             echo "| pubspec says | \`$PUBSPEC\` |"
-            [ -n "${{ inputs.note }}" ] && echo "| Note | ${{ inputs.note }} |"
+            if [ -n "${IN_NOTE:-}" ]; then echo "| Note | $IN_NOTE |"; fi
             echo
             echo "Download **udrive-$NAME-$CODE.aab** from the Artifacts below, then Play Console → Closed testing → your track → Create new release."
           } >> "$GITHUB_STEP_SUMMARY"
