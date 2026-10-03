@@ -37,6 +37,7 @@ import '../hotels/hotel_list_screen.dart';
 import '../operations/live_trip_navigation_screen.dart';
 import 'place_search_screen.dart';
 import 'tour_map_screen.dart';
+import 'tour_search_results_screen.dart';
 import 'vehicle_choice_screen.dart';
 import 'udrive_route_flow_screen.dart';
 
@@ -705,12 +706,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
 
     if (_service.isTour) {
-      // The same one-ride-at-a-time guard the vehicle path uses. It used to
-      // live only inside _pushVehicleSelection, and this branch returns before
-      // ever reaching it — so a tour could be requested on top of a running
-      // ride, and the server's refusal arrived after the whole form was filled.
-      if (await _blockedByActiveRide()) return;
-      await _submitTour();
+      // Tour goes to the tour results first, not straight to a ride request.
+      //
+      // This branch used to call _submitTour immediately, which created a ride
+      // request and sent the Customer to the bidding map. That skipped every
+      // departure a Driver had published: the tour packages existed, had seats
+      // and prices, and nothing on this screen could reach them. A Customer
+      // wanting to join a tour could only end up asking for a whole vehicle,
+      // because that was the only road out of here.
+      //
+      // Now they see what is actually going on that day and choose. Asking for
+      // a whole vehicle is still one tap from there, and it comes back here —
+      // the ride-request flow, with its one-ride guard, its quote and its
+      // advance rules, stays in one place.
+      await _openTourResults();
       return;
     }
 
@@ -840,6 +849,42 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ),
       ),
     );
+  }
+
+  /// Which party a tour is for: 'Family', 'WomenOnly' or 'Any'.
+  ///
+  /// A women-only departure takes a women-only party and nobody else, and a
+  /// family-only one takes families — the columns were always there and the
+  /// card always drew them, but no search ever filtered on them, so every
+  /// Customer was shown departures that would not take them.
+  String _tourParty = 'Family';
+
+  /// Shows what is actually departing that day, and lets them choose.
+  Future<void> _openTourResults() async {
+    final outcome = await Navigator.of(context).push<TourSearchOutcome>(
+      MaterialPageRoute(
+        builder: (_) => TourSearchResultsScreen(
+          destinationName: _destination.text.trim(),
+          date: _tourDate,
+          persons: _tourPassengers,
+          days: _tourDays,
+          partyType: _tourParty,
+          // Already loaded for the map on this screen. Fetching them again
+          // would be a second wait for a list we are holding.
+          tourVehicles: _visibleVehicles,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    if (outcome != TourSearchOutcome.privateVehicle) return;
+
+    // The one-ride-at-a-time guard runs here rather than before the results.
+    // Browsing departures is not booking anything, and refusing to show a
+    // Customer what exists because they have a ride running would be a strange
+    // thing for the app to do.
+    if (await _blockedByActiveRide()) return;
+    await _submitTour();
   }
 
   Future<void> _submitTour() async {
@@ -1841,6 +1886,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             min: 1,
             max: 40,
             onChanged: (value) => setState(() => _tourPassengers = value),
+          ),
+          const SizedBox(height: 9),
+
+          // Who the party is. Departures carry the same rule — women-only,
+          // family-only — and until now nothing matched the two up, so a
+          // women-only departure sat in everybody's results and a family
+          // searching could not narrow to the ones that would take them.
+          _PartyChips(
+            value: _tourParty,
+            onChanged: (value) => setState(() => _tourParty = value),
           ),
           const SizedBox(height: 9),
           _MoneyField(
@@ -3462,6 +3517,77 @@ class _PlainField extends StatelessWidget {
 }
 
 /// PKR prefix is a static label, never part of the editable value.
+/// Family / Women only / Any, for a tour.
+///
+/// Three chips rather than a dropdown, because this is one of four things on a
+/// short form and a dropdown would make the common answer two taps. "Any"
+/// means the Customer has no rule of their own — which is not permission to
+/// board a departure that does, so it still excludes the restricted ones.
+class _PartyChips extends StatelessWidget {
+  const _PartyChips({required this.value, required this.onChanged});
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  static const _options = <(String, String)>[
+    ('Family', 'Family'),
+    ('WomenOnly', 'Women only'),
+    ('Any', 'Any'),
+  ];
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const UdLabel('Who is travelling'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (final (key, label) in _options) ...[
+                if (key != _options.first.$1) const SizedBox(width: 8),
+                Expanded(
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: InkWell(
+                      onTap: () => onChanged(key),
+                      borderRadius: AppRadii.all(AppRadii.chip),
+                      child: Container(
+                        height: 40,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: key == value
+                              ? AppColors.navy
+                              : AppColors.surfaceHigh,
+                          borderRadius: AppRadii.all(AppRadii.chip),
+                          border: Border.all(
+                            color: key == value
+                                ? AppColors.navy
+                                : AppColors.border,
+                          ),
+                        ),
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.small.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: key == value
+                                ? AppText.onInk
+                                : AppText.secondary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      );
+}
+
 class _MoneyField extends StatelessWidget {
   const _MoneyField({
     required this.caption,

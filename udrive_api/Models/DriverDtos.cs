@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using UDrive.Api.Domain;
 
 namespace UDrive.Api.Models;
 
@@ -98,7 +99,49 @@ public sealed record VehicleDto(
     int MountainReadinessScore,
     string Status,
     string? ImageUrl,
-    IReadOnlyList<VehicleDocumentDto> Documents);
+    IReadOnlyList<VehicleDocumentDto> Documents,
+
+    /// <summary>The score this vehicle must reach to carry a tour package.</summary>
+    /// <remarks>
+    /// Sent with the vehicle so the Driver's screen can show "45 / 60" without
+    /// the app carrying a copy of the number. It is an Admin setting, so a copy
+    /// in the app would be wrong the day it changed.
+    /// </remarks>
+    int TourReadinessRequired = TourReadiness.DefaultMinimum,
+
+    /// <summary>The second gate: the Driver's own switch for this vehicle.</summary>
+    /// <remarks>
+    /// Score and switch are separate, and both must pass. A Driver whose
+    /// vehicle scored 82 and still could not be picked for a package had hit
+    /// this one, with nothing on screen mentioning it existed.
+    /// </remarks>
+    bool AvailableForTour = false,
+
+    /// <summary>
+    /// Every item that counts towards the score, whether this vehicle has it,
+    /// and what it is worth.
+    /// </summary>
+    /// <remarks>
+    /// Sent rather than computed in the app, so the weights live in one place.
+    /// An app that scored vehicles itself would disagree with the server the
+    /// first time a weight changed, and the Driver would be told they qualify
+    /// by one screen and refused by the next.
+    /// </remarks>
+    IReadOnlyList<TourReadinessItemDto>? TourReadinessItems = null,
+
+    /// <summary>
+    /// The cheapest missing items that would reach the bar — empty when the
+    /// vehicle already does.
+    /// </summary>
+    IReadOnlyList<TourReadinessItemDto>? TourReadinessMissing = null);
+
+/// <param name="Points">What it adds to the score.</param>
+/// <param name="Present">Whether this vehicle has it.</param>
+public sealed record TourReadinessItemDto(
+    string Key,
+    string Label,
+    int Points,
+    bool Present);
 
 public sealed record VehicleDocumentDto(
     Guid Id,

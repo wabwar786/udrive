@@ -47,7 +47,24 @@ public sealed class ServiceAvailabilityService(string connectionString)
                 reader.GetFieldValue<DateTimeOffset>(4)));
         }
 
-        return ServiceResult<IReadOnlyList<ServiceAvailabilityDto>>.Ok(list);
+        // A known key with no row still appears, open.
+        //
+        // Without this, a missing row means the Admin's Services page simply
+        // does not list that service — there is nothing to switch and nothing
+        // saying why. Listing it as open is both true (the app treats an
+        // unknown key as open) and useful: switching it off writes the row,
+        // because UpdateAsync upserts.
+        var present = list.Select(row => row.ServiceKey).ToHashSet(StringComparer.Ordinal);
+        foreach (var key in KnownServiceKeys)
+        {
+            if (present.Contains(key)) continue;
+            list.Add(new ServiceAvailabilityDto(
+                key, true, "SOON", "This service is not open yet.",
+                DateTimeOffset.UtcNow));
+        }
+
+        return ServiceResult<IReadOnlyList<ServiceAvailabilityDto>>.Ok(
+            list.OrderBy(row => row.ServiceKey, StringComparer.Ordinal).ToList());
     }
 
     /// <summary>One numeric operational setting, with a default and a clamp.</summary>
@@ -397,9 +414,18 @@ public sealed class ServiceAvailabilityService(string connectionString)
 
     /// <summary>Updates one service.</summary>
     /// <remarks>
-    /// Updates only, never inserts. The key set is fixed because each key maps
-    /// to a screen in the app — a key an Admin invented would render a tile
-    /// that opens nothing.
+    /// The key set is fixed because each key maps to a screen in the app — a
+    /// key an Admin invented would render a tile that opens nothing. But a
+    /// known key whose row has gone missing is written rather than refused.
+    /// <para>
+    /// This used to be UPDATE only. If the seed had not run, or a row had been
+    /// deleted, the Admin was told "'hotels' is not a service this platform
+    /// knows about" — about a service sitting on their own home screen — and
+    /// had no way to close it. Meanwhile the app, finding no row, treats an
+    /// unknown key as open, so the service stayed open and no SOON badge could
+    /// appear. The switch was dead in exactly the case where someone was
+    /// reaching for it.
+    /// </para>
     /// </remarks>
     public async Task<ServiceResult<bool>> UpdateAsync(
         Guid adminUserId,
@@ -407,14 +433,28 @@ public sealed class ServiceAvailabilityService(string connectionString)
         UpdateServiceAvailabilityRequest request,
         CancellationToken cancellationToken)
     {
+        // A key the platform does not have a screen for is still refused —
+        // before touching the database, so the error is about the key and not
+        // about a failed write.
+        if (!KnownServiceKeys.Contains(serviceKey))
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status404NotFound,
+                "service_not_found",
+                $"'{serviceKey}' is not a service this platform knows about.");
+        }
+
         const string sql = """
-            UPDATE udrive.service_availability
-            SET is_open = @isOpen,
-                badge_label = @badge,
-                closed_message = @message,
-                updated_by_user_id = @admin,
+            INSERT INTO udrive.service_availability
+                (service_key, is_open, badge_label, closed_message,
+                 updated_by_user_id, updated_at)
+            VALUES (@key, @isOpen, @badge, @message, @admin, now())
+            ON CONFLICT (service_key) DO UPDATE
+            SET is_open = EXCLUDED.is_open,
+                badge_label = EXCLUDED.badge_label,
+                closed_message = EXCLUDED.closed_message,
+                updated_by_user_id = EXCLUDED.updated_by_user_id,
                 updated_at = now()
-            WHERE service_key = @key
             RETURNING service_key;
             """;
 
@@ -438,9 +478,28 @@ public sealed class ServiceAvailabilityService(string connectionString)
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is null or DBNull
             ? ServiceResult<bool>.Fail(
-                StatusCodes.Status404NotFound,
-                "service_not_found",
-                $"'{serviceKey}' is not a service this platform knows about.")
+                StatusCodes.Status500InternalServerError,
+                "service_not_saved",
+                "The service switch could not be saved. Try again.")
             : ServiceResult<bool>.Ok(true);
     }
+
+    /// <summary>Every service key that has a screen behind it in the app.</summary>
+    /// <remarks>
+    /// The same seven the customer home screen asks for by name, and the same
+    /// seven migration 045 seeds. Kept here so the API can tell an Admin which
+    /// keys are real without a round trip, and so a row that has gone missing
+    /// can be written back rather than refused.
+    /// </remarks>
+    internal static readonly IReadOnlySet<string> KnownServiceKeys =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "cityRides",
+            "tour",
+            "cityToCity",
+            "hotels",
+            "coster",
+            "explore",
+            "carRental",
+        };
 }

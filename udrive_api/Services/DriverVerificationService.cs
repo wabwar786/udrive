@@ -1,5 +1,6 @@
 using Npgsql;
 using UDrive.Api.Common;
+using UDrive.Api.Domain;
 using UDrive.Api.Models;
 using UDrive.Api.Security;
 
@@ -734,7 +735,12 @@ public sealed class DriverVerificationService(
                    v.is_four_by_four, v.has_first_aid_kit,
                    v.has_fire_extinguisher, v.has_spare_tyre,
                    v.has_snow_chains, v.has_child_seat,
-                   v.mountain_readiness_score, v.status, v.image_url
+                   v.mountain_readiness_score, v.status, v.image_url,
+                   COALESCE(v.available_for_tour, false),
+                   COALESCE((SELECT LEAST(100, GREATEST(0,
+                               (s.value_json #>> '{}')::int))
+                             FROM udrive.system_settings s
+                             WHERE s.key = 'tour.minimum_readiness'), @defaultMinimum)
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             WHERE v.id = @vehicleId AND dp.user_id = @userId
@@ -746,16 +752,30 @@ public sealed class DriverVerificationService(
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("vehicleId", vehicleId);
         command.Parameters.AddWithValue("userId", userId);
+        command.Parameters.AddWithValue("defaultMinimum", TourReadiness.DefaultMinimum);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
             return null;
         }
 
-        var values = new object[20];
+        var values = new object[22];
         reader.GetValues(values);
         await reader.CloseAsync();
         var documents = await GetVehicleDocumentsAsync(vehicleId, cancellationToken);
+
+        var equipment = new TourReadiness.Equipment(
+            (bool)values[11],  // four by four
+            (bool)values[12],  // first aid kit
+            (bool)values[14],  // spare tyre
+            (bool)values[13],  // fire extinguisher
+            (bool)values[15],  // snow chains
+            (bool)values[10],  // heating
+            (bool)values[9],   // air conditioning
+            (bool)values[16]); // child seat
+        var availableForTour = (bool)values[20];
+        var required = (int)values[21];
+
         return new VehicleDto(
             (Guid)values[0],
             (string)values[1],
@@ -777,7 +797,17 @@ public sealed class DriverVerificationService(
             (int)values[17],
             (string)values[18],
             values[19] is DBNull ? null : (string)values[19],
-            documents);
+            documents,
+            required,
+            availableForTour,
+            TourReadiness.Items
+                .Select(item => new TourReadinessItemDto(
+                    item.Key, item.Label, item.Points, equipment.Has(item.Key)))
+                .ToList(),
+            TourReadiness.MissingToReach(equipment, required)
+                .Select(item => new TourReadinessItemDto(
+                    item.Key, item.Label, item.Points, false))
+                .ToList());
     }
 
     private async Task<IReadOnlyList<VehicleDocumentDto>> GetVehicleDocumentsAsync(
@@ -874,19 +904,23 @@ public sealed class DriverVerificationService(
         return (int)(await command.ExecuteScalarAsync(cancellationToken))! > 0;
     }
 
-    private static int CalculateMountainReadiness(VehicleUpsertRequest request)
-    {
-        var score = 20;
-        if (request.IsFourByFour) score += 25;
-        if (request.HasFirstAidKit) score += 12;
-        if (request.HasFireExtinguisher) score += 10;
-        if (request.HasSpareTyre) score += 12;
-        if (request.HasSnowChains) score += 10;
-        if (request.HasHeating) score += 5;
-        if (request.HasAirConditioning) score += 3;
-        if (request.HasChildSeat) score += 3;
-        return Math.Min(score, 100);
-    }
+    /// <remarks>
+    /// The weights moved to <see cref="TourReadiness"/>. They were private
+    /// here, so nothing that showed a Driver their vehicle could reach them —
+    /// which is why the only thing a refused Driver ever saw was the refusal.
+    /// </remarks>
+    private static int CalculateMountainReadiness(VehicleUpsertRequest request) =>
+        TourReadiness.Score(Equipment(request));
+
+    private static TourReadiness.Equipment Equipment(VehicleUpsertRequest request) =>
+        new(request.IsFourByFour,
+            request.HasFirstAidKit,
+            request.HasSpareTyre,
+            request.HasFireExtinguisher,
+            request.HasSnowChains,
+            request.HasHeating,
+            request.HasAirConditioning,
+            request.HasChildSeat);
 
     private static void AddVehicleParameters(
         NpgsqlCommand command,

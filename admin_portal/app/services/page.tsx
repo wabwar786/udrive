@@ -538,6 +538,20 @@ export default function Page() {
                     <p className="serviceNote">
                       Drivers can still register vehicles for this service.
                     </p>
+
+                    {/*
+                      The tile, as the customer will see it.
+
+                      Badge text and a closed message are easy to write and
+                      hard to picture, and the only way to check them used to
+                      be to open the app on a phone. A tile drawn from the same
+                      two fields answers it here: a badge that is too long to
+                      fit is visible before it ships.
+                    */}
+                    <TilePreview
+                      name={NAMES[row.serviceKey] ?? row.serviceKey}
+                      badge={row.badgeLabel}
+                    />
                   </div>
                 )}
 
@@ -724,5 +738,26 @@ function WhatsAppOtpPanel() {
         )}
       </div>
     </section>
+  );
+}
+
+
+/**
+ * How a closed service looks on the customer's home screen.
+ *
+ * Deliberately plain: this is a check on the words, not a rendering of the
+ * app. It shows the two things an Admin is choosing — the tile's name and the
+ * badge sitting on it — at the size they will appear, dimmed the way a closed
+ * tile is dimmed.
+ */
+function TilePreview({ name, badge }: { name: string; badge: string }) {
+  return (
+    <div className="tilePreview">
+      <span className="tilePreviewCaption">On the customer&apos;s home screen</span>
+      <div className="tilePreviewTile">
+        <span className="tilePreviewBadge">{badge || 'SOON'}</span>
+        <span className="tilePreviewName">{name}</span>
+      </div>
+    </div>
   );
 }

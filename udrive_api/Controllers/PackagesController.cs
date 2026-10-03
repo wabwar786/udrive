@@ -14,16 +14,27 @@ public sealed class PackagesController(
 {
     [AllowAnonymous]
     [HttpGet]
+    /// <param name="departureTo">
+    /// Exclusive upper bound. With <c>departureFrom</c> this expresses a single
+    /// day, which is what a Customer searching for a tour means by "the 14th".
+    /// </param>
+    /// <param name="partyType">
+    /// <c>Family</c>, <c>WomenOnly</c> or <c>Any</c>. Omitted means no filter.
+    /// </param>
     public async Task<IActionResult> GetPackages(
         [FromQuery] Guid? destinationId,
         [FromQuery] DateTimeOffset? departureFrom,
         [FromQuery] int? minimumSeats,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        [FromQuery] DateTimeOffset? departureTo = null,
+        [FromQuery] string? partyType = null) =>
         ToActionResult(await packageService.GetPublicPackagesAsync(
             destinationId,
             departureFrom,
             minimumSeats,
-            cancellationToken));
+            cancellationToken,
+            departureTo,
+            partyType));
 
     [AllowAnonymous]
     [HttpGet("{packageId:guid}")]

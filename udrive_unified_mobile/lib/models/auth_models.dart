@@ -155,6 +155,10 @@ class LiveVehicle {
     required this.status,
     this.imageUrl,
     required this.documents,
+    this.tourReadinessRequired = 60,
+    this.availableForTour = false,
+    this.tourReadinessItems = const [],
+    this.tourReadinessMissing = const [],
   });
 
   final String id;
@@ -170,6 +174,30 @@ class LiveVehicle {
   final String status;
   final String? imageUrl;
   final List<Map<String, dynamic>> documents;
+
+  /// The score this vehicle must reach before it can carry a tour package.
+  ///
+  /// From the server, because it is an Admin setting. A copy in the app would
+  /// be wrong the day it changed, and the Driver would be told they qualify by
+  /// one screen and refused by the next.
+  final int tourReadinessRequired;
+
+  /// The Driver's own switch. The second tour gate, and the one that used to
+  /// be invisible — a vehicle scoring 82 could still be refused on this alone
+  /// with nothing on screen saying the switch existed.
+  final bool availableForTour;
+
+  /// Everything that counts towards the score, with what this vehicle has.
+  final List<TourReadinessItem> tourReadinessItems;
+
+  /// The cheapest missing items that would reach the bar. Empty when it does.
+  final List<TourReadinessItem> tourReadinessMissing;
+
+  bool get meetsTourReadiness =>
+      mountainReadinessScore >= tourReadinessRequired;
+
+  /// Both gates. Either one alone is not enough to publish a package.
+  bool get canCarryTour => meetsTourReadiness && availableForTour;
 
   factory LiveVehicle.fromJson(Map<String, dynamic> json) => LiveVehicle(
         id: json['id']?.toString() ?? '',
@@ -188,7 +216,48 @@ class LiveVehicle {
             .whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e))
             .toList(),
+        tourReadinessRequired:
+            (json['tourReadinessRequired'] as num?)?.toInt() ?? 60,
+        availableForTour: json['availableForTour'] == true,
+        tourReadinessItems: TourReadinessItem.listFrom(json['tourReadinessItems']),
+        tourReadinessMissing:
+            TourReadinessItem.listFrom(json['tourReadinessMissing']),
       );
+}
+
+/// One piece of equipment that counts towards a vehicle's tour readiness.
+///
+/// The points come from the server rather than being written here. The weights
+/// are a judgement about mountain roads that an Admin may revise, and an app
+/// carrying its own copy would start disagreeing with the server the first time
+/// it did.
+class TourReadinessItem {
+  const TourReadinessItem({
+    required this.key,
+    required this.label,
+    required this.points,
+    required this.present,
+  });
+
+  final String key;
+  final String label;
+  final int points;
+  final bool present;
+
+  factory TourReadinessItem.fromJson(Map<String, dynamic> json) =>
+      TourReadinessItem(
+        key: json['key']?.toString() ?? '',
+        label: json['label']?.toString() ?? '',
+        points: (json['points'] as num?)?.toInt() ?? 0,
+        present: json['present'] == true,
+      );
+
+  static List<TourReadinessItem> listFrom(Object? value) => value is List
+      ? value
+          .whereType<Map>()
+          .map((e) => TourReadinessItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList(growable: false)
+      : const [];
 }
 
 class ApiException implements Exception {

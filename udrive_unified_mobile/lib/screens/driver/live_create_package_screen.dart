@@ -6,6 +6,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_controls.dart';
 import '../../core/widgets/ud_kit.dart';
+import '../../models/auth_models.dart';
+import 'live_vehicle_list_screen.dart';
 
 /// D-31 — the form that creates a tour package.
 ///
@@ -165,7 +167,14 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
         .where((v) => const {'verified', 'approved'}
             .contains('${v.status}'.toLowerCase()))
         .toList();
-    _vehicleId ??= vehicles.isEmpty ? null : vehicles.first.id;
+    // Only a vehicle that can actually carry a tour is preselected.
+    //
+    // Before this, the first verified vehicle was chosen whether or not it
+    // could carry a tour, so a Driver filled in the whole form against a
+    // vehicle the server would refuse — and only found out on Save, from a
+    // message that named neither the score nor the bar.
+    final eligible = vehicles.where((v) => v.canCarryTour).toList();
+    _vehicleId ??= eligible.isEmpty ? null : eligible.first.id;
 
     final selected = vehicles.where((v) => v.id == _vehicleId).toList();
     final vehicleLabel = selected.isEmpty
@@ -243,13 +252,31 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
                     'vehicle first.',
               )
             else ...[
-              const UdLabel('Verified vehicle'),
+              const UdLabel('Tour vehicle'),
               const SizedBox(height: 8),
               _PickerField(
                 icon: Icons.directions_car_rounded,
                 value: vehicleLabel,
                 onTap: _busy ? null : () => _pickVehicle(vehicles),
               ),
+
+              // Said here, not on Save.
+              //
+              // A Driver with verified vehicles and none of them tour-ready
+              // used to see a normal, complete-looking form and learn the
+              // truth only after filling it in. Every vehicle in the picker
+              // now carries its own reason, and this says the overall position
+              // before they start typing.
+              if (eligible.isEmpty) ...[
+                const SizedBox(height: 10),
+                UdBanner(
+                  tone: UdTone.warn,
+                  icon: Icons.terrain_rounded,
+                  text: 'None of your vehicles can carry a tour yet. Open one '
+                      'below to see what it needs — a package cannot be saved '
+                      'until at least one qualifies.',
+                ),
+              ],
             ],
             const SizedBox(height: 14),
 
@@ -436,7 +463,16 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
     if (picked != null) setState(() => _destinationId = picked);
   }
 
-  Future<void> _pickVehicle(List<dynamic> vehicles) async {
+  /// The vehicle picker — eligible first, the rest with the reason why not.
+  ///
+  /// A vehicle that cannot carry a tour is still listed, because hiding it
+  /// leaves the Driver wondering where their vehicle went. It is listed as
+  /// unselectable, with the one sentence that says what to do, and tapping it
+  /// opens that vehicle rather than silently doing nothing.
+  Future<void> _pickVehicle(List<LiveVehicle> vehicles) async {
+    final eligible = vehicles.where((v) => v.canCarryTour).toList();
+    final blocked = vehicles.where((v) => !v.canCarryTour).toList();
+
     final picked = await showUdSheet<String>(
       context: context,
       builder: (sheetContext) => SingleChildScrollView(
@@ -445,31 +481,85 @@ class _LiveCreatePackageScreenState extends State<LiveCreatePackageScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 4),
-            Text('Verified vehicle',
+            Text('Tour vehicle',
                 style: AppType.h2.copyWith(color: AppText.primary)),
             const SizedBox(height: 14),
-            UdListGroup(
-              children: [
-                for (final v in vehicles)
-                  UdListRow(
-                    title: '${v.make} ${v.model}',
-                    subtitle: '${v.registrationNumber} · '
-                        '${v.passengerCapacity} seats',
-                    leading: const UdIconTile(
-                        icon: Icons.directions_car_filled_rounded),
-                    onTap: () => Navigator.pop(sheetContext, v.id as String),
-                    trailing: v.id == _vehicleId
-                        ? const Icon(Icons.check_rounded,
-                            size: 22, color: AppColors.brandInk)
-                        : null,
-                  ),
-              ],
-            ),
+            if (eligible.isNotEmpty)
+              UdListGroup(
+                children: [
+                  for (final v in eligible)
+                    UdListRow(
+                      title: '${v.make} ${v.model}',
+                      subtitle: '${v.registrationNumber} · '
+                          '${v.passengerCapacity} seats · '
+                          'readiness ${v.mountainReadinessScore}',
+                      leading: const UdIconTile(
+                          icon: Icons.directions_car_filled_rounded),
+                      onTap: () => Navigator.pop(sheetContext, v.id),
+                      trailing: v.id == _vehicleId
+                          ? const Icon(Icons.check_rounded,
+                              size: 22, color: AppColors.brandInk)
+                          : null,
+                    ),
+                ],
+              ),
+            if (blocked.isNotEmpty) ...[
+              if (eligible.isNotEmpty) const SizedBox(height: 18),
+              const UdLabel('Not ready for tours'),
+              const SizedBox(height: 8),
+              UdListGroup(
+                children: [
+                  for (final v in blocked)
+                    UdListRow(
+                      title: '${v.make} ${v.model}',
+                      subtitle: _blockedReason(v),
+                      leading: const UdIconTile(
+                        icon: Icons.directions_car_filled_rounded,
+                        tone: UdIconTone.neutral,
+                      ),
+                      // Closes the sheet and opens that vehicle, which is where
+                      // the fix is. A row that did nothing would read as broken.
+                      onTap: () => Navigator.pop(sheetContext, _openVehicle),
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
     );
-    if (picked != null) setState(() => _vehicleId = picked);
+
+    if (picked == null) return;
+    if (picked == _openVehicle) {
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const LiveVehicleListScreen()),
+        );
+      }
+      return;
+    }
+    setState(() => _vehicleId = picked);
+  }
+
+  /// Sentinel: the Driver tapped a vehicle that cannot carry a tour.
+  static const _openVehicle = '__open_vehicle__';
+
+  /// Why this vehicle cannot carry a tour, in one line.
+  ///
+  /// Score first when the score is the problem, because that is the thing with
+  /// steps to take. The switch second, because it is one tap once the score is
+  /// there — and it was the gate nothing on any screen used to mention.
+  static String _blockedReason(LiveVehicle vehicle) {
+    if (!vehicle.meetsTourReadiness) {
+      final missing = vehicle.tourReadinessMissing;
+      final needs = missing.isEmpty
+          ? 'more equipment'
+          : missing.map((item) => item.label.toLowerCase()).join(', ');
+      return 'Readiness ${vehicle.mountainReadinessScore}/'
+          '${vehicle.tourReadinessRequired} — needs $needs';
+    }
+    return 'Readiness ${vehicle.mountainReadinessScore}/'
+        '${vehicle.tourReadinessRequired} — but "Available for tour" is off';
   }
 
   Future<void> _pick(bool departure) async {

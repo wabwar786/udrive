@@ -148,9 +148,38 @@ class BookingRepository {
     return LiveBooking.fromJson(Map<String, dynamic>.from(response['data'] as Map));
   }
 
-  Future<List<LiveTourPackage>> getPublicPackages({int? minimumSeats}) async {
-    final suffix = minimumSeats == null ? '' : '?minimumSeats=$minimumSeats';
-    final response = await client.getJson('/api/v1/packages$suffix', authenticated: false);
+  /// Departures a Customer can book, narrowed by what they asked for.
+  ///
+  /// Only `minimumSeats` used to be sent — and nothing sent even that. The app
+  /// fetched every active future departure and filtered in Dart, which meant a
+  /// customer searching for one day in Neelum downloaded six months of
+  /// everything, and the seat filter ran on a number that does not subtract
+  /// seats another customer is holding.
+  ///
+  /// [departureFrom] and [departureTo] together express one day: the start of
+  /// it and the start of the next. The server treats the upper bound as
+  /// exclusive, so there is no overlap between consecutive days.
+  Future<List<LiveTourPackage>> getPublicPackages({
+    int? minimumSeats,
+    String? destinationId,
+    DateTime? departureFrom,
+    DateTime? departureTo,
+    String? partyType,
+  }) async {
+    final query = <String, String>{
+      if (minimumSeats != null) 'minimumSeats': '$minimumSeats',
+      if (destinationId != null && destinationId.isNotEmpty)
+        'destinationId': destinationId,
+      if (departureFrom != null)
+        'departureFrom': departureFrom.toUtc().toIso8601String(),
+      if (departureTo != null)
+        'departureTo': departureTo.toUtc().toIso8601String(),
+      if (partyType != null && partyType.isNotEmpty) 'partyType': partyType,
+    };
+
+    final suffix = query.isEmpty ? '' : '?${Uri(queryParameters: query).query}';
+    final response =
+        await client.getJson('/api/v1/packages$suffix', authenticated: false);
     return _list(response, LiveTourPackage.fromJson);
   }
 

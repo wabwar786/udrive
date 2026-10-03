@@ -4,6 +4,7 @@ using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
 using UDrive.Api.Common;
+using UDrive.Api.Domain;
 using UDrive.Api.Domain.Enums;
 using UDrive.Api.Models;
 using UDrive.Api.Security;
@@ -267,11 +268,38 @@ public sealed class PackageMarketplaceService(
         return ServiceResult<IReadOnlyList<TourPackageLiveDto>>.Ok(list);
     }
 
+    /// <summary>The public list of departures a Customer can book.</summary>
+    /// <remarks>
+    /// Three things changed here, all of them because the app had no way to ask
+    /// the question a Customer actually asks — "who is going to Neelum on the
+    /// 14th with four seats".
+    /// <para>
+    /// <b>An upper date bound.</b> There was only <paramref name="departureFrom"/>,
+    /// so "the 14th" could not be expressed: asking from the 14th returns every
+    /// departure for the next six months. With <paramref name="departureTo"/> a
+    /// single day is a range of one.
+    /// </para>
+    /// <para>
+    /// <b>Seats that count holds.</b> The seat filter ran on
+    /// <c>available_seats</c>, which does not subtract seats another Customer is
+    /// holding right now. A package with four free and four held passed a
+    /// "4 seats" filter and then refused the booking. It now subtracts live
+    /// holds, the same arithmetic the card shows.
+    /// </para>
+    /// <para>
+    /// <b>Party type.</b> family_only and women_only were returned and drawn on
+    /// the card but never filtered on, so a women-only departure sat in the
+    /// results for everyone and a family searching could not narrow to the
+    /// departures that would take them.
+    /// </para>
+    /// </remarks>
     public async Task<ServiceResult<IReadOnlyList<TourPackageLiveDto>>> GetPublicPackagesAsync(
         Guid? destinationId,
         DateTimeOffset? departureFrom,
         int? minimumSeats,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? departureTo = null,
+        string? partyType = null)
     {
         var predicates = new List<string>
         {
@@ -280,7 +308,38 @@ public sealed class PackageMarketplaceService(
         };
         if (destinationId is not null) predicates.Add("tp.destination_id=@destinationId");
         if (departureFrom is not null) predicates.Add("tp.departure_at>=@departureFrom");
-        if (minimumSeats is not null) predicates.Add("tp.available_seats>=@minimumSeats");
+        if (departureTo is not null) predicates.Add("tp.departure_at<@departureTo");
+
+        // Free seats, less the ones currently held. Same expression as the one
+        // the select returns, so the filter and the number on the card cannot
+        // disagree.
+        if (minimumSeats is not null)
+        {
+            predicates.Add("""
+                (tp.available_seats - COALESCE((SELECT sum(h.seats_held)::int
+                    FROM udrive.package_seat_holds h
+                    WHERE h.tour_package_id=tp.id
+                      AND h.status='Active' AND h.expires_at>now()), 0))
+                >= @minimumSeats
+                """);
+        }
+
+        // A women-only departure takes a women-only party and nobody else. A
+        // family-only one takes families. "Any" is the Customer saying they
+        // have no constraint, which does not mean they can board a party that
+        // does — so it still excludes the restricted ones.
+        switch (partyType)
+        {
+            case "WomenOnly":
+                predicates.Add("tp.women_only");
+                break;
+            case "Family":
+                predicates.Add("NOT tp.women_only");
+                break;
+            case "Any":
+                predicates.Add("NOT tp.women_only AND NOT tp.family_only");
+                break;
+        }
 
         var list = await ReadPackagesAsync(
             string.Join(" AND ", predicates),
@@ -288,6 +347,7 @@ public sealed class PackageMarketplaceService(
             {
                 if (destinationId is not null) command.Parameters.AddWithValue("destinationId", destinationId.Value);
                 if (departureFrom is not null) command.Parameters.AddWithValue("departureFrom", departureFrom.Value.ToUniversalTime());
+                if (departureTo is not null) command.Parameters.AddWithValue("departureTo", departureTo.Value.ToUniversalTime());
                 if (minimumSeats is not null) command.Parameters.AddWithValue("minimumSeats", minimumSeats.Value);
             },
             cancellationToken);
@@ -1503,9 +1563,19 @@ public sealed class PackageMarketplaceService(
         Guid vehicleId,
         CancellationToken cancellationToken)
     {
+        // The readiness bar comes back on the same read.
+        //
+        // It used to be the literal 60 in ValidatePackage, which made it
+        // unchangeable without a deploy and — worse — unshowable, so the Driver
+        // was refused without ever learning what the bar was.
         const string sql = """
             SELECT dp.id, v.passenger_capacity, v.is_four_by_four,
-                   v.mountain_readiness_score
+                   v.mountain_readiness_score,
+                   COALESCE(v.available_for_tour, false),
+                   COALESCE((SELECT LEAST(100, GREATEST(0,
+                               (s.value_json #>> '{}')::int))
+                             FROM udrive.system_settings s
+                             WHERE s.key = 'tour.minimum_readiness'), @defaultMinimum)
             FROM udrive.driver_profiles dp
             JOIN udrive.vehicles v ON v.driver_profile_id=dp.id
             WHERE dp.user_id=@userId AND lower(dp.verification_status) IN ('approved','verified')
@@ -1516,10 +1586,12 @@ public sealed class PackageMarketplaceService(
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("userId", userId);
         command.Parameters.AddWithValue("vehicleId", vehicleId);
+        command.Parameters.AddWithValue("defaultMinimum", TourReadiness.DefaultMinimum);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return null;
         return new DriverVehicleContext(
-            reader.GetGuid(0), reader.GetInt32(1), reader.GetBoolean(2), reader.GetInt32(3));
+            reader.GetGuid(0), reader.GetInt32(1), reader.GetBoolean(2),
+            reader.GetInt32(3), reader.GetBoolean(4), reader.GetInt32(5));
     }
 
     private async Task<ServiceResult<PackageOfferDto>> GetPackageOfferByIdAsync(
@@ -1647,8 +1719,31 @@ public sealed class PackageMarketplaceService(
             return ("vehicle_capacity_exceeded", $"This vehicle supports up to {vehicle.PassengerCapacity} passengers.");
         if (request.FamilyOnly && request.WomenOnly)
             return ("conflicting_package_rules", "A package cannot be both family-only and women-only.");
-        if (vehicle.MountainReadinessScore < 60)
-            return ("vehicle_not_tour_ready", "The selected vehicle does not meet the minimum tourism readiness score.");
+        // Both tour gates, each saying what it actually wants.
+        //
+        // This used to be one line against a hardcoded 60, and the message it
+        // returned — "does not meet the minimum tourism readiness score" —
+        // named neither the score, nor the minimum, nor anything the Driver
+        // could go and do. They were left to guess which of eight checkboxes
+        // mattered. And the second gate, the per-vehicle tour switch, was not
+        // checked here at all, so a Driver who turned it off could still
+        // publish a package with a vehicle the customer app would never show.
+        if (!vehicle.AvailableForTour)
+        {
+            return ("vehicle_not_available_for_tour",
+                "This vehicle is not switched on for tours. Open the vehicle "
+                + "and turn on \"Available for tour\" first.");
+        }
+
+        if (vehicle.MountainReadinessScore < vehicle.TourReadinessRequired)
+        {
+            return ("vehicle_not_tour_ready",
+                $"This vehicle's tour readiness is "
+                + $"{vehicle.MountainReadinessScore} and tours need "
+                + $"{vehicle.TourReadinessRequired}. Open the vehicle to see "
+                + "which equipment would close the gap.");
+        }
+
         return null;
     }
 
@@ -1706,7 +1801,9 @@ public sealed class PackageMarketplaceService(
         Guid DriverProfileId,
         int PassengerCapacity,
         bool IsFourByFour,
-        int MountainReadinessScore);
+        int MountainReadinessScore,
+        bool AvailableForTour,
+        int TourReadinessRequired);
 
     private sealed record LockedPackage(
         Guid Id,

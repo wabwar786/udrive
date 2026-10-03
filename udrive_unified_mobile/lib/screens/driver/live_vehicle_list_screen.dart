@@ -195,21 +195,187 @@ class _VehicleCard extends StatelessWidget {
                       label: '${vehicle.luggageCapacity} bags',
                     ),
                     _Fact(
-                      icon: Icons.terrain_rounded,
-                      label: '${vehicle.mountainReadinessScore}/100',
-                    ),
-                    _Fact(
                       icon: Icons.description_rounded,
                       label: '${vehicle.documents.length} documents',
                     ),
                   ],
                 ),
+                const SizedBox(height: 14),
+                _TourReadiness(vehicle: vehicle),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+/// Whether this vehicle may carry a tour, and what is missing if not.
+///
+/// The score was already on this card, as "45/100" beside the seat count — a
+/// number with no scale and no consequence. It is the number that decides
+/// whether a Driver can publish a tour package at all, and the only place it
+/// was ever explained was the refusal they got on pressing Save, which named
+/// neither the score nor the target nor anything to do about it.
+///
+/// Both gates are shown, because either one alone blocks the package and a
+/// Driver who passed one and failed the other had no way to tell which.
+class _TourReadiness extends StatelessWidget {
+  const _TourReadiness({required this.vehicle});
+
+  final LiveVehicle vehicle;
+
+  @override
+  Widget build(BuildContext context) {
+    final score = vehicle.mountainReadinessScore;
+    final required = vehicle.tourReadinessRequired;
+    final ready = vehicle.meetsTourReadiness;
+    final missing = vehicle.tourReadinessMissing;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: vehicle.canCarryTour ? AppColors.brandWash : AppColors.surface,
+        borderRadius: AppRadii.all(AppRadii.tile),
+        border: Border.all(
+          color: vehicle.canCarryTour ? AppTint.successBorder : AppColors.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  'Tour readiness',
+                  style: AppType.small.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppText.secondary,
+                  ),
+                ),
+              ),
+              Text(
+                '$score',
+                style: AppType.h2.copyWith(
+                  height: 1,
+                  color: ready ? AppColors.brandInk : AppText.primary,
+                ),
+              ),
+              Text(
+                ' / $required needed',
+                style: AppType.small.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: AppText.caption,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // The bar is drawn against 100, with a mark where the requirement
+          // sits — so the gap is a distance the Driver can see rather than a
+          // subtraction they have to do.
+          LayoutBuilder(
+            builder: (context, constraints) => SizedBox(
+              height: 14,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceAlt,
+                        borderRadius: AppRadii.all(999),
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: (score / 100).clamp(0.0, 1.0),
+                      child: Container(
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: ready ? AppColors.brand : AppTint.warningText,
+                          borderRadius: AppRadii.all(999),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: constraints.maxWidth * (required / 100).clamp(0.0, 1.0),
+                    top: 0,
+                    child: Container(
+                      width: 2,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: AppColors.navy,
+                        borderRadius: AppRadii.all(2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          if (!ready && missing.isNotEmpty)
+            Text(
+              'Add ${_sentence(missing.map((item) => item.label.toLowerCase()))} '
+              'to reach $required.',
+              style: AppType.small.copyWith(
+                height: 1.45,
+                color: AppTint.warningText,
+                fontWeight: FontWeight.w600,
+              ),
+            )
+          else if (!ready)
+            Text(
+              'This vehicle cannot reach $required with the equipment UDrive '
+              'scores. A different vehicle would be needed for tours.',
+              style: AppType.small.copyWith(
+                height: 1.45,
+                color: AppTint.warningText,
+                fontWeight: FontWeight.w600,
+              ),
+            )
+          else if (!vehicle.availableForTour)
+            Text(
+              'Score is enough, but "Available for tour" is off for this '
+              'vehicle — turn it on under Tour rates before creating a package.',
+              style: AppType.small.copyWith(
+                height: 1.45,
+                color: AppTint.warningText,
+                fontWeight: FontWeight.w600,
+              ),
+            )
+          else
+            Text(
+              'Ready for tour packages.',
+              style: AppType.small.copyWith(
+                height: 1.45,
+                color: AppColors.brandInk,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// "a first-aid kit, a spare tyre and snow chains" — a list a person reads,
+  /// not three bullet points for three objects.
+  static String _sentence(Iterable<String> parts) {
+    final list = parts.toList();
+    if (list.isEmpty) return '';
+    if (list.length == 1) return list.first;
+    return '${list.sublist(0, list.length - 1).join(', ')} and ${list.last}';
   }
 }
 
