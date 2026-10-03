@@ -331,11 +331,47 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
                 color: AppColors.brandInk,
               ),
             ),
-      onTap: _destinationFor(way) == null
-          ? null
-          : () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => _destinationFor(way)!),
-              ),
+      onTap: _opensScreen(way) ? () => _openWay(way) : null,
+    );
+  }
+
+  /// Whether a way to earn has a screen to open.
+  static bool _opensScreen(WayToEarn way) => const {
+        'driverMissions',
+        'driverWelcomeBonus',
+        'driverFounding',
+      }.contains(way.actionPath);
+
+  /// Opens the screen behind a way to earn.
+  ///
+  /// The founding screen needs the driver's founding status, which this
+  /// screen does not load, so it is fetched on tap from the growth home call.
+  Future<void> _openWay(WayToEarn way) async {
+    if (way.actionPath == 'driverFounding') {
+      final controller = AppControllerScope.of(context);
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
+      final home = await DriverGrowthRepository(controller.apiClient).home();
+      if (!mounted) return;
+      final founding = home?.founding;
+      if (founding == null) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Founding status could not be loaded.')),
+        );
+        return;
+      }
+      navigator.push(
+        MaterialPageRoute(
+          builder: (_) => DriverFoundingScreen(founding: founding),
+        ),
+      );
+      return;
+    }
+
+    final destination = _destinationFor(way);
+    if (destination == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => destination),
     );
   }
 
@@ -348,7 +384,6 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
   Widget? _destinationFor(WayToEarn way) => switch (way.actionPath) {
         'driverMissions' => const DriverMissionsScreen(),
         'driverWelcomeBonus' => const DriverWelcomeBonusScreen(),
-        'driverFounding' => const DriverFoundingScreen(),
         _ => null,
       };
 
