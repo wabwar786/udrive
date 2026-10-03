@@ -286,6 +286,8 @@ class _DriverWalletScreenState extends State<DriverWalletScreen> {
     final wallet = _wallet;
     final balance = (wallet?['balance'] as num?)?.toDouble() ?? 0;
     final canDrive = wallet?['canReceiveRides'] == true;
+    // What UDrive put into this balance, as opposed to what the Driver sent.
+    final rewards = (wallet?['rewardsCredited'] as num?)?.toDouble() ?? 0;
     final percentage =
         (wallet?['commissionPercentage'] as num?)?.toDouble() ?? 10;
     final topups = (wallet?['topups'] as List? ?? const [])
@@ -364,6 +366,56 @@ class _DriverWalletScreenState extends State<DriverWalletScreen> {
                 'top-up, the office confirms it, and your balance is '
                 'credited.',
           ),
+
+          // Rewards land here, and a Driver had no way to know that.
+          //
+          // A mission or a welcome bonus is credited into this same balance, so
+          // it went up with no top-up behind it and nothing on the screen said
+          // why. Worse, a Driver could reasonably read a rising balance as money
+          // owed to them and ask for it in cash. Saying the figure and saying
+          // what it does settles both: a reward pays your commission, so you
+          // keep more of every fare — it is not a payout.
+          if (rewards > 0) ...[
+            const SizedBox(height: 14),
+            UdCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      const UdIconTile(
+                        icon: Icons.card_giftcard_rounded,
+                        tone: UdIconTone.soft,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Rewards credited',
+                          style: AppType.listTitle
+                              .copyWith(color: AppText.primary),
+                        ),
+                      ),
+                      Text(
+                        'PKR ${_money(rewards)}',
+                        style: AppType.listTitle.copyWith(
+                          fontSize: 15.5,
+                          color: AppColors.brandInk,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'UDrive has put this much into your wallet from missions '
+                    'and bonuses. It pays your commission, so you keep more of '
+                    'every fare — it is not withdrawn as cash.',
+                    style: AppType.small
+                        .copyWith(height: 1.5, color: AppText.secondary),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           if (_error != null) ...[
             const SizedBox(height: 14),

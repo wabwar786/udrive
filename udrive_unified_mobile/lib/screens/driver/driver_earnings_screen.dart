@@ -9,6 +9,11 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
+import '../../core/growth/driver_growth_repository.dart';
+import '../../models/driver_growth_models.dart';
+import 'driver_founding_screen.dart';
+import 'driver_missions_screen.dart';
+import 'driver_welcome_bonus_screen.dart';
 
 /// D-40 — this month, the rating, and the payout wallet.
 ///
@@ -37,6 +42,19 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
   /// while a ride request is coming in — the dashboard's job is the next ride.
   DriverDashboard? _dashboard;
 
+  /// Today, this week, this month — measured, with the breakdown behind each.
+  ///
+  /// The screen used to open on one number: "this month", from the dashboard
+  /// call. A Driver asking the only question that matters — was today worth the
+  /// fuel — could not answer it here, and a Driver asking where the money came
+  /// from could not tell a fare from a reward, because both arrived as one
+  /// total. Null while it loads, and null for ever on an install where the
+  /// growth endpoints are not deployed: the rest of the screen still works.
+  DriverEarnings? _earnings;
+
+  /// Which period's figures are on screen. 0 today, 1 week, 2 month.
+  int _period = 0;
+
   String? _error;
   bool _busy = false;
 
@@ -45,7 +63,10 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
     super.initState();
     _repository = DriverFinanceRepository(ApiClient(SessionStore()));
     _load();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDashboard());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDashboard();
+      _loadEarnings();
+    });
   }
 
   Future<void> _loadDashboard() async {
@@ -54,6 +75,29 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
         await TripChatRepository(controller.apiClient).driverDashboard();
     if (!mounted || dashboard == null) return;
     setState(() => _dashboard = dashboard);
+  }
+
+  Future<void> _loadEarnings() async {
+    final controller = AppControllerScope.of(context);
+    final earnings =
+        await DriverGrowthRepository(controller.apiClient).earnings();
+    if (!mounted) return;
+    setState(() => _earnings = earnings);
+  }
+
+  EarningsPeriod? get _selected => switch (_period) {
+        0 => _earnings?.today,
+        1 => _earnings?.week,
+        _ => _earnings?.month,
+      };
+
+  /// "2h 45m", or "—" when there is nothing to show.
+  static String _hours(int seconds) {
+    if (seconds <= 0) return '—';
+    final h = seconds ~/ 3600;
+    final m = (seconds % 3600) ~/ 60;
+    if (h == 0) return '${m}m';
+    return m == 0 ? '${h}h' : '${h}h ${m}m';
   }
 
   Future<void> _load() async {
@@ -94,7 +138,10 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
         : <Map<String, dynamic>>[];
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: () async {
+        await _load();
+        await _loadEarnings();
+      },
       color: AppColors.navy,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -107,14 +154,56 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            "Your rating, this month's trips, and your prepaid wallet.",
+            'What you earned, where it came from, and your wallets.',
             style: AppType.body.copyWith(height: 1.45, color: AppText.secondary),
           ),
           const SizedBox(height: 20),
 
-          if (_dashboard != null) ...[
-            _MonthCard(dashboard: _dashboard!),
+          // The period figures, when the growth endpoint is there.
+          if (_selected case final period?) ...[
+            _PeriodTabs(
+              index: _period,
+              labels: [
+                _earnings!.today.label,
+                _earnings!.week.label,
+                _earnings!.month.label,
+              ],
+              onChanged: (value) => setState(() => _period = value),
+            ),
             const SizedBox(height: 14),
+            _EarningsHero(period: period),
+            const SizedBox(height: 14),
+            _EarningsTiles(period: period, hours: _hours(period.onlineSeconds)),
+            const SizedBox(height: 14),
+            _CommissionNote(
+              period: period,
+              percentage: _earnings!.commissionPercentage,
+              commissionBalance: _earnings!.commissionBalance,
+            ),
+            const SizedBox(height: 26),
+
+            if (_earnings!.waysToEarn.isNotEmpty) ...[
+              const UdSectionHeader(
+                title: 'Ways to earn',
+                caption: 'Live in your city',
+              ),
+              const SizedBox(height: 12),
+              UdListGroup(
+                children: [
+                  for (final way in _earnings!.waysToEarn) _wayRow(way),
+                ],
+              ),
+              const SizedBox(height: 26),
+            ],
+          ],
+
+          if (_dashboard != null) ...[
+            // Kept: the rating and its reviews are still read here, and D-46
+            // still lands on this screen.
+            if (_earnings == null) ...[
+              _MonthCard(dashboard: _dashboard!),
+              const SizedBox(height: 14),
+            ],
             _RatingBlock(dashboard: _dashboard!),
             const SizedBox(height: 26),
           ],
@@ -212,6 +301,57 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
     );
   }
 
+  /// One way to earn. The amount is only ever what an Admin configured.
+  Widget _wayRow(WayToEarn way) {
+    final icon = switch (way.kind) {
+      'Rides' => Icons.local_taxi_rounded,
+      'Tour' => Icons.luggage_rounded,
+      'WelcomeBonus' => Icons.card_giftcard_rounded,
+      'DailyMission' => Icons.flag_rounded,
+      'PeakHourReward' => Icons.bolt_rounded,
+      'WeeklyReward' => Icons.calendar_month_rounded,
+      'Referral' => Icons.group_add_rounded,
+      'FoundingBenefit' => Icons.workspace_premium_rounded,
+      'Reactivation' => Icons.refresh_rounded,
+      _ => Icons.payments_rounded,
+    };
+
+    return UdListRow(
+      title: way.title,
+      subtitle: way.detail.isEmpty ? null : way.detail,
+      leading: UdIconTile(icon: icon, tone: UdIconTone.soft),
+      // No amount means it varies with the fare. That is said by showing
+      // nothing rather than by printing an "up to" figure nobody promised.
+      trailing: way.amount == null
+          ? null
+          : Text(
+              'PKR ${NumberFormat('#,###').format(way.amount!.round())}',
+              style: AppType.listTitle.copyWith(
+                fontSize: 15.5,
+                color: AppColors.brandInk,
+              ),
+            ),
+      onTap: _destinationFor(way) == null
+          ? null
+          : () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => _destinationFor(way)!),
+              ),
+    );
+  }
+
+  /// Which screen a way to earn opens, or null when it has none yet.
+  ///
+  /// Pushed, not routed: the app has no named routes for these, and the drawer
+  /// pushes them the same way. A path with no screen built yet — the referral
+  /// screen is still to come — simply makes the row untappable rather than
+  /// throwing on a route that does not exist.
+  Widget? _destinationFor(WayToEarn way) => switch (way.actionPath) {
+        'driverMissions' => const DriverMissionsScreen(),
+        'driverWelcomeBonus' => const DriverWelcomeBonusScreen(),
+        'driverFounding' => const DriverFoundingScreen(),
+        _ => null,
+      };
+
   /// One wallet line.
   ///
   /// Money in is lime-ink and carries a plus; money out is navy and carries a
@@ -304,6 +444,238 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+/// Today / This week / This month.
+///
+/// Three chips rather than a dropdown. A Driver checks today a dozen times a
+/// shift, and a dropdown makes the most common action two taps.
+class _PeriodTabs extends StatelessWidget {
+  const _PeriodTabs({
+    required this.index,
+    required this.labels,
+    required this.onChanged,
+  });
+
+  final int index;
+  final List<String> labels;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          for (var i = 0; i < labels.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: () => onChanged(i),
+                  borderRadius: AppRadii.all(AppRadii.chip),
+                  child: Container(
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: i == index ? AppColors.navy : AppColors.background,
+                      borderRadius: AppRadii.all(AppRadii.chip),
+                      border: Border.all(
+                        color: i == index ? AppColors.navy : AppColors.border,
+                      ),
+                    ),
+                    child: Text(
+                      labels[i],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.small.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: i == index ? AppText.onInk : AppText.secondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      );
+}
+
+/// The total, and the two things it is made of.
+///
+/// Fares and rewards on separate lines on purpose. A Driver who cannot tell
+/// them apart cannot tell whether a good week was good driving or a campaign
+/// that is about to end.
+class _EarningsHero extends StatelessWidget {
+  const _EarningsHero({required this.period});
+
+  final EarningsPeriod period;
+
+  static String _pkr(double value) =>
+      'PKR ${NumberFormat('#,###').format(value.round())}';
+
+  @override
+  Widget build(BuildContext context) => UdCard(
+        tone: UdCardTone.navy,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${period.label} · you earned',
+              style: AppType.small.copyWith(color: AppText.onInkMuted),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _pkr(period.total),
+              style: AppType.display.copyWith(color: AppColors.brand),
+            ),
+            const SizedBox(height: 16),
+            _Line(
+              icon: Icons.local_taxi_rounded,
+              label: 'Ride fares, after commission',
+              value: _pkr(period.rideNet),
+            ),
+            const SizedBox(height: 10),
+            _Line(
+              icon: Icons.card_giftcard_rounded,
+              label: 'Rewards credited',
+              value: _pkr(period.bonusEarned),
+              // Zero is shown, not hidden. "No rewards yet" is information a
+              // Driver wants; a missing line reads as a screen that forgot.
+              muted: period.bonusEarned <= 0,
+            ),
+          ],
+        ),
+      );
+}
+
+class _Line extends StatelessWidget {
+  const _Line({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.muted = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Icon(icon, size: 18, color: muted ? AppText.onInkMuted : AppColors.brand),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: AppType.small.copyWith(color: AppText.onInkMuted),
+            ),
+          ),
+          Text(
+            value,
+            style: AppType.listTitle.copyWith(
+              fontSize: 15.5,
+              color: muted ? AppText.onInkMuted : AppText.onInk,
+            ),
+          ),
+        ],
+      );
+}
+
+/// Trips, time online, and what that worked out to an hour.
+class _EarningsTiles extends StatelessWidget {
+  const _EarningsTiles({required this.period, required this.hours});
+
+  final EarningsPeriod period;
+  final String hours;
+
+  @override
+  Widget build(BuildContext context) => UdCard(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: UdStat(value: '${period.trips}', label: 'Trips'),
+            ),
+            Expanded(
+              child: UdStat(value: hours, label: 'Online'),
+            ),
+            Expanded(
+              child: UdStat(
+                // A dash, not a number, under fifteen minutes online. An
+                // hourly rate worked out from four minutes of driving is a
+                // promise the platform never made.
+                value: period.perHour == null
+                    ? '—'
+                    : NumberFormat('#,###').format(period.perHour!.round()),
+                label: period.perHour == null ? 'Per hour' : 'PKR per hour',
+                align: CrossAxisAlignment.end,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// What the platform took, and what is left to take it from.
+///
+/// Both numbers in one place because they are one question. A Driver whose
+/// commission wallet runs out stops being sent rides, and the only warning the
+/// app used to give was the rides quietly stopping.
+class _CommissionNote extends StatelessWidget {
+  const _CommissionNote({
+    required this.period,
+    required this.percentage,
+    required this.commissionBalance,
+  });
+
+  final EarningsPeriod period;
+  final double percentage;
+  final double commissionBalance;
+
+  static String _pkr(double value) =>
+      'PKR ${NumberFormat('#,###').format(value.round())}';
+
+  @override
+  Widget build(BuildContext context) {
+    final low = commissionBalance <= 0;
+
+    return UdCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: UdStat(
+                  value: _pkr(period.commissionPaid),
+                  label: 'Commission taken '
+                      '(${percentage.toStringAsFixed(percentage % 1 == 0 ? 0 : 2)}%)',
+                ),
+              ),
+              Expanded(
+                child: UdStat(
+                  value: _pkr(commissionBalance),
+                  label: 'Commission wallet',
+                  align: CrossAxisAlignment.end,
+                ),
+              ),
+            ],
+          ),
+          if (low) ...[
+            const SizedBox(height: 12),
+            const UdBanner(
+              tone: UdTone.warn,
+              icon: Icons.account_balance_wallet_outlined,
+              text: 'Your commission wallet is empty, so no new ride requests '
+                  'will reach you. Top it up to start receiving work again.',
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

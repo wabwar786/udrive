@@ -90,6 +90,11 @@ public sealed class DriverGrowthController(DriverGrowthService service)
     public async Task<IActionResult> Updates(CancellationToken ct) =>
         Result(await service.UpdatesAsync(User.GetRequiredUserId(), ct));
 
+    /// <summary>Today, this week, this month — and every live way to earn.</summary>
+    [HttpGet("earnings")]
+    public async Task<IActionResult> Earnings(CancellationToken ct) =>
+        Result(await service.EarningsAsync(User.GetRequiredUserId(), ct));
+
     private IActionResult Result<T>(ServiceResult<T> result) =>
         result.Success
             ? Ok(ApiResponse<T>.Ok(result.Data!, result.Message))

@@ -173,6 +173,26 @@ public sealed class DriverWalletService(
             }
         }
 
+        // How much of this balance UDrive put there rather than the Driver.
+        //
+        // Rewards are credited into the commission balance, so a Driver who has
+        // earned a mission sees their balance go up with no top-up behind it and
+        // no way to tell why. Positive Bonus entries only: a correction an admin
+        // had to make is not a reward.
+        decimal rewardsCredited;
+        await using (var command = new NpgsqlCommand(
+            """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM udrive.driver_wallet_entries
+            WHERE wallet_id = @id AND entry_type = 'Bonus' AND amount > 0;
+            """,
+            connection))
+        {
+            command.Parameters.AddWithValue("id", wallet.Value.WalletId);
+            rewardsCredited =
+                Convert.ToDecimal(await command.ExecuteScalarAsync(cancellationToken));
+        }
+
         return ServiceResult<DriverCommissionWalletDto>.Ok(
             new DriverCommissionWalletDto(
                 balance,
@@ -180,7 +200,8 @@ public sealed class DriverWalletService(
                 percentage,
                 balance > minimum,
                 topups,
-                charges));
+                charges,
+                rewardsCredited));
     }
 
     /// <summary>Records a payment the Driver says they have sent.</summary>

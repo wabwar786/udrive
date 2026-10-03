@@ -366,3 +366,74 @@ public sealed record CampaignAwardDto(
     decimal RewardAmount,
     DateTimeOffset? QualifiedAt,
     DateTimeOffset? CreditedAt);
+
+// ──────────────────────────────────────────────────── earnings and ways to earn
+
+/// <summary>What a Driver earned, and where it came from.</summary>
+/// <remarks>
+/// Three periods in one response rather than three requests. A Driver opening
+/// this screen wants to compare today against the week — switching the tab
+/// should not wait on the network, and on a mountain road it would.
+/// </remarks>
+public sealed record DriverEarningsDto(
+    EarningsPeriodDto Today,
+    EarningsPeriodDto Week,
+    EarningsPeriodDto Month,
+
+    /// <summary>The commission rate the platform is currently taking.</summary>
+    decimal CommissionPercentage,
+
+    /// <summary>Prepaid commission balance — what rides are paid for from.</summary>
+    decimal CommissionBalance,
+
+    /// <summary>Payout wallet: earned, cleared and waiting to be sent.</summary>
+    decimal AvailableBalance,
+    decimal PendingBalance,
+
+    /// <summary>Every live way this Driver can earn, from real campaigns.</summary>
+    IReadOnlyList<WayToEarnDto> WaysToEarn);
+
+/// <summary>One period's figures, all of them measured, none estimated.</summary>
+/// <param name="RideNet">Fares after commission.</param>
+/// <param name="RideGross">Fares before commission.</param>
+/// <param name="CommissionPaid">What the platform took.</param>
+/// <param name="BonusEarned">Rewards credited — missions, peak hours, bonuses.</param>
+/// <param name="Trips">Completed trips.</param>
+/// <param name="OnlineSeconds">Credited online time.</param>
+/// <param name="PerHour">
+/// Ride plus bonus divided by hours online, or null under fifteen minutes
+/// online — a figure from four minutes of work says nothing and reads as a
+/// promise.
+/// </param>
+public sealed record EarningsPeriodDto(
+    string Label,
+    DateTimeOffset From,
+    DateTimeOffset To,
+    decimal RideNet,
+    decimal RideGross,
+    decimal CommissionPaid,
+    decimal BonusEarned,
+    int Trips,
+    int OnlineSeconds,
+    decimal? PerHour)
+{
+    public decimal Total => RideNet + BonusEarned;
+}
+
+/// <summary>One live earning route, described in what it actually pays.</summary>
+/// <remarks>
+/// Built from the campaigns an admin has configured and funded, never from
+/// copy. A row that says "earn up to PKR 3,000" with nothing behind it is the
+/// thing the specification forbids: no guaranteed income unless an Admin has
+/// explicitly configured and funded that guarantee.
+/// </remarks>
+public sealed record WayToEarnDto(
+    string Kind,
+    string Title,
+    string Detail,
+
+    /// <summary>What it pays, or null when it varies by fare.</summary>
+    decimal? Amount,
+
+    /// <summary>Where the Driver goes to act on it, if anywhere.</summary>
+    string? ActionPath);

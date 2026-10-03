@@ -63,6 +63,18 @@ class DriverGrowthRepository {
     }
   }
 
+  /// Today, this week, this month — and every live way to earn.
+  Future<DriverEarnings?> earnings() async {
+    try {
+      final response = await api.getJson('/api/v1/driver/growth/earnings');
+      final data = response['data'];
+      if (data is! Map) return null;
+      return DriverEarnings.fromJson(Map<String, dynamic>.from(data));
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<DriverUpdate>> updates() async {
     try {
       final response = await api.getJson('/api/v1/driver/growth/updates');

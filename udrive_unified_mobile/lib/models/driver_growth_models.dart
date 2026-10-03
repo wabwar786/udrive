@@ -479,6 +479,143 @@ class DriverGrowthHome {
 
 // ───────────────────────────────────────────────────────────────── parsing
 
+/// What a Driver earned, and where it came from.
+///
+/// Three periods arrive together so switching the tab costs nothing. On a
+/// mountain road a second request is a second of staring at a spinner.
+class DriverEarnings {
+  const DriverEarnings({
+    required this.today,
+    required this.week,
+    required this.month,
+    required this.commissionPercentage,
+    required this.commissionBalance,
+    required this.availableBalance,
+    required this.pendingBalance,
+    required this.waysToEarn,
+  });
+
+  final EarningsPeriod today;
+  final EarningsPeriod week;
+  final EarningsPeriod month;
+
+  /// What the platform takes from each fare.
+  final double commissionPercentage;
+
+  /// Prepaid commission balance — rides are paid for from this.
+  final double commissionBalance;
+
+  /// Payout wallet: cleared, and waiting to clear.
+  final double availableBalance;
+  final double pendingBalance;
+
+  final List<WayToEarn> waysToEarn;
+
+  factory DriverEarnings.fromJson(Map<String, dynamic> json) => DriverEarnings(
+        today: EarningsPeriod.fromJson(_map(json['today']), 'Today'),
+        week: EarningsPeriod.fromJson(_map(json['week']), 'This week'),
+        month: EarningsPeriod.fromJson(_map(json['month']), 'This month'),
+        commissionPercentage: _double(json['commissionPercentage'], 10),
+        commissionBalance: _double(json['commissionBalance']),
+        availableBalance: _double(json['availableBalance']),
+        pendingBalance: _double(json['pendingBalance']),
+        waysToEarn: _list(json['waysToEarn'])
+            .map(WayToEarn.fromJson)
+            .toList(growable: false),
+      );
+}
+
+/// One period's figures. Every one of them is counted, none estimated.
+class EarningsPeriod {
+  const EarningsPeriod({
+    required this.label,
+    required this.rideNet,
+    required this.rideGross,
+    required this.commissionPaid,
+    required this.bonusEarned,
+    required this.trips,
+    required this.onlineSeconds,
+    this.perHour,
+  });
+
+  final String label;
+
+  /// Fares after commission — what the Driver keeps.
+  final double rideNet;
+
+  /// Fares before commission.
+  final double rideGross;
+
+  /// What the platform took.
+  final double commissionPaid;
+
+  /// Rewards credited: missions, peak hours, bonuses.
+  final double bonusEarned;
+
+  final int trips;
+  final int onlineSeconds;
+
+  /// Null under fifteen minutes online. A figure from four minutes of work is
+  /// not an hourly rate, and showing it as one is a promise nobody made.
+  final double? perHour;
+
+  double get total => rideNet + bonusEarned;
+
+  factory EarningsPeriod.fromJson(Map<String, dynamic> json, String fallback) =>
+      EarningsPeriod(
+        label: _text(json['label']) ?? fallback,
+        rideNet: _double(json['rideNet']),
+        rideGross: _double(json['rideGross']),
+        commissionPaid: _double(json['commissionPaid']),
+        bonusEarned: _double(json['bonusEarned']),
+        trips: _int(json['trips']),
+        onlineSeconds: _int(json['onlineSeconds']),
+        perHour: json['perHour'] == null ? null : _double(json['perHour']),
+      );
+
+  static const empty = EarningsPeriod(
+    label: '',
+    rideNet: 0,
+    rideGross: 0,
+    commissionPaid: 0,
+    bonusEarned: 0,
+    trips: 0,
+    onlineSeconds: 0,
+  );
+}
+
+/// One live way to earn, as an Admin has actually configured it.
+class WayToEarn {
+  const WayToEarn({
+    required this.kind,
+    required this.title,
+    required this.detail,
+    this.amount,
+    this.actionPath,
+  });
+
+  final String kind;
+  final String title;
+  final String detail;
+
+  /// What it pays, or null when it varies with the fare.
+  final double? amount;
+
+  /// Where the Driver goes to act on it, if anywhere.
+  final String? actionPath;
+
+  factory WayToEarn.fromJson(Map<String, dynamic> json) => WayToEarn(
+        kind: _text(json['kind']) ?? 'Other',
+        title: _text(json['title']) ?? 'Way to earn',
+        detail: _text(json['detail']) ?? '',
+        amount: json['amount'] == null ? null : _double(json['amount']),
+        actionPath: _text(json['actionPath']),
+      );
+}
+
+Map<String, dynamic> _map(Object? value) =>
+    value is Map ? Map<String, dynamic>.from(value) : const {};
+
 List<Map<String, dynamic>> _list(Object? value) => value is List
     ? value
         .whereType<Map>()

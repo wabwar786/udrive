@@ -244,13 +244,24 @@ public sealed record WalletChargeDto(
 /// False once the balance is at or below the platform minimum. Computed here so
 /// the app never has to reimplement the rule and get a different answer.
 /// </param>
+/// <param name="RewardsCredited">
+/// How much of this balance UDrive put there — missions, peak hours, the
+/// welcome bonus.
+/// <para>
+/// A reward is credited into the commission balance rather than paid out, so a
+/// Driver sees their balance rise without having sent a top-up and has no way
+/// to tell where it came from. Naming the figure answers that, and it is also
+/// the honest way to say what a reward is worth: it buys rides, it is not cash.
+/// </para>
+/// </param>
 public sealed record DriverCommissionWalletDto(
     decimal Balance,
     decimal MinimumBalance,
     decimal CommissionPercentage,
     bool CanReceiveRides,
     IReadOnlyList<WalletTopupDto> Topups,
-    IReadOnlyList<WalletChargeDto> RecentCharges);
+    IReadOnlyList<WalletChargeDto> RecentCharges,
+    decimal RewardsCredited = 0);
 
 public sealed record SubmitTopupRequest(
     [Range(1, 1000000)] decimal Amount,

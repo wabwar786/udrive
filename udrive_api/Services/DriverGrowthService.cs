@@ -318,6 +318,283 @@ public sealed class DriverGrowthService(string connectionString)
             await LoadUpdatesAsync(connection, driver.Value.CityId, 50, cancellationToken));
     }
 
+    // ─────────────────────────────────────────────────────────────── earnings
+
+    /// <summary>Today, this week and this month — and where the money came from.</summary>
+    /// <remarks>
+    /// Every figure here is measured from rows that exist: completed trips in
+    /// driver_earnings, credited rewards in driver_wallet_entries, credited
+    /// seconds in driver_online_sessions. Nothing is projected, averaged from a
+    /// sample, or rounded up to look encouraging. A Driver who cannot trust this
+    /// screen has no way to tell whether driving for UDrive is worth their fuel.
+    /// </remarks>
+    public async Task<ServiceResult<DriverEarningsDto>> EarningsAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = Open();
+        await connection.OpenAsync(cancellationToken);
+
+        var driver = await DriverPresenceService.ResolveDriverAsync(
+            connection, userId, cancellationToken);
+        if (driver is null)
+        {
+            return ServiceResult<DriverEarningsDto>.Fail(
+                StatusCodes.Status404NotFound,
+                "driver_not_found",
+                "This account does not have a driver profile.");
+        }
+
+        var now = NowLocal();
+        var today = LocalDayStart(now);
+        var monday = today.AddDays(
+            now.DayOfWeek == DayOfWeek.Sunday ? -6 : 1 - (int)now.DayOfWeek);
+        var firstOfMonth = new DateTimeOffset(
+            now.Year, now.Month, 1, 0, 0, 0, now.Offset);
+
+        var periods = new List<EarningsPeriodDto>();
+        foreach (var (label, from, to) in new[]
+        {
+            ("Today", today, today.AddDays(1)),
+            ("This week", monday, monday.AddDays(7)),
+            ("This month", firstOfMonth, firstOfMonth.AddMonths(1)),
+        })
+        {
+            periods.Add(await LoadPeriodAsync(
+                connection, driver.Value.ProfileId, label, from, to,
+                cancellationToken));
+        }
+
+        var metrics = await LoadMetricsAsync(
+            connection, driver.Value.ProfileId, cancellationToken);
+
+        return ServiceResult<DriverEarningsDto>.Ok(new DriverEarningsDto(
+            periods[0],
+            periods[1],
+            periods[2],
+            metrics.CommissionPercentage,
+            metrics.BonusBalance,
+            metrics.AvailableBalance,
+            await PendingBalanceAsync(
+                connection, driver.Value.ProfileId, cancellationToken),
+            await LoadWaysToEarnAsync(
+                connection, driver.Value, metrics, cancellationToken)));
+    }
+
+    /// <summary>How little online time still gives an honest hourly figure.</summary>
+    /// <remarks>
+    /// Fifteen minutes. One good fare in four minutes online works out to
+    /// thousands an hour, and a Driver who reads that and plans their week
+    /// around it has been misled by their own earnings screen.
+    /// </remarks>
+    private const int MinSecondsForPerHour = 900;
+
+    private static async Task<EarningsPeriodDto> LoadPeriodAsync(
+        NpgsqlConnection connection,
+        Guid driverProfileId,
+        string label,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken)
+    {
+        // One round trip for the whole period. Three periods on a phone is
+        // three round trips already; twelve would be the screen's whole budget.
+        const string sql = """
+            SELECT
+                -- Fares. created_at, not available_at: a Driver counts a fare
+                -- on the day they drove it, not on the day it clears.
+                COALESCE((SELECT SUM(e.net_amount) FROM udrive.driver_earnings e
+                           WHERE e.driver_profile_id = @driver
+                             AND e.created_at >= @from AND e.created_at < @to), 0),
+                COALESCE((SELECT SUM(e.gross_amount) FROM udrive.driver_earnings e
+                           WHERE e.driver_profile_id = @driver
+                             AND e.created_at >= @from AND e.created_at < @to), 0),
+                COALESCE((SELECT SUM(e.commission_amount) FROM udrive.driver_earnings e
+                           WHERE e.driver_profile_id = @driver
+                             AND e.created_at >= @from AND e.created_at < @to), 0),
+                (SELECT count(*) FROM udrive.driver_earnings e
+                  WHERE e.driver_profile_id = @driver
+                    AND e.created_at >= @from AND e.created_at < @to),
+
+                -- Rewards actually credited. Positive Bonus entries only, so a
+                -- correction an admin had to make does not read as earnings.
+                COALESCE((SELECT SUM(w.amount)
+                            FROM udrive.driver_wallet_entries w
+                            JOIN udrive.driver_wallets dw ON dw.id = w.wallet_id
+                           WHERE dw.driver_profile_id = @driver
+                             AND w.entry_type = 'Bonus'
+                             AND w.amount > 0
+                             AND w.created_at >= @from AND w.created_at < @to), 0),
+
+                -- Online time, counting only the part inside the window: a
+                -- session that began last night contributes its morning hours
+                -- to today and its evening hours to yesterday.
+                COALESCE((SELECT SUM(LEAST(
+                            GREATEST(0, EXTRACT(EPOCH FROM (
+                                LEAST(COALESCE(s.ended_at, now()), @to)
+                                - GREATEST(s.started_at, @from))))::int,
+                            s.credited_seconds))
+                          FROM udrive.driver_online_sessions s
+                          WHERE s.driver_profile_id = @driver
+                            AND s.started_at < @to
+                            AND COALESCE(s.ended_at, now()) > @from), 0);
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("driver", driverProfileId);
+        command.Parameters.AddWithValue("from", from);
+        command.Parameters.AddWithValue("to", to);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return new EarningsPeriodDto(label, from, to, 0, 0, 0, 0, 0, 0, null);
+        }
+
+        var rideNet = reader.GetDecimal(0);
+        var bonus = reader.GetDecimal(4);
+        var seconds = Convert.ToInt32(reader.GetValue(5));
+
+        return new EarningsPeriodDto(
+            label,
+            from,
+            to,
+            rideNet,
+            reader.GetDecimal(1),
+            reader.GetDecimal(2),
+            bonus,
+            (int)reader.GetInt64(3),
+            seconds,
+            seconds >= MinSecondsForPerHour
+                ? Math.Round((rideNet + bonus) / (seconds / 3600m), 0)
+                : null);
+    }
+
+    private static async Task<decimal> PendingBalanceAsync(
+        NpgsqlConnection connection,
+        Guid driverProfileId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT COALESCE(pending_balance, 0) FROM udrive.driver_wallets
+            WHERE driver_profile_id = @driver;
+            """,
+            connection);
+        command.Parameters.AddWithValue("driver", driverProfileId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is null or DBNull ? 0 : Convert.ToDecimal(result);
+    }
+
+    /// <summary>Every live way this Driver can earn, from configured campaigns.</summary>
+    /// <remarks>
+    /// The specification is explicit: no fake earning numbers, and no guaranteed
+    /// income unless an Admin has configured and funded that guarantee. So this
+    /// list is assembled from rows — the commission rate in settings, the
+    /// campaigns live in this Driver's city, the tour packages they may publish
+    /// — and a Driver in a city with no campaigns sees the two routes that
+    /// always exist and no invented third.
+    /// </remarks>
+    private static async Task<List<WayToEarnDto>> LoadWaysToEarnAsync(
+        NpgsqlConnection connection,
+        DriverPresenceService.DriverContext driver,
+        DriverMetrics metrics,
+        CancellationToken cancellationToken)
+    {
+        var ways = new List<WayToEarnDto>
+        {
+            new("Rides",
+                "Ride fares",
+                $"You keep {100 - metrics.CommissionPercentage:0.##}% of every "
+                + "fare. The rest is commission, taken from your wallet.",
+                null,
+                null),
+            new("Tour",
+                "Tour packages",
+                "Publish a multi-day package and set your own price. Admin "
+                + "approves the route and pricing before it goes live.",
+                null,
+                "driverPackages"),
+        };
+
+        if (driver.CityId is null) return ways;
+
+        // Live campaigns, described by what they actually pay. A campaign paid
+        // through milestones reports the sum of them, because that is the figure
+        // a Driver would otherwise have to add up themselves.
+        const string sql = """
+            SELECT c.campaign_type, c.title, c.description,
+                   c.reward_amount,
+                   COALESCE((SELECT SUM(m.reward_amount)
+                               FROM udrive.growth_campaign_milestones m
+                              WHERE m.campaign_id = c.id), 0) AS milestone_total,
+                   c.daily_start_time, c.daily_end_time, c.driver_segment
+            FROM udrive.growth_campaigns c
+            JOIN udrive.launch_cities city ON city.id = c.launch_city_id
+            WHERE c.is_active
+              AND city.is_active
+              AND city.id = @city
+              AND (c.starts_at IS NULL OR c.starts_at <= now())
+              AND (c.ends_at IS NULL OR c.ends_at >= now())
+            ORDER BY c.campaign_type, c.created_at;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("city", driver.CityId.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var type = reader.GetString(0);
+            var title = reader.GetString(1);
+            var description = reader.IsDBNull(2) ? null : reader.GetString(2);
+            var reward = reader.GetDecimal(3);
+            var milestoneTotal = reader.GetDecimal(4);
+            var segment = reader.GetString(7);
+
+            // A campaign aimed at a segment this Driver is not in is not a way
+            // for them to earn, and listing it is the same false promise as
+            // inventing one.
+            if (!MatchesSegment(
+                    new CampaignRow(
+                        Guid.Empty, type, title, description, reward,
+                        null, null, null, null, Array.Empty<int>(), segment,
+                        null, null, null, null, null, null, 1, null, null, null),
+                    metrics))
+            {
+                continue;
+            }
+
+            var amount = milestoneTotal > 0 ? milestoneTotal : reward;
+            var detail = description;
+
+            if (type == "PeakHourReward"
+                && !reader.IsDBNull(5) && !reader.IsDBNull(6))
+            {
+                var window = $"{reader.GetTimeSpan(5):hh\\:mm}"
+                           + $"–{reader.GetTimeSpan(6):hh\\:mm}";
+                detail = string.IsNullOrWhiteSpace(description)
+                    ? $"Drive between {window}."
+                    : $"{description} ({window})";
+            }
+
+            ways.Add(new WayToEarnDto(
+                type,
+                title,
+                detail ?? "Open the rewards screen for what this needs.",
+                amount > 0 ? amount : null,
+                type switch
+                {
+                    "WelcomeBonus" => "driverWelcomeBonus",
+                    "Referral" => "driverReferrals",
+                    "FoundingBenefit" => "driverFounding",
+                    _ => "driverMissions",
+                }));
+        }
+
+        return ways;
+    }
+
     // ───────────────────────────────────────────────────────────────  metrics
 
     internal readonly record struct DriverMetrics(
