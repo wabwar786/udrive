@@ -1,3 +1,5 @@
+import 'package:file_picker/file_picker.dart';
+
 import '../../models/auth_models.dart';
 import '../network/api_client.dart';
 
@@ -47,6 +49,7 @@ class VehicleUsage {
     required this.rentKmPerDay,
     required this.rentFuelIncluded,
     required this.rentPickupPoint,
+    required this.photoUrl,
   });
 
   final String vehicleId;
@@ -71,6 +74,9 @@ class VehicleUsage {
   final bool rentFuelIncluded;
   final String? rentPickupPoint;
 
+  /// The owner's own photograph. Renting needs one.
+  final String? photoUrl;
+
   /// An Admin has verified it, so the usages can be chosen.
   bool get isVerified =>
       status.toLowerCase() == 'verified' || status.toLowerCase() == 'approved';
@@ -82,6 +88,11 @@ class VehicleUsage {
 
   bool get hasRentRate =>
       (rentWithDriverDaily ?? 0) > 0 || (rentSelfDriveDaily ?? 0) > 0;
+
+  bool get hasPhoto => photoUrl != null && photoUrl!.isNotEmpty;
+
+  /// Both gates for renting: a rate, and a picture of the actual car.
+  bool get canBeRented => hasRentRate && hasPhoto;
 
   factory VehicleUsage.fromJson(Map<String, dynamic> json) => VehicleUsage(
         vehicleId: '${json['vehicleId'] ?? ''}',
@@ -103,6 +114,7 @@ class VehicleUsage {
         rentKmPerDay: (json['rentKmPerDay'] as num?)?.toInt(),
         rentFuelIncluded: json['rentFuelIncluded'] == true,
         rentPickupPoint: _trimmedOrNull(json['rentPickupPoint']),
+        photoUrl: _trimmedOrNull(json['photoUrl']),
       );
 
   static List<UsageReadinessItem> _items(Object? value) {
@@ -177,6 +189,32 @@ class VehicleUsageRepository {
         if (tour != null) 'availableForTour': tour,
         if (rent != null) 'availableForRent': rent,
       });
+
+  /// Sends the owner's own photograph of this vehicle.
+  ///
+  /// One picture, replacing whatever was there, public the moment it lands.
+  /// Required before the vehicle can be put out on rent — a rental listing of
+  /// names and prices is a listing nobody books from.
+  Future<VehicleUsage> uploadPhoto(String vehicleId, PlatformFile file) async {
+    final Map<String, dynamic> response;
+    try {
+      response = await api.uploadFile(
+        '/api/v1/driver/vehicles/$vehicleId/photo',
+        fieldName: 'file',
+        file: file,
+        fields: const {},
+      );
+    } on ApiException catch (error) {
+      throw VehicleUsageRefused(error.code ?? '', error.message);
+    }
+
+    final payload = response['data'] ?? response;
+    if (payload is Map) {
+      return VehicleUsage.fromJson(Map<String, dynamic>.from(payload));
+    }
+    throw const VehicleUsageRefused(
+        'unexpected_response', 'The server did not return the vehicle.');
+  }
 
   /// Records what the vehicle carries, and rescores its tour readiness.
   ///

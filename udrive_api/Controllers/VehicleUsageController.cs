@@ -37,6 +37,21 @@ public sealed class VehicleUsageController(VehicleUsageService service)
         Result(await service.SetUsageAsync(
             User.GetRequiredUserId(), vehicleId, request, ct));
 
+    /// <summary>The owner's own photograph of this vehicle.</summary>
+    /// <remarks>
+    /// One picture, replacing whatever was there, public the moment it is
+    /// saved. Required before the vehicle can be put out on rent — a rental
+    /// listing of names and prices is a listing nobody books from.
+    /// </remarks>
+    [HttpPost("{vehicleId:guid}/photo")]
+    [RequestSizeLimit(12 * 1024 * 1024)]
+    public async Task<IActionResult> UploadPhoto(
+        Guid vehicleId,
+        IFormFile file,
+        CancellationToken ct) =>
+        Result(await service.UploadPhotoAsync(
+            User.GetRequiredUserId(), vehicleId, file, ct));
+
     /// <summary>Records the equipment carried, and rescores tour readiness.</summary>
     /// <remarks>
     /// The one thing about a verified vehicle a Driver may still change. The

@@ -267,7 +267,17 @@ public sealed record VehicleUsageDto(
     int RentMinimumDays,
     int? RentKmPerDay,
     bool RentFuelIncluded,
-    string? RentPickupPoint)
+    string? RentPickupPoint,
+
+    /// <summary>The owner's own photograph of this vehicle, if there is one.</summary>
+    /// <remarks>
+    /// Required before renting can be switched on. A rental listing is a
+    /// decision about one specific car, and a list of names and prices is a
+    /// list nobody books from — while the only picture the platform could
+    /// otherwise show is a stock photograph of the model, which is a different
+    /// car in a different colour.
+    /// </remarks>
+    string? PhotoUrl = null)
 {
     /// <summary>Whether tour could be switched on right now.</summary>
     public bool CanCarryTour =>
@@ -275,7 +285,8 @@ public sealed record VehicleUsageDto(
 
     /// <summary>Whether rent could be switched on right now.</summary>
     public bool CanBeRented =>
-        RentWithDriverDaily is > 0 || RentSelfDriveDaily is > 0;
+        (RentWithDriverDaily is > 0 || RentSelfDriveDaily is > 0)
+        && !string.IsNullOrWhiteSpace(PhotoUrl);
 }
 
 /// <summary>A switch the Driver moved. Null means "leave this one alone".</summary>

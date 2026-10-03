@@ -21,8 +21,97 @@ namespace UDrive.Api.Services;
 /// nothing asked, tour was one flag with no requirement behind it, and rental
 /// could not be expressed at all.
 /// </remarks>
-public sealed class VehicleUsageService(string connectionString)
+public sealed class VehicleUsageService(
+    string connectionString,
+    LocalFileStorageService fileStorage)
 {
+    /// <summary>Stores the owner's own photograph of this vehicle.</summary>
+    /// <remarks>
+    /// One photograph, writing <c>vehicles.image_url</c> — a column that has
+    /// existed since the first schema and that only the demo seed has ever
+    /// filled, because no route let a Driver put anything in it. Four slots, a
+    /// gallery and a review queue were all considered and dropped: a rental
+    /// listing needs to show that this is a real car in reasonable condition,
+    /// and one honest photograph does that.
+    ///
+    /// Public the moment it is saved. Nobody reviews it, which is the Driver's
+    /// own responsibility — a bad photograph costs them the booking, and that
+    /// is a faster and fairer correction than a queue.
+    ///
+    /// Saved under <c>vehicle-images</c>, the one upload category this platform
+    /// already serves anonymously, so the customer app can load it in an
+    /// ordinary image tag. Driver documents keep their protected route and
+    /// nothing here opens them.
+    /// </remarks>
+    public async Task<ServiceResult<VehicleUsageDto>> UploadPhotoAsync(
+        Guid userId,
+        Guid vehicleId,
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        var current = await ReadOneAsync(connection, userId, vehicleId, cancellationToken);
+        if (current is null)
+        {
+            return ServiceResult<VehicleUsageDto>.Fail(
+                StatusCodes.Status404NotFound,
+                "vehicle_not_found",
+                "This vehicle was not found on your account.");
+        }
+
+        StoredFile stored;
+        try
+        {
+            stored = await fileStorage.SaveAsync(
+                file, "vehicle-images", vehicleId, cancellationToken);
+        }
+        catch (InvalidDataException error)
+        {
+            return ServiceResult<VehicleUsageDto>.Fail(
+                StatusCodes.Status400BadRequest, "file_invalid", error.Message);
+        }
+        catch (InvalidOperationException error)
+        {
+            return ServiceResult<VehicleUsageDto>.Fail(
+                StatusCodes.Status503ServiceUnavailable, "storage_unavailable", error.Message);
+        }
+
+        // SaveAsync hands back the protected admin path, which is right for a
+        // CNIC and wrong for this: an `img` tag cannot send a bearer token, so
+        // the picture would upload successfully and then be invisible to every
+        // customer. Rewritten onto the anonymous route that serves this one
+        // category.
+        var segments = stored.RelativeUrl.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var publicUrl = segments.Length >= 2
+            ? $"/api/v1/vehicle-images/{segments[^2]}/{segments[^1]}"
+            : stored.RelativeUrl;
+
+        await using (var command = new NpgsqlCommand(
+            """
+            UPDATE udrive.vehicles v
+            SET image_url = @url, updated_at = now()
+            FROM udrive.driver_profiles dp
+            WHERE v.id = @vehicleId
+              AND v.driver_profile_id = dp.id
+              AND dp.user_id = @userId;
+            """,
+            connection))
+        {
+            command.Parameters.AddWithValue("vehicleId", vehicleId);
+            command.Parameters.AddWithValue("userId", userId);
+            command.Parameters.Add(new NpgsqlParameter("url", NpgsqlDbType.Text)
+            {
+                Value = publicUrl,
+            });
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var updated = await ReadOneAsync(connection, userId, vehicleId, cancellationToken);
+        return ServiceResult<VehicleUsageDto>.Ok(updated!.Dto);
+    }
+
     /// <summary>Every usable vehicle this Driver owns, with its usage.</summary>
     public async Task<ServiceResult<IReadOnlyList<VehicleUsageDto>>> ListAsync(
         Guid userId,
@@ -49,7 +138,8 @@ public sealed class VehicleUsageService(string connectionString)
                    COALESCE((SELECT LEAST(100, GREATEST(0,
                                (s.value_json #>> '{}')::int))
                              FROM udrive.system_settings s
-                             WHERE s.key = 'tour.minimum_readiness'), @readiness)
+                             WHERE s.key = 'tour.minimum_readiness'), @readiness),
+                   NULLIF(v.image_url, '')
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             WHERE dp.user_id = @userId
@@ -102,7 +192,8 @@ public sealed class VehicleUsageService(string connectionString)
                 reader.GetInt32(20),
                 reader.IsDBNull(21) ? null : reader.GetInt32(21),
                 reader.GetBoolean(22),
-                reader.IsDBNull(23) ? null : reader.GetString(23)));
+                reader.IsDBNull(23) ? null : reader.GetString(23),
+                reader.IsDBNull(25) ? null : reader.GetString(25)));
         }
 
         return ServiceResult<IReadOnlyList<VehicleUsageDto>>.Ok(list);
@@ -173,6 +264,20 @@ public sealed class VehicleUsageService(string connectionString)
                 "rent_rate_required",
                 "Set a daily rent — with a driver, self-drive, or both — before "
                 + "putting this vehicle out on rent.");
+        }
+
+        // A photograph before a rental listing, because the listing is a
+        // decision about this one car. The alternative the platform has on hand
+        // is a stock picture of the model — a different car, in a different
+        // colour, in better condition — and showing that to somebody about to
+        // hand over a deposit is an advertisement rather than information.
+        if (rent && string.IsNullOrWhiteSpace(current.Dto.PhotoUrl))
+        {
+            return ServiceResult<VehicleUsageDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "vehicle_photo_required",
+                "Add a photograph of this vehicle before putting it out on "
+                + "rent. Customers choose a rental by looking at the car.");
         }
 
         // A Driver with nothing switched on has a verified vehicle doing

@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/state/app_controller.dart';
@@ -384,13 +385,16 @@ class _LiveVehicleUsageScreenState extends State<LiveVehicleUsageScreen> {
         title: _t('Rent a car', 'کرائے پر گاڑی'),
         state: vehicle.availableForRent
             ? _t('On — listed for rent', 'چالو — کرائے کی فہرست میں')
-            : (vehicle.hasRentRate
-                ? _t('Off — rates are saved', 'بند — کرایہ محفوظ ہے')
-                : _t('Off — no daily rate set', 'بند — روزانہ کرایہ مقرر نہیں')),
+            : (!vehicle.hasRentRate
+                ? _t('Off — no daily rate set', 'بند — روزانہ کرایہ مقرر نہیں')
+                : (!vehicle.hasPhoto
+                    ? _t('Off — no photo of this car',
+                        'بند — اس گاڑی کی تصویر نہیں')
+                    : _t('Off — ready when you are', 'بند — تیار ہے'))),
         on: vehicle.availableForRent,
         onChanged: _saving
             ? null
-            : (vehicle.availableForRent || vehicle.hasRentRate
+            : (vehicle.availableForRent || vehicle.canBeRented
                 ? _toggleRent
                 : null),
         requirement: _Requirement(
@@ -402,6 +406,19 @@ class _LiveVehicleUsageScreenState extends State<LiveVehicleUsageScreen> {
               ? _t('Change', 'تبدیل کریں')
               : _t('Set', 'مقرر کریں'),
           onTap: () => _openRentSettings(vehicle),
+        ),
+        // The second thing renting needs. A listing of names and prices is a
+        // listing nobody books from, and the only other picture this platform
+        // could show is a stock photograph of the model — a different car.
+        extra: _Requirement(
+          met: vehicle.hasPhoto,
+          text: vehicle.hasPhoto
+              ? _t('Photo of this car added', 'اس گاڑی کی تصویر موجود')
+              : _t('Add a photo of this car', 'اس گاڑی کی تصویر لگائیں'),
+          action: vehicle.hasPhoto
+              ? _t('Replace', 'بدلیں')
+              : _t('Add', 'لگائیں'),
+          onTap: () => _uploadPhoto(vehicle),
         ),
       ),
 
@@ -479,6 +496,22 @@ class _LiveVehicleUsageScreenState extends State<LiveVehicleUsageScreen> {
       MaterialPageRoute(builder: (_) => const LiveCreatePackageScreen()),
     );
     if (mounted) await _load();
+  }
+
+  /// One photograph of this car, replacing whatever was there.
+  ///
+  /// Nobody reviews it. That is the Driver's own responsibility, and a faster
+  /// correction than a queue: a bad photograph costs them the booking.
+  Future<void> _uploadPhoto(VehicleUsage vehicle) async {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
+      withData: true,
+    );
+    final files = picked?.files ?? const <PlatformFile>[];
+    if (files.isEmpty || !mounted) return;
+
+    await _apply(() => _repository.uploadPhoto(vehicle.vehicleId, files.first));
   }
 
   Future<void> _openRentSettings(VehicleUsage vehicle) async {
@@ -617,6 +650,7 @@ class _Usage extends StatelessWidget {
     required this.on,
     required this.onChanged,
     this.requirement,
+    this.extra,
   });
 
   final IconData icon;
@@ -629,6 +663,9 @@ class _Usage extends StatelessWidget {
   final ValueChanged<bool>? onChanged;
 
   final _Requirement? requirement;
+
+  /// A second condition, shown under the first. Renting has two.
+  final _Requirement? extra;
 
   @override
   Widget build(BuildContext context) {
@@ -683,21 +720,36 @@ class _Usage extends StatelessWidget {
           ),
           if (requirement != null) ...[
             const SizedBox(height: 12),
-            UdBanner(
-              tone: requirement!.met ? UdTone.ok : UdTone.warn,
-              icon: requirement!.met
-                  ? Icons.check_circle_outline_rounded
-                  : Icons.lock_outline_rounded,
-              text: requirement!.text,
-              onTap: requirement!.onTap,
-              trailing: Text(
-                requirement!.action,
-                style: AppType.buttonSm.copyWith(color: AppColors.navy),
-              ),
-            ),
+            _RequirementBanner(requirement: requirement!),
+          ],
+          if (extra != null) ...[
+            const SizedBox(height: 8),
+            _RequirementBanner(requirement: extra!),
           ],
         ],
       ),
     );
   }
+}
+
+
+/// One condition under a switch: whether it is met, and where to go.
+class _RequirementBanner extends StatelessWidget {
+  const _RequirementBanner({required this.requirement});
+
+  final _Requirement requirement;
+
+  @override
+  Widget build(BuildContext context) => UdBanner(
+        tone: requirement.met ? UdTone.ok : UdTone.warn,
+        icon: requirement.met
+            ? Icons.check_circle_outline_rounded
+            : Icons.lock_outline_rounded,
+        text: requirement.text,
+        onTap: requirement.onTap,
+        trailing: Text(
+          requirement.action,
+          style: AppType.buttonSm.copyWith(color: AppColors.navy),
+        ),
+      );
 }

@@ -37,6 +37,7 @@ import '../hotels/hotel_list_screen.dart';
 import '../operations/live_trip_navigation_screen.dart';
 import 'place_search_screen.dart';
 import 'tour_map_screen.dart';
+import 'rental_list_screen.dart';
 import 'tour_search_results_screen.dart';
 import 'vehicle_choice_screen.dart';
 import 'udrive_route_flow_screen.dart';
@@ -1382,6 +1383,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               explore: _availabilityOf('explore'),
               onSelect: _selectService,
               onExplore: _openExplore,
+              onCarRental: _openCarRental,
               onClosed: _serviceClosed,
             ),
 
@@ -1613,13 +1615,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  void _carRentalNotReady() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Self-drive car rental is not open yet. It is being worked on.',
-        ),
-      ),
+  /// Car rental now has a screen behind it.
+  ///
+  /// This used to be a snackbar saying the service was being worked on, which
+  /// was the honest answer while nothing existed. The admin switch still
+  /// decides whether the tile opens at all — that path is unchanged.
+  void _openCarRental() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RentalListScreen()),
     );
   }
 
@@ -2691,6 +2695,7 @@ class _QuickRow extends StatelessWidget {
     required this.explore,
     required this.onSelect,
     required this.onExplore,
+    required this.onCarRental,
     required this.onClosed,
   });
 
@@ -2701,6 +2706,7 @@ class _QuickRow extends StatelessWidget {
   final ServiceAvailability explore;
   final ValueChanged<HomeService> onSelect;
   final VoidCallback onExplore;
+  final VoidCallback onCarRental;
   final ValueChanged<ServiceAvailability> onClosed;
 
   @override
@@ -2724,10 +2730,7 @@ class _QuickRow extends StatelessWidget {
             label: 'Car rental',
             service: carRental,
             selected: false,
-            // Never opens: there is no screen behind it yet, so the closed
-            // path is the only one. When one exists, the admin switch is all
-            // that has to change.
-            onTap: () {},
+            onTap: onCarRental,
             onClosed: onClosed,
           ),
         ),

@@ -7,6 +7,7 @@ import '../../core/vehicles/vehicle_usage_repository.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/auth_models.dart';
 import 'driver_documents_screen.dart';
+import 'driver_rentals_screen.dart';
 import 'live_vehicle_usage_screen.dart';
 import 'onboarding/live_vehicle_registration_screen.dart';
 import 'tour_rate_screen.dart';
@@ -95,6 +96,18 @@ class _LiveVehicleListScreenState extends State<LiveVehicleListScreen> {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const TourRateScreen()),
+            ),
+          ),
+          const SizedBox(height: 10),
+          // Rentals sit here rather than under bookings, because a rental is a
+          // fact about a vehicle: one of these cars is in somebody else's
+          // driveway for a week, and this is the list of cars.
+          UdButton.outline(
+            label: _t('Rentals', 'کرائے'),
+            icon: Icons.vpn_key_outlined,
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DriverRentalsScreen()),
             ),
           ),
           const SizedBox(height: 10),

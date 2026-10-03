@@ -341,6 +341,26 @@ public sealed class PackageMarketplaceService(
                 break;
         }
 
+        // A departure whose vehicle is out on rent that week is not a departure.
+        //
+        // The Driver is allowed to rent the car over a published departure as
+        // long as nobody has bought a seat on it — a plan should not cost them
+        // a paying rental. What must not happen is the departure carrying on
+        // being sold while the car is in somebody else's driveway, so it stops
+        // being offered for exactly as long as the rental lasts and comes back
+        // by itself afterwards. Nothing is cancelled and the Driver is not
+        // asked to remember anything.
+        predicates.Add("""
+            NOT EXISTS (
+                SELECT 1 FROM udrive.rental_bookings rb
+                WHERE rb.vehicle_id = tp.vehicle_id
+                  AND rb.status IN ('Confirmed', 'HandedOver')
+                  AND daterange(rb.start_date, rb.end_date, '[]') && daterange(
+                        (tp.departure_at AT TIME ZONE 'Asia/Karachi')::date,
+                        (COALESCE(tp.return_at, tp.departure_at)
+                           AT TIME ZONE 'Asia/Karachi')::date, '[]'))
+            """);
+
         var list = await ReadPackagesAsync(
             string.Join(" AND ", predicates),
             command =>
