@@ -30,6 +30,14 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
     with WidgetsBindingObserver {
   TripOperationsRepository? _repository;
   TripLocationService? _locationService;
+
+  /// Held rather than looked up in the lifecycle callback.
+  ///
+  /// didChangeAppLifecycleState fires for `detached` as the tree is coming
+  /// apart, and an inherited-widget lookup at that moment can find nothing and
+  /// throw — inside a framework callback, where there is nobody to catch it.
+  AppController? _controller;
+
   Timer? _syncTimer;
   String? _activeBookingId;
   String? _activeStatus;
@@ -57,12 +65,30 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
   /// The flag lives in its own file rather than here so neither of these two
   /// screens has to compile against the other's latest copy.
 
+  bool _configured = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _repository ??=
-        TripOperationsRepository(AppControllerScope.of(context).apiClient);
+    _controller = AppControllerScope.of(context);
+    _repository ??= TripOperationsRepository(_controller!.apiClient);
     _locationService ??= TripLocationService(_repository!);
+
+    // Once, not on every rebuild.
+    //
+    // didChangeDependencies runs again whenever an inherited widget above
+    // changes, and this one reads AppControllerScope, which notifies on every
+    // marketplace poll, every presence beat, every list refresh. So _configure
+    // was re-entered several times a minute, and each call cancelled the sync
+    // timer and started a new one — plus an immediate out-of-band _syncActiveTrip
+    // on top of the one already scheduled. The 10-second timer never actually
+    // got to 10 seconds; it was restarted before it fired and replaced by a
+    // fresh burst of requests instead.
+    //
+    // The enabled flag still gets through: didUpdateWidget handles that, and
+    // that is the only input _configure reads.
+    if (_configured) return;
+    _configured = true;
     _configure();
   }
 
@@ -79,8 +105,15 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
       return;
     }
     _syncActiveTrip();
+    // 20 seconds, not 10.
+    //
+    // This asks "has a trip been assigned to me", and the answer changes when a
+    // customer picks this Driver — once in a while, not three times a minute.
+    // Twenty seconds halves the requests and costs at most ten seconds before
+    // the Driver's position starts publishing, which no one can perceive on a
+    // tracking map.
     _syncTimer = Timer.periodic(
-      const Duration(seconds: 10),
+      const Duration(seconds: 20),
       (_) => _syncActiveTrip(),
     );
   }
@@ -135,11 +168,41 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
     _activeStatus = null;
   }
 
+  /// Stops the whole machine while the app is in the background.
+  ///
+  /// Nothing here used to stop: the sync timer and the presence beat were left
+  /// running, which on Android means they may fire and on iOS means they are
+  /// suspended — so the app either burned the Driver's battery polling from a
+  /// pocket, or sat there while the server went on believing it was live and
+  /// kept sending ride requests nothing could deliver. Neither is honest.
+  ///
+  /// Going quiet is the right signal. The server already closes a session that
+  /// has not beaten in five minutes, so a quick trip to maps costs the Driver
+  /// nothing while a long absence is correctly read as having stopped.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && widget.enabled) {
-      _syncActiveTrip();
-      _locationService?.flushQueue();
+    final controller = _controller;
+    if (controller == null) return;
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        if (!widget.enabled) return;
+        _configure();
+        _locationService?.flushQueue();
+        // The server's answer decides whether the Driver is still online.
+        unawaited(controller.resumePresenceBeating());
+
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        _syncTimer?.cancel();
+        _syncTimer = null;
+        _stopTracking();
+        controller.pausePresenceBeating();
+
+      case AppLifecycleState.inactive:
+        // A notification shade or an incoming call. Too brief to tear down.
+        break;
     }
   }
 

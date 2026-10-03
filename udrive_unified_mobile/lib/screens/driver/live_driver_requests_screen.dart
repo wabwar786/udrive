@@ -39,8 +39,14 @@ class _LiveDriverRequestsScreenState extends State<LiveDriverRequestsScreen> {
     super.dispose();
   }
 
+  /// Ride requests only — this screen shows nothing else.
+  ///
+  /// It used to call loadDriverMarketplace, which is six requests, four of them
+  /// tour packages and their bookings. On a twenty-second timer that was a
+  /// hundred and twenty wasted requests an hour for a screen that never
+  /// displays any of it.
   Future<void> _refresh({bool silent = false}) =>
-      AppControllerScope.of(context).loadDriverMarketplace(notify: !silent);
+      AppControllerScope.of(context).loadDriverRideRequests(notify: !silent);
 
   @override
   Widget build(BuildContext context) {

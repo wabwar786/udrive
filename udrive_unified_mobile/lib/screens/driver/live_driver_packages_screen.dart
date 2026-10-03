@@ -26,8 +26,10 @@ class _LiveDriverPackagesScreenState extends State<LiveDriverPackagesScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
+  /// Packages only. This screen shows no ride requests, so there is no reason
+  /// to fetch them — loadDriverMarketplace would have brought two along.
   Future<void> _refresh() =>
-      AppControllerScope.of(context).loadDriverMarketplace();
+      AppControllerScope.of(context).loadDriverPackages();
 
   @override
   Widget build(BuildContext context) {

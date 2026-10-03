@@ -28,8 +28,9 @@ class _LiveDriverPackageBookingsScreenState
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
+  /// Packages and their bookings only, which is all this screen shows.
   Future<void> _refresh() =>
-      AppControllerScope.of(context).loadDriverMarketplace();
+      AppControllerScope.of(context).loadDriverPackages();
 
   @override
   Widget build(BuildContext context) {

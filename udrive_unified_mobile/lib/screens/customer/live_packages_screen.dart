@@ -916,6 +916,14 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
   }
 
   Future<void> _submitOffer(BuildContext sheetContext, String raw) async {
+    // Captured before the await, and this sheet's own route is removed rather
+    // than "whatever is on top" being popped. The `mounted` check below is this
+    // screen's, not the sheet's, so it passes even when the Customer has
+    // already dismissed the sheet — and the pop then lands on the route
+    // underneath and takes them off the packages screen.
+    final sheetRoute = ModalRoute.of(sheetContext);
+    final navigator = Navigator.of(sheetContext);
+
     try {
       await AppControllerScope.of(context).createLivePackageOffer(
         packageId: package.id,
@@ -925,7 +933,9 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
         message: 'Customer tourism package offer',
       );
       if (!mounted) return;
-      Navigator.pop(sheetContext);
+      if (sheetRoute != null && sheetRoute.isActive) {
+        navigator.removeRoute(sheetRoute);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Offer sent to Driver')),
       );

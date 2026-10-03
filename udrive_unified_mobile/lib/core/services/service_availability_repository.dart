@@ -76,10 +76,18 @@ class ServiceAvailabilityRepository {
 
   /// How often the driver should publish, and the customer poll.
   ///
-  /// One number from the server so the two never drift apart. Falls back to two
-  /// seconds if the call fails — the value the platform ships with, and a safe
-  /// one to be wrong about for a few minutes.
-  static const int defaultPingSeconds = 2;
+  /// One number from the server so the two never drift apart.
+  ///
+  /// The fallback is ten seconds, not two. Two was the value used whenever the
+  /// settings call had not answered yet or had failed — which is exactly when
+  /// the network is worst — and it meant a GPS fix and a POST every two
+  /// seconds, thirty a minute, from a Driver already on a bad connection. The
+  /// admin can still set anything from one second upwards; this is only what
+  /// the app does while it does not know.
+  ///
+  /// Ten seconds is also what the live map interpolates between fixes anyway,
+  /// so a customer watching the car sees the same smooth movement.
+  static const int defaultPingSeconds = 10;
 
   /// How far around themselves a customer should be shown vehicles.
   ///

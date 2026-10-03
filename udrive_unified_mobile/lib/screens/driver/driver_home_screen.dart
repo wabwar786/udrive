@@ -47,6 +47,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Timer? _acceptedRefreshTimer;
   Timer? _presenceTimer;
   Timer? _marketplaceRefreshTimer;
+  Timer? _packageRefreshTimer;
   Timer? _uiTickTimer;
   /// Whether this Driver is taking work, from the one place that owns it.
   ///
@@ -113,12 +114,42 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       await _refresh();
       await _loadAcceptedTrips();
     });
+    // What these numbers used to be, and why they are not that any more.
+    //
+    // A Driver sitting online doing nothing was sending about a hundred and
+    // fifteen requests a minute from this screen, with a high-accuracy GPS fix
+    // every five seconds. On a phone on a mountain road that is the battery and
+    // the data bundle, and it is most of what "the app is heavy" means.
+    //
+    // Where it went:
+    //
+    //   every 3s   accepted trips            20/min
+    //   every 5s   marketplace, SIX calls    72/min  <- the whole of it
+    //   every 5s   presence + a `best` GPS fix (inside the marketplace tick)
+    //   every 15s  presence again             4/min
+    //   every 1s   setState on the entire screen
+    //
+    // The marketplace call was six HTTP requests, five of them tour packages,
+    // package offers, package bookings and a waitlist — things that change over
+    // weeks. Only the ride-request list moves second to second, and it is now
+    // the only thing on the fast timer. Everything else got the interval its
+    // content actually deserves.
     _acceptedRefreshTimer = Timer.periodic(
-      const Duration(seconds: 3),
+      const Duration(seconds: 15),
       (_) => _loadAcceptedTrips(silent: true),
     );
-    _presenceTimer = Timer.periodic(const Duration(seconds: 15), (_) => _publishPresence());
-    _marketplaceRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) => _refreshNearbyRequests());
+    _presenceTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _publishPresence(),
+    );
+    _marketplaceRefreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _refreshNearbyRequests(),
+    );
+    _packageRefreshTimer = Timer.periodic(
+      const Duration(seconds: 120),
+      (_) => _refreshPackages(),
+    );
     _uiTickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       final now = DateTime.now();
@@ -139,8 +170,29 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
       // The countdown on every visible card runs off this one tick, so they
       // stay in step and there is not a timer per request.
-      setState(() {});
+      //
+      // But only when there is a countdown to run. This used to rebuild the
+      // entire screen — hero card, tiles, mission card, demand block, the whole
+      // request list — once a second whether or not anything on it could have
+      // changed, which for a Driver online with no work is every second of the
+      // day. Now a tick with nothing ticking does nothing at all.
+      if (_hasVisibleCountdown) setState(() {});
     });
+  }
+
+  /// Whether anything on screen is counting down and so needs the 1 Hz tick.
+  bool get _hasVisibleCountdown {
+    if (_recentFares.isNotEmpty) return true;
+    if (!_isOnline) return false;
+    return AppControllerScope.of(context).liveDriverRideRequests.isNotEmpty;
+  }
+
+  /// The slow half of the marketplace: tour packages and what hangs off them.
+  Future<void> _refreshPackages() async {
+    if (!mounted) return;
+    final controller = AppControllerScope.of(context);
+    if (!controller.driverApproved) return;
+    await controller.loadDriverPackages();
   }
 
   @override
@@ -148,12 +200,38 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _acceptedRefreshTimer?.cancel();
     _presenceTimer?.cancel();
     _marketplaceRefreshTimer?.cancel();
+    _packageRefreshTimer?.cancel();
     _uiTickTimer?.cancel();
     super.dispose();
   }
 
+  /// When the last position was published, so it is not published again at once.
+  DateTime? _presencePublishedAt;
+
+  /// How often a Driver's position is worth republishing.
+  ///
+  /// Two callers ask for this — the presence timer and every marketplace
+  /// refresh — and before this gate they both got what they asked for: a
+  /// `best`-accuracy GPS fix and a POST every five seconds, around sixteen
+  /// satellite fixes a minute from a phone sitting in a cradle. `best` is the
+  /// most expensive accuracy the platform offers, and it is right for a Driver
+  /// being tracked on a customer's map; it is not right twelve times a minute
+  /// for a Driver parked and waiting.
+  ///
+  /// Fifteen seconds is what the presence timer always intended. Now it holds
+  /// no matter who asks.
+  static const _presenceMinInterval = Duration(seconds: 15);
+
   Future<void> _publishPresence() async {
     if (!mounted || !_isOnline) return;
+
+    final last = _presencePublishedAt;
+    if (last != null &&
+        DateTime.now().difference(last) < _presenceMinInterval) {
+      return;
+    }
+    _presencePublishedAt = DateTime.now();
+
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return;
       var permission = await Geolocator.checkPermission();
@@ -192,7 +270,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (!controller.driverApproved) return;
     await _publishPresence();
     if (!mounted) return;
-    await controller.loadDriverMarketplace();
+    // The ride requests only. The packages have their own timer, two minutes
+    // apart, because that is how often they change.
+    await controller.loadDriverRideRequests();
   }
 
   /// Reads the Driver's own figures.
@@ -790,6 +870,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       return;
                     }
 
+                    // Captured before the await, and the sheet's own route is
+                    // removed rather than "whatever is on top" being popped.
+                    //
+                    // Navigator.pop(sheetContext) ran after the request came
+                    // back, and by then the sheet may be gone — the Driver
+                    // tapped the scrim, or a new request pushed something over
+                    // it. The `mounted` check above does not catch that: it is
+                    // this screen's mounted, not the sheet's, so it passes
+                    // happily while the pop lands on the route underneath and
+                    // throws the Driver off their own home screen.
+                    //
+                    // removeRoute takes out exactly this sheet, on top or not.
+                    final sheetRoute = ModalRoute.of(sheetContext);
+                    final navigator = Navigator.of(sheetContext);
+
                     try {
                       await AppControllerScope.of(context).submitLiveDriverOffer(
                         rideRequestId: request.id,
@@ -798,7 +893,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         etaMinutes: 1,
                       );
                       if (!mounted) return;
-                      Navigator.pop(sheetContext);
+                      if (sheetRoute != null && sheetRoute.isActive) {
+                        navigator.removeRoute(sheetRoute);
+                      }
                       setState(() {
                         _recentFares[request.id] = _RecentFareSent(
                           rideRequestId: request.id,

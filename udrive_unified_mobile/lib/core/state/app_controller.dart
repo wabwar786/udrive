@@ -460,6 +460,9 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    // Before the token is thrown away, not after.
+    await _standDownPresence();
+
     try {
       await _authRepository.logout();
     } catch (_) {
@@ -510,9 +513,10 @@ class AppController extends ChangeNotifier {
       unawaited(syncDriverPresence());
     } else {
       // Leaving driver mode is leaving the road. Nothing should keep counting
-      // minutes towards a reward while the app is showing customer screens.
-      _presenceTimer?.cancel();
-      _presenceTimer = null;
+      // minutes towards a reward while the app is showing customer screens —
+      // and the server has to be told, or it keeps the session open and keeps
+      // crediting until its own stale sweep.
+      await _standDownPresence();
     }
     notifyListeners();
   }
@@ -778,18 +782,48 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  /// Everything a Driver's marketplace screen shows. Six calls.
+  ///
+  /// This was polled every five seconds by the Driver home screen, which meant
+  /// seventy-two requests a minute from a Driver doing nothing but waiting —
+  /// and five of the six were tour packages, package offers, package bookings
+  /// and a waitlist, none of which change from one tick to the next. A ride
+  /// request lives fifteen seconds; a tour package lives for weeks.
+  ///
+  /// So it is split. [loadDriverRideRequests] is the part worth polling, and
+  /// the packages come along on a far slower timer or when the Driver opens the
+  /// screen that shows them. Callers that genuinely want all of it — a pull to
+  /// refresh, a first load — still call this.
   Future<void> loadDriverMarketplace({bool notify = true}) async {
+    if (!await loadDriverRideRequests(notify: notify)) return;
+    await loadDriverPackages(notify: notify);
+  }
+
+  /// The fast half: open ride requests, and the status of this Driver's offers.
+  ///
+  /// Returns false when the request failed, so a caller can skip the slow half
+  /// rather than making five more calls into a network that just refused one.
+  Future<bool> loadDriverRideRequests({bool notify = true}) async {
     _marketplaceError = null;
     try {
       _liveDriverRideRequests = await _bookingRepository.getDriverRideRequests();
     } catch (error) {
       _marketplaceError = _message(error);
       if (notify) notifyListeners();
-      return;
+      return false;
     }
-    if (notify) notifyListeners();
 
-    try { _liveDriverRideOfferStatuses = await _bookingRepository.getDriverRideOffers(); } catch (_) {}
+    try {
+      _liveDriverRideOfferStatuses =
+          await _bookingRepository.getDriverRideOffers();
+    } catch (_) {}
+
+    if (notify) notifyListeners();
+    return true;
+  }
+
+  /// The slow half: tour packages and everything hanging off them.
+  Future<void> loadDriverPackages({bool notify = true}) async {
     try { _liveDriverPackages = await _bookingRepository.getDriverPackages(); } catch (_) {}
     try { _liveDriverPackageOffers = await _bookingRepository.getDriverPackageOffers(); } catch (_) {}
     try { _liveDriverPackageBookings = await _bookingRepository.getDriverPackageBookings(); } catch (_) {}
@@ -1158,11 +1192,88 @@ class AppController extends ChangeNotifier {
           await apiClient.postJson('/api/v1/driver/presence/heartbeat', const {});
       final changed = _applyPresence(response['data']);
       if (changed) notifyListeners();
+    } on ApiException catch (error) {
+      // A refused session is not a missed beat.
+      //
+      // Every failure used to be swallowed here, including 401. So when a
+      // session expired the timer carried on beating into a server that had
+      // stopped listening, _driverOnline stayed true, and the dashboard went on
+      // showing the lime "You're Online" card with online minutes beside it —
+      // for a Driver who was not online, could not be sent a ride, and had no
+      // way to tell from the screen. They would sit there waiting for work that
+      // could never arrive.
+      //
+      // The app client already tries a token refresh once before surfacing a
+      // 401, so reaching here means the session is genuinely finished.
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        _presenceTimer?.cancel();
+        _presenceTimer = null;
+        _driverOnline = false;
+        _onlineSince = null;
+        notifyListeners();
+      }
+
+      // Anything else — a timeout, a 500, no signal in a valley — is not an
+      // event. The server credits a gap of up to two and a half beats as
+      // continuous, so a single failure costs the Driver nothing at all.
     } catch (_) {
-      // One missed beat is not an event. The server credits a gap of up to two
-      // and a half beats as continuous, so a single failure costs the driver
-      // nothing at all.
+      // As above: not worth acting on.
     }
+  }
+
+  /// Stops beating while the app is in the background, without going offline.
+  ///
+  /// A backgrounded app is not a Driver who has stopped working — they may have
+  /// switched to maps or taken a call — but it is a Driver the platform cannot
+  /// reach: the OS suspends Dart timers, so no beat goes out and no position is
+  /// published. Letting the timer sit there pretending otherwise meant the
+  /// server believed the Driver was live, kept them in the pool and sent them
+  /// ride requests nothing could deliver.
+  ///
+  /// Nothing is told to the server. Silence is the signal, and the server
+  /// already closes a session that has not beaten in five minutes. A short trip
+  /// to another app costs the Driver nothing — the gap rule credits up to two
+  /// and a half beats — and a long one is correctly treated as having stopped.
+  void pausePresenceBeating() {
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+  }
+
+  /// Picks the beat back up on resume, and asks the server what it thinks.
+  ///
+  /// The server's answer wins. If it closed the session while the phone was
+  /// asleep, the switch goes back to offline here rather than leaving a lime
+  /// "You're Online" card over a Driver no ride can reach.
+  Future<void> resumePresenceBeating() async {
+    if (_mode != UserMode.driver) return;
+    await syncDriverPresence();
+  }
+
+  /// Tells the server this Driver has stopped, and stops beating.
+  ///
+  /// Called on sign-out and on leaving driver mode. Neither used to do it:
+  /// switchMode cancelled the local timer and logout did not even do that, so
+  /// the server kept the session open until its five-minute stale sweep and
+  /// credited up to two and a half minutes of "online" time to a Driver who had
+  /// closed the app or signed out. Online minutes are what the launch rewards
+  /// are measured in, so that was time paid for and not worked.
+  ///
+  /// Order matters: the request goes first, while the token is still good.
+  Future<void> _standDownPresence({bool tellServer = true}) async {
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+
+    if (tellServer && _driverOnline) {
+      try {
+        await apiClient.postJson('/api/v1/driver/presence/offline', const {});
+      } catch (_) {
+        // The server closes a silent session itself after five minutes, so a
+        // failure here costs correctness nothing.
+      }
+    }
+
+    _driverOnline = false;
+    _onlineSince = null;
   }
 
   void addVehicle(VehicleRecord vehicle) {
