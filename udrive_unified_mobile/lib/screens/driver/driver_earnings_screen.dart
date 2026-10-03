@@ -11,7 +11,6 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../core/growth/driver_growth_repository.dart';
 import '../../models/driver_growth_models.dart';
-import 'driver_founding_screen.dart';
 import 'driver_missions_screen.dart';
 import 'driver_welcome_bonus_screen.dart';
 
@@ -348,7 +347,12 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
   Widget? _destinationFor(WayToEarn way) => switch (way.actionPath) {
         'driverMissions' => const DriverMissionsScreen(),
         'driverWelcomeBonus' => const DriverWelcomeBonusScreen(),
-        'driverFounding' => const DriverFoundingScreen(),
+        // Not from here. `DriverFoundingScreen` needs the driver's
+        // `FoundingDriver` record and this screen never loads one — the
+        // dashboard does, and opens it from the founding row there. Writing
+        // `const DriverFoundingScreen()` did not compile at all, which is how
+        // this was found. Returning null makes the row untappable, exactly as
+        // the comment above describes for a path with no screen behind it.
         _ => null,
       };
 

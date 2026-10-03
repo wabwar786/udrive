@@ -502,15 +502,24 @@ class RentalRepository {
       '${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
 
-  static double? _number(Object? value) {
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value);
-    return null;
-  }
+}
 
-  static String? _text(Object? value) {
-    if (value == null) return null;
-    final text = '$value'.trim();
-    return text.isEmpty ? null : text;
-  }
+/// Top-level, not members of [RentalRepository].
+///
+/// These were `static` on the repository while every caller was in a different
+/// class in this file — `RentalVehicle.fromJson`, `RentalQuote.fromJson`,
+/// `RentalBooking.fromJson`. Dart will not resolve another class's private
+/// static without qualifying it, so the file did not compile. As top-level
+/// privates they are visible to the whole library, which is what the calls
+/// already assumed.
+double? _number(Object? value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
+}
+
+String? _text(Object? value) {
+  if (value == null) return null;
+  final text = '$value'.trim();
+  return text.isEmpty ? null : text;
 }
