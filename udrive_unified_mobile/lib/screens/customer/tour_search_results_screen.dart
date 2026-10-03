@@ -326,7 +326,8 @@ class _TourSearchResultsScreenState extends State<TourSearchResultsScreen> {
                 icon: Icons.notifications_active_rounded,
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const LiveTourInterestScreen(),
+                    builder: (_) =>
+                        const LiveTourInterestScreen(standalone: true),
                   ),
                 ),
               ),

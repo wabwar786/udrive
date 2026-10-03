@@ -410,26 +410,30 @@ class LiveTourPackage {
 
   int get bookableSeats => (availableSeats - heldSeats).clamp(0, totalSeats);
 
-  double get destinationRating {
-    final seed = destination.codeUnits.fold<int>(0, (sum, value) => sum + value);
-    return 4.5 + (seed % 5) / 10;
-  }
+  /// The driver's rating, or null when nobody has rated them.
+  ///
+  /// Five getters used to live here and every one of them was invented. The
+  /// destination's "rating" was `4.5 + (sum of the destination name's character
+  /// codes % 5) / 10` and its review count `24 + (the same sum % 143)`, so
+  /// Neelum Valley scored 4.8 from 91 reviews because of how its name is spelt.
+  /// The vehicle fell back to a flat 4.6, its review count to the mountain
+  /// readiness score, and a package with no review text displayed two written
+  /// testimonials that no passenger had ever typed:
+  ///
+  ///     'Vehicle was clean, comfortable and reached the pickup point on time.'
+  ///
+  /// A customer read those numbers and those sentences and paid an advance on
+  /// them. Nothing about them was true, and nothing in the app said so.
+  ///
+  /// What the server actually sends is one number and one optional note, and
+  /// that is now all this model offers. Where there is nothing, the screens say
+  /// there is nothing — see `_RatingPill` and `_ReviewsCard`.
+  double? get driverRatingOrNull => driverRating > 0 ? driverRating : null;
 
-  int get destinationReviewCount {
-    final seed = destination.codeUnits.fold<int>(0, (sum, value) => sum + value);
-    return 24 + (seed % 143);
-  }
-
-  double get vehicleRating => driverRating > 0 ? driverRating.clamp(3.5, 5.0).toDouble() : 4.6;
-  int get vehicleReviewCount => 12 + (mountainReadinessScore % 67);
-
-  List<String> get displayReviews {
+  /// The passenger notes the server returned, which is usually none.
+  List<String> get reviews {
     final supplied = reviewNotes?.trim();
-    if (supplied != null && supplied.isNotEmpty) return [supplied];
-    return const [
-      'Vehicle was clean, comfortable and reached the pickup point on time.',
-      'The destination was beautiful and the journey was well managed.',
-    ];
+    return supplied == null || supplied.isEmpty ? const [] : [supplied];
   }
 
   factory LiveTourPackage.fromJson(Map<String, dynamic> json) => LiveTourPackage(

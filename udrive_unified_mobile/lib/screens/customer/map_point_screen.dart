@@ -75,8 +75,13 @@ class _MapPointScreenState extends State<MapPointScreen> {
     // The label may be empty (pin dropped from a blank destination) or stale
     // (the customer opened this to correct it), so resolve what is under the
     // pin as soon as the screen is up rather than showing the old name.
+    // Always, not only when the label is empty. The comment above has said
+    // "resolve what is under the pin rather than showing the old name" since
+    // this screen was written, and the condition under it did the opposite:
+    // a customer who opened this to correct a wrong address was shown that
+    // same wrong address over the new pin.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_label.isEmpty) _resolve(_point, force: true);
+      _resolve(_point, force: true);
     });
   }
 
@@ -100,19 +105,25 @@ class _MapPointScreenState extends State<MapPointScreen> {
   }
 
   Future<void> _resolve(LatLng centre, {bool force = false}) async {
+    // The pin's position is taken first, always.
+    //
+    // This used to sit below the 40-metre guard, so a settle shorter than that
+    // returned early and `_point` kept its previous value — the customer
+    // confirmed a spot up to forty metres from the pin they were looking at,
+    // which on a narrow street is the wrong side of it. The guard is about
+    // sparing the geocoder a lookup, not about where the pin is.
+    setState(() => _point = centre);
+
     final previous = _lastResolved;
     if (!force && previous != null) {
       final moved = (previous.latitude - centre.latitude).abs() +
           (previous.longitude - centre.longitude).abs();
-      if (moved < 0.0004) return; // roughly 40 m
+      if (moved < 0.0004) return; // roughly 40 m — the name will not have changed
     }
     _lastResolved = centre;
 
     final token = ++_resolveToken;
-    setState(() {
-      _point = centre;
-      _resolving = true;
-    });
+    setState(() => _resolving = true);
 
     final address = await _places.reverseGeocode(
       centre.latitude,

@@ -10,7 +10,7 @@ import '../../core/widgets/ud_kit.dart';
 import '../../models/booking_models.dart';
 import 'booking_payment_screen.dart';
 import 'driver_offers_screen.dart';
-import '../operations/trip_chat_screen.dart';
+import '../common/booking_chat_screen.dart';
 
 String _t(BuildContext context, String en, String ur) =>
     AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
@@ -396,18 +396,9 @@ class _BookingCard extends StatelessWidget {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  // TripChatScreen, not the old BookingChatScreen.
-                  //
-                  // The two were separate screens on separate API endpoints
-                  // writing to separate tables, so a customer messaging from
-                  // here landed in `booking_messages` while the driver's trip
-                  // screen read `trip_messages`. Two people on one trip, two
-                  // inboxes, neither aware of the other.
-                  builder: (_) => TripChatScreen(
+                  builder: (_) => BookingChatScreen(
                     bookingId: booking.id,
-                    myRole: 'Customer',
-                    otherPartyName: booking.driverName ??
-                        _t(context, 'Driver', 'ڈرائیور'),
+                    bookingReference: booking.bookingReference,
                   ),
                 ),
               ),
@@ -439,9 +430,13 @@ class _BookingCard extends StatelessWidget {
   }
 
   Future<void> _cancel(BuildContext context) async {
-    final reason = TextEditingController(
-      text: 'Customer travel plan changed.',
-    );
+    // Empty, not pre-written.
+    //
+    // The box opened with "Customer travel plan changed." already in it, and a
+    // customer who simply confirmed had that sentence filed as their own
+    // reason — on a record the driver reads and any later dispute is decided
+    // against. The dialog asks them to say why; it should not answer for them.
+    final reason = TextEditingController();
     final confirmed = await showUdDialog<bool>(
       context: context,
       title: _t(context, 'Cancel booking?', 'بکنگ منسوخ کریں؟'),
@@ -453,6 +448,11 @@ class _BookingCard extends StatelessWidget {
       content: UdTextField(
         controller: reason,
         label: _t(context, 'Reason', 'وجہ'),
+        hint: _t(
+          context,
+          'In your own words — this is what the driver sees.',
+          'اپنے الفاظ میں — ڈرائیور یہی پڑھے گا۔',
+        ),
         minLines: 2,
         maxLines: 4,
         textCapitalization: TextCapitalization.sentences,
@@ -470,14 +470,16 @@ class _BookingCard extends StatelessWidget {
       ],
     );
 
+    final text = reason.text.trim();
+    reason.dispose();
     if (confirmed != true || !context.mounted) return;
 
     try {
+      // When they genuinely say nothing, the record says that, rather than
+      // putting a motive in their mouth.
       await AppControllerScope.of(context).cancelLiveBooking(
         booking.id,
-        reason.text.trim().isEmpty
-            ? 'Customer cancelled the booking.'
-            : reason.text.trim(),
+        text.isEmpty ? 'Cancelled by the customer. No reason given.' : text,
       );
       await onChanged();
     } catch (error) {
@@ -519,7 +521,10 @@ class _BookingCard extends StatelessWidget {
       await AppControllerScope.of(context).rescheduleLiveBooking(
         bookingId: booking.id,
         pickupAt: pickupAt,
-        reason: 'Customer requested a new departure time.',
+        // The customer asked for this time by picking it, so the record says
+        // exactly that and nothing more. It used to assert a motive they had
+        // never stated.
+        reason: 'New departure time chosen by the customer.',
       );
       await onChanged();
       if (context.mounted) {

@@ -50,15 +50,24 @@ class _TourMapScreenState extends State<TourMapScreen> {
   bool _loading = true;
   bool _accepting = false;
   bool _cancelling = false;
-  final Set<String> _declined = <String>{};
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    _startPolling();
+  }
+
+  /// Starts (or restarts) the offer poll.
+  ///
+  /// Restarting matters after a cancel that failed: the poller is stopped
+  /// before the call and, without this, offers froze on screen for a request
+  /// that was still live.
+  void _startPolling() {
+    _poller?.cancel();
     _poller = Timer.periodic(
       const Duration(seconds: 3),
-      (_) => _refresh(silent: true),
+      (_) => _refresh(),
     );
   }
 
@@ -68,7 +77,7 @@ class _TourMapScreenState extends State<TourMapScreen> {
     super.dispose();
   }
 
-  Future<void> _refresh({bool silent = false}) async {
+  Future<void> _refresh() async {
     if (!mounted) return;
     final controller = AppControllerScope.of(context);
     try {
@@ -82,9 +91,12 @@ class _TourMapScreenState extends State<TourMapScreen> {
 
   List<LiveDriverOffer> _offers(AppController controller) => controller
       .liveDriverOffers
-      .where((offer) =>
-          offer.rideRequestId == widget.rideRequestId &&
-          !_declined.contains(offer.id))
+      // A `_declined` set used to be filtered here. Nothing ever added to it:
+      // this screen gives `RateDriverCard` a capacity chip, which takes the
+      // place of the Decline button, so there was no way to decline and the
+      // filter was always a no-op. Removed rather than left to look like a
+      // working feature.
+      .where((offer) => offer.rideRequestId == widget.rideRequestId)
       .toList(growable: false);
 
   Future<void> _accept(LiveDriverOffer offer) async {
@@ -183,10 +195,12 @@ class _TourMapScreenState extends State<TourMapScreen> {
                 variant: UdButtonVariant.danger,
                 onPressed: () => Navigator.pop(sheetContext, true),
               ),
-              const SizedBox(height: 8),
-              UdButton.ghost(
-                label: _t('Stay here', 'یہیں رہیں'),
-                onPressed: () => Navigator.pop(sheetContext),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: Text(_t('Stay here', 'یہیں رہیں')),
+                ),
               ),
             ],
           ),
@@ -206,7 +220,27 @@ class _TourMapScreenState extends State<TourMapScreen> {
 
     final controller = AppControllerScope.of(context);
     final navigator = Navigator.of(context);
-    await controller.cancelLiveRideRequest(widget.rideRequestId);
+
+    // Guarded. Unguarded, a network failure here left `_cancelling` true with
+    // the offer poller already stopped and every later back gesture popping
+    // silently — so the request stayed live on the server while the customer
+    // believed they had cancelled it, and drivers kept bidding on it.
+    try {
+      await controller.cancelLiveRideRequest(widget.rideRequestId);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _cancelling = false);
+      _startPolling();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'That could not be cancelled. Check your connection and try again '
+            '— your request is still live.',
+          ),
+        ),
+      );
+      return;
+    }
 
     if (!mounted) return;
     navigator.pop();
@@ -409,8 +443,11 @@ class _RoutePill extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
+          // The map draws the pickup and the destination. Drivers are the
+          // cards below it, not pins — the caption described a feature that
+          // was never built.
           Text(
-            'Showing nearby drivers on the map',
+            'Your route. Driver offers are listed below.',
             style: AppType.caption.copyWith(color: AppText.secondary),
           ),
         ],
@@ -459,7 +496,7 @@ class _WaitingPanel extends StatelessWidget {
             'open.',
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: 13, height: 1.4, color: AppText.disabled),
+                fontSize: 11, height: 1.4, color: AppText.disabled),
           ),
         ],
       ),
@@ -587,7 +624,8 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
                             widget.offer.vehicle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: AppType.caption.copyWith(
+                            style: const TextStyle(
+                              fontSize: 11,
                               color: AppText.secondary,
                             ),
                           ),
@@ -622,11 +660,11 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'This amount is held by UDrive and paid to your driver '
-                        'on arrival. The balance is settled directly with the '
-                        'driver.',
+                        'This is the advance you agree to pay the driver. '
+                        'Nothing is charged here — you settle the advance and '
+                        'the balance directly with the driver.',
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 11,
                           height: 1.4,
                           fontWeight: FontWeight.w600,
                           color: AppTint.successText,
@@ -640,7 +678,11 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
 
               Text(
                 'Advance  ·  $percentLabel',
-                style: AppType.overline.copyWith(color: AppText.secondary),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppText.secondary,
+                ),
               ),
               const SizedBox(height: 5),
               Row(
@@ -687,16 +729,21 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
                   child: Text(
                     'Enter between PKR ${_money.format(_minimum)} and '
                     'PKR ${_money.format(fare)}.',
-                    style: AppType.caption.copyWith(color: AppColors.danger),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.danger,
+                    ),
                   ),
                 ),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
+                  const Text(
                     'Balance on arrival',
-                    style: AppType.caption.copyWith(color: AppText.secondary),
+                    style: TextStyle(
+                        fontSize: 12, color: AppText.secondary),
                   ),
                   Text(
                     'PKR ${_money.format(balance)}',
@@ -709,8 +756,11 @@ class _AdvancePaymentSheetState extends State<_AdvancePaymentSheet> {
                 ],
               ),
               const SizedBox(height: 16),
+              // "Confirm", not "Pay". The button only pops with `true`; no
+              // charge is taken anywhere in this flow, and calling it Pay told
+              // the customer money had moved when none had.
               UdButton.primary(
-                label: 'Pay Advance & Confirm',
+                label: 'Confirm the advance',
                 icon: Icons.lock_outline_rounded,
                 busy: _paying,
                 onPressed: !_valid

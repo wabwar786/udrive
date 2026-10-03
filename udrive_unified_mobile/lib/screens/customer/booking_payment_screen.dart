@@ -291,13 +291,41 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
 
     amountController.dispose();
-    final amount = result?['amount'] as double?;
-    if (amount == null || amount <= 0 || amount > remaining) return;
+    if (result == null) return;
+
+    // Say why, rather than closing and doing nothing.
+    //
+    // An amount above the remaining balance, or text that is not a number,
+    // used to fall through this guard in silence: the dialog shut, no payment
+    // was recorded, and nothing appeared on screen. A customer who typed the
+    // full fare instead of the balance believed they had just paid it.
+    final amount = result['amount'] as double?;
+    if (amount == null || amount <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter the amount you are paying.')),
+        );
+      }
+      return;
+    }
+    if (amount > remaining) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'That is more than the ${_money(remaining)} still due on this '
+              'booking.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     setState(() => _busy = true);
     try {
       await _repo.create(
         bookingId: widget.bookingId,
-        method: result!['method'] as String,
+        method: result['method'] as String,
         paymentType: result['type'] as String,
         amount: amount,
       );

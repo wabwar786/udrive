@@ -34,7 +34,6 @@ class DriverOffersScreen extends StatefulWidget {
     required this.destination,
     required this.customerOffer,
     required this.vehicleName,
-    this.autoMatch = false,
     this.pickupPoint,
     this.destinationPoint,
     this.routePoints,
@@ -46,7 +45,6 @@ class DriverOffersScreen extends StatefulWidget {
   final String destination;
   final int customerOffer;
   final String vehicleName;
-  final bool autoMatch;
 
   /// Drawn behind the offers when supplied. Optional because several older
   /// flows push this screen with labels only, and a screen that crashed
@@ -95,7 +93,13 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   bool _cancelling = false;
 
   /// When the search began, for the elapsed clock in the waiting card.
-  final DateTime _searchStartedAt = DateTime.now();
+  ///
+  /// Not `final`. Raising the fare restarts it, which is what the comment at
+  /// the raise already claimed and what the customer is told is happening —
+  /// but the field could not be reassigned, so after raising their offer they
+  /// watched a clock that said they had been waiting six minutes at a price
+  /// they had set ten seconds ago.
+  DateTime _searchStartedAt = DateTime.now();
 
   /// The fare the customer is currently offering.
   ///
@@ -306,7 +310,10 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       if (!mounted) return;
       // The clock restarts: this is a fresh search at a new price, and showing
       // the old elapsed time would suggest nothing had changed.
-      setState(() => _offer = confirmed);
+      setState(() {
+        _offer = confirmed;
+        _searchStartedAt = DateTime.now();
+      });
       await _refresh();
     } catch (error) {
       if (!mounted) return;
@@ -871,8 +878,15 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                       const Icon(Icons.verified_user_outlined,
                           size: 20, color: AppTint.infoText),
                       const SizedBox(width: 9),
+                      // "All drivers verified" was printed here unconditionally
+                      // — nothing in the offer payload was checked before
+                      // asserting it. A customer chooses a stranger to get into
+                      // a car with on the strength of a line like that, so it
+                      // now says what the platform actually does rather than
+                      // making a promise about each driver on the list.
                       Text(
-                        _t('All drivers verified', 'تمام ڈرائیور تصدیق شدہ'),
+                        _t('Drivers are checked before they can accept',
+                            'ڈرائیور قبول کرنے سے پہلے جانچے جاتے ہیں'),
                         style: AppType.listTitle.copyWith(
                           fontSize: 16,
                           color: AppText.primary,

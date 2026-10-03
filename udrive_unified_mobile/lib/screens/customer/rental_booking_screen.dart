@@ -60,13 +60,27 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
   String _t(String en, String ur) =>
       AppControllerScope.of(context).locale.languageCode == 'ur' ? ur : en;
 
+  /// Whether Book can be pressed.
+  ///
+  /// `_terms.version > 0` is new, and it is the whole of a quiet failure. When
+  /// the settings call fails the screen falls back to terms written into the
+  /// app, carrying version 0 — and the server refuses any booking whose
+  /// accepted version is not the current one. So the customer read terms, tied
+  /// three checkboxes, pressed an enabled Book button, and the booking failed
+  /// every single time with nothing on screen explaining why. The button is now
+  /// off until the real terms are in hand, and `_termsUnavailable` says so.
   bool get _ready =>
       _quote != null &&
       !_quote!.documentsMissing &&
       _papersChecked &&
       _liabilityAccepted &&
       _conditionPhotos &&
+      _terms.version > 0 &&
       !_busy;
+
+  /// True when the screen is showing the built-in wording rather than the
+  /// platform's current terms.
+  bool get _termsUnavailable => _terms.version <= 0;
 
   Future<void> _load() async {
     setState(() => _busy = true);
@@ -84,6 +98,10 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
       if (_dates != null) await _refreshQuote();
     } catch (error) {
       if (!mounted) return;
+      // `_blocked` stays empty here, so every day in the calendar looks free.
+      // The screen exists to stop a customer picking days the car is already
+      // out on; with no list it cannot, and the refusal arrives later at the
+      // quote. `_error` is shown and Book stays off, which is the honest state.
       setState(() {
         _error = '$error';
         _busy = false;
@@ -161,7 +179,7 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
     await _refreshQuote();
   }
 
-  Future<void> _uploadDocument(String kind, String label) async {
+  Future<void> _uploadDocument(String kind) async {
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
@@ -259,6 +277,22 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
 
           if (_error != null) ...[
             UdBanner(tone: UdTone.err, text: _error),
+            const SizedBox(height: 14),
+          ],
+
+          // Said once, where it is noticed, rather than letting the customer
+          // discover it by pressing a button that can never work.
+          if (_termsUnavailable) ...[
+            UdBanner(
+              tone: UdTone.warn,
+              icon: Icons.wifi_off_rounded,
+              text: _t(
+                'The current rental terms could not be loaded, so a booking '
+                'cannot be made right now. Pull down to try again.',
+                'کرائے کی موجودہ شرائط نہیں آ سکیں، اس لیے ابھی بکنگ نہیں ہو '
+                    'سکتی۔ دوبارہ کوشش کے لیے نیچے کھینچیں۔',
+              ),
+            ),
             const SizedBox(height: 14),
           ],
 
@@ -441,7 +475,7 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
           icon: done ? Icons.check_rounded : Icons.photo_camera_outlined,
           tone: done ? UdIconTone.soft : UdIconTone.neutral,
         ),
-        onTap: _busy ? null : () => _uploadDocument(kind, label),
+        onTap: _busy ? null : () => _uploadDocument(kind),
         showChevron: !done,
       );
 

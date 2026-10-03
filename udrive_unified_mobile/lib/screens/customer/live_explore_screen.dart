@@ -57,20 +57,31 @@ class _LiveExploreScreenState extends State<LiveExploreScreen> {
         _error = null;
       });
     }
+    final controller = AppControllerScope.of(context);
+
     try {
-      final controller = AppControllerScope.of(context);
       final language = controller.locale.languageCode;
-      final results = await Future.wait([
-        _api.getJson('/api/v1/catalog/destinations?language=$language',
-            authenticated: false),
-        controller.refreshPhase9Marketplace(),
-      ]);
-      final response = results.first as Map<String, dynamic>;
+      // Separately, not in one `Future.wait`.
+      //
+      // `Future.wait` rejects on the first failure, so a marketplace refresh
+      // that failed threw away a destination list that had already arrived and
+      // the screen showed an error with nothing on it. The two have nothing to
+      // do with each other.
+      final response = await _api.getJson(
+        '/api/v1/catalog/destinations?language=$language',
+        authenticated: false,
+      );
       final raw = response['data'] as List? ?? const [];
       _items =
           raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
     } catch (error) {
       _error = '$error';
+    }
+
+    try {
+      await controller.refreshPhase9Marketplace();
+    } catch (_) {
+      // The packages rail is optional. The destinations above are the screen.
     }
     if (mounted) setState(() => _busy = false);
   }
@@ -146,7 +157,10 @@ class _LiveExploreScreenState extends State<LiveExploreScreen> {
                 child: CircularProgressIndicator(color: AppColors.navy),
               ),
             )
-          else if (_error != null && nothingLoaded)
+          // Shown whenever the last load failed, not only when the screen is
+          // also empty. A failed reload used to be swallowed completely, so a
+          // customer read yesterday's list believing it was today's.
+          else if (_error != null)
             UdBanner(
               tone: UdTone.err,
               icon: Icons.cloud_off_rounded,
@@ -419,17 +433,27 @@ class _DestinationCard extends StatelessWidget {
                       top: 12,
                       child: UdMapChip(label: district),
                     ),
-                  Positioned(
-                    right: 12,
-                    top: 12,
-                    child: UdBadge(
-                      label: _t(
-                        '${item['routeSafetyScore'] ?? 0}/100 safety',
-                        '${item['routeSafetyScore'] ?? 0}/100 حفاظت',
+                  // Only when there is a score.
+                  //
+                  // A missing one used to render "0/100 safety" — the worst
+                  // result the scale can express — in the positive colour, on
+                  // a destination nobody had scored. The tone follows the
+                  // number now too, so a genuinely low score no longer reads
+                  // as reassurance.
+                  if (item['routeSafetyScore'] != null)
+                    Positioned(
+                      right: 12,
+                      top: 12,
+                      child: UdBadge(
+                        label: _t(
+                          '${item['routeSafetyScore']}/100 safety',
+                          '${item['routeSafetyScore']}/100 حفاظت',
+                        ),
+                        tone: (num.tryParse('${item['routeSafetyScore']}') ?? 0) >= 60
+                            ? UdTone.lime
+                            : UdTone.warn,
                       ),
-                      tone: UdTone.lime,
                     ),
-                  ),
                 ],
               ),
             ),

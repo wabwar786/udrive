@@ -36,36 +36,6 @@ extension UDriveServiceTypeLabel on UDriveServiceType {
       };
 }
 
-/// Secondary copy. The design system's floor is 12.5px; this file used to set
-/// 9.5, 10, 10.5, 11, 11.5 and 12 by hand in twelve places.
-const _caption = TextStyle(
-  fontSize: 13,
-  fontWeight: FontWeight.w600,
-  color: AppText.secondary,
-  height: 1.35,
-);
-
-/// The same weight, in ink rather than grey.
-const _captionInk = TextStyle(
-  fontSize: 13,
-  fontWeight: FontWeight.w700,
-  color: AppColors.text,
-);
-
-/// Small caps above a value — PICKUP, DESTINATION, a tile's label.
-const _overline = TextStyle(
-  fontSize: 12.5,
-  fontWeight: FontWeight.w800,
-  color: AppText.secondary,
-);
-
-/// The number under one of those labels.
-const _tileValue = TextStyle(
-  fontSize: 13,
-  fontWeight: FontWeight.w900,
-  color: AppColors.text,
-);
-
 class UDriveRouteFlowScreen extends StatefulWidget {
   const UDriveRouteFlowScreen({
     required this.serviceType,
@@ -217,10 +187,14 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
       }
       if (!mounted) return;
       setState(() {
-        _catalogPlaces = _mergePlaces([
-          ...loaded,
-          ..._fallbackDestinations,
-        ]);
+        // The built-in list is a fallback, so it is used only when there is
+        // nothing to fall back from. Merging it into a successful response
+        // meant a destination an admin had removed from the catalogue kept
+        // appearing under "Popular Kashmir destinations", and kept being
+        // bookable.
+        _catalogPlaces = _mergePlaces(
+          loaded.isEmpty ? _fallbackDestinations : loaded,
+        );
         _searchMessage = null;
         if (_to.text.trim().isEmpty && !_editingFrom) {
           _results = _defaultResults();
@@ -387,9 +361,17 @@ class _UDriveRouteFlowScreenState extends State<UDriveRouteFlowScreen> {
     }
     FocusScope.of(context).unfocus();
     _rememberSearch(place);
+    // `onlyVehicleKey` travels with this push.
+    //
+    // It was forwarded on the skip-the-search path and dropped here, so a
+    // customer who tapped "Car" on Home and then picked a destination from the
+    // list arrived at a screen offering bikes, rickshaws and coasters — the
+    // choice they had already made, thrown away by which route they took to
+    // the same screen.
     Navigator.push(context, MaterialPageRoute(builder: (_) => UDriveVehicleSelectionScreen(
       serviceType: _serviceType,
       initialWholeVehicle: _initialWholeVehicle,
+      onlyVehicleKey: widget.onlyVehicleKey,
       pickupLabel: _pickupLabel,
       pickupPoint: _pickupPoint,
       destination: place,
@@ -788,7 +770,6 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
 
   int _selected = 0;
   bool _submitting = false;
-  bool _autoAccept = false;
   DateTime _tourDate = DateTime.now().add(const Duration(days: 1));
   _FareBookingMode _bookingMode = _FareBookingMode.perSeat;
 
@@ -1049,8 +1030,14 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     final db = _dbRates[_normaliseVehicle(choice.name)];
     final perSeat = package?.pricePerSeat ?? _perSeatEstimate(choice, db);
     final whole = package?.wholeVehiclePrice ?? _wholeVehicleEstimate(choice, db);
-    if (perSeat > 0) _perSeatOffer.text = perSeat.round().toString();
-    if (whole > 0) _wholeVehicleOffer.text = whole.round().toString();
+    // Cleared when there is no estimate, not left alone.
+    //
+    // These were only written when the new vehicle had a rate, so switching
+    // from a Coaster to a Car with no published rate left the coaster's figure
+    // sitting in the box — and that figure is what `_submit` sends. The
+    // customer saw a plausible number against the wrong vehicle and offered it.
+    _perSeatOffer.text = perSeat > 0 ? perSeat.round().toString() : '';
+    _wholeVehicleOffer.text = whole > 0 ? whole.round().toString() : '';
   }
 
   @override
@@ -1430,7 +1417,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
         'familyOnly': false,
         'womenOnly': false,
         'instantRide': widget.serviceType == UDriveServiceType.city,
-        'notes': '${widget.serviceType.title} • ${_routeDistanceKm.toStringAsFixed(1)} km estimated • ${wholeVehicle ? 'whole vehicle' : 'per seat'}${package == null ? ' • customer fare offer' : ' • published tour rate'}${_selectedPublicVehicle == null ? '' : ' • preferred ${_selectedPublicVehicle!.make} ${_selectedPublicVehicle!.model} (${_selectedPublicVehicle!.registrationNumber})'}${_autoAccept ? ' • auto-accept enabled' : ''}',
+        'notes': '${widget.serviceType.title} • ${_routeDistanceKm.toStringAsFixed(1)} km estimated • ${wholeVehicle ? 'whole vehicle' : 'per seat'}${package == null ? ' • customer fare offer' : ' • published tour rate'}${_selectedPublicVehicle == null ? '' : ' • preferred ${_selectedPublicVehicle!.make} ${_selectedPublicVehicle!.model} (${_selectedPublicVehicle!.registrationNumber})'}',
       });
       if (!mounted) return;
       Navigator.pushReplacement(
@@ -1442,7 +1429,6 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
             destination: request.destinationLabel,
             customerOffer: request.customerOffer.round(),
             vehicleName: request.vehicleCategory,
-            autoMatch: false,
           ),
         ),
       );
@@ -1466,9 +1452,17 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
     final rate = _dbRates[_normaliseVehicle(choice.name)];
     final perSeat = _perSeatEstimate(choice, rate);
     final whole = _wholeVehicleEstimate(choice, rate);
+    // No cross-category fallback.
+    //
+    // This used to fall back to `_availableVehicles.first` — any category at
+    // all — when no vehicle of the chosen kind was online. Its make, model and
+    // plate were then written into the request notes as the customer's
+    // preferred vehicle, so booking a Car could tell drivers the customer had
+    // asked for a particular motorbike. With no match the capacity simply comes
+    // from the catalogue, which is what it is there for.
     final vehicle = _availableVehicles.cast<_PublicVehicle?>().firstWhere(
       (v) => v != null && _normaliseVehicle(v.category) == _normaliseVehicle(choice.name) && v.isOnline,
-      orElse: () => _availableVehicles.isEmpty ? null : _availableVehicles.first,
+      orElse: () => null,
     );
     final capacity = (vehicle?.passengerCapacity ?? choice.capacity).clamp(1, 50).toInt();
     int seats = 1;
@@ -1495,7 +1489,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   const SizedBox(height: 14),
                   const Text('Confirm your ride', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: AppColors.text)),
                   const SizedBox(height: 6),
-                  Text('${widget.pickupLabel}  →  ${widget.destination.title}', style: _caption),
+                  Text('${widget.pickupLabel}  →  ${widget.destination.title}', style: const TextStyle(color: AppText.secondary, fontSize: 12, height: 1.35)),
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(14),
@@ -1510,14 +1504,14 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         ]),
                         const Divider(height: 24),
                         Row(children: [
-                          const Text('Booking', style: _caption),
+                          const Text('Booking', style: TextStyle(color: AppText.secondary, fontSize: 12)),
                           const Spacer(),
                           Text(mode == _FareBookingMode.wholeVehicle ? 'Full vehicle' : '$seats seat${seats == 1 ? '' : 's'}', style: const TextStyle(fontWeight: FontWeight.w800)),
                         ]),
                         if (mode == _FareBookingMode.perSeat) ...[
                           const SizedBox(height: 10),
                           Row(children: [
-                            const Text('Seats', style: _caption),
+                            const Text('Seats', style: TextStyle(color: AppText.secondary, fontSize: 12)),
                             const Spacer(),
                             IconButton.filledTonal(
                               onPressed: seats > 1 ? () => setSheetState(() => seats--) : null,
@@ -1531,12 +1525,18 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                           ]),
                         ],
                         const SizedBox(height: 8),
+                        // The payment method is chosen after the ride, on the
+                        // payment screen, which offers Cash, bank transfer,
+                        // Easypaisa and JazzCash. This row used to print the
+                        // word "Cash" as a fact, so a customer who intended to
+                        // pay by Easypaisa was told, at the moment of
+                        // confirming, that their ride was cash only.
                         const Row(children: [
-                          Text('Payment', style: _caption),
+                          Text('Payment', style: TextStyle(color: AppText.secondary, fontSize: 12)),
                           Spacer(),
                           Icon(Icons.payments_outlined, size: 17, color: AppColors.text),
                           SizedBox(width: 5),
-                          Text('Cash', style: TextStyle(fontWeight: FontWeight.w800)),
+                          Text('Chosen after the ride', style: TextStyle(fontWeight: FontWeight.w800)),
                         ]),
                       ],
                     ),
@@ -1804,8 +1804,13 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   AppSizes.sidePadding, 16, AppSizes.sidePadding, 28),
           children: [
             ..._availabilityBanner(),
-            UdCard(
+            Container(
               padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.border),
+              ),
               child: Column(
                 children: [
                   Row(
@@ -1817,7 +1822,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('PICKUP', style: _overline),
+                            const Text('PICKUP', style: TextStyle(color: AppText.secondary, fontSize: 10, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 2),
                             Text(widget.pickupLabel, style: const TextStyle(color: AppColors.text, fontSize: 13, fontWeight: FontWeight.w800)),
                           ],
@@ -1841,13 +1846,13 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('DESTINATION', style: _overline),
+                            const Text('DESTINATION', style: TextStyle(color: AppText.secondary, fontSize: 10, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 2),
                             Text(widget.destination.title, style: const TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w900)),
                             if (widget.destination.subtitle.trim().isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2),
-                                child: Text(widget.destination.subtitle, style: _caption),
+                                child: Text(widget.destination.subtitle, style: const TextStyle(color: AppText.secondary, fontSize: 11)),
                               ),
                           ],
                         ),
@@ -1907,9 +1912,13 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                     });
                     _applySelectedDefaultRates();
                   },
-                  child: UdCard(
-                    selected: active,
+                  child: Container(
                     padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: active ? AppColors.secondary : AppColors.border, width: active ? 2 : 1),
+                    ),
                     child: Row(
                       children: [
                         Container(
@@ -1925,11 +1934,11 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                             children: [
                               Text(choice.name, style: const TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w900)),
                               const SizedBox(height: 3),
-                              Text('${choice.meta} • ${choice.note}', style: _caption),
+                              Text('${choice.meta} • ${choice.note}', style: const TextStyle(color: AppText.secondary, fontSize: 10.5)),
                               const SizedBox(height: 5),
                               Text(
                                 'Seat ${seatEstimate <= 0 ? 'rate loading' : _money(seatEstimate)}  •  Full ${wholeEstimate <= 0 ? 'rate loading' : _money(wholeEstimate)}',
-                                style: _captionInk,
+                                style: const TextStyle(color: AppColors.text, fontSize: 10.5, fontWeight: FontWeight.w700),
                               ),
                             ],
                           ),
@@ -1958,7 +1967,7 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
                   Expanded(
                     child: Text(
                       _bookingModeNotice ?? '',
-                      style: _caption,
+                      style: const TextStyle(fontSize: 11.5, color: AppText.secondary, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ]),
@@ -1996,16 +2005,17 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
               ),
             ],
             const SizedBox(height: 12),
-            UdTextField(
-              controller: _bookingMode == _FareBookingMode.perSeat
-                  ? _perSeatOffer
-                  : _wholeVehicleOffer,
+            TextField(
+              controller: _bookingMode == _FareBookingMode.perSeat ? _perSeatOffer : _wholeVehicleOffer,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) => setState(() {}),
-              icon: Icons.payments_outlined,
-              label: _bookingMode == _FareBookingMode.perSeat
-                  ? 'Fare per seat (PKR)'
-                  : 'Whole vehicle fare (PKR)',
+              decoration: InputDecoration(
+                labelText: _bookingMode == _FareBookingMode.perSeat ? 'Fare per seat (PKR)' : 'Whole vehicle fare (PKR)',
+                prefixIcon: const Icon(Icons.payments_outlined),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+              ),
             ),
             const SizedBox(height: 12),
             // Second spinner removed for the same reason as the one on the city
@@ -2032,9 +2042,9 @@ class _UDriveVehicleSelectionScreenState extends State<UDriveVehicleSelectionScr
       decoration: BoxDecoration(color: AppColors.surface, borderRadius: AppRadii.all(AppRadii.tile)),
       child: Column(
         children: [
-          Text(label, textAlign: TextAlign.center, style: _overline),
+          Text(label, textAlign: TextAlign.center, style: const TextStyle(color: AppText.secondary, fontSize: 9.5, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text(value, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: _tileValue),
+          Text(value, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.text, fontSize: 11, fontWeight: FontWeight.w900)),
         ],
       ),
     );

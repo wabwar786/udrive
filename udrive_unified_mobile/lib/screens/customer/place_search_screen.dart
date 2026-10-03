@@ -251,7 +251,11 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                           _EndRow(
                             caption: 'To',
                             editable: !_editingPickup,
-                            staticValue: widget.destinationLabel,
+                            // Shortened too. The comment on the From row above
+                            // describes this exact bug and fixes only that row;
+                            // the destination kept showing the raw Plus Code
+                            // with an ellipsis through it.
+                            staticValue: shortPlaceName(widget.destinationLabel),
                             hint: 'Search any address or landmark',
                             controller: _query,
                             focusNode: _focus,

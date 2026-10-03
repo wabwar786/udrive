@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
@@ -197,10 +198,12 @@ class _PackageCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // No rating on the route pill. There has never been a
+                  // destination rating in the API — the number here was
+                  // computed from the spelling of the destination's name.
                   _RoutePill(
                     from: package.startingCity,
                     to: package.destination,
-                    rating: package.destinationRating,
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -221,7 +224,9 @@ class _PackageCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        _Stars(package.vehicleRating),
+                        // Only when a passenger has actually rated this driver.
+                        if (package.driverRatingOrNull != null)
+                          _Stars(package.driverRatingOrNull!),
                       ],
                     ),
                   ],
@@ -552,12 +557,10 @@ class _WaitlistCard extends StatelessWidget {
 class LivePackageDetailScreen extends StatefulWidget {
   const LivePackageDetailScreen({
     required this.package,
-    this.initialBookingType = 'PerSeat',
     super.key,
   });
 
   final LiveTourPackage package;
-  final String initialBookingType;
 
   @override
   State<LivePackageDetailScreen> createState() =>
@@ -575,7 +578,7 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
   void initState() {
     super.initState();
     _bookingType =
-        widget.initialBookingType == 'WholeVehicle' ? 'WholeVehicle' : 'PerSeat';
+        'PerSeat';
   }
 
   @override
@@ -644,9 +647,9 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
           ],
           const SizedBox(height: 16),
           _FacilitiesCard(package: package),
-          if (package.displayReviews.isNotEmpty) ...[
+          if (package.reviews.isNotEmpty) ...[
             const SizedBox(height: 16),
-            _ReviewsCard(reviews: package.displayReviews),
+            _ReviewsCard(reviews: package.reviews),
           ],
           const SizedBox(height: 16),
           UdBanner(
@@ -726,10 +729,25 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
         bookingType: _bookingType,
         seats: _bookingType == 'WholeVehicle' ? package.totalSeats : _seats,
       );
+      // The advance, not zero.
+      //
+      // This sent `advanceAmount: 0` while the rest of the app told the same
+      // customer that a tour needs at least a 20% advance. So the one screen
+      // that actually books a departure was the one screen that collected
+      // nothing, and a driver held seats against a booking with no money
+      // behind it. The percentage comes from the same constant every other
+      // screen quotes, so the two cannot drift apart again.
+      final seatCount =
+          _bookingType == 'WholeVehicle' ? package.totalSeats : _seats;
+      final tripTotal = _bookingType == 'WholeVehicle'
+          ? package.wholeVehiclePrice
+          : package.pricePerSeat * seatCount;
+
       final booking = await controller.confirmLivePackageBooking(
         packageId: package.id,
         holdId: hold.holdId,
-        advanceAmount: 0,
+        advanceAmount:
+            (tripTotal * AppConfig.tourAdvancePercent).roundToDouble(),
         passengers: passengers,
       );
       if (!mounted) return;
@@ -1021,22 +1039,20 @@ class _DetailCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _RatingPill(
-                  label: 'Destination',
-                  rating: package.destinationRating,
-                  count: package.destinationReviewCount,
-                ),
-                _RatingPill(
-                  label: 'Vehicle',
-                  rating: package.vehicleRating,
-                  count: package.vehicleReviewCount,
-                ),
-              ],
-            ),
+            // One pill, and only when it is real. There were two, and both
+            // were arithmetic on the destination's name and on the mountain
+            // readiness score. A new driver now reads as a new driver, which is
+            // the honest thing for a customer about to pay an advance to know.
+            if (package.driverRatingOrNull != null)
+              _RatingPill(
+                label: 'Driver',
+                rating: package.driverRatingOrNull!,
+              )
+            else
+              Text(
+                'This driver has no ratings yet.',
+                style: AppType.small.copyWith(color: AppText.secondary),
+              ),
             const SizedBox(height: 14),
             Container(
               width: double.infinity,
@@ -1106,10 +1122,14 @@ class _FacilitiesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Unchanged: the code's own fallback when a Driver listed nothing.
-    final inclusions = package.inclusions.isEmpty
-        ? const ['Verified Driver', 'Route support', 'Trip safety tools']
-        : package.inclusions;
+    // No fallback. A driver who listed nothing used to show "Verified Driver,
+    // Route support, Trip safety tools" — three things the app invented and
+    // then displayed under the heading "Included facilities", which is a
+    // promise about what the customer is buying.
+    final inclusions = package.inclusions;
+    if (inclusions.isEmpty && package.itinerary.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return UdCard(
       child: Column(
@@ -1231,21 +1251,10 @@ class _ReviewsCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.star_rounded,
-                                  size: 15, color: AppTint.star),
-                              Icon(Icons.star_rounded,
-                                  size: 15, color: AppTint.star),
-                              Icon(Icons.star_rounded,
-                                  size: 15, color: AppTint.star),
-                              Icon(Icons.star_rounded,
-                                  size: 15, color: AppTint.star),
-                              Icon(Icons.star_rounded,
-                                  size: 15, color: AppTint.star),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
+                          // Five stars used to be drawn on every review row,
+                          // hardcoded, whatever the passenger had actually
+                          // said. The note does not carry a score, so none is
+                          // shown.
                           Text(
                             reviews[i],
                             style: AppType.body2.copyWith(
@@ -1269,12 +1278,10 @@ class _RatingPill extends StatelessWidget {
   const _RatingPill({
     required this.label,
     required this.rating,
-    required this.count,
   });
 
   final String label;
   final double rating;
-  final int count;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1290,7 +1297,7 @@ class _RatingPill extends StatelessWidget {
             const Icon(Icons.star_rounded, size: 16, color: AppTint.star),
             const SizedBox(width: 6),
             Text(
-              '$label ${rating.toStringAsFixed(1)} · $count reviews',
+              '$label ${rating.toStringAsFixed(1)}',
               style: AppType.caption.copyWith(color: AppText.primary),
             ),
           ],

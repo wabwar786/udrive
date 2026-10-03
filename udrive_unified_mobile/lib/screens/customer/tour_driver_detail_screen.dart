@@ -11,7 +11,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/booking_models.dart';
-import '../operations/trip_chat_screen.dart';
+import '../common/booking_chat_screen.dart';
 
 /// Confirmation screen shown once a tour driver is booked and the advance paid.
 ///
@@ -54,7 +54,17 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _deadline = DateTime.now().add(AppConfig.tourFreeCancellationWindow);
+    // Anchored to when the booking was made, which the server sent, not to
+    // when this screen happened to open.
+    //
+    // It used to be `DateTime.now().add(window)`. So the free-cancellation
+    // countdown restarted every time the customer opened the screen — leave it
+    // and come back an hour later and the full window was on the clock again —
+    // and the promise under it, "cancel now and your advance is refunded in
+    // full", was made against a number the device had invented. Two customers
+    // with different phone clocks saw different deadlines for the same booking.
+    _deadline =
+        widget.booking.createdAt.add(AppConfig.tourFreeCancellationWindow);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       final left = _deadline.difference(DateTime.now());
@@ -94,16 +104,9 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        // TripChatScreen, not the old BookingChatScreen — one chat per trip
-        // now, on the endpoint the driver's own screen reads.
-        //
-        // The name comes from the offer rather than the booking: the offer is
-        // what this screen was opened with and its driverName is always
-        // present, while the booking's is nullable until the server fills it.
-        builder: (_) => TripChatScreen(
+        builder: (_) => BookingChatScreen(
           bookingId: widget.booking.id,
-          myRole: 'Customer',
-          otherPartyName: widget.offer.driverName,
+          bookingReference: widget.booking.bookingReference,
         ),
       ),
     );
@@ -223,7 +226,7 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
                             Text(
                               'Verified',
                               style: TextStyle(
-                                fontSize: 12.5,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w800,
                                 color: AppColors.info,
                               ),
@@ -251,7 +254,7 @@ class _TourDriverDetailScreenState extends State<TourDriverDetailScreen> {
                   Text(
                     widget.offer.registrationNumber,
                     style: const TextStyle(
-                        fontSize: 13, color: AppText.secondary),
+                        fontSize: 12, color: AppText.secondary),
                   ),
                 ],
                 const SizedBox(height: 14),
@@ -410,7 +413,7 @@ class _KeyValue extends StatelessWidget {
             child: Text(
               label,
               style: const TextStyle(
-                  fontSize: 13, color: AppText.secondary),
+                  fontSize: 12, color: AppText.secondary),
             ),
           ),
           Expanded(

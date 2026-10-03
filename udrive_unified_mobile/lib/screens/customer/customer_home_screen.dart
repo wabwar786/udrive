@@ -660,10 +660,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (_pickup.text.trim().isEmpty || _destination.text.trim().isEmpty) {
       return false;
     }
-    if (_service.isTour) {
-      final offer = int.tryParse(_tourOffer.text.trim());
-      return offer != null && offer > 0;
-    }
+    // No offer required to reach the tour results.
+    //
+    // This button used to go straight to the bidding flow, where naming a price
+    // is the whole point. It now opens the tour results, whose first and
+    // default tab is Departures — seats on a trip a driver has already priced.
+    // Demanding a price for a private vehicle before a customer may even look
+    // at departures asks them to bid on something they have not chosen and may
+    // not want. The offer is still required, in `_submitTour`, which is the
+    // only place it is spent.
     return true;
   }
 
@@ -679,7 +684,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// different.
   String get _ctaLabel {
     if (_service == HomeService.hotel) return 'Find Hotels';
-    if (_service.isTour) return 'Find Tour Vehicle';
+    // "Tours", not "Tour Vehicle": the next screen leads with departures —
+    // seats on somebody else's trip — and the private vehicle is the second
+    // tab. The old label named the thing behind the second tab.
+    if (_service.isTour) return 'Find Tours';
     if (_bookingType == BookingType.perSeat) {
       return 'Find $_seats seat${_seats == 1 ? '' : 's'}';
     }
@@ -878,6 +886,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
 
     if (!mounted) return;
+
+    // Home is a ride screen again. Without this the tour panel — dates, days,
+    // passengers, party, offer, rate guide, advance note — stays unfolded under
+    // the two address rows for the rest of the session, because nothing else
+    // ever resets `_service`.
+    setState(() => _service = HomeService.car);
+
     if (outcome != TourSearchOutcome.privateVehicle) return;
 
     // The one-ride-at-a-time guard runs here rather than before the results.
@@ -885,6 +900,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     // Customer what exists because they have a ride running would be a strange
     // thing for the app to do.
     if (await _blockedByActiveRide()) return;
+    if (!await _askTourOffer()) return;
+    if (!mounted) return;
     await _submitTour();
   }
 
@@ -1557,15 +1574,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
-  /// Car rental is on the home screen before it exists.
-  ///
-  /// Shown with a badge and a plain answer rather than hidden, because the
-  /// question "can I rent a car myself" is one customers ask and the app
-  /// currently gives no answer to at all — not even "no". A tile that says
-  /// "not yet" is more use than an absence they have to guess at.
-  ///
-  /// It does nothing else on purpose. A form that collects interest and posts
-  /// it nowhere would be worse than this.
   /// True when the fix was too vague to name a street with.
   ///
   /// Drives a prompt to check the pin. It is not an error — a vague fix in a
@@ -1627,11 +1635,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  void _openExplore() {
-    // Explore lives in the drawer today, so this points at the nearest thing
-    // that exists rather than at a screen that does not.
-    _selectService(HomeService.tour);
-  }
+  /// Opens Explore.
+  ///
+  /// This used to call `_selectService(HomeService.tour)`. Tapping Explore
+  /// therefore did not open Explore at all: it switched the product to Tour,
+  /// which unfolds seven more controls onto this sheet and pops open the
+  /// destination search on top of them. A customer who wanted to look at
+  /// Kashmir got a tour booking form instead, and because `_service` is never
+  /// put back, the form was still there when they returned.
+  ///
+  /// The comment above it said Explore "lives in the drawer today … a screen
+  /// that does not exist". It does exist, it is the second tab in the bottom
+  /// bar, and this screen is already handed the callback that reaches it.
+  void _openExplore() => widget.onNavigate('explore');
 
   Widget _buildVehiclePanel() {
     return Column(
@@ -1901,23 +1917,73 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             value: _tourParty,
             onChanged: (value) => setState(() => _tourParty = value),
           ),
-          const SizedBox(height: 9),
-          _MoneyField(
-            caption: 'Your offer for the whole trip',
-            controller: _tourOffer,
-            hint: 'e.g. 24000',
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 9),
-          if (_tourGuide.isNotEmpty) ...[
-            const SizedBox(height: 9),
-            _TourRateGuideCard(guide: _tourGuide, days: _tourDays),
-          ],
-          const SizedBox(height: 9),
-          _AdvanceDisclosure(offer: _tourOffer.text),
         ],
       ),
     );
+  }
+
+  /// Asks for the offer at the moment it is spent.
+  ///
+  /// The offer field, the rate guide and the advance note used to sit on the
+  /// home sheet, unfolded the instant Tour was chosen. Three of the seven extra
+  /// controls on this screen existed for one branch — the private vehicle —
+  /// that a customer reaches only after looking at the departures and deciding
+  /// none of them will do. Asking here means the question arrives when it has
+  /// an answer, and home keeps two address rows and a summary line.
+  ///
+  /// Returns true when the customer named a price.
+  Future<bool> _askTourOffer() async {
+    final accepted = await showUdSheet<bool>(
+      context: context,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Your offer for the whole trip',
+              style: AppType.h3.copyWith(color: AppText.primary),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Tour drivers set their own prices. Name yours and they answer '
+              'with theirs.',
+              style: AppType.small.copyWith(color: AppText.secondary),
+            ),
+            const SizedBox(height: 14),
+            _MoneyField(
+              caption: 'Your offer for the whole trip',
+              controller: _tourOffer,
+              hint: 'e.g. 24000',
+              onChanged: (_) => setSheetState(() {}),
+            ),
+            if (_tourGuide.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _TourRateGuideCard(guide: _tourGuide, days: _tourDays),
+            ],
+            const SizedBox(height: 12),
+            _AdvanceDisclosure(offer: _tourOffer.text),
+            const SizedBox(height: 16),
+            UdButton.primary(
+              label: 'Find a vehicle',
+              icon: Icons.search_rounded,
+              onPressed:
+                  (int.tryParse(_tourOffer.text.trim()) ?? 0) > 0
+                      ? () => Navigator.pop(sheetContext, true)
+                      : null,
+            ),
+            const SizedBox(height: 8),
+            UdButton.outline(
+              label: 'Not now',
+              onPressed: () => Navigator.pop(sheetContext, false),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (mounted) setState(() {});
+    return accepted ?? false;
   }
 
   Widget _buildHotelPanel() {

@@ -1,7 +1,22 @@
 name: Build UDrive
 
 on:
+  # The Run workflow form. Both boxes may be left empty: the name then comes
+  # from pubspec.yaml and the code is computed below.
   workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version name shown on Play, e.g. 9.1.0. Empty = whatever pubspec.yaml says."
+        required: false
+        type: string
+      version_code:
+        description: "Version code. Empty = automatic, and automatic never repeats a number."
+        required: false
+        type: string
+      note:
+        description: "What this build is for. Appears in the run summary."
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -13,6 +28,70 @@ permissions:
   contents: read
 
 jobs:
+  # Worked out once, in one place, so the APK and the bundle in the same run
+  # can never carry different numbers.
+  version:
+    name: Decide the version
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.pick.outputs.name }}
+      code: ${{ steps.pick.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: pick
+        name: Work out the version name and code
+        env:
+          IN_NAME: ${{ inputs.version_name }}
+          IN_CODE: ${{ inputs.version_code }}
+        run: |
+          set -euo pipefail
+
+          # pubspec holds "version: 9.0.0+10".
+          PUBSPEC=$(grep -m1 '^version:' udrive_unified_mobile/pubspec.yaml | sed 's/^version:[[:space:]]*//')
+          PUB_NAME="${PUBSPEC%%+*}"
+          PUB_CODE="${PUBSPEC##*+}"
+
+          NAME="${IN_NAME:-$PUB_NAME}"
+
+          if [ -n "${IN_CODE:-}" ]; then
+            case "$IN_CODE" in
+              ''|*[!0-9]*)
+                echo "::error::version_code must be a whole number. Got '$IN_CODE'."
+                exit 1 ;;
+            esac
+            # Play refuses a code it has already seen, and it has seen
+            # everything up to the number in pubspec. Failing here costs
+            # seconds; failing at the upload costs the whole build.
+            if [ "$IN_CODE" -le "$PUB_CODE" ]; then
+              echo "::error::version_code $IN_CODE is not above $PUB_CODE, which Play has already had. Use a higher number, or leave the box empty for an automatic one."
+              exit 1
+            fi
+            CODE="$IN_CODE"
+          else
+            # run_number only ever increases, so this can never hand out the
+            # same code twice, and adding the pubspec code keeps it above
+            # everything already uploaded.
+            CODE=$(( PUB_CODE + GITHUB_RUN_NUMBER ))
+          fi
+
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## UDrive $NAME ($CODE)"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Version name | \`$NAME\` |"
+            echo "| Version code | \`$CODE\` |"
+            echo "| Commit | \`$GITHUB_SHA\` |"
+            echo "| pubspec says | \`$PUBSPEC\` |"
+            [ -n "${{ inputs.note }}" ] && echo "| Note | ${{ inputs.note }} |"
+            echo
+            echo "Download **udrive-$NAME-$CODE.aab** from the Artifacts below, then Play Console → Closed testing → your track → Create new release."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Runs first and fastest. If the code does not compile, this fails in about a
   # minute instead of waiting on a full APK build to discover the same thing.
   analyze:
@@ -87,7 +166,7 @@ jobs:
   build-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
-    needs: analyze
+    needs: [analyze, version]
     steps:
       - uses: actions/checkout@v4
 
@@ -128,6 +207,8 @@ jobs:
           UDRIVE_KEYSTORE_PASSWORD: ${{ secrets.UDRIVE_KEYSTORE_PASSWORD }}
           UDRIVE_KEY_ALIAS: ${{ secrets.UDRIVE_KEY_ALIAS }}
           UDRIVE_KEY_PASSWORD: ${{ secrets.UDRIVE_KEY_PASSWORD }}
+          BUILD_NAME: ${{ needs.version.outputs.name }}
+          BUILD_CODE: ${{ needs.version.outputs.code }}
         run: |
           if [ -n "$UDRIVE_KEYSTORE_BASE64" ]; then
             echo "$UDRIVE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload-keystore.jks"
@@ -137,6 +218,8 @@ jobs:
             echo "::warning::No keystore secrets - APK will be debug-signed and the map will not load."
           fi
           flutter build apk --release \
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_CODE" \
             --dart-define=DEFAULT_MODE=customer \
             --dart-define=API_BASE_URL=https://udrive-api-production.up.railway.app \
             -Pmaps_key="$MAPS_ANDROID_KEY"
@@ -160,7 +243,7 @@ jobs:
   build-aab:
     name: Build Play Store bundle
     runs-on: ubuntu-latest
-    needs: analyze
+    needs: [analyze, version]
     env:
       HAS_KEY: ${{ secrets.UDRIVE_KEYSTORE_BASE64 != '' }}
     steps:
@@ -191,20 +274,29 @@ jobs:
           UDRIVE_KEY_ALIAS: ${{ secrets.UDRIVE_KEY_ALIAS }}
           UDRIVE_KEY_PASSWORD: ${{ secrets.UDRIVE_KEY_PASSWORD }}
           MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
+          BUILD_NAME: ${{ needs.version.outputs.name }}
+          BUILD_CODE: ${{ needs.version.outputs.code }}
         run: |
           echo "$UDRIVE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload-keystore.jks"
           export UDRIVE_KEYSTORE_PATH="$RUNNER_TEMP/upload-keystore.jks"
+          # --build-name/--build-number override pubspec for this build only,
+          # so shipping a new version no longer needs a commit.
           flutter build appbundle --release \
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_CODE" \
             --dart-define=DEFAULT_MODE=customer \
             --dart-define=API_BASE_URL=https://udrive-api-production.up.railway.app \
             -Pmaps_key="$MAPS_ANDROID_KEY"
           rm -f "$UDRIVE_KEYSTORE_PATH"
+          # Named so three downloads cannot be mixed up.
+          mv build/app/outputs/bundle/release/app-release.aab \
+             "build/app/outputs/bundle/release/udrive-$BUILD_NAME-$BUILD_CODE.aab"
 
       - name: Upload bundle
         if: env.HAS_KEY == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: udrive-play-bundle
-          path: udrive_unified_mobile/build/app/outputs/bundle/release/app-release.aab
+          name: udrive-play-bundle-${{ needs.version.outputs.name }}-${{ needs.version.outputs.code }}
+          path: udrive_unified_mobile/build/app/outputs/bundle/release/udrive-*.aab
           if-no-files-found: error
           retention-days: 30

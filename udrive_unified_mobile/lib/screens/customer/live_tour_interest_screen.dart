@@ -11,10 +11,17 @@ import '../../models/booking_models.dart';
 
 /// C-25 — Join a Tour.
 ///
-/// A bottom-nav tab root: `main_shell` supplies the top bar, so there is no
-/// `Scaffold` and no app bar here.
+/// Reached two ways, which is why [standalone] exists. As a bottom-nav tab root
+/// `main_shell` draws the bar, so this screen must not draw one. But the tour
+/// search results push it as an ordinary route when a day has no departures —
+/// and pushed that way it rendered as a bare `ListView`: no title, no back
+/// button, nothing but a form the customer could only escape with a system
+/// gesture. One flag, set by the caller that pushes it.
 class LiveTourInterestScreen extends StatefulWidget {
-  const LiveTourInterestScreen({super.key});
+  const LiveTourInterestScreen({this.standalone = false, super.key});
+
+  /// True when pushed as its own route rather than rendered inside the shell.
+  final bool standalone;
 
   @override
   State<LiveTourInterestScreen> createState() => _LiveTourInterestScreenState();
@@ -49,8 +56,18 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
   String _preference = 'Family';
   DateTime _date = DateTime.now().add(const Duration(days: 7));
   int _persons = 2;
-  final _pickup = TextEditingController(text: 'Muzaffarabad');
-  final _budget = TextEditingController(text: '5000');
+  /// Empty, not pre-filled.
+  ///
+  /// These carried 'Muzaffarabad' and '5000'. A customer who left them alone —
+  /// which is what a pre-filled field invites — registered an interest that
+  /// said they were starting from Muzaffarabad on a budget of PKR 5,000 per
+  /// seat, neither of which they had said. Drivers were then matched against
+  /// it.
+  final _pickup = TextEditingController();
+  final _budget = TextEditingController();
+  /// How long they want to be away. It used to be five days, always, invented
+  /// at submit time and never asked for.
+  int _nights = 3;
   bool _busy = false;
 
   @override
@@ -122,7 +139,7 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
     final controller = AppControllerScope.of(context);
     final advancePercent = (AppConfig.tourAdvancePercent * 100).round();
 
-    return RefreshIndicator(
+    final body = RefreshIndicator(
       onRefresh: controller.refreshPhase9Marketplace,
       color: AppColors.navy,
       child: ListView(
@@ -220,7 +237,18 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
             label: 'Tour persons',
             value: _persons,
             min: 1,
+            // Capped. It was unbounded, so an interest could be registered for
+            // a party larger than any vehicle on the platform.
+            max: 40,
             onChanged: (value) => setState(() => _persons = value),
+          ),
+          const SizedBox(height: 16),
+          UdStepper(
+            label: 'Nights away',
+            value: _nights,
+            min: 1,
+            max: 21,
+            onChanged: (value) => setState(() => _nights = value),
           ),
           const SizedBox(height: 16),
           UdTextField(
@@ -261,6 +289,20 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
               ),
         ],
       ),
+    );
+
+    // Inside the shell the bar is already there; pushed as a route it is not,
+    // and without this the customer lands on a form with no title and no way
+    // back except a system gesture.
+    if (!widget.standalone) return body;
+
+    return Scaffold(
+      backgroundColor: AppColors.surface,
+      appBar: UdTopBar(
+        title: 'Join a tour',
+        onBack: () => Navigator.maybePop(context),
+      ),
+      body: body,
     );
   }
 
@@ -321,10 +363,10 @@ class _LiveTourInterestScreenState extends State<LiveTourInterestScreen> {
         'destinationId': destinationId,
         'preferredStartDate': DateFormat('yyyy-MM-dd').format(_date),
         'preferredEndDate': DateFormat('yyyy-MM-dd')
-            .format(_date.add(const Duration(days: 5))),
+            .format(_date.add(Duration(days: _nights))),
         'persons': _persons,
         'groupPreference': _preference,
-        'budgetPerSeat': double.tryParse(_budget.text),
+        'budgetPerSeat': double.tryParse(_budget.text.trim()),
         'pickupCity': _pickup.text.trim(),
       });
       if (mounted) {

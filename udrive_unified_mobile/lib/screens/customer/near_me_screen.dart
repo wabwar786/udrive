@@ -14,7 +14,6 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/business_models.dart';
 import '../business_owner/business_owner_add_screen.dart';
-import '../../core/permissions/location_access.dart';
 
 /// Browses nearby third-party listings — restaurants, grocery, medical stores
 /// and so on — sourced from UDrive's own business directory.
@@ -73,10 +72,12 @@ class _NearMeScreenState extends State<NearMeScreen> {
     setState(() => _locating = true);
     try {
       if (await Geolocator.isLocationServiceEnabled()) {
-        // Disclosure before the prompt — see LocationAccess.
-        final permission =
-            await LocationAccess.ensure(context, LocationPurpose.customer);
-        if (LocationAccess.granted(permission)) {
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission != LocationPermission.denied &&
+            permission != LocationPermission.deniedForever) {
           final position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(
               accuracy: LocationAccuracy.high,
@@ -84,9 +85,10 @@ class _NearMeScreenState extends State<NearMeScreen> {
             ),
           );
           if (mounted) {
-            setState(
-              () => _center = LatLng(position.latitude, position.longitude),
-            );
+            setState(() {
+              _center = LatLng(position.latitude, position.longitude);
+              _locatedForReal = true;
+            });
             await _mapController.moveTo(_center, zoom: 14);
           }
         }
@@ -99,10 +101,19 @@ class _NearMeScreenState extends State<NearMeScreen> {
     }
   }
 
+  /// True once a real fix has moved the map off the fallback centre.
+  bool _locatedForReal = false;
+
+  /// The last load failed, as opposed to genuinely finding nothing.
+  String? _loadError;
+
   Future<void> _load() async {
     final repository = _repository;
     if (repository == null) return;
-    if (mounted) setState(() => _loading = true);
+    if (mounted) setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
       final results = await repository.nearby(
         latitude: _center.latitude,
@@ -114,6 +125,12 @@ class _NearMeScreenState extends State<NearMeScreen> {
       );
       if (!mounted) return;
       setState(() => _items = results);
+    } catch (error) {
+      // There was no `catch` at all. A failed request left `_items` empty and
+      // the screen then said "No listings within 3 km yet — as shops in this
+      // area register, they will appear here", which is a confident answer to
+      // a question that was never asked.
+      if (mounted) setState(() => _loadError = '$error');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -250,6 +267,25 @@ class _NearMeScreenState extends State<NearMeScreen> {
                   child: CircularProgressIndicator(color: AppColors.navy),
                 ),
               )
+            // A failure is not an empty neighbourhood. Said before the empty
+            // state, so "nothing here" is only ever shown when the server
+            // actually answered with nothing.
+            else if (_loadError != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSizes.sidePadding),
+                child: UdBanner(
+                  tone: UdTone.err,
+                  icon: Icons.cloud_off_rounded,
+                  text: 'Could not load what is nearby. $_loadError',
+                  trailing: UdButton.outline(
+                    label: 'Retry',
+                    size: UdButtonSize.xs,
+                    expand: false,
+                    onPressed: _load,
+                  ),
+                ),
+              )
             else if (_items.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(
@@ -314,10 +350,17 @@ class _NearMeScreenState extends State<NearMeScreen> {
                   )
                   .toList(growable: false),
             ),
-            const Positioned(
+            // Only when it is true. With location off or refused the map sits
+            // on the Muzaffarabad fallback, and this chip told the customer
+            // that was where they were standing.
+            Positioned(
               left: 16,
               top: 16,
-              child: UdMapChip(label: 'You are here'),
+              child: UdMapChip(
+                label: _locatedForReal
+                    ? 'You are here'
+                    : 'Showing Muzaffarabad — location is off',
+              ),
             ),
             Positioned(
               right: 16,

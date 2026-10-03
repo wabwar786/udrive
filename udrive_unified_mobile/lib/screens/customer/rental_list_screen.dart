@@ -277,6 +277,23 @@ class _RentalListScreenState extends State<RentalListScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(refusal.message)));
+    } catch (error) {
+      // Only `RentalRefused` was caught, so a network failure or a 5xx threw
+      // out of here unhandled: the sheet closed, the booking was not
+      // cancelled, and the customer was told nothing at all.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(
+              'That could not be cancelled right now. Your booking is '
+              'unchanged — please try again.',
+              'یہ ابھی منسوخ نہیں ہو سکی۔ آپ کی بکنگ ویسی ہی ہے — دوبارہ کوشش '
+                  'کریں۔',
+            ),
+          ),
+        ),
+      );
     }
   }
 
