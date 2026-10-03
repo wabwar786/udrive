@@ -249,10 +249,17 @@ function GuideEntry({
         {section.roles && (
           <span className="guideRoles">{say(section.roles, language)}</span>
         )}
-        <Link href={section.path} onClick={onNavigate}>
-          {language === 'ur' ? 'Screen kholein' : 'Go to screen'}
-          <ChevronRight size={13} />
-        </Link>
+        {/* Only the portal guide has a route. The driver and customer guides
+            describe screens in the mobile app, and a link that goes nowhere is
+            worse than no link — so those show where the screen lives instead. */}
+        {section.path ? (
+          <Link href={section.path} onClick={onNavigate}>
+            {language === 'ur' ? 'Screen kholein' : 'Go to screen'}
+            <ChevronRight size={13} />
+          </Link>
+        ) : (
+          section.where && <span className="guideRoles">{section.where}</span>
+        )}
       </div>
     </details>
   );

@@ -34,8 +34,20 @@ export type Bilingual = {
 export type GuideLanguage = 'ur' | 'en';
 
 export type GuideSection = {
-  /** The route this section documents, so it can link straight there. */
-  path: string;
+  /**
+   * The portal route this section documents, so it can link straight there.
+   *
+   * Optional, because the driver and customer guides describe screens in the
+   * mobile app and there is no portal route to send anybody to. A section
+   * without one uses {@link GuideSection.where} instead, and the page draws no
+   * link rather than a link that goes nowhere.
+   */
+  path?: string;
+  /**
+   * Where this screen is in the mobile app, in the app's own words — "Menu →
+   * Rewards & missions". Only for the driver and customer guides.
+   */
+  where?: string;
   /** English, matching the sidebar label exactly. */
   title: string;
   /** One line: what this screen is for. */
@@ -65,7 +77,8 @@ export function say(value: Bilingual, language: GuideLanguage): string {
 export function haystack(section: GuideSection): string {
   return [
     section.title,
-    section.path,
+    section.path ?? '',
+    section.where ?? '',
     section.purpose.ur,
     section.purpose.en,
     ...section.steps.flatMap((step) => [step.ur, step.en]),
@@ -1426,6 +1439,733 @@ export const guideGroups: GuideGroup[] = [
           {
             ur: 'Yehi guide har screen par upar dayein "Guide" button ke peeche bhi hai, taake kaam chhore baghair dekha ja sake.',
             en: 'The same guide sits behind the Guide button on every screen, so you never have to leave what you are doing.',
+          },
+        ],
+      },
+    ],
+  },
+];
+
+/**
+ * The driver app's guide, screen by screen.
+ *
+ * Here rather than in the mobile app's own help screen for one reason: this is
+ * what support reads. Somebody on the phone to a driver who cannot go online
+ * has the portal open, not the driver app, and telling them to install the
+ * driver app to answer the question is not an answer.
+ *
+ * The app's own in-app help is shorter on purpose — a driver on a mountain road
+ * wants four lines, not a manual. This is the manual. Where the two overlap
+ * they must agree; where they differ, this one is longer, never different.
+ *
+ * `where` instead of `path`, because these are screens in the app and there is
+ * no portal route to open. The wording of each `where` is the app's own menu
+ * wording, so somebody reading this aloud over the phone is naming what the
+ * driver is actually looking at.
+ */
+export const driverGuideGroups: GuideGroup[] = [
+  {
+    label: 'GETTING STARTED',
+    blurb: {
+      ur: 'Jab tak yeh teen cheezein mukammal na hon, driver kaam shuru nahi kar sakta.',
+      en: 'Until these three are done, a driver cannot start work at all.',
+    },
+    sections: [
+      {
+        where: 'Menu → Driver verification',
+        title: 'Sign up and verification',
+        purpose: {
+          ur: 'CNIC, licence, tasveer aur gaari — admin ki manzoori ke baghair online nahi ja sakte.',
+          en: 'CNIC, licence, photograph and vehicle. Without an admin approval they cannot go online.',
+        },
+        steps: [
+          {
+            ur: 'Naam aur Pakistani mobile number daal kar OTP se login karein.',
+            en: 'Sign in with a name, a Pakistani mobile number and the OTP.',
+          },
+          {
+            ur: 'Menu se Driver mode mein jayein.',
+            en: 'Switch to Driver mode from the menu.',
+          },
+          {
+            ur: 'Chaar qadam ka sign-up: CNIC, licence, apni tasveer, gaari.',
+            en: 'Complete the four-step sign-up: CNIC, driving licence, photograph, vehicle.',
+          },
+          {
+            ur: 'Bhejne se pehle har tasveer khud dekh lein — dhundli CNIC rejection ki sab se badi wajah hai.',
+            en: 'Check every photograph before sending — a blurred CNIC is the commonest reason for a rejection.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Reject hui dastavez wajah batati hai. Driver ko kehna ke wajah parh kar nayi tasveer bhejein, wohi purani nahi.',
+            en: 'A rejection carries its reason. Tell the driver to read it and send a new photograph, not the same one.',
+          },
+        ],
+      },
+      {
+        where: 'The switch in the top bar',
+        title: 'Going online',
+        purpose: {
+          ur: 'Switch oopar wali bar mein hai, menu mein nahi. Band hone par kuch nahi chalta.',
+          en: 'The switch is in the top bar, not in a menu. With it off, nothing works.',
+        },
+        steps: [
+          {
+            ur: 'Offline driver ko na request milti hai, na us ki location jati hai, aur na online waqt ginta hai.',
+            en: 'An offline driver receives no requests, publishes no position, and banks no online time.',
+          },
+          {
+            ur: 'Online waqt credit hota hai, switch on ke waqt se nahi napa jata. App har minute heartbeat bhejti hai aur sirf qareeb qareeb aane wale waqfe ginte hain.',
+            en: 'Online time is credited, not measured from when they switched on. The app beats every minute and only gaps between beats that actually arrived close together count.',
+          },
+          {
+            ur: 'Jo phone aik ghanta jeb mein band para raha, us ka aik ghanta nahi milta — yeh kharabi nahi, usool hai.',
+            en: 'A phone that slept in a pocket for an hour banks nothing. That is the rule, not a fault.',
+          },
+        ],
+      },
+      {
+        where: 'Menu → Vehicles',
+        title: 'Vehicles',
+        purpose: {
+          ur: 'Har gaari alag register hoti hai aur alag manzoor hoti hai.',
+          en: 'Each vehicle is registered separately and approved separately.',
+        },
+        steps: [
+          {
+            ur: 'Durust category chunein — 2-wheel, 3-wheel ya 4-wheel.',
+            en: 'Register with the correct category — 2-wheel, 3-wheel or 4-wheel.',
+          },
+          {
+            ur: 'Registration book aur gaari ki saaf tasveer lagayein.',
+            en: 'Upload the registration book and a clear photograph of the vehicle.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Jo gaari manzoor nahi, woh na ride, na tour, na kiraye ke kaam aati hai. Fare bhejne ke liye kam az kam aik verified gaari zaroori hai.',
+            en: 'An unapproved vehicle is useless for rides, tours and rentals alike. At least one verified vehicle is needed before a fare can be sent.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'EVERY DAY',
+    blurb: {
+      ur: 'Jo driver roz karta hai.',
+      en: 'What a driver does every day.',
+    },
+    sections: [
+      {
+        where: 'Bottom bar → Home',
+        title: 'Dashboard',
+        purpose: {
+          ur: 'Ride, mission, demand, wallet — sab aik screen par.',
+          en: 'The ride, the mission, the demand and the wallet, on one screen.',
+        },
+        steps: [
+          {
+            ur: 'Ride accept karne ke baad dashboard sirf wohi ride ban jata hai — baqi sab chhup jata hai, kyunke pickup ki taraf jaate huay baqi har block parhne ki cheez hai, karne ki nahi.',
+            en: 'Once a ride is accepted the dashboard becomes only that ride. Everything else is something to read past on the way to a pickup.',
+          },
+          {
+            ur: 'Nearby rides 5 KM ke andar ki live requests dikhata hai.',
+            en: 'Nearby rides shows live requests within 5 KM.',
+          },
+          {
+            ur: 'Demand block batata hai kaunsa zone abhi masroof hai ya honay wala hai — yeh Launch cities page se aata hai.',
+            en: 'The demand block says which zone is busy or about to be. It comes from the Launch cities page.',
+          },
+        ],
+      },
+      {
+        where: 'Bottom bar → Requests',
+        title: 'Ride requests and sending a fare',
+        purpose: {
+          ur: 'Driver apna fare bhejta hai; customer chunta hai.',
+          en: 'The driver sends a fare; the customer chooses.',
+        },
+        steps: [
+          {
+            ur: 'Request mein pickup, manzil, faasla aur baqi waqt likha hota hai.',
+            en: 'A request shows the pickup, the destination, the distance and the time left.',
+          },
+          {
+            ur: 'Customer har driver ki offer dekh kar aik chunta hai. Driver ki offer akeli nahi hoti.',
+            en: 'The customer sees every driver’s offer and picks one. Theirs is not the only one.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Request reject karne se acceptance rate girta hai, aur kuch rewards usi par napte hain.',
+            en: 'Rejecting requests lowers the acceptance rate, and some rewards are measured on it.',
+          },
+        ],
+      },
+      {
+        where: 'From an accepted ride',
+        title: 'The trip',
+        purpose: {
+          ur: 'Pickup se takmeel tak.',
+          en: 'From pickup to completion.',
+        },
+        steps: [
+          {
+            ur: 'Customer se gaari ki tasdeeq karwa kar un se boarding PIN lein. PIN hi safar shuru karta hai.',
+            en: 'Verify the vehicle with the customer and take their boarding PIN. The PIN is what starts the trip.',
+          },
+          {
+            ur: 'Alag map app ke bajaye navigation screen istemal karein — baqi sab kuch safar ki status hi parhta hai.',
+            en: 'Use the navigation screen rather than a separate map app — the trip status is what everything else reads.',
+          },
+          {
+            ur: 'Safar mukammal kar ke baqi raqam lein, phir rating.',
+            en: 'Complete the trip, take the remaining payment, then rate.',
+          },
+        ],
+      },
+      {
+        where: 'Bottom bar → Earnings',
+        title: 'Earnings and reviews',
+        purpose: {
+          ur: 'Aaj, yeh hafta aur maheena — aik hi screen par, asli rating aur asli reviews ke sath.',
+          en: 'Today, this week and the month on one screen, with the real rating and the real reviews.',
+        },
+        steps: [
+          {
+            ur: 'Commission fare se katta hai, baad mein wallet se nahi.',
+            en: 'Commission comes out of the fare, not out of the wallet afterwards.',
+          },
+        ],
+      },
+      {
+        where: 'Menu → Wallet',
+        title: 'Wallet',
+        purpose: {
+          ur: 'Balance nikala ja sakta hai; bonus reward ka paisa hai aur us ka tareeqa alag hai.',
+          en: 'Balance can be withdrawn; bonus is reward money and behaves differently.',
+        },
+        steps: [
+          {
+            ur: 'Top-up admin ki tasdeeq ke baad aata hai, is liye fauri nahi hota.',
+            en: 'A top-up arrives after an admin verifies it, so it is not instant.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'VEHICLE USE AND RENTALS',
+    blurb: {
+      ur: 'Aik gaari, teen kaam — aur aik usool jo in mein se do ko aik sath nahi chalne deta.',
+      en: 'One vehicle, three uses — and one rule that stops two of them running together.',
+    },
+    sections: [
+      {
+        where: 'Vehicles → a vehicle',
+        title: 'Vehicle usage — city, tour, rent',
+        purpose: {
+          ur: 'Har gaari ke liye driver tay karta hai ke woh kis kaam ki hai.',
+          en: 'For each vehicle the driver decides what it is used for.',
+        },
+        steps: [
+          {
+            ur: 'City rides — shehar ke andar aam rides. Tours — tour package aur lambay route. Rent — koi gaari dinon ke hisaab se kiraye par le.',
+            en: 'City rides for ordinary hailing; Tours for packages and long routes; Rent for days at a time.',
+          },
+          {
+            ur: 'Rent on karne ke liye do cheezein lazmi hain: rozana ka rate, aur gaari ki tasveer. Dono ke baghair switch on hi nahi hoga.',
+            en: 'Switching Rent on needs two things: a daily rate and a photograph of the vehicle. Without both the switch will not turn on.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Rent aur City rides aik sath nahi ho sakte. Jo gaari teen din ke liye kiraye par hai woh un dinon mein shehar ki ride ke liye khaali nahi, aur database is jor ko qubool hi nahi karta.',
+            en: 'Rent and City rides cannot both be on. A car rented for three days is not available for a city ride on those days, and the database refuses the combination outright.',
+          },
+        ],
+      },
+      {
+        where: 'Vehicles → Rentals',
+        title: 'Car rental bookings',
+        purpose: {
+          ur: 'Advance app ke zariye aata hai; baqi raqam aur deposit driver khud leta hai.',
+          en: 'The advance comes through the app; the balance and the deposit are collected by the driver.',
+        },
+        steps: [
+          {
+            ur: 'Security deposit driver ke paas rehta hai, platform ke paas nahi.',
+            en: 'The security deposit stays with the driver, not with the platform.',
+          },
+          {
+            ur: 'Jab tak gaari kiraye par hai, woh un tareekhon mein dispatch aur packages se gayab rehti hai, aur baad mein khud wapis aa jati hai.',
+            en: 'While a car is rented it disappears from dispatch and from packages on those dates, and comes back by itself afterwards.',
+          },
+          {
+            ur: 'Jo booking kisi package ki rawangi se takrati ho woh reject hoti hai, aur rejection us rawangi ka naam leta hai.',
+            en: 'A booking that clashes with a package departure is refused, and the refusal names the departure.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Gaari dete waqt CNIC aur licence driver khud dekhe. Platform sirf yeh dikhata hai ke kaghazat mojood hain; un ki zimmedari nahi leta.',
+            en: 'The driver checks the CNIC and licence at handover. The platform shows that documents exist; it does not vouch for them.',
+          },
+        ],
+      },
+      {
+        where: 'Menu → My routes & tours',
+        title: 'Routes and tour packages',
+        purpose: {
+          ur: 'Package banana, manzoori lena, aur rawangi chalana.',
+          en: 'Creating a package, getting it approved, and running the departure.',
+        },
+        steps: [
+          {
+            ur: 'Route, tareekhein, seats, sahulaat aur cancel karne ka usool likhein.',
+            en: 'Set the route, the dates, the seats, what is included and the cancellation rule.',
+          },
+          {
+            ur: 'Customers ko dikhne se pehle admin ki manzoori zaroori hai.',
+            en: 'It must be approved before customers see it.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'REWARDS',
+    blurb: {
+      ur: 'Kiraye ke alawa driver kya kama sakta hai.',
+      en: 'What a driver can earn that is not a fare.',
+    },
+    sections: [
+      {
+        where: 'Menu → Rewards & missions',
+        title: 'Rewards & missions',
+        purpose: {
+          ur: 'Welcome bonus, aaj ke missions, aur teen naye screens ka darwaza.',
+          en: 'The welcome bonus, today’s missions, and the way in to three more screens.',
+        },
+        steps: [
+          {
+            ur: 'Reward "on hold" teen wajah se hota hai, aur screen batati hai kaunsi: campaign ka budget khatam, cap poora, ya account par koi fraud flag admin ne confirm kar diya.',
+            en: 'A reward goes on hold for three reasons and the screen says which: the campaign budget is finished, the cap is reached, or a fraud flag on the account was confirmed.',
+          },
+        ],
+      },
+      {
+        where: 'Rewards & missions → This week',
+        title: 'This week',
+        purpose: {
+          ur: 'Hafte ka target, aur pichla hafta kya raha.',
+          en: 'The weekly target, and what last week came to.',
+        },
+        steps: [
+          {
+            ur: 'Hafta peer se itwar tak, Pakistan ke waqt — usi hafte ke hisaab se reward ginna jata hai.',
+            en: 'The week runs Monday to Sunday, Pakistan time — the same week the reward is counted against.',
+          },
+          {
+            ur: 'Last week mein kamai, rides, reward mila ya nahi, aur behtareen din. Behtareen din hi woh cheez hai jis par driver kuch kar sakta hai — agle hafte woh din khaali rakhe.',
+            en: 'Last week shows the earnings, the rides, whether the reward landed, and the best day. The best day is the only part a driver can act on: it says which day to keep clear.',
+          },
+          {
+            ur: 'Agar shehar mein koi hafte wala target nahi chal raha to screen saaf keh deti hai, zero ki bar nahi banati.',
+            en: 'If no weekly target is running in the city the screen says so plainly rather than drawing a bar against zero.',
+          },
+        ],
+      },
+      {
+        where: 'Rewards & missions → Invite a driver',
+        title: 'Invite a driver',
+        purpose: {
+          ur: 'Referral code, aur har invite par PKR 2,000 teen qiston mein.',
+          en: 'The referral code, and PKR 2,000 per invite in three parts.',
+        },
+        steps: [
+          {
+            ur: 'Kaghazat manzoor hone par PKR 300, pehli ride par PKR 500, aur pehli ride ke 30 din ke andar 20 rides par PKR 1,200.',
+            en: 'PKR 300 when the invited driver is approved, PKR 500 on their first ride, PKR 1,200 for 20 rides within 30 days of that first one.',
+          },
+          {
+            ur: 'Zyada tar paisa tab aata hai jab woh waqai kaam kar raha ho, sign-up par nahi. Yeh jaan boojh kar hai.',
+            en: 'Most of the money arrives when they are actually working, not when they sign up. That is deliberate.',
+          },
+          {
+            ur: 'Code sirf verification se pehle daala ja sakta hai. Baad mein server mana kar deta hai aur wajah likh kar batata hai.',
+            en: 'A code can only be added before the account is verified. Afterwards the server refuses it, and says so in words.',
+          },
+          {
+            ur: 'Kisi ka code daalne se driver ka kuch nahi katta — unhein milta hai, is ka kuch nahi jata.',
+            en: 'Entering somebody’s code takes nothing from the driver. The other person earns; they lose nothing.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Agar verified driver bhi code daal sakta, to do purane driver aik doosre ka code daal kar chaar reward le lete, jabke koi naya driver aaya hi nahi. Isi liye yeh had hai.',
+            en: 'If a verified driver could still enter a code, two established drivers would enter each other’s and collect four rewards for nobody new. That is why the limit exists.',
+          },
+        ],
+      },
+      {
+        where: 'Rewards & missions → Updates',
+        title: 'Updates',
+        purpose: {
+          ur: 'Shehar ke raste, masroof din, commission aur policy.',
+          en: 'Road conditions, busy days, commission and policy for the city.',
+        },
+        steps: [
+          {
+            ur: 'Yeh wohi updates hain jo admin portal ke Driver updates page se likhi jati hain. Sab se nayi dashboard par bhi aati hai; poori list yahan hai.',
+            en: 'These are the updates written from the portal’s Driver updates page. The newest also appears on the dashboard; the full list is here.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'ACCOUNT AND SAFETY',
+    blurb: {
+      ur: 'Settings, hifazat, aur flag kab lagta hai.',
+      en: 'Settings, safety, and when a flag is raised.',
+    },
+    sections: [
+      {
+        where: 'Settings → Notifications',
+        title: 'Notifications',
+        purpose: {
+          ur: 'Saat switch, chhoote hi save ho jate hain — koi Save button nahi.',
+          en: 'Seven switches, saved the moment they are touched — there is no Save button.',
+        },
+        steps: [
+          {
+            ur: 'Kya batana hai: Bookings, Packages, Money, Complaints, Offers. Kaise batana hai: Push aur SMS.',
+            en: 'What to tell: Bookings, Packages, Money, Complaints, Offers. How to tell: Push and SMS.',
+          },
+          {
+            ur: 'Sab band karne se bhi chalte safar ki ittila nahi rukti. Hifazat ke paighaam hamesha jate hain.',
+            en: 'Turning everything off does not stop messages about a trip in progress. Safety messages are always sent.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Save na hone par switch wapis apni jagah chala jata hai — warna driver samajh leta ke usne payout alerts band kar diye, jabke nahi huay.',
+            en: 'If a save fails the switch goes back where it was — otherwise a driver believes they turned payout alerts off when they did not.',
+          },
+        ],
+      },
+      {
+        where: 'Menu → Help & support',
+        title: 'Safety and support',
+        purpose: {
+          ur: 'SOS, shikayat aur support ticket.',
+          en: 'SOS, complaints and support tickets.',
+        },
+        steps: [
+          {
+            ur: 'SOS sirf haqeeqi emergency ke liye hai.',
+            en: 'SOS is for a real emergency only.',
+          },
+          {
+            ur: 'Shikayat mein saaf tafseel aur saboot chahiye. "Customer badtameez tha" se kuch faisla nahi hota; kya kaha gaya aur kab — us se hota hai.',
+            en: 'A complaint needs detail and evidence. "The customer was rude" decides nothing; what was said and when does.',
+          },
+        ],
+      },
+      {
+        where: '—',
+        title: 'What gets a driver flagged',
+        purpose: {
+          ur: 'Do soorton mein flag uthta hai, aur us se aagay kuch khud-ba-khud nahi hota.',
+          en: 'A flag is raised in exactly two cases, and beyond that nothing is automatic.',
+        },
+        steps: [
+          {
+            ur: 'MockLocation — phone khud server ko batata hai ke location jhooti hai. Yeh Android batata hai, hamara andaza nahi.',
+            en: 'MockLocation — the phone itself tells the server its position is faked. Android reports this; it is not our inference.',
+          },
+          {
+            ur: 'ImpossibleSpeed — aik hi online session ki do heartbeat ke darmiyan 120 km/h se oopar ka faasla.',
+            en: 'ImpossibleSpeed — two heartbeats in one online session more than 120 km/h apart.',
+          },
+          {
+            ur: 'Admin confirm kare to woh rewards ruk jate hain jo kamaye to hain magar abhi mile nahi. Wallet ka paisa wapis nahi liya jata aur driver block nahi hota.',
+            en: 'If an admin confirms it, rewards earned but not yet paid are held. Money already in the wallet is not taken back, and the driver is not blocked.',
+          },
+          {
+            ur: 'Admin baad mein clear kar de to ruke hue rewards chal parte hain.',
+            en: 'If the admin clears it later, the held rewards are released.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Driver ko saaf keh dein: jis phone se gaari chalate hain us par location badalne wali app na chalayein, chahe kisi game ke liye ho. Android khud batata hai, aur flag par un ka naam hota hai.',
+            en: 'Tell the driver plainly: no location-faking app on the phone they drive with, not even for a game. Android reports it and the flag carries their name.',
+          },
+        ],
+      },
+    ],
+  },
+];
+
+/**
+ * The customer app's guide, screen by screen.
+ *
+ * Support answers customer questions far more often than driver ones, and the
+ * answers that matter most are the ones about money and about safety: who holds
+ * a rental deposit, when a refund is not instant, what the boarding PIN is for.
+ * Those are written here in the words support can read down the phone.
+ */
+export const customerGuideGroups: GuideGroup[] = [
+  {
+    label: 'GETTING STARTED',
+    blurb: {
+      ur: 'Account banana aur pehli ride.',
+      en: 'Making an account and taking a first ride.',
+    },
+    sections: [
+      {
+        where: 'Bottom bar → Profile',
+        title: 'Sign in and your profile',
+        purpose: {
+          ur: 'Mobile number aur OTP. Phir tasveer aur emergency contact.',
+          en: 'A mobile number and an OTP. Then a photograph and an emergency contact.',
+        },
+        steps: [
+          {
+            ur: 'Emergency contact dikhawa nahi hai — SOS dabane par isi ko ittila jati hai. Jo customer SOS ki shikayat kare, pehle yeh dekh lein ke unhon ne contact daala bhi tha ya nahi.',
+            en: 'The emergency contact is not decoration — it is who gets told on SOS. If a customer complains about SOS, check first whether they ever added one.',
+          },
+        ],
+      },
+      {
+        where: 'Bottom bar → Home',
+        title: 'Home — finding a ride',
+        purpose: {
+          ur: '2, 3 ya 4 wheel chun kar manzil likhein.',
+          en: 'Choose 2, 3 or 4 wheel, then type the destination.',
+        },
+        steps: [
+          {
+            ur: 'Route card mein kiraya, khaali seats, tareekh aur gaari nazar aati hai.',
+            en: 'A route card shows the fare, the free seats, the date and the vehicle.',
+          },
+        ],
+      },
+      {
+        where: 'Home',
+        title: 'Booking a ride',
+        purpose: {
+          ur: 'Customer request bhejta hai; driver fare bhejte hain; customer aik chunta hai.',
+          en: 'The customer sends a request, drivers send fares, the customer picks one.',
+        },
+        steps: [
+          {
+            ur: 'Pickup, manzil, tareekh, waqt aur musafiron ki tadaad. Jahan mojood ho, fi seat ya poori gaari.',
+            en: 'Pickup, destination, date, time and passenger count. Per seat or whole vehicle where offered.',
+          },
+          {
+            ur: 'Driver customer par thopa nahi jata — woh offers ka moqabla kar ke aik qubool karta hai.',
+            en: 'A driver is not assigned. The customer compares the offers and accepts one.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Jis request par kuch dair baad bhi koi offer nahi aayi, us ka matlab qareeb koi verified driver online nahi. Yeh supply ka masla hai, app ki kharabi nahi.',
+            en: 'A request with no offers after a while means no verified driver is online nearby. That is supply, not a fault in the app.',
+          },
+        ],
+      },
+      {
+        where: 'From the active booking',
+        title: 'During the trip',
+        purpose: {
+          ur: 'Pickup se takmeel tak, aur boarding PIN ka kaam.',
+          en: 'From pickup to completion, and what the boarding PIN is for.',
+        },
+        steps: [
+          {
+            ur: 'Baithne se pehle gaari ka number app se milayein.',
+            en: 'Check the registration number against the app before getting in.',
+          },
+          {
+            ur: 'Boarding PIN tab dein jab itminan ho ke gaari wahi hai — PIN hi safar shuru karta hai.',
+            en: 'Give the boarding PIN only once satisfied the vehicle is the right one — the PIN is what starts the trip.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'TOURISM AND RENTALS',
+    blurb: {
+      ur: 'Package, aur gaari kiraye par lena.',
+      en: 'Packages, and renting a car.',
+    },
+    sections: [
+      {
+        where: 'Bottom bar → Explore, and Near Me',
+        title: 'Explore Kashmir and Near Me',
+        purpose: {
+          ur: 'Manzilein, raste, advisories, aur abhi aas paas kya hai.',
+          en: 'Destinations, routes, advisories, and what is nearby right now.',
+        },
+        steps: [
+          {
+            ur: 'Road advisories yahin aati hain — pahari route se pehle parh lena chahiye.',
+            en: 'Road advisories appear here, and should be read before a mountain route.',
+          },
+        ],
+      },
+      {
+        where: 'Menu → Tour packages',
+        title: 'Tour packages',
+        purpose: {
+          ur: 'Route, rozana ka program, sahulaat, seats aur cancel ka usool.',
+          en: 'The route, the day-by-day plan, the inclusions, the seats and the cancellation rule.',
+        },
+        steps: [
+          {
+            ur: 'My Trips mein booking, boarding aur tour ki soorat-e-haal nazar aati hai.',
+            en: 'My Trips shows the booking, the boarding details and the tour status.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Cancel ka usool adaigi se pehle package par likha hota hai. Baad ki shikayat par wohi likha hua faisla karta hai.',
+            en: 'The cancellation rule is written on the package before payment. A later complaint is decided against what was written there.',
+          },
+        ],
+      },
+      {
+        where: 'Home → Rent a car',
+        title: 'Renting a car',
+        purpose: {
+          ur: 'Yeh ride nahi — gaari dinon ke hisaab se, driver ke sath ya baghair.',
+          en: 'Not a ride. The car is taken for days, with or without a driver.',
+        },
+        steps: [
+          {
+            ur: 'Sirf woh gaariyan dikhti hain jin ke malik ne Rent on kiya ho aur tasveer lagai ho.',
+            en: 'Only cars whose owner has switched Rent on, and whose photograph is uploaded, appear.',
+          },
+          {
+            ur: 'Advance app ke zariye jata hai. Baqi raqam aur deposit gaari lete waqt malik ko.',
+            en: 'The advance goes through the app. The balance and the deposit go to the owner at collection.',
+          },
+          {
+            ur: 'Khud chalane ke liye CNIC aur licence maanga jata hai.',
+            en: 'Self-drive asks for a CNIC and a driving licence.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Security deposit gaari ke malik ke paas jata hai, UDrive ke paas nahi. Us ki wapsi customer aur malik ke darmiyan hai — yeh har deposit ki shikayat par pehla jawab hai.',
+            en: 'The security deposit goes to the owner, not to UDrive. Getting it back is between the customer and the owner — that is the first answer to every deposit complaint.',
+          },
+          {
+            ur: 'Customer ko kehna ke chalne se pehle malik ke samne gaari ka nuqsan dekh lein aur tasveer le lein.',
+            en: 'Tell the customer to inspect the car with the owner before driving away, and to photograph it.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'MONEY, SAFETY AND ACCOUNT',
+    blurb: {
+      ur: 'Adaigi, SOS, notifications aur settings.',
+      en: 'Payments, SOS, notifications and settings.',
+    },
+    sections: [
+      {
+        where: 'From a booking',
+        title: 'Payments and refunds',
+        purpose: {
+          ur: 'Pay balance, aur refund ki soorat-e-haal.',
+          en: 'Paying the balance, and where a refund shows.',
+        },
+        steps: [
+          {
+            ur: 'Cash aur bank ki adaigi ki admin tasdeeq zaroori ho sakti hai, is liye woh fauri nahi hoti. Customer ko yeh pehle bata dena shikayat se behtar hai.',
+            en: 'Cash and bank payments may need an admin to verify them, so they are not instant. Saying so first is better than a complaint later.',
+          },
+          {
+            ur: 'Refund ki soorat-e-haal booking aur payment history dono mein nazar aati hai.',
+            en: 'Refund status appears in the booking and in the payment history.',
+          },
+        ],
+      },
+      {
+        where: 'The SOS button, and Menu → Safety',
+        title: 'Safety and SOS',
+        purpose: {
+          ur: 'Trusted contacts, live tracking, aur SOS.',
+          en: 'Trusted contacts, live tracking and SOS.',
+        },
+        steps: [
+          {
+            ur: 'SOS neeche wali bar ka laal button hai, sirf haqeeqi emergency ke liye.',
+            en: 'SOS is the red button in the bottom bar, for a real emergency only.',
+          },
+          {
+            ur: 'Live tracking customer ki apni chalti booking ke liye kaam karti hai.',
+            en: 'Live tracking works for the customer’s own active booking.',
+          },
+        ],
+      },
+      {
+        where: 'Settings → Notifications',
+        title: 'Notifications',
+        purpose: {
+          ur: 'Saat switch, chhoote hi save — koi Save button nahi.',
+          en: 'Seven switches, saved on touch — no Save button.',
+        },
+        steps: [
+          {
+            ur: 'Sab band karne se bhi chalte safar ke paighaam nahi rukte. Hifazat ke paighaam hamesha jate hain.',
+            en: 'Turning everything off does not stop messages about a trip in progress. Safety messages are always sent.',
+          },
+        ],
+      },
+      {
+        where: 'Menu → My business',
+        title: 'My business',
+        purpose: {
+          ur: 'Hotel, gaari ya tour ka kaam customer app se chalana.',
+          en: 'Running a hotel, a vehicle or a tour business from the customer app.',
+        },
+        steps: [
+          {
+            ur: 'Jo bhi daala jaye, doosre customers ko dikhne se pehle manzoori zaroori hai.',
+            en: 'Anything added needs approval before other customers see it.',
+          },
+        ],
+      },
+      {
+        where: 'Menu → Settings',
+        title: 'Settings, language and account',
+        purpose: {
+          ur: 'Zuban, privacy, terms, cache aur account delete.',
+          en: 'Language, privacy, terms, cache and account deletion.',
+        },
+        steps: [
+          {
+            ur: 'Privacy aur Terms app ke andar khulte hain aur internet ke baghair bhi kaam karte hain.',
+            en: 'Privacy and Terms open inside the app and work with no connection.',
+          },
+          {
+            ur: 'Clear cached data se logout nahi hota.',
+            en: 'Clear cached data does not sign anybody out.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Delete account customer ka account aur zaati maloomat hamesha ke liye khatam kar deta hai. Wapsi ka koi rasta nahi — customer ko yeh dabane se pehle bata dein.',
+            en: 'Delete account removes the account and the personal data permanently. There is no undo — say so before they press it.',
           },
         ],
       },

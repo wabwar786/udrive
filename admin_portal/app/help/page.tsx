@@ -7,7 +7,9 @@ import { BadgeCheck, ChevronRight, Printer, Search } from 'lucide-react';
 import { AdminFrame } from '../components/admin-frame';
 import { LanguageSwitch } from '../components/guide-button';
 import {
+  customerGuideGroups,
   dailyChecklist,
+  driverGuideGroups,
   guideGroups,
   haystack,
   say,
@@ -15,7 +17,7 @@ import {
 import { useGuideLanguage } from '../lib/guide-language';
 
 /**
- * The full admin guide, for reading end to end.
+ * The three guides, for reading end to end.
  *
  * Same content as the Guide button in the top bar — both read
  * `app/lib/guide-content.ts`. Two copies of a guide disagree within a month,
@@ -31,17 +33,57 @@ import { useGuideLanguage } from '../lib/guide-language';
  * The group headings are the sidebar headings, in the sidebar's order, so this
  * page can be read as a map of the menu rather than as a second structure to
  * learn.
+ *
+ * Three audiences, one page. Support answers questions about the driver app and
+ * the customer app far more often than about the portal, and the person
+ * answering has the portal open, not a phone. Sending them to install the
+ * driver app to look up what the boarding PIN is for is not an answer. The two
+ * app guides use the same section shape, so the search, the language switch and
+ * the print layout all work on them unchanged — and the mobile apps keep their
+ * own shorter in-app help, which must agree with this and never differ.
+ *
+ * The daily checklist stays on the Admin tab only. It is an instruction about
+ * the order to clear queues in, which means nothing to a driver.
  */
+
+const TABS = [
+  { key: 'admin', groups: guideGroups, en: 'Admin portal', ur: 'Admin portal' },
+  { key: 'driver', groups: driverGuideGroups, en: 'Driver app', ur: 'Driver app' },
+  { key: 'customer', groups: customerGuideGroups, en: 'Customer app', ur: 'Customer app' },
+] as const;
+
+type TabKey = (typeof TABS)[number]['key'];
+
+const BLURB: Record<TabKey, { en: string; ur: string }> = {
+  admin: {
+    en: 'What every screen is for, how to use it, and what not to get wrong.',
+    ur: 'Har screen kis kaam ki hai, kaise chalani hai, aur kya ghalat nahi karna.',
+  },
+  driver: {
+    en: 'The driver app, screen by screen — for answering a driver on the phone.',
+    ur: 'Driver app, screen ba screen — phone par driver ko jawab dene ke liye.',
+  },
+  customer: {
+    en: 'The customer app, screen by screen — for answering a customer on the phone.',
+    ur: 'Customer app, screen ba screen — phone par customer ko jawab dene ke liye.',
+  },
+};
 export default function HelpPage() {
   const [query, setQuery] = useState('');
+  const [tab, setTab] = useState<TabKey>('admin');
   const [language, setLanguage] = useGuideLanguage();
   const urdu = language === 'ur';
 
+  const groups = useMemo(
+    () => TABS.find((entry) => entry.key === tab)!.groups,
+    [tab],
+  );
+
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return guideGroups;
+    if (!needle) return groups;
 
-    return guideGroups
+    return groups
       .map((group) => ({
         ...group,
         sections: group.sections.filter((section) =>
@@ -49,29 +91,71 @@ export default function HelpPage() {
         ),
       }))
       .filter((group) => group.sections.length > 0);
-  }, [query]);
+  }, [query, groups]);
 
-  const sectionCount = guideGroups.reduce(
+  const sectionCount = groups.reduce(
     (total, group) => total + group.sections.length,
     0,
   );
 
   return (
     <AdminFrame
-      title="Admin guide"
-      subtitle="What every screen is for, how to use it, and what not to get wrong."
+      title="Guides"
+      subtitle={urdu ? BLURB[tab].ur : BLURB[tab].en}
       actions={<LanguageSwitch value={language} onChange={setLanguage} />}
     >
+      {/* The tab row, before everything else. Which guide you are reading has
+          to be the first thing on the page and the first thing you can change —
+          somebody who opens this while a driver waits on the phone should not
+          have to scroll to find the driver guide. */}
+      <section className="panel">
+        <div className="buttonRow" style={{ padding: 16 }}>
+          {TABS.map((entry) => (
+            <button
+              key={entry.key}
+              className={entry.key === tab ? 'primaryButton' : 'secondaryButton'}
+              onClick={() => {
+                setTab(entry.key);
+                setQuery('');
+              }}
+            >
+              {urdu ? entry.ur : entry.en}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="helpHero">
         <div>
-          <span>ADMIN GUIDE</span>
+          {/* The tab's own name, not its blurb. The blurb is already the page
+              subtitle, and set in capitals it ran to two lines of shouting. */}
+          <span>
+            {(urdu
+              ? TABS.find((entry) => entry.key === tab)!.ur
+              : TABS.find((entry) => entry.key === tab)!.en
+            ).toUpperCase()}
+          </span>
           <h2>
-            {urdu ? 'UDrive sahi tareeqe se chalayein' : 'Run UDrive safely and correctly'}
+            {tab === 'admin'
+              ? urdu
+                ? 'UDrive sahi tareeqe se chalayein'
+                : 'Run UDrive safely and correctly'
+              : tab === 'driver'
+                ? urdu
+                  ? 'Driver ke sawal ka jawab'
+                  : 'Answering a driver'
+                : urdu
+                  ? 'Customer ke sawal ka jawab'
+                  : 'Answering a customer'}
           </h2>
           <p>
-            {urdu
-              ? `Is portal ki har screen ke liye ${sectionCount} hisse. Yehi guide har page par upar dayein “Guide” button ke peeche bhi mojood hai, taake apna kaam chhore baghair dekh sakein. Portal angrezi mein hai; guide Roman Urdu mein — upar se English par badal sakte hain.`
-              : `${sectionCount} sections covering every screen in this portal. The same guide sits behind the Guide button in the top right of any page, so you never have to leave what you are doing to look something up.`}
+            {tab === 'admin'
+              ? urdu
+                ? `Is portal ki har screen ke liye ${sectionCount} hisse. Yehi guide har page par upar dayein “Guide” button ke peeche bhi mojood hai, taake apna kaam chhore baghair dekh sakein. Portal angrezi mein hai; guide Roman Urdu mein — upar se English par badal sakte hain.`
+                : `${sectionCount} sections covering every screen in this portal. The same guide sits behind the Guide button in the top right of any page, so you never have to leave what you are doing to look something up.`
+              : urdu
+                ? `App ki har screen ke liye ${sectionCount} hisse, usi tarteeb mein jis mein app mein hain. Har hisse ke neeche likha hai ke woh screen app mein kahan hai, taake phone par baat karte huay bata sakein.`
+                : `${sectionCount} sections covering the app, in the order the app presents them. Each one says where that screen lives, so you can say it down the phone.`}
           </p>
         </div>
         <BadgeCheck size={50} />
@@ -80,6 +164,7 @@ export default function HelpPage() {
       {/* The day, before the reference material. Someone who has just been
           given this portal needs an order to work in more than they need a
           description of screen twenty-nine. */}
+      {tab === 'admin' && (
       <section className="panel helpDaily">
         <header className="panelHeader">
           <div>
@@ -107,6 +192,7 @@ export default function HelpPage() {
           ))}
         </ol>
       </section>
+      )}
 
       <section className="panel helpSearchPanel">
         <div className="guideSearch" style={{ margin: '16px 18px' }}>
@@ -115,8 +201,8 @@ export default function HelpPage() {
             value={query}
             placeholder={
               urdu
-                ? 'Guide mein dhoondein — refund, per km, verification, OTP…'
-                : 'Search the guide — refund, per km, verification, OTP…'
+                ? 'Is guide mein dhoondein — refund, deposit, verification, OTP…'
+                : 'Search this guide — refund, deposit, verification, OTP…'
             }
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -134,7 +220,7 @@ export default function HelpPage() {
       )}
 
       {results.map((group) => (
-        <section className="panel" key={group.label}>
+        <section className="panel" key={`${tab}-${group.label}`}>
           <header className="panelHeader">
             <div>
               <h2>{group.label}</h2>
@@ -146,7 +232,7 @@ export default function HelpPage() {
             {group.sections.map((section) => (
               <details
                 className="guideEntry"
-                key={`${group.label}-${section.title}`}
+                key={`${tab}-${group.label}-${section.title}`}
                 open
               >
                 <summary>
@@ -156,7 +242,7 @@ export default function HelpPage() {
 
                 <ol>
                   {section.steps.map((step, index) => (
-                    <li key={`${section.path}-step-${index}`}>
+                    <li key={`${section.title}-step-${index}`}>
                       {say(step, language)}
                     </li>
                   ))}
@@ -165,7 +251,7 @@ export default function HelpPage() {
                 {section.cautions && section.cautions.length > 0 && (
                   <ul className="guideCautions">
                     {section.cautions.map((caution, index) => (
-                      <li key={`${section.path}-caution-${index}`}>
+                      <li key={`${section.title}-caution-${index}`}>
                         {say(caution, language)}
                       </li>
                     ))}
@@ -176,10 +262,18 @@ export default function HelpPage() {
                   {section.roles && (
                     <span className="guideRoles">{say(section.roles, language)}</span>
                   )}
-                  <Link href={section.path}>
-                    {urdu ? 'Screen kholein' : 'Go to screen'}
-                    <ChevronRight size={13} />
-                  </Link>
+                  {/* The app guides have no portal route to open, so they name
+                      where the screen is instead of offering a dead link. */}
+                  {section.path ? (
+                    <Link href={section.path}>
+                      {urdu ? 'Screen kholein' : 'Go to screen'}
+                      <ChevronRight size={13} />
+                    </Link>
+                  ) : (
+                    section.where && (
+                      <span className="guideRoles">{section.where}</span>
+                    )
+                  )}
                 </div>
               </details>
             ))}
