@@ -68,9 +68,22 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   bool _resolved = false;
   String? _approvingOfferId;
 
+  // These three are keyed by `offer.revision` — "<id>@<version>" — not by the
+  // offer id.
+  //
+  // That distinction is the whole bug fix. A driver re-quoting the same ride
+  // does not create a second offer: the server updates the row in place, so the
+  // id stays the same and only the amount and the version change. Keyed by id,
+  // the second quote inherited the first quote's countdown, which had long since
+  // run out — so the moment it arrived it was auto-declined, added to the
+  // declined set, and hidden for ever. The customer never saw it, which is
+  // exactly what was reported.
   final Map<String, DateTime> _customerDecisionDeadline = <String, DateTime>{};
-  final Set<String> _declinedOfferIds = <String>{};
+  final Set<String> _declinedRevisions = <String>{};
   final Set<String> _declineInFlight = <String>{};
+
+  /// Revision → the offer id the server knows. Declining has to send the id.
+  final Map<String, String> _offerIdOfRevision = <String, String>{};
 
   /// Bearer token for the driver photographs.
   ///
@@ -398,13 +411,15 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   /// silently is usually gone before it is seen, which is the whole reason this
   /// method exists.
   void _announce(List<LiveDriverOffer> offers) {
+    // Per revision, not per offer: a driver's second quote is news, and under
+    // the old keying it arrived in silence because the id had already chimed.
     final fresh = offers
-        .where((offer) => !_announced.contains(offer.id))
+        .where((offer) => !_announced.contains(offer.revision))
         .toList(growable: false);
     if (fresh.isEmpty) return;
 
     for (final offer in fresh) {
-      _announced.add(offer.id);
+      _announced.add(offer.revision);
     }
 
     unawaited(AlertSound.chime());
@@ -413,7 +428,14 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   void _registerDecisionWindows(List<LiveDriverOffer> offers) {
     final now = DateTime.now();
     for (final offer in offers) {
-      if (offer.rideRequestId != widget.rideRequestId || _declinedOfferIds.contains(offer.id)) continue;
+      if (offer.rideRequestId != widget.rideRequestId ||
+          _declinedRevisions.contains(offer.revision)) continue;
+
+      // A new revision of an offer the customer already dismissed is a new
+      // offer. The driver has answered again, at a different price, and that
+      // answer deserves its own window rather than the ruling made on the last
+      // one.
+      _offerIdOfRevision[offer.revision] = offer.id;
       // The Customer always gets a full 10-second decision window from the
       // moment this device first receives the offer. Server-side validity has
       // an additional hidden network grace period so a visible offer cannot
@@ -428,25 +450,33 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
       final localDeadline = now.add(const Duration(seconds: _decisionSeconds));
       final serverDeadline = offer.expiresAt.toLocal();
       _customerDecisionDeadline.putIfAbsent(
-        offer.id,
+        offer.revision,
         () => serverDeadline.isBefore(localDeadline)
             ? serverDeadline
             : localDeadline,
       );
     }
+
+    // Windows belonging to revisions the server has stopped sending would
+    // otherwise pile up for as long as this screen is open, and the expiry pass
+    // below would keep trying to decline offers that no longer exist.
+    final live = offers.map((offer) => offer.revision).toSet();
+    _customerDecisionDeadline.removeWhere(
+        (revision, _) => !live.contains(revision));
+    _offerIdOfRevision.removeWhere((revision, _) => !live.contains(revision));
   }
 
   void _expireCustomerWindows() {
     final now = DateTime.now();
     final expired = _customerDecisionDeadline.entries
         .where((e) =>
-            e.key != _approvingOfferId &&
+            _offerIdOfRevision[e.key] != _approvingOfferId &&
             !e.value.isAfter(now) &&
-            !_declinedOfferIds.contains(e.key))
+            !_declinedRevisions.contains(e.key))
         .map((e) => e.key)
         .toList(growable: false);
-    for (final offerId in expired) {
-      _declineOffer(offerId, automatic: true);
+    for (final revision in expired) {
+      _declineOffer(revision, automatic: true);
     }
   }
 
@@ -497,7 +527,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   }
 
   int _secondsLeft(LiveDriverOffer offer) {
-    final deadline = _customerDecisionDeadline[offer.id] ?? offer.expiresAt;
+    final deadline = _customerDecisionDeadline[offer.revision] ?? offer.expiresAt;
     final seconds = deadline.difference(DateTime.now()).inSeconds + 1;
     return seconds.clamp(0, _decisionSeconds);
   }
@@ -506,30 +536,36 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     final now = DateTime.now();
     final offers = controller.liveDriverOffers.where((offer) {
       if (offer.rideRequestId != widget.rideRequestId) return false;
-      if (_declinedOfferIds.contains(offer.id)) return false;
-      final deadline = _customerDecisionDeadline[offer.id];
+      if (_declinedRevisions.contains(offer.revision)) return false;
+      final deadline = _customerDecisionDeadline[offer.revision];
       return deadline == null || deadline.isAfter(now);
     }).toList();
     offers.sort((a, b) => a.finalAmount.compareTo(b.finalAmount));
     return offers;
   }
 
-  Future<void> _declineOffer(String offerId, {bool automatic = false}) async {
-    if (_declinedOfferIds.contains(offerId) || _declineInFlight.contains(offerId) || _resolved) return;
-    _declinedOfferIds.add(offerId);
-    _declineInFlight.add(offerId);
+  /// Declines one revision of one offer.
+  ///
+  /// Takes the revision, because that is what this screen tracks — and sends the
+  /// server the offer id, because that is what the server knows.
+  Future<void> _declineOffer(String revision, {bool automatic = false}) async {
+    if (_declinedRevisions.contains(revision) ||
+        _declineInFlight.contains(revision) ||
+        _resolved) return;
+    _declinedRevisions.add(revision);
+    _declineInFlight.add(revision);
     if (mounted) setState(() {});
     try {
       await AppControllerScope.of(context).declineLiveDriverOffer(
         rideRequestId: widget.rideRequestId,
-        offerId: offerId,
+        offerId: _offerIdOfRevision[revision] ?? revision,
         countTowardsDriverRejectLimit: !automatic,
       );
     } catch (_) {
       // The server may already have expired the 20-second Driver offer.
       // For the Customer this offer remains dismissed after the 10-second decision window.
     } finally {
-      _declineInFlight.remove(offerId);
+      _declineInFlight.remove(revision);
       if (mounted && !automatic) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Driver offer declined.')),
@@ -1279,7 +1315,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
                 flex: 10,
                 child: _DeclineButton(
                   label: _t('Decline', 'مسترد'),
-                  onTap: busy ? null : () => _declineOffer(offer.id),
+                  onTap: busy ? null : () => _declineOffer(offer.revision),
                 ),
               ),
               const SizedBox(width: 10),

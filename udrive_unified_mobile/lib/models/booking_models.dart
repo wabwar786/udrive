@@ -193,6 +193,7 @@ class LiveDriverOffer {
     required this.estimatedArrivalMinutes,
     required this.status,
     required this.expiresAt,
+    this.version = 0,
     this.counterAmount,
     this.message,
     this.vehicleImageUrl,
@@ -238,6 +239,22 @@ class LiveDriverOffer {
   final String status;
   final DateTime expiresAt;
 
+  /// How many times the server has written this offer.
+  ///
+  /// A driver re-quoting the same ride does **not** create a second offer: the
+  /// server updates the existing row, so [id] stays the same while [amount]
+  /// changes underneath it. This number is the only thing that distinguishes
+  /// the new quote from the old one, and the offers screen keys the customer's
+  /// decision window on it — without that, the second quote inherited the first
+  /// one's long-expired countdown and was dismissed before it could be seen.
+  ///
+  /// Defaults to 0 so an app running against an older API still parses.
+  final int version;
+
+  /// Identity *and* revision. Two quotes from the same driver on the same ride
+  /// share an [id] and differ here.
+  String get revision => '$id@$version';
+
   double get finalAmount => counterAmount ?? amount;
 
   factory LiveDriverOffer.fromJson(Map<String, dynamic> json) => LiveDriverOffer(
@@ -261,6 +278,7 @@ class LiveDriverOffer {
         message: json['message']?.toString(),
         status: json['status']?.toString() ?? 'Pending',
         expiresAt: DateTime.parse(json['expiresAt'].toString()).toLocal(),
+        version: _int(json['version']),
       );
 }
 

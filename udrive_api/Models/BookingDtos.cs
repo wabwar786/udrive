@@ -156,7 +156,23 @@ public sealed record DriverOfferDto(
     string? Message,
     string Status,
     DateTimeOffset ExpiresAt,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    /// <summary>How many times this offer has been written.</summary>
+    /// <remarks>
+    /// Added last so no existing ordinal moves.
+    ///
+    /// A driver re-quoting the same ride does not create a second offer — the
+    /// upsert in <c>SubmitDriverOfferAsync</c> updates the row in place, so the
+    /// id the customer's phone already knows stays the same while the amount
+    /// underneath it changes. The customer app keyed its decision window on the
+    /// id alone and therefore never noticed, leaving the second quote wearing
+    /// the first quote's expired countdown — which auto-declined it on arrival,
+    /// so the customer never saw it at all.
+    ///
+    /// This column is what tells the two apart. It is incremented by the same
+    /// upsert, so it was already being maintained; it simply was not being sent.
+    /// </remarks>
+    int Version);
 
 public sealed record SelectDriverOfferRequest(
     [Range(0, 10000000)] decimal AdvanceAmount = 0);

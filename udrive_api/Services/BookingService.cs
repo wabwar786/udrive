@@ -1930,7 +1930,7 @@ public sealed class BookingService(
                    COALESCE(ST_Distance(dpl.location, rr.pickup_location) / 1000.0, 0)::double precision AS pickup_distance_km,
                    o.amount, o.counter_amount,
                    o.estimated_arrival_minutes, o.message, o.status,
-                   o.expires_at, o.created_at
+                   o.expires_at, o.created_at, o.version
             FROM udrive.driver_offers o
             LEFT JOIN udrive.driver_profiles dp ON dp.id=o.driver_profile_id
             LEFT JOIN udrive.users u ON u.id=dp.user_id
@@ -1984,7 +1984,7 @@ public sealed class BookingService(
                    COALESCE(ST_Distance(dpl.location, rr.pickup_location) / 1000.0, 0)::double precision AS pickup_distance_km,
                    o.amount, o.counter_amount,
                    o.estimated_arrival_minutes, o.message, o.status,
-                   o.expires_at, o.created_at
+                   o.expires_at, o.created_at, o.version
             FROM udrive.driver_offers o
             LEFT JOIN udrive.driver_profiles dp ON dp.id=o.driver_profile_id
             LEFT JOIN udrive.users u ON u.id=dp.user_id
@@ -2294,7 +2294,8 @@ public sealed class BookingService(
         reader.IsDBNull(18) ? null : reader.GetString(18),
         reader.GetString(19),
         reader.GetFieldValue<DateTimeOffset>(20),
-        reader.GetFieldValue<DateTimeOffset>(21));
+        reader.GetFieldValue<DateTimeOffset>(21),
+        reader.GetInt32(22));
 
     private static BookingDto ReadBooking(NpgsqlDataReader reader, string? tripOtp) => new(
         reader.GetGuid(0),
