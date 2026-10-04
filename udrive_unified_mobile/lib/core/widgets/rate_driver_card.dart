@@ -263,6 +263,7 @@ class _DriverAvatar extends StatelessWidget {
     return ClipOval(
       child: Image.network(
         photoUrl!,
+        cacheWidth: 192,
         width: 48,
         height: 48,
         fit: BoxFit.cover,

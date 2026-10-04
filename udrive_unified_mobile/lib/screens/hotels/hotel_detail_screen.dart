@@ -165,6 +165,7 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                         ? const _HotelHeroFallback()
                         : Image.network(
                             hotel.mainImageUrl,
+                            cacheWidth: 1080,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) =>
                                 const _HotelHeroFallback(),

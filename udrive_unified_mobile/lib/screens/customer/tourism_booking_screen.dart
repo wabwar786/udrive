@@ -1128,7 +1128,7 @@ class _SearchVehicleCard extends StatelessWidget {
                 decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
                 clipBehavior: Clip.antiAlias,
                 child: image != null && image.isNotEmpty
-                    ? Image.network(image, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark))
+                    ? Image.network(image, cacheWidth: 192, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark))
                     : const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark),
               ),
               const SizedBox(width: 9),

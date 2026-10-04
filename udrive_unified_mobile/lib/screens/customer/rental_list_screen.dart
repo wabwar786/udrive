@@ -329,6 +329,7 @@ class _VehicleCard extends StatelessWidget {
                 BorderRadius.vertical(top: Radius.circular(AppRadii.card)),
             child: Image.network(
               ApiConfig.absoluteUrl(vehicle.photoUrl),
+              cacheWidth: 900,
               height: 180,
               width: double.infinity,
               fit: BoxFit.cover,

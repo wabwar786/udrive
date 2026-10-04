@@ -267,6 +267,7 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
               borderRadius: BorderRadius.circular(AppRadii.card),
               child: Image.network(
                 ApiConfig.absoluteUrl(vehicle.photoUrl),
+                cacheWidth: 900,
                 height: 190,
                 width: double.infinity,
                 fit: BoxFit.cover,

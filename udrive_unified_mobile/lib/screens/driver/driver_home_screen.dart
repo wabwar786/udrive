@@ -515,21 +515,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               // rejected — and be one tap from the screen that fixes it. The old
               // card said none of that and led nowhere, so the only way forward
               // was to guess or ring support.
-              UdEmptyState(
-                icon: Icons.verified_user_outlined,
-                tone: UdTone.warn,
-                title: 'Approval needed before you can drive',
-                text: 'Upload your CNIC, licence and photograph, check each '
-                    'one, then send them for approval. The result appears '
-                    'there.',
-                action: UdButton(
-                  label: 'Open my documents',
-                  icon: Icons.folder_open_rounded,
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const DriverDocumentsScreen(),
-                    ),
+              //
+              // And when an admin has asked for something specific, that
+              // sentence is shown here word for word. An admin who removes a
+              // driver's CNIC writes "An administrator removed your CNIC —
+              // front. Please upload it again." — which is the whole answer, and
+              // it used to sit on a screen the driver had no reason to open.
+              _ApprovalNeeded(
+                note: controller.driverProfile?.reviewNotes,
+                status: controller.driverProfile?.verificationStatus,
+                onOpen: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DriverDocumentsScreen(),
                   ),
                 ),
               )
@@ -548,10 +546,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               // screen that tells them to stop opening the app. This one answers
               // the three questions they actually have: when does it get busy,
               // where is it busy now, and what am I earning in the meantime.
-              _NoRideState(
-                growth: _growth,
-                onRefresh: _refreshNearbyRequests,
-              )
+              _NoRideState(growth: _growth)
             else
               ...(() {
                 final live = _liveRequests(requests);
@@ -1327,6 +1322,16 @@ class _DriverRequestRouteMap extends StatelessWidget {
             options: MapOptions(initialCenter: center, initialZoom: 9.5),
             children: [
               TileLayer(
+                // Tiles stop being fetched past zoom 17; beyond that the
+                // ones already held are scaled up.
+                //
+                // OpenStreetMap serves to 19, and every extra level is a fresh
+                // set of 256px PNGs — about 400 KB for one screenful. The app's
+                // own zooms stop at 16.2 (the pickup view), so nothing it does
+                // by itself is softened; only a customer pinching in past 17
+                // sees slightly smoother tiles instead of waiting for new ones
+                // on a connection that cannot spare them.
+                maxNativeZoom: 17,
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.udrive.mobile',
               ),
@@ -2133,10 +2138,9 @@ class _DemandBlock extends StatelessWidget {
 
 /// Online, and nothing to do.
 class _NoRideState extends StatelessWidget {
-  const _NoRideState({required this.growth, required this.onRefresh});
+  const _NoRideState({required this.growth});
 
   final DriverGrowthHome? growth;
-  final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -2149,20 +2153,24 @@ class _NoRideState extends StatelessWidget {
         UdCard(
           child: Column(
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: AppRadii.all(AppRadii.tile),
-                ),
-                child: const Icon(Icons.schedule_rounded,
-                    size: 25, color: AppText.secondary),
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 6),
+
+              // The pulse replaces the "Check again" button.
+              //
+              // That button was asking the driver to do the app's job. The feed
+              // already refreshes itself every ten seconds, so pressing it
+              // almost never changed anything — and a button that usually does
+              // nothing teaches a driver that the screen is stuck.
+              //
+              // A pulse says the same thing honestly and without being asked:
+              // it only moves while the app is looking, and the moment a request
+              // arrives this whole card is replaced by it, so the animation
+              // stopping *is* the news.
+              const _SearchingPulse(),
+
+              const SizedBox(height: 16),
               Text(
-                'No ride requests right now',
+                'Looking for rides near you',
                 textAlign: TextAlign.center,
                 style: AppType.h3.copyWith(color: AppText.primary),
               ),
@@ -2176,13 +2184,7 @@ class _NoRideState extends StatelessWidget {
                   color: AppText.secondary,
                 ),
               ),
-              const SizedBox(height: 14),
-              UdButton.outline(
-                label: 'Check again',
-                size: UdButtonSize.small,
-                icon: Icons.refresh_rounded,
-                onPressed: onRefresh,
-              ),
+              const SizedBox(height: 6),
             ],
           ),
         ),
@@ -2230,6 +2232,249 @@ class _NoRideState extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The card a driver sees when they cannot drive yet — and what to do about it.
+///
+/// The important part is [note]: whatever the admin typed, shown exactly as
+/// typed. When an administrator removes a document the server now writes a
+/// sentence naming it, and that sentence is the one thing the driver needs. It
+/// used to be written to a field nothing on this screen read, so the driver was
+/// told only "approval needed" and had to work out the rest by opening a screen
+/// they had no reason to suspect.
+class _ApprovalNeeded extends StatelessWidget {
+  const _ApprovalNeeded({
+    required this.note,
+    required this.status,
+    required this.onOpen,
+  });
+
+  final String? note;
+  final String? status;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = note?.trim();
+    final hasNote = message != null && message.isNotEmpty;
+
+    // "Waiting" is a different situation from "something is missing", and the
+    // driver should not be told to upload while a reviewer is already looking.
+    final waiting = (status ?? '').toLowerCase() == 'pendingreview';
+
+    return UdCard(
+      tone: UdCardTone.plain,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: waiting ? AppTint.info : AppTint.warning,
+                  borderRadius: AppRadii.all(AppRadii.tile),
+                ),
+                child: Icon(
+                  waiting
+                      ? Icons.hourglass_top_rounded
+                      : Icons.file_upload_outlined,
+                  size: 23,
+                  color: waiting ? AppTint.infoText : AppTint.warningText,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      waiting
+                          ? 'Your documents are with the office'
+                          : 'A document is needed before you can drive',
+                      style: AppType.h3.copyWith(color: AppText.primary),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      waiting
+                          ? 'Nothing to do right now — we will tell you as soon '
+                              'as it is checked.'
+                          : 'You cannot receive ride requests until this is '
+                              'sent.',
+                      style: AppType.caption.copyWith(
+                        color: AppText.secondary,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // The admin's own words, in their own box so they cannot be mistaken
+          // for the app's standard copy.
+          if (hasNote) ...[
+            const SizedBox(height: 14),
+            Container(
+              decoration: BoxDecoration(
+                color: AppTint.warning,
+                border: Border.all(color: AppTint.warningBorder),
+                borderRadius: AppRadii.all(AppRadii.row),
+              ),
+              padding: const EdgeInsets.all(13),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.campaign_rounded,
+                      size: 19, color: AppTint.warningText),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      message,
+                      style: AppType.body2.copyWith(
+                        color: AppTint.warningText,
+                        height: 1.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          if (!waiting) ...[
+            const SizedBox(height: 14),
+            UdButton.primary(
+              label: 'Upload now',
+              icon: Icons.file_upload_outlined,
+              onPressed: onOpen,
+            ),
+          ] else ...[
+            const SizedBox(height: 14),
+            UdButton.outline(
+              label: 'See what I sent',
+              icon: Icons.folder_open_rounded,
+              size: UdButtonSize.small,
+              onPressed: onOpen,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A slow radar pulse, shown while the driver is online and nothing has come in.
+///
+/// Three rings leave the centre one after another and fade as they grow, so the
+/// card is visibly *doing* something without a number ticking or a button to
+/// press. It is the only moving thing on the screen, which is the point: the
+/// moment a request arrives this card is gone and the movement stops.
+///
+/// Cheap on purpose. One controller, one repaint boundary, and the rings are
+/// drawn by a painter rather than by three animated widgets — this sits on a
+/// driver's screen for whole shifts, on phones that are often also running the
+/// map, and an idle screen must not be what drains the battery.
+class _SearchingPulse extends StatefulWidget {
+  const _SearchingPulse();
+
+  @override
+  State<_SearchingPulse> createState() => _SearchingPulseState();
+}
+
+class _SearchingPulseState extends State<_SearchingPulse>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2600),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: SizedBox(
+        width: 108,
+        height: 108,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) => CustomPaint(
+            painter: _PulsePainter(_controller.value),
+            child: child,
+          ),
+          // Built once and handed to the painter as a child, so the car in the
+          // middle is not rebuilt sixty times a second.
+          child: Center(
+            child: Container(
+              width: 52,
+              height: 52,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: AppColors.brand,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.local_taxi_rounded,
+                size: 26,
+                color: AppColors.onBrand,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PulsePainter extends CustomPainter {
+  const _PulsePainter(this.progress);
+
+  /// 0 → 1, repeating.
+  final double progress;
+
+  static const int _rings = 3;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centre = Offset(size.width / 2, size.height / 2);
+    final smallest = size.shortestSide / 2;
+
+    for (var i = 0; i < _rings; i++) {
+      // Each ring is a third of a cycle behind the one before it, so they leave
+      // the centre evenly rather than together.
+      final t = (progress + i / _rings) % 1.0;
+
+      // Starts at the edge of the badge, ends at the edge of the box.
+      final radius = 26 + (smallest - 26) * t;
+
+      // Fades out as it grows, and fades *in* over the first tenth so a ring
+      // does not appear from nothing at full strength.
+      final fade = (1 - t) * (t < 0.1 ? t / 0.1 : 1);
+
+      canvas.drawCircle(
+        centre,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = AppColors.limeLine.withValues(alpha: 0.55 * fade),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PulsePainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
 
 class _HintRow extends StatelessWidget {

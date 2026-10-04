@@ -246,6 +246,25 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
         }
         await controller.uploadLiveVehicleDocument(
             vehicleId, entry.key, entry.value);
+
+        // A second, small copy of the front photograph — the one a customer's
+        // offer card shows. See ImageCompressor.thumbnail: the reviewed
+        // photograph runs to a couple of megabytes, this is about 75 KB, and
+        // the customer is the one waiting for it.
+        //
+        // Silent on failure: the registration is complete either way, and the
+        // server falls back to the full photograph when there is no small copy.
+        if (entry.key == 'VEHICLE_FRONT') {
+          try {
+            final small = await ImageCompressor.thumbnail(entry.value);
+            if (small != null) {
+              await controller.uploadLiveVehicleDocument(
+                  vehicleId, 'VEHICLE_FRONT_THUMB', small);
+            }
+          } catch (_) {
+            // See above.
+          }
+        }
       }
 
       await controller.submitDriverProfile();

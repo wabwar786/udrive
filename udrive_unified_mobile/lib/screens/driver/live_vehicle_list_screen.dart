@@ -206,6 +206,7 @@ class _VehicleCard extends StatelessWidget {
                   top: Radius.circular(AppRadii.card)),
               child: Image.network(
                 vehicle.imageUrl!,
+                cacheWidth: 900,
                 height: 160,
                 width: double.infinity,
                 fit: BoxFit.cover,

@@ -537,6 +537,7 @@ class _ListingCard extends StatelessWidget {
                 height: 130,
                 child: Image.network(
                   listing.photos.first,
+                  cacheWidth: 600,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => const _PhotoFallback(),
                 ),

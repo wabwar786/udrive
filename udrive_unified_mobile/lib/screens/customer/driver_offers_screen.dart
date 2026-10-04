@@ -61,7 +61,8 @@ class DriverOffersScreen extends StatefulWidget {
   State<DriverOffersScreen> createState() => _DriverOffersScreenState();
 }
 
-class _DriverOffersScreenState extends State<DriverOffersScreen> {
+class _DriverOffersScreenState extends State<DriverOffersScreen>
+    with WidgetsBindingObserver {
   Timer? _poller;
   Timer? _ticker;
   bool _loading = true;
@@ -153,13 +154,14 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refresh();
       _frameRoute();
       _loadCardMedia();
     });
     unawaited(_loadNearby());
-    _poller = Timer.periodic(const Duration(seconds: 2), (_) => _refresh(silent: true));
+    _scheduleNextPoll();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || _resolved) return;
       _expireCustomerWindows();
@@ -169,10 +171,31 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _poller?.cancel();
     _ticker?.cancel();
     _mapController.dispose();
     super.dispose();
+  }
+
+  /// Stops asking while nobody is looking.
+  ///
+  /// This screen is the busiest poller in the app. Left running in the
+  /// background it keeps two API calls every few seconds going out of a phone in
+  /// somebody's pocket — and when they come back, a queue of answers to
+  /// questions nobody is waiting for lands before the one that matters.
+  ///
+  /// Coming back asks again straight away rather than waiting out the gap: the
+  /// first thing a customer wants on returning is whether a driver answered.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _pollGap = _fastestPoll;
+      _scheduleNextPoll();
+      unawaited(_refresh(silent: true));
+    } else {
+      _poller?.cancel();
+    }
   }
 
   /// Frames the trip once the map surface exists.
@@ -367,6 +390,56 @@ class _DriverOffersScreenState extends State<DriverOffersScreen> {
     final destination = widget.destinationPoint;
     if (pickup != null && destination != null) return [pickup, destination];
     return const [];
+  }
+
+  /// True while a poll is in the air. Nothing else starts one.
+  bool _polling = false;
+
+  /// How long to wait before asking again.
+  ///
+  /// Two seconds was a `Timer.periodic`, and that was the bug behind "sab kuch
+  /// hang ho jata hai". Each poll makes **two** API calls — the ride state and
+  /// the offers — and on the connection a customer in Azad Kashmir actually has
+  /// (the report came in at 4.5 KB/s) a round takes far longer than two seconds.
+  /// A periodic timer does not care: it fired again, and again, stacking
+  /// requests on a line that was already full, so every one of them got slower
+  /// and the screen stopped responding.
+  ///
+  /// Now the next poll is scheduled only once the last one has come back, and
+  /// the gap is whatever the last round actually took, capped at ten seconds.
+  /// On a good connection that is the same two seconds as before. On a bad one
+  /// it settles at the fastest rate the line can carry, which is as live as live
+  /// can honestly be.
+  static const Duration _fastestPoll = Duration(seconds: 2);
+  static const Duration _slowestPoll = Duration(seconds: 10);
+  Duration _pollGap = _fastestPoll;
+
+  void _scheduleNextPoll() {
+    _poller?.cancel();
+    if (!mounted || _resolved) return;
+
+    _poller = Timer(_pollGap, () async {
+      if (!mounted || _resolved || _polling) {
+        _scheduleNextPoll();
+        return;
+      }
+
+      _polling = true;
+      final started = DateTime.now();
+      try {
+        await _refresh(silent: true);
+      } catch (_) {
+        // A failed poll is not news on this screen — the next one is seconds
+        // away and the card already on screen is still the best thing to show.
+      } finally {
+        _polling = false;
+        final took = DateTime.now().difference(started);
+        _pollGap = took < _fastestPoll
+            ? _fastestPoll
+            : (took > _slowestPoll ? _slowestPoll : took);
+        _scheduleNextPoll();
+      }
+    });
   }
 
   Future<void> _refresh({bool silent = false}) async {
@@ -1653,6 +1726,7 @@ class _OfferVehiclePhoto extends StatelessWidget {
                       size: 42, color: AppText.disabled)
                   : Image.network(
                       imageUrl!,
+                      cacheWidth: 600,
                       fit: BoxFit.cover,
                       // The document route is authenticated; the category
                       // picture is not. Sending the header either way is
@@ -1742,6 +1816,7 @@ class _OfferDriverPhoto extends StatelessWidget {
       child: offer.driverHasPhoto
           ? Image.network(
               '${ApiConfig.baseUrl}/api/v1/offers/${offer.id}/driver-photo',
+              cacheWidth: 192,
               fit: BoxFit.cover,
               width: 46,
               height: 46,

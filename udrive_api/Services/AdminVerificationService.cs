@@ -161,7 +161,7 @@ public sealed class AdminVerificationService(
             SELECT v.id, v.driver_profile_id, u.full_name,
                    v.registration_number, v.make || ' ' || v.model,
                    v.status, v.mountain_readiness_score,
-                   (SELECT count(*) FROM udrive.vehicle_documents vd WHERE vd.vehicle_id = v.id)
+                   (SELECT count(*) FROM udrive.vehicle_documents vd WHERE vd.vehicle_id = v.id AND vd.document_type NOT LIKE '%\_THUMB')
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
@@ -565,8 +565,9 @@ public sealed class AdminVerificationService(
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         string? fileUrl = null;
         Guid? userId = null;
+        string documentType = string.Empty;
         await using (var selectCommand = new NpgsqlCommand("""
-            SELECT dd.file_url, dp.user_id
+            SELECT dd.file_url, dp.user_id, dd.document_type
             FROM udrive.driver_documents dd
             JOIN udrive.driver_profiles dp ON dp.id = dd.driver_profile_id
             WHERE dd.id = @documentId AND dd.driver_profile_id = @driverProfileId
@@ -580,6 +581,7 @@ public sealed class AdminVerificationService(
             {
                 fileUrl = reader.GetString(0);
                 userId = reader.GetGuid(1);
+                documentType = reader.IsDBNull(2) ? string.Empty : reader.GetString(2);
             }
         }
         if (fileUrl is null || userId is null)
@@ -587,30 +589,76 @@ public sealed class AdminVerificationService(
             await transaction.RollbackAsync(cancellationToken);
             return ServiceResult<bool>.Fail(StatusCodes.Status404NotFound, "driver_document_not_found", "Driver attachment not found.");
         }
+        // The note names the document, and the account is left alone.
+        //
+        // Two things used to happen here that should not. The note said only
+        // "An attachment was removed by an Administrator" — so the driver was
+        // told to upload *something*, with no way to know which of the four it
+        // was, and the one person who knew was the admin who had moved on.
+        //
+        // Worse, this also deleted the `Driver` role, demoted `users.role` to
+        // Customer and bumped `token_version`. That logged the driver straight
+        // out, brought them back as a customer, and 403'd their wallet and
+        // payout screens — all because one photograph was removed. It also made
+        // the thing the admin actually wanted *harder*: a driver who believes
+        // their account has been taken away does not go looking for an upload
+        // button.
+        //
+        // None of it was needed. `verification_status = 'ChangesRequired'` is
+        // what stops dispatch: the request feed and the app's own
+        // `driverModeAvailable` both read it live from the database, not from
+        // the token. Taking the role away stopped nothing extra and broke the
+        // way back. (The vehicle-attachment delete, four hundred lines down,
+        // never did any of this — which is the clue that it was copied here from
+        // the full-rejection path by mistake.)
         await using (var deleteCommand = new NpgsqlCommand("""
             DELETE FROM udrive.driver_documents WHERE id = @documentId;
             UPDATE udrive.driver_profiles
             SET verification_status = 'ChangesRequired',
-                review_notes = 'An attachment was removed by an Administrator. Upload is required.',
+                review_notes = @note,
                 reviewed_at = now(), reviewed_by_user_id = @adminUserId, updated_at = now()
             WHERE id = @driverProfileId;
-            DELETE FROM udrive.user_roles WHERE user_id = @userId AND role = 'Driver';
-            UPDATE udrive.users
-            SET role = CASE WHEN role = 'Driver' THEN 'Customer' ELSE role END,
-                token_version = token_version + 1, updated_at = now()
-            WHERE id = @userId;
             """, connection, transaction))
         {
             deleteCommand.Parameters.AddWithValue("documentId", documentId);
             deleteCommand.Parameters.AddWithValue("driverProfileId", driverProfileId);
             deleteCommand.Parameters.AddWithValue("adminUserId", adminUserId);
-            deleteCommand.Parameters.AddWithValue("userId", userId.Value);
+            deleteCommand.Parameters.AddWithValue("note", DocumentRemovedNote(documentType));
             await deleteCommand.ExecuteNonQueryAsync(cancellationToken);
         }
         await InsertAuditAsync(connection, transaction, adminUserId, "DeleteDriverAttachment", "DriverDocument", documentId, "Deleted", "Attachment permanently deleted by Administrator.", ipAddress, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         fileStorage.DeleteProtectedFile(fileUrl);
         return ServiceResult<bool>.Ok(true, "Driver attachment permanently deleted.");
+    }
+
+    /// <summary>The sentence the driver is shown after an admin removes a file.</summary>
+    /// <remarks>
+    /// Names the document, because "an attachment was removed" leaves a driver
+    /// guessing which of six to send again — and the app shows this string
+    /// verbatim on the dashboard and above the upload list.
+    ///
+    /// The labels match the driver app's own words for these documents exactly.
+    /// A note calling it `DRIVING_LICENCE_BACK` is a note written for the
+    /// database rather than for the person who has to act on it.
+    /// </remarks>
+    private static string DocumentRemovedNote(string documentType)
+    {
+        var label = documentType.Trim().ToUpperInvariant() switch
+        {
+            "CNIC_FRONT" => "your CNIC — front",
+            "CNIC_BACK" => "your CNIC — back",
+            "DRIVING_LICENCE" => "your driving licence",
+            "DRIVING_LICENCE_BACK" => "your driving licence — back",
+            "SELFIE" => "your photograph",
+            "SELFIE_WITH_CNIC" => "your selfie holding your CNIC",
+            // Something a later release added and this list has not caught up
+            // with. Better a slightly vague sentence than one naming a column.
+            _ => "one of your documents",
+        };
+
+        return $"An administrator removed {label}. Please upload it again and "
+            + "send your documents for approval.";
     }
 
     public async Task<ServiceResult<IReadOnlyList<VehicleReviewListItemDto>>> GetVehiclesAsync(
@@ -621,7 +669,7 @@ public sealed class AdminVerificationService(
             SELECT v.id, v.driver_profile_id, u.full_name,
                    v.registration_number, v.make || ' ' || v.model,
                    v.status, v.mountain_readiness_score,
-                   (SELECT count(*) FROM udrive.vehicle_documents vd WHERE vd.vehicle_id = v.id)
+                   (SELECT count(*) FROM udrive.vehicle_documents vd WHERE vd.vehicle_id = v.id AND vd.document_type NOT LIKE '%\_THUMB')
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
@@ -659,7 +707,7 @@ public sealed class AdminVerificationService(
             SELECT v.id, v.driver_profile_id, u.full_name,
                    v.registration_number, v.make || ' ' || v.model,
                    v.status, v.mountain_readiness_score,
-                   (SELECT count(*) FROM udrive.vehicle_documents vd WHERE vd.vehicle_id = v.id)
+                   (SELECT count(*) FROM udrive.vehicle_documents vd WHERE vd.vehicle_id = v.id AND vd.document_type NOT LIKE '%\_THUMB')
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
@@ -695,6 +743,11 @@ public sealed class AdminVerificationService(
             SELECT id, document_type, file_url, expiry_date, status, review_notes
             FROM udrive.vehicle_documents
             WHERE vehicle_id = @id
+              -- The small copy the app shows in lists is not a document to
+              -- review. It carries no number plate a reviewer could read, and
+              -- putting it in this list would give every vehicle a second,
+              -- blurry row that looks like a duplicate upload.
+              AND document_type NOT LIKE '%\_THUMB'
             ORDER BY document_type;
             """, connection);
         documentCommand.Parameters.AddWithValue("id", vehicleId);

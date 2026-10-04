@@ -139,9 +139,21 @@ public sealed class TripChatService(string connectionString)
             JOIN udrive.vehicle_documents vd ON vd.vehicle_id = o.vehicle_id
             WHERE o.id = @offer
               AND rr.customer_user_id = @user
-              AND vd.document_type = 'VEHICLE_FRONT'
+              -- The small copy first, the full photograph only if there is
+              -- none.
+              --
+              -- A customer's card shows this vehicle at about 120 pixels wide.
+              -- The reviewed photograph is 1600 wide and around 400 KB, and on
+              -- the connection a customer in Azad Kashmir actually has — the
+              -- bug report came in at 4.5 KB/s — that is a minute and a half for
+              -- one car. The thumbnail is roughly 25 KB.
+              --
+              -- Falls back rather than requiring the thumbnail, so every vehicle
+              -- registered before this existed still shows a picture.
+              AND vd.document_type IN ('VEHICLE_FRONT_THUMB', 'VEHICLE_FRONT')
               AND COALESCE(vd.status, 'PendingReview') <> 'Rejected'
-            ORDER BY vd.created_at DESC
+            ORDER BY (vd.document_type = 'VEHICLE_FRONT_THUMB') DESC,
+                     vd.created_at DESC
             LIMIT 1;
             """;
 
@@ -189,9 +201,21 @@ public sealed class TripChatService(string connectionString)
             FROM udrive.bookings b
             JOIN udrive.vehicle_documents vd ON vd.vehicle_id = b.vehicle_id
             WHERE b.id = @booking
-              AND vd.document_type = 'VEHICLE_FRONT'
+              -- The small copy first, the full photograph only if there is
+              -- none.
+              --
+              -- A customer's card shows this vehicle at about 120 pixels wide.
+              -- The reviewed photograph is 1600 wide and around 400 KB, and on
+              -- the connection a customer in Azad Kashmir actually has — the
+              -- bug report came in at 4.5 KB/s — that is a minute and a half for
+              -- one car. The thumbnail is roughly 25 KB.
+              --
+              -- Falls back rather than requiring the thumbnail, so every vehicle
+              -- registered before this existed still shows a picture.
+              AND vd.document_type IN ('VEHICLE_FRONT_THUMB', 'VEHICLE_FRONT')
               AND COALESCE(vd.status, 'PendingReview') <> 'Rejected'
-            ORDER BY vd.created_at DESC
+            ORDER BY (vd.document_type = 'VEHICLE_FRONT_THUMB') DESC,
+                     vd.created_at DESC
             LIMIT 1;
             """;
 

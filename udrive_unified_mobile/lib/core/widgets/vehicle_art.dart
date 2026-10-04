@@ -125,6 +125,7 @@ class VehicleThumb extends StatelessWidget {
       child: (url != null && url.isNotEmpty)
           ? Image.network(
               url,
+              cacheWidth: 600,
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => fallback,
             )
@@ -148,6 +149,7 @@ class VehicleBanner extends StatelessWidget {
     if (url != null && url.isNotEmpty) {
       return Image.network(
         url,
+        cacheWidth: 600,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => _illustration(),
       );

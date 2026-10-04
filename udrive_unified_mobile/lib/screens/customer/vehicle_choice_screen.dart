@@ -1541,6 +1541,7 @@ class _VehiclePhoto extends StatelessWidget {
           ? _bundled()
           : Image.network(
               url,
+              cacheWidth: 600,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => _bundled(),
               // The outline, not the stock photograph, while the real one

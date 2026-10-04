@@ -740,6 +740,7 @@ class _Cover extends StatelessWidget {
     if (address == null || address.isEmpty) return _placeholder();
     return Image.network(
       ApiConfig.absoluteUrl(address),
+      cacheWidth: 900,
       fit: BoxFit.cover,
       errorBuilder: (_, __, ___) => _placeholder(),
     );

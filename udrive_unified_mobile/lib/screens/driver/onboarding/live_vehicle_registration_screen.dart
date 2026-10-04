@@ -457,11 +457,35 @@ class _LiveVehicleRegistrationScreenState
     await _run(() async {
       // Vehicle photographs are the biggest files a Driver sends — four of
       // them, straight from the camera. Shrunk before they leave the phone.
-      final file = await ImageCompressor.shrink(result.files.single);
+      final original = result.files.single;
+      final file = await ImageCompressor.shrink(original);
       if (!mounted) return;
-      await AppControllerScope.of(context)
-          .uploadLiveVehicleDocument(_created!.id, type, file);
+      final controller = AppControllerScope.of(context);
+      await controller.uploadLiveVehicleDocument(_created!.id, type, file);
       _uploaded.add(type);
+
+      // The front photograph gets a second, small copy.
+      //
+      // This one is never reviewed — it is what a customer's offer card shows,
+      // at about 120 pixels wide. The reviewed photograph is 1600 wide and runs
+      // to a couple of megabytes once `shrink` has re-encoded it to PNG, and a
+      // customer on a weak connection was waiting minutes for a picture of a car
+      // they were about to decline.
+      //
+      // Failure here is deliberately silent: the vehicle is registered either
+      // way, and the server falls back to the full photograph when no small copy
+      // exists.
+      if (type == 'VEHICLE_FRONT') {
+        try {
+          final small = await ImageCompressor.thumbnail(original);
+          if (small != null && mounted) {
+            await controller.uploadLiveVehicleDocument(
+                _created!.id, 'VEHICLE_FRONT_THUMB', small);
+          }
+        } catch (_) {
+          // See above.
+        }
+      }
     });
   }
 

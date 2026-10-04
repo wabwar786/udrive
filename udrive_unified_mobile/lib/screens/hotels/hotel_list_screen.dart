@@ -394,6 +394,7 @@ class _HotelCard extends StatelessWidget {
                     else
                       Image.network(
                         hotel.mainImageUrl,
+                        cacheWidth: 900,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => const _HotelPhotoFallback(),
                       ),

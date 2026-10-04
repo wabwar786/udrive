@@ -476,6 +476,7 @@ class _DocumentRow extends StatelessWidget {
                       ? Image.network(
                           '${ApiConfig.baseUrl}/api/v1/driver/documents/'
                           '${document!['id']}/file',
+                          cacheWidth: 300,
                           fit: BoxFit.cover,
                           headers: token == null
                               ? null
@@ -678,6 +679,7 @@ class _DocumentPreview extends StatelessWidget {
           maxScale: 5,
           child: Image.network(
             url,
+            cacheWidth: 1080,
             headers: token == null ? null : {'Authorization': 'Bearer $token'},
             fit: BoxFit.contain,
             errorBuilder: (_, __, ___) => Padding(

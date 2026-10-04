@@ -75,7 +75,8 @@ class CustomerHomeScreen extends StatefulWidget {
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
 }
 
-class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+class _CustomerHomeScreenState extends State<CustomerHomeScreen>
+    with WidgetsBindingObserver {
   // ------------------------------------------------------------- controllers
   /// Seeded with a status line rather than left blank: on first open the app is
   /// actively finding the customer, and an empty field looks broken.
@@ -250,6 +251,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void initState() {
     super.initState();
 
+    WidgetsBinding.instance.addObserver(this);
 
     Connectivity().checkConnectivity().then(_applyConnectivity);
     _connectivity =
@@ -287,6 +289,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tripTimer?.cancel();
     _nearbyTimer?.cancel();
     _mapController.dispose();
@@ -1089,6 +1092,43 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
 
   // ------------------------------------------------------------------ building
+
+  /// Stops the timers while the app is in the background.
+  ///
+  /// Home runs two of them — nearby vehicles every ten seconds and the active
+  /// trip every twelve — and both keep firing in a pocket. On a weak connection
+  /// that is a queue of stale answers waiting to land the moment the customer
+  /// comes back, ahead of whatever they came back for.
+  ///
+  /// Resuming refreshes once immediately, so the screen is current before the
+  /// timers pick up again.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+      unawaited(_refreshActiveTrip());
+      unawaited(_refreshNearby());
+    } else {
+      _tripTimer?.cancel();
+      _tripTimer = null;
+      _nearbyTimer?.cancel();
+      _nearbyTimer = null;
+    }
+  }
+
+  /// Starts the two home timers, replacing any that are already running.
+  void _startPolling() {
+    _nearbyTimer?.cancel();
+    _nearbyTimer = Timer.periodic(
+      AppConfig.nearbyVehiclesPoll,
+      (_) => _refreshNearby(),
+    );
+    _tripTimer?.cancel();
+    _tripTimer = Timer.periodic(
+      const Duration(seconds: 12),
+      (_) => _refreshActiveTrip(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

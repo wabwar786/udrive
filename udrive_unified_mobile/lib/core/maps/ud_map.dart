@@ -747,6 +747,16 @@ class _UdMapState extends State<UdMap> {
       ),
       children: [
         fmap.TileLayer(
+          // Tiles stop being fetched past zoom 17; beyond that the
+          // ones already held are scaled up.
+          //
+          // OpenStreetMap serves to 19, and every extra level is a fresh
+          // set of 256px PNGs — about 400 KB for one screenful. The app's
+          // own zooms stop at 16.2 (the pickup view), so nothing it does
+          // by itself is softened; only a customer pinching in past 17
+          // sees slightly smoother tiles instead of waiting for new ones
+          // on a connection that cannot spare them.
+          maxNativeZoom: 17,
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.wabwar.udrive',
         ),

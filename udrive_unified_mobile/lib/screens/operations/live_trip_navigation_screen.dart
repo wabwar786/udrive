@@ -694,6 +694,16 @@ class _DriverLiveNavigationScreenState
             ),
             children: [
               TileLayer(
+                // Tiles stop being fetched past zoom 17; beyond that the
+                // ones already held are scaled up.
+                //
+                // OpenStreetMap serves to 19, and every extra level is a fresh
+                // set of 256px PNGs — about 400 KB for one screenful. The app's
+                // own zooms stop at 16.2 (the pickup view), so nothing it does
+                // by itself is softened; only a customer pinching in past 17
+                // sees slightly smoother tiles instead of waiting for new ones
+                // on a connection that cannot spare them.
+                maxNativeZoom: 17,
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.wabwar.udrive',
               ),
@@ -1838,6 +1848,16 @@ class _CustomerFullScreenTrackingScreenState
             ),
             children: [
               TileLayer(
+                // Tiles stop being fetched past zoom 17; beyond that the
+                // ones already held are scaled up.
+                //
+                // OpenStreetMap serves to 19, and every extra level is a fresh
+                // set of 256px PNGs — about 400 KB for one screenful. The app's
+                // own zooms stop at 16.2 (the pickup view), so nothing it does
+                // by itself is softened; only a customer pinching in past 17
+                // sees slightly smoother tiles instead of waiting for new ones
+                // on a connection that cannot spare them.
+                maxNativeZoom: 17,
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.wabwar.udrive',
               ),
@@ -2074,6 +2094,7 @@ class _CustomerFullScreenTrackingScreenState
                           child: _driverPhotoUrl != null
                               ? Image.network(
                                   _driverPhotoUrl!,
+                                  cacheWidth: 192,
                                   fit: BoxFit.cover,
                                   width: 62,
                                   height: 62,
@@ -2171,6 +2192,7 @@ class _CustomerFullScreenTrackingScreenState
                               child: _vehicleImageUrl != null
                                   ? Image.network(
                                       _vehicleImageUrl!,
+                                      cacheWidth: 1080,
                                       fit: BoxFit.contain,
                                       // The VEHICLE_FRONT route is
                                       // authenticated and Image.network cannot
