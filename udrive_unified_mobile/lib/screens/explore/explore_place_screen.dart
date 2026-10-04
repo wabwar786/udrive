@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:latlong2/latlong.dart';
 
 import '../../core/explore/explore_repository.dart';
