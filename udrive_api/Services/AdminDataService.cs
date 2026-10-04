@@ -83,15 +83,15 @@ public sealed class AdminDataService(
                 (SELECT count(*) FROM udrive.vehicles v
                    JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
                    JOIN udrive.users u ON u.id = dp.user_id
-                  WHERE u.email LIKE 'demo.%@udrive.local') AS demo_vehicles,
+                  WHERE u.email LIKE 'demo.%@udrive.local' AND u.status <> 'Suspended') AS demo_vehicles,
                 (SELECT count(*) FROM udrive.tour_packages tp
                    JOIN udrive.driver_profiles dp ON dp.id = tp.driver_profile_id
                    JOIN udrive.users u ON u.id = dp.user_id
-                  WHERE u.email LIKE 'demo.%@udrive.local') AS demo_tours,
+                  WHERE u.email LIKE 'demo.%@udrive.local' AND u.status <> 'Suspended') AS demo_tours,
                 (SELECT count(*) FROM udrive.vehicles v
                    JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
                    JOIN udrive.users u ON u.id = dp.user_id
-                  WHERE u.email LIKE 'demo.%@udrive.local' AND v.available_for_rent) AS demo_rentals,
+                  WHERE u.email LIKE 'demo.%@udrive.local' AND u.status <> 'Suspended' AND v.available_for_rent) AS demo_rentals,
                 (SELECT count(*) FROM udrive.hotels h
                    JOIN udrive.users u ON u.id = h.owner_user_id
                   WHERE u.email LIKE 'demo.%@udrive.local') AS demo_hotels;
@@ -407,36 +407,48 @@ public sealed class AdminDataService(
                     SELECT v.id FROM udrive.vehicles v
                     JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
                     JOIN udrive.users u ON u.id = dp.user_id
-                    WHERE u.email LIKE @pattern;
+                    WHERE u.email LIKE @pattern
+                      AND v.id::text LIKE '55000000-0000-0000-0000-%';
                     """;
                 ids.Parameters.AddWithValue("pattern", DemoEmailPattern);
                 await using var idReader = await ids.ExecuteReaderAsync(cancellationToken);
                 while (await idReader.ReadAsync(cancellationToken)) demoVehicleIds.Add(idReader.GetGuid(0));
             }
 
+            // Only the rows demo_fleet.sql seeds (ids 55… and 56…). The old
+            // 54-car fleet from migration 010 also sits on demo.% accounts,
+            // suspended by 055, and may have real trip history pointing at it;
+            // those cars are left to the per-account step below, which skips
+            // whatever is still referenced instead of failing the whole remove.
+            // The seeded tours cannot be booked (DemoListing), so nothing
+            // references them.
             await ExecuteDemoAsync(connection, transaction, """
                 DELETE FROM udrive.package_waitlist w
                 USING udrive.tour_packages tp, udrive.driver_profiles dp, udrive.users u
                 WHERE w.tour_package_id = tp.id AND tp.driver_profile_id = dp.id
-                  AND dp.user_id = u.id AND u.email LIKE @pattern;
+                  AND dp.user_id = u.id AND u.email LIKE @pattern
+                  AND tp.id::text LIKE '56000000-0000-0000-0000-%';
                 """, cancellationToken);
             toursRemoved = await ExecuteDemoAsync(connection, transaction, """
                 DELETE FROM udrive.tour_packages tp
                 USING udrive.driver_profiles dp, udrive.users u
                 WHERE tp.driver_profile_id = dp.id AND dp.user_id = u.id
-                  AND u.email LIKE @pattern;
+                  AND u.email LIKE @pattern
+                  AND tp.id::text LIKE '56000000-0000-0000-0000-%';
                 """, cancellationToken);
             await ExecuteDemoAsync(connection, transaction, """
                 DELETE FROM udrive.rental_bookings rb
                 USING udrive.vehicles v, udrive.driver_profiles dp, udrive.users u
                 WHERE rb.vehicle_id = v.id AND v.driver_profile_id = dp.id
-                  AND dp.user_id = u.id AND u.email LIKE @pattern;
+                  AND dp.user_id = u.id AND u.email LIKE @pattern
+                  AND v.id::text LIKE '55000000-0000-0000-0000-%';
                 """, cancellationToken);
             vehiclesRemoved = await ExecuteDemoAsync(connection, transaction, """
                 DELETE FROM udrive.vehicles v
                 USING udrive.driver_profiles dp, udrive.users u
                 WHERE v.driver_profile_id = dp.id AND dp.user_id = u.id
-                  AND u.email LIKE @pattern;
+                  AND u.email LIKE @pattern
+                  AND v.id::text LIKE '55000000-0000-0000-0000-%';
                 """, cancellationToken);
 
             bookingsRemoved = await ExecuteDemoAsync(connection, transaction, """
@@ -453,42 +465,52 @@ public sealed class AdminDataService(
                 WHERE h.owner_user_id = u.id AND u.email LIKE @pattern;
                 """, cancellationToken);
 
-            await transaction.SaveAsync("demo_accounts", cancellationToken);
-            try
+            // One savepoint per account. All in one went all-or-nothing: a
+            // single old demo account still referenced by a real booking kept
+            // every demo account, the new ones included.
+            var demoUserIds = new List<Guid>();
+            await using (var users = connection.CreateCommand())
             {
-                await ExecuteDemoAsync(connection, transaction, """
-                    DELETE FROM udrive.refresh_tokens t
-                    USING udrive.users u
-                    WHERE t.user_id = u.id AND u.email LIKE @pattern;
-                    """, cancellationToken);
-
-                await ExecuteDemoAsync(connection, transaction, """
-                    DELETE FROM udrive.driver_profiles dp
-                    USING udrive.users u
-                    WHERE dp.user_id = u.id AND u.email LIKE @pattern;
-                    """, cancellationToken);
-
-                await ExecuteDemoAsync(connection, transaction, """
-                    DELETE FROM udrive.user_roles r
-                    USING udrive.users u
-                    WHERE r.user_id = u.id AND u.email LIKE @pattern;
-                    """, cancellationToken);
-
-                accountsRemoved = await ExecuteDemoAsync(connection, transaction, """
-                    DELETE FROM udrive.users WHERE email LIKE @pattern;
-                    """, cancellationToken);
-
-                await transaction.ReleaseAsync("demo_accounts", cancellationToken);
+                users.Transaction = transaction;
+                users.CommandText = "SELECT id FROM udrive.users WHERE email LIKE @pattern;";
+                users.Parameters.AddWithValue("pattern", DemoEmailPattern);
+                await using var userReader = await users.ExecuteReaderAsync(cancellationToken);
+                while (await userReader.ReadAsync(cancellationToken)) demoUserIds.Add(userReader.GetGuid(0));
             }
-            catch (PostgresException blocked)
-                when (blocked.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+
+            accountsRemoved = 0;
+            foreach (var demoUserId in demoUserIds)
             {
-                await transaction.RollbackAsync("demo_accounts", cancellationToken);
-                accountsRemoved = 0;
-                accountsBlockedBy = blocked.ConstraintName ?? "another record";
-                logger.LogWarning(blocked,
-                    "The demo accounts were kept: {Constraint} still references them. "
-                    + "The demo hotels were removed.", accountsBlockedBy);
+                await transaction.SaveAsync("demo_account", cancellationToken);
+                try
+                {
+                    await using var delete = connection.CreateCommand();
+                    delete.Transaction = transaction;
+                    delete.CommandTimeout = 120;
+                    delete.CommandText = """
+                        DELETE FROM udrive.refresh_tokens WHERE user_id = @id;
+                        DELETE FROM udrive.driver_profiles WHERE user_id = @id;
+                        DELETE FROM udrive.user_roles WHERE user_id = @id;
+                        DELETE FROM udrive.users WHERE id = @id AND email LIKE @pattern;
+                        """;
+                    delete.Parameters.AddWithValue("id", demoUserId);
+                    delete.Parameters.AddWithValue("pattern", DemoEmailPattern);
+                    await delete.ExecuteNonQueryAsync(cancellationToken);
+                    await transaction.ReleaseAsync("demo_account", cancellationToken);
+                    accountsRemoved++;
+                }
+                catch (PostgresException blocked)
+                    when (blocked.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+                {
+                    await transaction.RollbackAsync("demo_account", cancellationToken);
+                    accountsBlockedBy ??= blocked.ConstraintName ?? "another record";
+                }
+            }
+            if (accountsBlockedBy is not null)
+            {
+                logger.LogWarning(
+                    "{Kept} demo accounts were kept: {Constraint} still references them.",
+                    demoUserIds.Count - accountsRemoved, accountsBlockedBy);
             }
 
             await using var audit = connection.CreateCommand();
@@ -535,12 +557,13 @@ public sealed class AdminDataService(
             ? "There was no demo data left to remove."
             : "Removed " + Join(removed) + ".";
 
-        if (accountsBlockedBy is not null && accountsFound > 0)
+        var accountsKept = accountsFound - accountsRemoved;
+        if (accountsBlockedBy is not null && accountsKept > 0)
         {
-            message += $" The {Plural(accountsFound, "demo account", "demo accounts")} "
-                + $"could not be removed because other records still reference "
-                + $"{(accountsFound == 1 ? "it" : "them")} (constraint '{accountsBlockedBy}'). "
-                + "The demo listings are gone either way.";
+            message += $" {Plural(accountsKept, "old demo account was", "old demo accounts were")} "
+                + $"kept because other records still reference "
+                + $"{(accountsKept == 1 ? "it" : "them")} (constraint '{accountsBlockedBy}'). "
+                + "They are suspended and hidden from customers.";
         }
 
         message += " The destination catalogue and the vehicle rate card were not touched.";
@@ -604,7 +627,11 @@ public sealed class AdminDataService(
     {
         var assembly = Assembly.GetExecutingAssembly();
         var resourceName = assembly.GetManifestResourceNames()
-            .SingleOrDefault(name => name.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
+            // ".Scripts." + the name, not the bare name: migration
+            // 055_remove_demo_fleet.sql also ends in "demo_fleet.sql", and a bare
+            // suffix match found both, so SingleOrDefault threw and the button
+            // returned a 500 before anything ran.
+            .SingleOrDefault(name => name.EndsWith(".Scripts." + fileName, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"Embedded SQL file {fileName} was not found.");
 
         await using var stream = assembly.GetManifestResourceStream(resourceName)

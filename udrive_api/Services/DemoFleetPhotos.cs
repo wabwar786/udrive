@@ -55,6 +55,9 @@ public sealed class DemoFleetPhotos(
                 JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
                 JOIN udrive.users u ON u.id = dp.user_id
                 WHERE u.email LIKE @pattern
+                  -- Only the cars demo_fleet.sql seeds. The old suspended fleet
+                  -- from migration 010 is on demo.% accounts too and is left alone.
+                  AND v.id::text LIKE '55000000-0000-0000-0000-%'
                 """;
             command.Parameters.AddWithValue("pattern", DemoListing.EmailPattern);
             await using var reader = await command.ExecuteReaderAsync(ct);
