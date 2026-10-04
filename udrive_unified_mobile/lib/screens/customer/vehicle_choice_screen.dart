@@ -1170,7 +1170,12 @@ class _DestinationHeader extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
             AppSizes.sidePadding, 10, AppSizes.sidePadding, 0),
-        child: Row(
+        // IntrinsicHeight, and it is not optional. This header sits in a
+        // Positioned with no bottom, so its height is unbounded, and a
+        // `stretch` Row under unbounded height cannot lay out: the whole
+        // header — back button and destination — was never drawn.
+        child: IntrinsicHeight(
+          child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Material(
@@ -1256,6 +1261,7 @@ class _DestinationHeader extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

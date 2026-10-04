@@ -80,6 +80,10 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
   // declined set, and hidden for ever. The customer never saw it, which is
   // exactly what was reported.
   final Map<String, DateTime> _customerDecisionDeadline = <String, DateTime>{};
+
+  /// When this device first received each offer revision, so the newest offer
+  /// can be listed first.
+  final Map<String, DateTime> _firstSeen = <String, DateTime>{};
   final Set<String> _declinedRevisions = <String>{};
   final Set<String> _declineInFlight = <String>{};
 
@@ -520,6 +524,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
       // keep the Accept button alive after the server had stopped honouring
       // the offer — and a button that fails when pressed is worse than one
       // that has gone.
+      _firstSeen.putIfAbsent(offer.revision, () => now);
       final localDeadline = now.add(const Duration(seconds: _decisionSeconds));
       final serverDeadline = offer.expiresAt.toLocal();
       _customerDecisionDeadline.putIfAbsent(
@@ -537,6 +542,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
     _customerDecisionDeadline.removeWhere(
         (revision, _) => !live.contains(revision));
     _offerIdOfRevision.removeWhere((revision, _) => !live.contains(revision));
+    _firstSeen.removeWhere((revision, _) => !live.contains(revision));
   }
 
   void _expireCustomerWindows() {
@@ -613,7 +619,11 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
       final deadline = _customerDecisionDeadline[offer.revision];
       return deadline == null || deadline.isAfter(now);
     }).toList();
-    offers.sort((a, b) => a.finalAmount.compareTo(b.finalAmount));
+    // Newest first: an offer that has just arrived goes to the top, where the
+    // customer is looking, instead of being slotted in by price.
+    final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+    offers.sort((a, b) => (_firstSeen[b.revision] ?? epoch)
+        .compareTo(_firstSeen[a.revision] ?? epoch));
     return offers;
   }
 
@@ -938,6 +948,10 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
   }
 
   Widget _buildBody(List<LiveDriverOffer> offers) {
+    // While nobody has answered, only the two buttons sit at the top and a
+    // small strip at the bottom, so the route stays in view. Once offers
+    // arrive the screen is exactly as before.
+    final waiting = offers.isEmpty;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
@@ -976,6 +990,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
                     ],
                   ),
                 ),
+                if (!waiting) ...[
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                       AppSizes.sidePadding, 0, AppSizes.sidePadding, 8),
@@ -1014,14 +1029,20 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
                     shrinkWrap: true,
                     padding: const EdgeInsets.fromLTRB(
                         AppSizes.sidePadding, 0, AppSizes.sidePadding, 20),
-                    children: offers.isEmpty
-                        ? [_waitingCard()]
-                        : offers.map(_offerCard).toList(growable: false),
+                    children: offers.map(_offerCard).toList(growable: false),
                   ),
                 ),
+                ],
               ],
             ),
           ),
+          if (waiting)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 16,
+              child: SafeArea(top: false, child: _waitingCard()),
+            ),
         ],
       ),
     );
@@ -1100,134 +1121,86 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
 
   /// What the customer sees while nobody has answered yet.
   ///
-  /// Status, an elapsed clock and a working bar, over the vehicles the request
-  /// went out to. Deliberately not a countdown: the request stays open for an
-  /// hour, and a bar draining to zero would say it is about to expire.
+  /// One small strip at the bottom of the map: status, elapsed clock and the
+  /// customer's own offer, under a thin working bar. Small on purpose, so the
+  /// route and the drivers around it stay visible. Deliberately not a
+  /// countdown: the request stays open for an hour, and a bar draining to zero
+  /// would say it is about to expire.
   Widget _waitingCard() {
-    final drivers = _nearby.length;
-
     return Container(
-      padding: const EdgeInsets.all(18),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.surfaceHigh,
-        borderRadius: AppRadii.all(AppRadii.largeCard),
+        borderRadius: AppRadii.all(18),
         boxShadow: AppShadows.panel,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              const UdIconTile(
-                icon: Icons.search_rounded,
-                tone: UdIconTone.lime,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _t('Searching for drivers',
-                          'ڈرائیورز تلاش کیے جا رہے ہیں'),
-                      style: AppType.listTitle.copyWith(
-                        fontSize: 16.5,
-                        color: AppText.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      drivers > 0
-                          ? '$drivers ${_t('drivers nearby', 'ڈرائیور قریب ہیں')}'
-                          : _t('You choose your driver',
-                              'ڈرائیور آپ خود چنیں گے'),
-                      style: AppType.caption.copyWith(color: AppText.secondary),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              // Counting up, not down. The request stays open for an hour; a
-              // bar or a clock draining towards zero would say it is about to
-              // expire, which is the one thing it is not doing.
-              Text(
-                _elapsed,
-                style: AppType.listTitle.copyWith(
-                  fontSize: 16,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                  color: AppText.secondary,
-                ),
-              ),
-            ],
+          // Working, not counting down: the request stays open for an hour.
+          const LinearProgressIndicator(
+            minHeight: 4,
+            backgroundColor: AppColors.surfaceAlt,
+            color: AppColors.limeLine,
           ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: AppRadii.all(4),
-            child: const LinearProgressIndicator(
-              minHeight: 8,
-              backgroundColor: AppColors.surfaceAlt,
-              color: AppColors.limeLine,
-            ),
-          ),
-          const SizedBox(height: 16),
-          UdCard(
-            tone: UdCardTone.tint,
-            radius: AppRadii.field,
-            padding: const EdgeInsets.all(14),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.brand,
+                    borderRadius: AppRadii.all(12),
+                  ),
+                  child: const Icon(Icons.search_rounded,
+                      size: 19, color: AppColors.navy),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '${_t('YOUR OFFER', 'آپ کی پیشکش')}  ·  '
-                        '${widget.vehicleName}',
-                        style: AppType.overline
-                            .copyWith(color: AppText.secondary),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'PKR ${NumberFormat('#,###').format(_offer)}',
-                        style: AppType.priceMd.copyWith(
+                        '${_t('Searching for drivers', 'ڈرائیورز تلاش کیے جا رہے ہیں')}'
+                        ' · $_elapsed',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.listTitle.copyWith(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                           color: AppText.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${_t('Your offer', 'آپ کی پیشکش')} · ${widget.vehicleName}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.caption.copyWith(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppText.secondary,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Text(
-                    _t('Sent to drivers around you',
-                        'قریبی ڈرائیورز کو بھیج دیا گیا'),
-                    textAlign: TextAlign.right,
-                    style: AppType.caption.copyWith(color: AppText.secondary),
+                const SizedBox(width: 8),
+                Text(
+                  'PKR ${NumberFormat('#,###').format(_offer)}',
+                  style: AppType.listTitle.copyWith(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 14),
-          const UdDashedDivider(),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              const Icon(Icons.groups_outlined,
-                  size: 20, color: AppText.caption),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  _t('Driver offers will appear here as they answer.',
-                      'جواب آتے ہی آفرز یہاں ظاہر ہوں گی۔'),
-                  style: AppType.small.copyWith(color: AppText.secondary),
-                ),
-              ),
-            ],
           ),
         ],
       ),
