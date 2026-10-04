@@ -1,81 +1,182 @@
-# UDrive — Cleanup (sirf delete, koi file badli nahi)
+# UDrive — Admin ka Car rentals page
 
-**704 files** hatai jati hain jo live software mein use nahi hotin. Koi code file
-**edit nahi** hui, koi nayi file repo mein nahi aati.
+10 files. Screenshot alag bheja hai: **UDrive_shipped_admin_rental.png**.
 
-## Chalane ka tareeqa
+> ## Tarteeb
+>
+> **1.** `udrive_vehicle_usage.zip` → **2.** `udrive_car_rental.zip` → **3.** yeh zip.
+>
+> Paanch files pichle zip mein bhi theen; un ki **nayi** copy isi mein hai.
 
-**Kahan:** apne PC par, **repo ki root folder** mein (jahan `udrive_api`,
-`admin_portal`, `udrive_unified_mobile` folders hain).
+---
 
-1. `cleanup_udrive.ps1` ko repo ki root folder mein copy karein.
-2. Usi folder mein PowerShell kholein (folder mein Shift + Right-click → "Open PowerShell window here") aur chalayein:
+## Pehle yeh karein
 
-   ```
-   powershell -ExecutionPolicy Bypass -File .\cleanup_udrive.ps1
-   ```
-3. Aakhir mein likha aayega: `Delete hue: ...`
-4. `cleanup_udrive.ps1` ko repo se **hata dein** (commit nahi karni).
-5. GitHub Desktop → commit → push.
+Extract se **pehle** yeh 6 purani files delete kar dein:
 
-Script khud check karti hai ke aap root folder mein hain — ghalat jagah chali to kuch delete nahi karti.
+```
+udrive_api\Models\RentalDtos.cs
+udrive_api\Services\VehicleUsageService.cs
+udrive_api\Program.cs
+admin_portal\app\components\admin-frame.tsx
+udrive_unified_mobile\lib\core\rental\rental_repository.dart
+udrive_unified_mobile\lib\screens\customer\rental_booking_screen.dart
+```
 
-## Kya delete hota hai
+Yeh **chaar nayi** files hain, bas rakh dein:
 
-| Hissa | Files |
+```
+udrive_api\Infrastructure\Persistence\Migrations\063_rental_admin.sql
+udrive_api\Services\AdminRentalService.cs
+udrive_api\Controllers\AdminRentalController.cs
+admin_portal\app\rentals\page.tsx
+```
+
+---
+
+## Page kahan hai
+
+Admin portal → **Daily operations → Car rentals** (Bookings ke theek neeche).
+Rental bhi aik booking hai — sirf ghanton ke bajaye dinon ki.
+
+Chaar hissay: **numbers → list → settings → rent par lagi gaariyan**.
+
+---
+
+## Aap ke teen sawalon ke jawab — wohi jo maine tajweez kiye thay
+
+### 1 · Customer ke kaghaz — admin ko **nishan** dikhte hain, tasweer nahi
+
+Detail screen par likha aata hai *"CNIC front · CNIC back · Licence · Photo"* aur
+saath yeh jumla: **"The owner sees the images. We see only whether they were
+given."**
+
+Tasweer dekhne ka matlab hai platform us check ka hissa ban gaya jo us ki apni
+shartein kehti hain wo nahi karta. Aur asli check wo hai jo gaari dene wala
+saamne khare shakhs ke chehre se milata hai — us ki naql kisi daftar mein baithe
+shakhs ki screen par mumkin hi nahi.
+
+### 2 · Admin cancel — haan, magar wajah laazmi
+
+Khali box par button hi nahi chalta, aur server bhi `cancel_reason_required` keh
+kar mana karta hai.
+
+Record mein `cancelled_by = Admin` likha jata hai — **maalik par dagh nahi,
+customer par bhi nahi** — aur advance customer ko wapas. "Owner cancelled"
+likhna platform ka apne hi driver ke bare mein jhoot hota.
+
+Har admin cancel `audit_logs` mein bhi jata hai (`rental.cancelled`), wajah ke
+saath.
+
+### 3 · Deposit — **maximum**, jaisa maine kaha tha
+
+`rental.maximum_deposit`. **0 = koi had nahi**, jahan se yeh shuru hota hai.
+
+Had lagate hi driver app bhi maanti hai: zyada deposit rakhne par
+`rent_deposit_too_high` — *"The most you can ask as a deposit is PKR 50,000."*
+Pehle koi had nahi thi, aur 2 lakh deposit maang kar gaari ko listing mein
+rakhte huay bhi na-qabil-e-booking banaya ja sakta tha.
+
+---
+
+## Aik cheez jo maine saath hi theek kar di
+
+**Terms ka text ab database mein hai**, app ke andar nahi.
+
+Pehle aik jumla badalne ke liye naya build, Play Store review aur intezar chahiye
+tha — us lafz ke liye jo wakeel usi dopahar badalwana chahe. Is se bhi buri baat:
+**version pehle se har booking par mehfooz tha**, yani database bari ehtiyat se
+likh raha tha ke customer ne kon sa text mana, jab ke text wahan tha jahan
+database dekh hi nahi sakta.
+
+- Do nayi public settings: `rental.disclaimer_text_en` aur `_ur`.
+- App unhein usi **public settings route** se parhti hai jo pehle se chal raha
+  hai — koi naya plumbing nahi, aur login se pehle bhi parhi ja sakti hain.
+- **Version khud barhta hai** jab text badalta hai. Admin ke haath mein chhorne
+  ka matlab: jis din koi lafz badal kar number bhool gaya, us ke baad ki har
+  booking aise version par ishara karti hai jis ka text ab mojood hi nahi — aur
+  acceptance record, jis ke liye version rakha hi gaya tha, bekaar ho jata hai.
+- App wohi version bhejti hai jo **us ne screen par dikhaya**. Agar admin terms
+  usi waqt badal de jab customer screen khole baitha hai, server booking mana kar
+  deta hai — jo theek hai: customer ne wo lafz manay thay jo ab lafz nahi rahe.
+- Settings call na chale to app `version 0` wala purana text dikhati hai, jis par
+  booking **ho hi nahi sakti**. Aise lafzon par razamandi jinhein platform baad
+  mein pehchan na sake, dono mein se kisi ke kaam ki nahi.
+
+---
+
+## Jo admin yahan se **nahi** kar sakta
+
+- Kisi ki booking ki tareekhein, rate ya deposit badalna. Wo do doosray logon ka
+  tay kiya hua mamla hai; us mein haath dalna, aur wo bhi dono ko batai baghair,
+  is page ka kaam nahi.
+- Customer ke kaghaz ki tasweer kholna.
+- Maalik ki taraf se cancel dikhana.
+
+---
+
+## Chhoti cheezein jo kaam ki hain
+
+- **Deposit kabhi "paid" nahi likha.** List mein likha aata hai
+  *"+ PKR 20,000 deposit, with the owner"*. Wo raqam platform ke paas aati hi
+  nahi, aur aisa refund dhoondna jo humne liya hi nahi — aik lamba bekaar din
+  hota hai.
+- **CSV export** wohi rows deta hai jo screen par hain, filter samet. Server se
+  dobara query karne ka matlab hota ke export aur table chupke se alag ho jayein.
+- **Hidden ki wajah** poori likhi hoti hai — *"No photograph of this vehicle."* —
+  un lafzon mein jo agent phone par dohra sakta hai. Sirf "hidden" kehna call ko
+  shuru se shuru karwa deta hai.
+- **Advance collected** sirf advance ginta hai. Balance aur deposit platform tak
+  pohonchte hi nahi; unhein revenue dikhana aisa number hota jis par koi na koi
+  aakhir amal kar baithta.
+
+---
+
+## Build ke baad verify karein
+
+| File | Yeh text milna chahiye |
 |---|---|
-| `udrive_unified_mobile/udrive_api/` — purani duplicate copy | 203 |
-| `udrive_unified_mobile/admin_portal/` — purani duplicate copy | 66 |
-| `udrive_unified_mobile/docs/`, `play_store/`, `.github/`, `scripts/`, `testing/`, khali `udrive_unified_mobile/` | 137 |
-| Root `docs/`, `patch_payload/`, `scripts/`, `testing/` | 112 |
-| Dart files jo `main.dart` se kabhi compile nahi hotin | 16 |
-| `web/` ke purane favicon/icon (v1–v3) | 15 |
-| `admin_portal/public/branding/` ki 4 purani images | 4 |
-| Root aur mobile ke purane notes, `apply_*` scripts, `.bat.txt` copies, PDF | 151 |
+| `063_rental_admin.sql` | `rental.maximum_deposit` |
+| `AdminRentalService.cs` | `cancel_reason_required` |
+| `AdminRentalController.cs` | `admin/rentals` |
+| `RentalDtos.cs` | `AdminRentalSummaryDto` |
+| `VehicleUsageService.cs` | `rent_deposit_too_high` |
+| `Program.cs` | `AdminRentalService` |
+| `admin_portal/app/rentals/page.tsx` | `Vehicles on offer for rent` |
+| `admin_portal/app/components/admin-frame.tsx` | `Car rentals` |
+| `rental_repository.dart` | `class RentalTerms` |
+| `rental_booking_screen.dart` | `_terms.version` |
 
-Poori list `cleanup_udrive.ps1` ke andar hai.
+Admin portal par `tsc --noEmit` saaf. Readiness ke 17 test pass.
+Dart checkers saaf (`driver_home_screen.dart: uses 'S'` purana false-positive).
 
-## Jo rakha gaya
+---
 
-- Root: `README.md`, `UDrive_Admin_Guide.md`, `UDrive_Customer_Guide.md`, `UDrive_Driver_Guide.md`, `API_ENDPOINTS.md`, `DATABASE_CHANGES.md`, `play_store/`, `.github/`
-- Mobile: `create_upload_key.bat/.sh`, `build_play_bundle.bat`, `build_apk_windows.bat`, `build_apk.sh` (+ inke `BUILD_APK.md`, `WINDOWS_SCRIPTS_README.txt`)
-- `lib/core/widgets/driver_location_coordinator.dart` — `analysis_options.yaml` ki exclude list mein hai **magar live hai** (`main_shell.dart` use karta hai). Nahi hataya.
+## Live Postgres par kya chala kar dekha
 
-## Tasdeeq (verify)
+1. Migration 063 **do baar** — saaf. Chhe `rental.*` settings, sab `is_public`.
+2. Summary ke number: aik gaari bahar, aik self-drive, aik is hafte shuru,
+   advance **9,300** — cancelled booking ka 5,400 isi liye shamil nahi.
+3. Fleet: tasweer wali gaari `listed`, baghair tasweer wali `hidden` +
+   *"no photo"*.
+4. Settings upsert: version 1 → 2, text badla, `maximum_deposit` 50,000 — aur
+   wohi value jo `VehicleUsageService` ceiling ke taur par parhti hai.
+5. Admin cancel: pehli baar 1 row, **doosri baar 0** (do dafa cancel nahi hota),
+   audit row likhi gayi, aur cancelled booking ne apni tareekhein chhor deen.
 
-**GitHub Desktop mein:** sirf **Deleted** files nazar aayen, **Modified 0**, **Added 0**.
+---
 
-Yeh files **mojood nahi** honi chahiye:
+## Deploy ke baad
 
-| File / folder | Hona chahiye |
-|---|---|
-| `udrive_unified_mobile/udrive_api` | gayab |
-| `udrive_unified_mobile/admin_portal` | gayab |
-| `udrive_unified_mobile/lib/models/models.dart` | gayab |
-| `udrive_unified_mobile/lib/screens/home/home_screen.dart` | gayab |
-| `udrive_unified_mobile/web/favicon.png` | gayab |
+Migration khud lag jayegi. Us ke baad:
 
-Yeh files **mojood** rehni chahiye:
+1. Admin portal → **Car rentals** kholein. Settings mein deposit ki had rakh dein
+   (abhi 0 = koi had nahi).
+2. Terms ka text parh lein — jo abhi hai wo wohi hai jo app mein likha tha. Badal
+   dein to version khud 2 ho jayega.
 
-| File | Search string |
-|---|---|
-| `udrive_unified_mobile/lib/screens/customer/driver_offers_screen.dart` | `class DriverOffersScreen` |
-| `udrive_unified_mobile/lib/core/widgets/driver_location_coordinator.dart` | `DriverLocationCoordinator` |
-| `udrive_unified_mobile/web/favicon-v4.png` | (file mojood) |
-| `admin_portal/public/branding/udrive-icon-v3.png` | (file mojood) |
+---
 
-**Kahan: GitHub → Actions → Build UDrive → Run workflow** — push ke baad
-**Analyze** job hara (green) hona chahiye.
+## Agla
 
-## Static checks (cleanup ke baad)
-
-| Check | Pehle | Ab |
-|---|---|---|
-| audit_structure | CLEAN | CLEAN |
-| check_imports — missing imports | 1 (jhoota) | **0** |
-| check_imports — orphaned files | 9 | **0** |
-| check_imports — missing awaits | 4 | 4 |
-| check_required_args | 10 | **1** (`safety_repository.dart` ka apna local `TrustedContact` — jhoota alarm) |
-| check_const_colours | 0 | 0 |
-| Dart reachability | 157 / 173 | **157 / 157** |
-| Admin portal unused modules | 0 | 0 |
+**Growth zip 5** — referral, weekly, updates, notifications. Jo kahein.
