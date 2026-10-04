@@ -8,7 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/network/api_config.dart';
 import '../../core/services/offer_card_fields.dart';
-import '../../core/services/service_availability_repository.dart';
 import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/booking/booking_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
@@ -62,7 +61,21 @@ class DriverOffersScreen extends StatefulWidget {
 }
 
 class _DriverOffersScreenState extends State<DriverOffersScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  /// How far around the pickup the map shows while drivers are searched for.
+  static const double _searchRadiusKm = 2;
+
+  /// The zoom that fits [_searchRadiusKm] either side of the pickup on a phone.
+  static const double _searchZoom = 13.4;
+
+  /// Drives the "searching" rings over the pickup. An overlay, not a map
+  /// circle: animating a circle on the map would rebuild the whole map every
+  /// frame, which cheap phones cannot afford.
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  )..repeat();
+
   Timer? _poller;
   Timer? _ticker;
   bool _loading = true;
@@ -178,6 +191,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
     WidgetsBinding.instance.removeObserver(this);
     _poller?.cancel();
     _ticker?.cancel();
+    _pulse.dispose();
     _mapController.dispose();
     super.dispose();
   }
@@ -202,16 +216,23 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
     }
   }
 
-  /// Frames the trip once the map surface exists.
+  /// Frames the map once its surface exists: the 2 km around the pickup,
+  /// where the drivers being asked are — not the whole trip, which the
+  /// customer has just seen on the previous screen.
   ///
   /// Called on a delay rather than in the first frame: the renderer is chosen
-  /// after a connectivity check, so a fit issued immediately lands on nothing.
+  /// after a connectivity check, so a move issued immediately lands on nothing.
   void _frameRoute() {
+    final pickup = widget.pickupPoint;
     final points = _mapPoints;
-    if (points.length < 2) return;
+    if (pickup == null && points.length < 2) return;
     Future<void>.delayed(const Duration(milliseconds: 700), () {
       if (!mounted) return;
-      _mapController.fitBounds(points, padding: 70);
+      if (pickup != null) {
+        _mapController.moveTo(pickup, zoom: _searchZoom);
+      } else {
+        _mapController.fitBounds(points, padding: 70);
+      }
     });
   }
 
@@ -227,7 +248,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
     final vehicles = await NearbyVehicleRepository(controller.apiClient).nearby(
       latitude: pickup.latitude,
       longitude: pickup.longitude,
-      radiusKm: ServiceAvailabilityRepository.nearbyRadiusKm,
+      radiusKm: _searchRadiusKm,
     );
 
     if (!mounted) return;
@@ -957,7 +978,9 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          _backdrop(),
+          _backdrop(waiting: waiting),
+          if (waiting && widget.pickupPoint != null)
+            Positioned.fill(child: IgnorePointer(child: _searchPulse())),
 
           // The list sits over the map and only takes the height it needs, so
           // the route stays visible underneath while offers arrive.
@@ -1050,7 +1073,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
 
   /// The route behind the offers, or a plain surface when this screen was
   /// pushed without coordinates.
-  Widget _backdrop() {
+  Widget _backdrop({required bool waiting}) {
     final points = _mapPoints;
     if (points.length < 2) {
       return const ColoredBox(color: AppTint.mapBackdrop);
@@ -1059,12 +1082,11 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
     return UdMap(
       controller: _mapController,
       initialCenter: widget.pickupPoint ?? points.first,
-      // Interactive. It was locked to stop it panning under the offers list,
-      // but that also stopped the customer checking where the pickup actually
-      // is while they wait — which is the one useful thing to do with the map
-      // on this screen. The list is a sized box over the top, so a drag that
-      // starts on the map reaches the map and a drag on the list scrolls it.
-      interactive: true,
+      zoom: widget.pickupPoint != null ? _searchZoom : AppConfig.defaultMapZoom,
+      // Held still while searching, so the searching rings — drawn over the
+      // middle of the screen — stay on the pickup. Once offers arrive the map
+      // can be moved again, to check where a driver is coming from.
+      interactive: !waiting,
       showMyLocation: false,
       polylines: [
         UdPolyline(
@@ -1089,7 +1111,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
           UdCircle(
             id: 'offer-search-radius',
             centre: widget.pickupPoint!,
-            radiusMetres: AppConfig.nearbyVehiclesRadiusKm * 1000,
+            radiusMetres: _searchRadiusKm * 1000,
           ),
       ],
       markers: [
@@ -1116,6 +1138,50 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
             hue: UdMarkerHue.danger,
           ),
       ],
+    );
+  }
+
+  /// Two lime rings that grow out of the pickup and fade, while drivers are
+  /// being asked. The map is centred on the pickup and held still while
+  /// searching, so the middle of the screen is the pickup.
+  Widget _searchPulse() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = constraints.biggest.shortestSide * 0.78;
+        return AnimatedBuilder(
+          animation: _pulse,
+          builder: (context, _) {
+            Widget ring(double phase) {
+              final t = (_pulse.value + phase) % 1.0;
+              return Opacity(
+                opacity: (1 - t) * 0.45,
+                child: Transform.scale(
+                  scale: 0.12 + t * 0.88,
+                  child: Container(
+                    width: size,
+                    height: size,
+                    decoration: const BoxDecoration(
+                      color: AppColors.limeLine,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return Center(
+              child: SizedBox(
+                width: size,
+                height: size,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [ring(0), ring(0.5)],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
