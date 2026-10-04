@@ -9,6 +9,11 @@ import '../core/theme/app_tokens.dart';
 /// centred, "DISCOVER KASHMIR" beneath it, and a pale range of mountains along
 /// the bottom edge.
 ///
+/// The logo is drawn, not loaded from `assets/brand/`. The PNG it used to read
+/// was missing from the repository, so the splash shipped with an empty space
+/// where the logo should be. A painted pin and a text wordmark cannot go
+/// missing, stay sharp at any density, and cost nothing to load.
+///
 /// This is the screen the app draws. The one *before* it — the window the OS
 /// paints between tapping the icon and Flutter starting — is a different thing
 /// entirely, drawn from `android/app/src/main/res` and matching this one so the
@@ -80,14 +85,7 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Image.asset(
-                        'assets/brand/udrive_logo_stacked_light.png',
-                        width: logoWidth,
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.high,
-                        isAntiAlias: true,
-                        gaplessPlayback: true,
-                      ),
+                      _UDriveLogo(width: logoWidth),
                       const SizedBox(height: 18),
                       Text(
                         'DISCOVER KASHMIR',
@@ -117,6 +115,95 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
   }
+}
+
+/// The U-Pin mark stacked over the UDrive wordmark.
+class _UDriveLogo extends StatelessWidget {
+  const _UDriveLogo({required this.width});
+
+  /// The space the old stacked PNG took; mark and word scale from it.
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final markWidth = width * .49;
+    return Semantics(
+      label: 'UDrive',
+      image: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CustomPaint(
+            size: Size(markWidth, markWidth * 60 / 48),
+            painter: const _PinMarkPainter(
+              pin: AppColors.navy,
+              letter: AppColors.brand,
+            ),
+          ),
+          SizedBox(height: width * .055),
+          ExcludeSemantics(
+            child: Text(
+              'UDrive',
+              style: TextStyle(
+                fontFamily: AppType.family,
+                fontSize: width * .257,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -width * .0078,
+                height: 1,
+                color: AppColors.navy,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A location pin with a U cut into it, on a 48 x 60 grid.
+class _PinMarkPainter extends CustomPainter {
+  const _PinMarkPainter({required this.pin, required this.letter});
+
+  final Color pin;
+  final Color letter;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.scale(size.width / 48, size.height / 60);
+
+    final body = Path()
+      ..moveTo(24, 2)
+      ..cubicTo(12.4, 2, 3, 11.4, 3, 23)
+      ..cubicTo(3, 38.5, 24, 58, 24, 58)
+      ..cubicTo(24, 58, 45, 38.5, 45, 23)
+      ..cubicTo(45, 11.4, 35.6, 2, 24, 2)
+      ..close();
+    canvas.drawPath(body, Paint()..color = pin..isAntiAlias = true);
+
+    final u = Path()
+      ..moveTo(15.5, 14)
+      ..lineTo(15.5, 23.5)
+      ..arcToPoint(
+        const Offset(32.5, 23.5),
+        radius: const Radius.circular(8.5),
+        clockwise: false,
+      )
+      ..lineTo(32.5, 14);
+    canvas.drawPath(
+      u,
+      Paint()
+        ..color = letter
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..isAntiAlias = true,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PinMarkPainter oldDelegate) =>
+      oldDelegate.pin != pin || oldDelegate.letter != letter;
 }
 
 /// A short determinate-looking bar that never claims a percentage.
