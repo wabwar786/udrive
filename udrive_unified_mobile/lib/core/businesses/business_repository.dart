@@ -4,10 +4,9 @@ import '../network/api_client.dart';
 /// Data access for the Near Me module.
 ///
 /// Mirrors the shape of [HotelRepository]: a customer-facing search, plus the
-/// owner-facing CRUD a business uses to list itself. The endpoints below are
-/// the agreed contract; until the API ships them these calls surface an empty
-/// result rather than an error screen, so Near Me degrades to a clean empty
-/// state instead of breaking.
+/// owner-facing CRUD a business uses to list itself. The API serves all of
+/// these (BusinessesController). A failed search throws, so the screen can say
+/// "could not load" instead of claiming there is nothing nearby.
 class BusinessRepository {
   BusinessRepository(this.api);
 
@@ -49,17 +48,11 @@ class BusinessRepository {
       if (query.trim().isNotEmpty) 'q': query.trim(),
     };
 
-    try {
-      final response = await api.getJson(
-        '/api/v1/businesses/nearby?${Uri(queryParameters: parameters).query}',
-        authenticated: false,
-      );
-      return _parseList(response);
-    } catch (_) {
-      // The endpoint is not deployed yet in every environment. An empty list
-      // renders the "no listings here" state, which is the honest answer.
-      return const [];
-    }
+    final response = await api.getJson(
+      '/api/v1/businesses/nearby?${Uri(queryParameters: parameters).query}',
+      authenticated: false,
+    );
+    return _parseList(response);
   }
 
   /// GET /api/v1/businesses/{id}

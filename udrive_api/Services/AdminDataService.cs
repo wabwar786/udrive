@@ -94,7 +94,10 @@ public sealed class AdminDataService(
                   WHERE u.email LIKE 'demo.%@udrive.local' AND u.status <> 'Suspended' AND v.available_for_rent) AS demo_rentals,
                 (SELECT count(*) FROM udrive.hotels h
                    JOIN udrive.users u ON u.id = h.owner_user_id
-                  WHERE u.email LIKE 'demo.%@udrive.local') AS demo_hotels;
+                  WHERE u.email LIKE 'demo.%@udrive.local') AS demo_hotels,
+                (SELECT count(*) FROM udrive.businesses b
+                   JOIN udrive.users u ON u.id = b.owner_user_id
+                  WHERE u.email LIKE 'demo.%@udrive.local') AS demo_businesses;
             """;
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -114,7 +117,8 @@ public sealed class AdminDataService(
             demoVehicles = reader.GetInt64(10),
             demoTours = reader.GetInt64(11),
             demoRentals = reader.GetInt64(12),
-            demoHotels = reader.GetInt64(13)
+            demoHotels = reader.GetInt64(13),
+            demoBusinesses = reader.GetInt64(14)
         };
     }
 
@@ -242,6 +246,8 @@ public sealed class AdminDataService(
                 await ReadEmbeddedSqlAsync("demo_hotels.sql", cancellationToken)),
             (FleetScriptName,
                 await ReadEmbeddedSqlAsync("demo_fleet.sql", cancellationToken)),
+            ("the demo Near me businesses",
+                await ReadEmbeddedSqlAsync("demo_businesses.sql", cancellationToken)),
         ];
 
         await using var connection = new NpgsqlConnection(connectionString);
@@ -377,7 +383,7 @@ public sealed class AdminDataService(
         int accountsRemoved;
         string? accountsBlockedBy = null;
         int accountsFound, roomsFound, bookingsRemoved, hotelsRemoved;
-        int toursRemoved, vehiclesRemoved;
+        int toursRemoved, vehiclesRemoved, businessesRemoved;
         List<Guid> demoVehicleIds;
 
         try
@@ -465,6 +471,14 @@ public sealed class AdminDataService(
                 WHERE h.owner_user_id = u.id AND u.email LIKE @pattern;
                 """, cancellationToken);
 
+            // Near me listings: nothing references a business, so every one
+            // a demo account owns can go.
+            businessesRemoved = await ExecuteDemoAsync(connection, transaction, """
+                DELETE FROM udrive.businesses b
+                USING udrive.users u
+                WHERE b.owner_user_id = u.id AND u.email LIKE @pattern;
+                """, cancellationToken);
+
             // One savepoint per account. All in one went all-or-nothing: a
             // single old demo account still referenced by a real booking kept
             // every demo account, the new ones included.
@@ -549,6 +563,7 @@ public sealed class AdminDataService(
         if (toursRemoved > 0) removed.Add(Plural(toursRemoved, "demo tour", "demo tours"));
         if (vehiclesRemoved > 0) removed.Add(Plural(vehiclesRemoved, "demo vehicle", "demo vehicles"));
         if (hotelsRemoved > 0) removed.Add(Plural(hotelsRemoved, "hotel", "hotels"));
+        if (businessesRemoved > 0) removed.Add(Plural(businessesRemoved, "Near me business", "Near me businesses"));
         if (roomsFound > 0) removed.Add(Plural(roomsFound, "room type", "room types"));
         if (bookingsRemoved > 0) removed.Add(Plural(bookingsRemoved, "hotel booking", "hotel bookings"));
         if (accountsRemoved > 0) removed.Add(Plural(accountsRemoved, "demo account", "demo accounts"));

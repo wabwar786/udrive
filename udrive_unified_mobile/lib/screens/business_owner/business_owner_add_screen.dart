@@ -35,6 +35,12 @@ class _BusinessOwnerAddScreenState extends State<BusinessOwnerAddScreen> {
   bool _saving = false;
   bool _locating = false;
 
+  /// Opening hours: all day, or one daily window. Both times empty means the
+  /// owner gave none, and Near me then shows no open/closed line.
+  bool _open24 = false;
+  TimeOfDay? _opens;
+  TimeOfDay? _closes;
+
   @override
   void initState() {
     super.initState();
@@ -47,6 +53,9 @@ class _BusinessOwnerAddScreenState extends State<BusinessOwnerAddScreen> {
       _category = existing.category ?? BusinessCategory.restaurant;
       _latitude = existing.latitude;
       _longitude = existing.longitude;
+      _open24 = existing.open24Hours;
+      _opens = _parseTime(existing.opensAt);
+      _closes = _parseTime(existing.closesAt);
     }
   }
 
@@ -94,10 +103,44 @@ class _BusinessOwnerAddScreenState extends State<BusinessOwnerAddScreen> {
     }
   }
 
+  static TimeOfDay? _parseTime(String? hhmm) {
+    if (hhmm == null) return null;
+    final parts = hhmm.split(':');
+    if (parts.length < 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    return TimeOfDay(hour: hour, minute: minute);
+  }
+
+  static String _hhmm(TimeOfDay time) =>
+      '${time.hour.toString().padLeft(2, '0')}:'
+      '${time.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _pickTime({required bool opening}) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: (opening ? _opens : _closes) ??
+          TimeOfDay(hour: opening ? 9 : 21, minute: 0),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (opening) {
+        _opens = picked;
+      } else {
+        _closes = picked;
+      }
+    });
+  }
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     if (_latitude == null || _longitude == null) {
       _snack('Pin your business location before submitting.');
+      return;
+    }
+    if (!_open24 && (_opens == null) != (_closes == null)) {
+      _snack('Set both the opening and the closing time, or neither.');
       return;
     }
 
@@ -113,6 +156,11 @@ class _BusinessOwnerAddScreenState extends State<BusinessOwnerAddScreen> {
         'description': _description.text.trim(),
         'latitude': _latitude,
         'longitude': _longitude,
+        'open24Hours': _open24,
+        if (!_open24 && _opens != null && _closes != null) ...{
+          'opensAt': _hhmm(_opens!),
+          'closesAt': _hhmm(_closes!),
+        },
       };
 
       final existing = widget.existing;
@@ -229,6 +277,58 @@ class _BusinessOwnerAddScreenState extends State<BusinessOwnerAddScreen> {
               maxLines: 4,
               maxLength: 400,
             ),
+            const SizedBox(height: 16),
+
+            // Opening hours. Near me shows "Open · until 11 PM" from these,
+            // and the customer's "Open now" filter uses them.
+            const UdLabel('Opening hours'),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                UdChip(
+                  label: 'Set times',
+                  icon: Icons.schedule_rounded,
+                  selected: !_open24,
+                  onTap: () => setState(() => _open24 = false),
+                ),
+                UdChip(
+                  label: 'Open 24 hours',
+                  icon: Icons.all_inclusive_rounded,
+                  selected: _open24,
+                  onTap: () => setState(() => _open24 = true),
+                ),
+              ],
+            ),
+            if (!_open24) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: UdButton(
+                      label: _opens == null
+                          ? 'Opens at'
+                          : 'Opens ${_opens!.format(context)}',
+                      size: UdButtonSize.xs,
+                      variant: UdButtonVariant.outline,
+                      onPressed: () => _pickTime(opening: true),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: UdButton(
+                      label: _closes == null
+                          ? 'Closes at'
+                          : 'Closes ${_closes!.format(context)}',
+                      size: UdButtonSize.xs,
+                      variant: UdButtonVariant.outline,
+                      onPressed: () => _pickTime(opening: false),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
 
             // Pinned or not, in the shape the artboard gives it: a banner

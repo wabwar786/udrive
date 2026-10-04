@@ -1468,7 +1468,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
               selected: _service,
               hotels: _availabilityOf('hotels'),
               carRental: _availabilityOf('carRental'),
-              coster: _availabilityOf('coster'),
               explore: _availabilityOf('explore'),
               onSelect: _selectService,
               onExplore: _openExplore,
@@ -2840,13 +2839,14 @@ class _ServiceCards extends StatelessWidget {
   }
 }
 
-/// The second rank of services, as icons.
+/// The second rank of services, as icons: Hotels, Car rental, Explore.
+///
+/// Coster had its own tile here; it was taken off Home.
 class _QuickRow extends StatelessWidget {
   const _QuickRow({
     required this.selected,
     required this.hotels,
     required this.carRental,
-    required this.coster,
     required this.explore,
     required this.onSelect,
     required this.onExplore,
@@ -2857,7 +2857,6 @@ class _QuickRow extends StatelessWidget {
   final HomeService selected;
   final ServiceAvailability hotels;
   final ServiceAvailability carRental;
-  final ServiceAvailability coster;
   final ServiceAvailability explore;
   final ValueChanged<HomeService> onSelect;
   final VoidCallback onExplore;
@@ -2886,17 +2885,6 @@ class _QuickRow extends StatelessWidget {
             service: carRental,
             selected: false,
             onTap: onCarRental,
-            onClosed: onClosed,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _QuickTile(
-            icon: Icons.airport_shuttle_rounded,
-            label: 'Coster',
-            service: coster,
-            selected: selected == HomeService.bus,
-            onTap: () => onSelect(HomeService.bus),
             onClosed: onClosed,
           ),
         ),

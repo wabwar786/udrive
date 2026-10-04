@@ -35,6 +35,17 @@ extension BusinessCategoryInfo on BusinessCategory {
         BusinessCategory.mosque => 'Mosque',
       };
 
+  /// The one-word name on Near me's category tiles.
+  String get shortLabel => switch (this) {
+        BusinessCategory.restaurant => 'Food',
+        BusinessCategory.grocery => 'Grocery',
+        BusinessCategory.medicalStore => 'Pharmacy',
+        BusinessCategory.hospital => 'Hospital',
+        BusinessCategory.bank => 'ATM',
+        BusinessCategory.fuel => 'Fuel',
+        BusinessCategory.mosque => 'Mosque',
+      };
+
   /// The glyph on the filter chip.
   ///
   /// The comment above this enum has always said the categories keep their
@@ -103,6 +114,11 @@ class BusinessListing {
     this.verified = false,
     this.description,
     this.hours,
+    this.open24Hours = false,
+    this.opensAt,
+    this.closesAt,
+    this.rejectionReason,
+    this.isDemo = false,
   });
 
   final String id;
@@ -125,6 +141,41 @@ class BusinessListing {
   final bool verified;
   final String? description;
   final Map<String, String>? hours;
+
+  /// Opening hours as the owner gave them: open all day, or one daily window
+  /// in Pakistan time ("HH:mm"), which may cross midnight. Neither means no
+  /// hours were given, and [openNow] is then null.
+  final bool open24Hours;
+  final String? opensAt;
+  final String? closesAt;
+
+  /// Why an admin turned the listing down, for the owner's dashboard.
+  final String? rejectionReason;
+
+  /// A sample listing from the admin portal's demo data.
+  final bool isDemo;
+
+  /// "Open · until 11 PM", "Closed · opens 6 AM", "Open 24 hours", or null
+  /// when the owner gave no hours.
+  String? get openLabel {
+    if (open24Hours) return 'Open 24 hours';
+    final open = openNow;
+    if (open == null || opensAt == null || closesAt == null) return null;
+    return open
+        ? 'Open · until ${_clock(closesAt!)}'
+        : 'Closed · opens ${_clock(opensAt!)}';
+  }
+
+  static String _clock(String hhmm) {
+    final parts = hhmm.split(':');
+    final hour = int.tryParse(parts.first) ?? 0;
+    final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+    final h12 = hour % 12 == 0 ? 12 : hour % 12;
+    final suffix = hour < 12 ? 'AM' : 'PM';
+    return minute == 0
+        ? '$h12 $suffix'
+        : '$h12:${minute.toString().padLeft(2, '0')} $suffix';
+  }
 
   factory BusinessListing.fromJson(Map<String, dynamic> json) {
     return BusinessListing(
@@ -150,7 +201,17 @@ class BusinessListing {
           ? (json['hours'] as Map)
               .map((key, value) => MapEntry('$key', '$value'))
           : null,
+      open24Hours: json['open24Hours'] == true,
+      opensAt: _text(json['opensAt']),
+      closesAt: _text(json['closesAt']),
+      rejectionReason: _text(json['rejectionReason']),
+      isDemo: json['isDemo'] == true,
     );
+  }
+
+  static String? _text(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
   }
 
   Map<String, dynamic> toCreateJson() => {

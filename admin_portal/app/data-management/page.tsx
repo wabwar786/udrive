@@ -28,6 +28,7 @@ type DataStatus = {
   demoTours: number;
   demoRentals: number;
   demoHotels: number;
+  demoBusinesses: number;
 };
 
 const emptyStatus: DataStatus = {
@@ -45,6 +46,7 @@ const emptyStatus: DataStatus = {
   demoTours: 0,
   demoRentals: 0,
   demoHotels: 0,
+  demoBusinesses: 0,
 };
 
 export default function DataManagementPage() {
@@ -74,7 +76,7 @@ export default function DataManagementPage() {
   }, [load]);
 
   async function seedDemo() {
-    if (!window.confirm('Restore the destination catalogue and vehicle rate card, and add the demo hotels, tours and rental cars with their photos? Nothing is deleted — existing rows are refreshed in place.')) return;
+    if (!window.confirm('Restore the destination catalogue and vehicle rate card, and add the demo hotels, tours, rental cars (with photos) and Near me businesses? Nothing is deleted — existing rows are refreshed in place.')) return;
     setAction('demo');
     setError('');
     setSuccess('');
@@ -91,7 +93,7 @@ export default function DataManagementPage() {
 
   async function removeDemo() {
     if (!window.confirm(
-      'Remove the demo hotels, tours, rental cars and their demo accounts? The destination '
+      'Remove the demo hotels, tours, rental cars, Near me businesses and their demo accounts? The destination '
       + 'catalogue and vehicle rate card are not touched, and nothing belonging to a real '
       + 'customer, driver or hotel is affected. You can put the demo data back with Restore / refresh.'
     )) return;
@@ -167,7 +169,8 @@ export default function DataManagementPage() {
                 things the customer app cannot work without, because an empty rate card means no
                 fare can be quoted. Also adds demo data so the app has something to show: a few
                 approved hotels with rooms (and one pending hotel for testing approval), 10 tour
-                departures and 7 rental cars, each with a photo. Every demo listing carries a small
+                departures and 7 rental cars, each with a photo, and 10 Near me businesses in
+                Muzaffarabad. Every demo listing carries a small
                 &quot;Demo&quot; label in the app and cannot be booked. Existing records are refreshed,
                 never duplicated.
               </p>
@@ -176,6 +179,7 @@ export default function DataManagementPage() {
                 <span><strong>{status.demoTours}</strong> demo tours</span>
                 <span><strong>{status.demoRentals}</strong> demo rental cars</span>
                 <span><strong>{status.demoHotels}</strong> demo hotels</span>
+                <span><strong>{status.demoBusinesses}</strong> demo businesses</span>
               </div>
               <button className="primaryButton wide" disabled={!!action} onClick={() => void seedDemo()}>
                 <Database /> {action === 'demo' ? 'Restoring…' : 'Restore / refresh'}
@@ -189,7 +193,7 @@ export default function DataManagementPage() {
               <p>
                 Removes everything the demo accounts own — the ones whose address starts with
                 &quot;demo.&quot;: demo hotels with their rooms and bookings, demo tours, demo
-                vehicles and their photos, and the accounts themselves. Use it before going live.
+                vehicles and their photos, demo Near me businesses, and the accounts themselves. Use it before going live.
                 Kept: the destination catalogue, the vehicle rate card, every real record, and
                 your own portal account. Restore / refresh puts the demo data back.
               </p>
