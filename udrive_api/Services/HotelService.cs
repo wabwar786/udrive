@@ -123,7 +123,189 @@ public sealed class HotelService(string connectionString)
     /// optional inventory row unlocked, which is all this transaction needs.
     /// The same shape is already used by BookingService's booking lock.
     /// </remarks>
-    public async Task<ServiceResult<object>> BookAsync(Guid userId,Guid hotelId,CreateHotelBookingRequest x,CancellationToken ct){if(x.CheckOut<=x.CheckIn)return ServiceResult<object>.Fail(400,"dates","Check-out must be after check-in.");await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var tx=await c.BeginTransactionAsync(ct);try{decimal rate;int available;await using(var q=c.CreateCommand()){q.Transaction=tx;q.CommandText="""SELECT COALESCE(i.rate,r.base_rate),COALESCE(i.available_rooms,r.total_rooms) FROM udrive.hotel_rooms r JOIN udrive.hotels h ON h.id=r.hotel_id LEFT JOIN udrive.hotel_room_inventory i ON i.room_id=r.id AND i.inventory_date=@d WHERE r.id=@r AND h.id=@h AND lower(h.approval_status)='approved' AND h.is_active AND r.is_active FOR UPDATE OF r""";q.Parameters.AddWithValue("d",x.CheckIn);q.Parameters.AddWithValue("r",x.RoomId);q.Parameters.AddWithValue("h",hotelId);await using var rr=await q.ExecuteReaderAsync(ct);if(!await rr.ReadAsync(ct))return ServiceResult<object>.Fail(404,"room_not_found","Room is unavailable.");rate=rr.GetDecimal(0);available=rr.GetInt32(1);}if(available<x.Rooms)return ServiceResult<object>.Fail(409,"rooms_unavailable","Not enough rooms are available.");var nights=x.CheckOut.DayNumber-x.CheckIn.DayNumber;var amount=rate*x.Rooms*nights;Guid bookingId;await using(var ins=c.CreateCommand()){ins.Transaction=tx;ins.CommandText="""INSERT INTO udrive.hotel_bookings(customer_user_id,hotel_id,room_id,check_in,check_out,guests,rooms,amount,include_transport) VALUES(@u,@h,@r,@ci,@co,@g,@rooms,@a,@t) RETURNING id""";ins.Parameters.AddWithValue("u",userId);ins.Parameters.AddWithValue("h",hotelId);ins.Parameters.AddWithValue("r",x.RoomId);ins.Parameters.AddWithValue("ci",x.CheckIn);ins.Parameters.AddWithValue("co",x.CheckOut);ins.Parameters.AddWithValue("g",x.Guests);ins.Parameters.AddWithValue("rooms",x.Rooms);ins.Parameters.AddWithValue("a",amount);ins.Parameters.AddWithValue("t",x.IncludeTransport);bookingId=(Guid)(await ins.ExecuteScalarAsync(ct))!;}await tx.CommitAsync(ct);return ServiceResult<object>.Ok(new{bookingId,amount,includeTransport=x.IncludeTransport,transportDestination=new{hotelId,latitude=(double?)null,longitude=(double?)null}});}catch{await tx.RollbackAsync(ct);throw;}}
+    public async Task<ServiceResult<HotelBookingCreatedDto>> BookAsync(Guid userId,Guid hotelId,CreateHotelBookingRequest x,CancellationToken ct)
+    {
+        if(x.CheckOut<=x.CheckIn)return ServiceResult<HotelBookingCreatedDto>.Fail(400,"dates","Check-out must be after check-in.");
+        if(x.Guests<1||x.Rooms<1)return ServiceResult<HotelBookingCreatedDto>.Fail(400,"guests","At least one guest and one room are needed.");
+
+        // How the customer is getting there. Anything unknown is the customer's
+        // own car, which is what the booking assumed before this was asked.
+        var arrivalMode=(x.ArrivalMode??"").Trim() switch
+        {
+            "UDriveRide"=>"UDriveRide",
+            "HotelTransport"=>"HotelTransport",
+            _=>x.IncludeTransport?"HotelTransport":"OwnCar"
+        };
+        TimeOnly? arrivalTime=null;
+        if(!string.IsNullOrWhiteSpace(x.ArrivalTime))
+        {
+            if(!TimeOnly.TryParseExact(x.ArrivalTime.Trim(),"HH:mm",System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out var parsed))
+                return ServiceResult<HotelBookingCreatedDto>.Fail(400,"arrival_time","Arrival time must look like 14:00.");
+            arrivalTime=parsed;
+        }
+        var carNumber=Clip(x.CarNumber,20);
+        var guestName=Clip(x.GuestName,120);
+        var guestPhone=Clip(x.GuestPhone,24);
+        var includeTransport=x.IncludeTransport||arrivalMode=="HotelTransport";
+
+        await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var tx=await c.BeginTransactionAsync(ct);
+        try
+        {
+            decimal rate;int available;
+            await using(var q=c.CreateCommand())
+            {
+                q.Transaction=tx;
+                q.CommandText="""SELECT COALESCE(i.rate,r.base_rate),COALESCE(i.available_rooms,r.total_rooms) FROM udrive.hotel_rooms r JOIN udrive.hotels h ON h.id=r.hotel_id LEFT JOIN udrive.hotel_room_inventory i ON i.room_id=r.id AND i.inventory_date=@d WHERE r.id=@r AND h.id=@h AND lower(h.approval_status)='approved' AND h.is_active AND r.is_active FOR UPDATE OF r""";
+                q.Parameters.AddWithValue("d",x.CheckIn);q.Parameters.AddWithValue("r",x.RoomId);q.Parameters.AddWithValue("h",hotelId);
+                await using var rr=await q.ExecuteReaderAsync(ct);
+                if(!await rr.ReadAsync(ct))return ServiceResult<HotelBookingCreatedDto>.Fail(404,"room_not_found","Room is unavailable.");
+                rate=rr.GetDecimal(0);available=rr.GetInt32(1);
+            }
+            if(available<x.Rooms)return ServiceResult<HotelBookingCreatedDto>.Fail(409,"rooms_unavailable","Not enough rooms are available.");
+
+            // The name and number the hotel is told. What the customer typed on
+            // the confirm screen, or their account's own when they left it.
+            if(guestName is null||guestPhone is null)
+            {
+                await using var u=c.CreateCommand();u.Transaction=tx;
+                u.CommandText="SELECT full_name,phone_number FROM udrive.users WHERE id=@u";
+                u.Parameters.AddWithValue("u",userId);
+                await using var ur=await u.ExecuteReaderAsync(ct);
+                if(await ur.ReadAsync(ct)){guestName??=Clip(ur.GetString(0),120);guestPhone??=Clip(ur.GetString(1),24);}
+            }
+
+            var nights=x.CheckOut.DayNumber-x.CheckIn.DayNumber;var amount=rate*x.Rooms*nights;Guid bookingId;string reference;
+            await using(var ins=c.CreateCommand())
+            {
+                ins.Transaction=tx;
+                ins.CommandText="""
+                    INSERT INTO udrive.hotel_bookings(customer_user_id,hotel_id,room_id,check_in,check_out,guests,rooms,amount,include_transport,
+                                                      arrival_time,arrival_mode,car_number,guest_name,guest_phone)
+                    VALUES(@u,@h,@r,@ci,@co,@g,@rooms,@a,@t,@at,@am,@car,@gn,@gp)
+                    RETURNING id
+                    """;
+                ins.Parameters.AddWithValue("u",userId);ins.Parameters.AddWithValue("h",hotelId);ins.Parameters.AddWithValue("r",x.RoomId);ins.Parameters.AddWithValue("ci",x.CheckIn);ins.Parameters.AddWithValue("co",x.CheckOut);ins.Parameters.AddWithValue("g",x.Guests);ins.Parameters.AddWithValue("rooms",x.Rooms);ins.Parameters.AddWithValue("a",amount);ins.Parameters.AddWithValue("t",includeTransport);
+                ins.Parameters.Add(new NpgsqlParameter("at",NpgsqlDbType.Time){Value=arrivalTime.HasValue?(object)arrivalTime.Value:DBNull.Value});
+                ins.Parameters.AddWithValue("am",arrivalMode);
+                ins.Parameters.Add(new NpgsqlParameter("car",NpgsqlDbType.Text){Value=(object?)carNumber??DBNull.Value});
+                ins.Parameters.Add(new NpgsqlParameter("gn",NpgsqlDbType.Text){Value=(object?)guestName??DBNull.Value});
+                ins.Parameters.Add(new NpgsqlParameter("gp",NpgsqlDbType.Text){Value=(object?)guestPhone??DBNull.Value});
+                bookingId=(Guid)(await ins.ExecuteScalarAsync(ct))!;
+            }
+            // Read out to the guest and the hotel, so short and unambiguous: no
+            // 0/O or 1/I confusion is possible in hex.
+            reference="UDH-"+bookingId.ToString("N")[..8].ToUpperInvariant();
+            await using(var upd=c.CreateCommand())
+            {
+                upd.Transaction=tx;upd.CommandText="UPDATE udrive.hotel_bookings SET booking_reference=@ref WHERE id=@id";
+                upd.Parameters.AddWithValue("ref",reference);upd.Parameters.AddWithValue("id",bookingId);
+                await upd.ExecuteNonQueryAsync(ct);
+            }
+            await tx.CommitAsync(ct);
+            return ServiceResult<HotelBookingCreatedDto>.Ok(new HotelBookingCreatedDto(bookingId,reference,amount,includeTransport,new{hotelId,latitude=(double?)null,longitude=(double?)null},nights,false));
+        }
+        catch{await tx.RollbackAsync(CancellationToken.None);throw;}
+    }
+
+    /// <summary>
+    /// The WhatsApp message telling the hotel who is coming, or null when there
+    /// is nobody to send it to.
+    /// </summary>
+    /// <remarks>
+    /// The hotel's own contact number first, then the owner's account number.
+    /// Self-test hotels are skipped: their numbers are not real and the run
+    /// must not message anyone.
+    /// </remarks>
+    public async Task<HotelOwnerNotice?> OwnerNoticeAsync(Guid bookingId,CancellationToken ct)
+    {
+        await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();
+        cmd.CommandText="""
+            SELECT h.name,COALESCE(NULLIF(trim(h.contact_phone),''),o.phone_number),o.email,
+                   b.booking_reference,b.guest_name,b.guest_phone,b.guests,b.rooms,r.room_type,
+                   b.check_in,b.check_out,b.arrival_time,b.arrival_mode,b.car_number,b.amount
+            FROM udrive.hotel_bookings b
+            JOIN udrive.hotels h ON h.id=b.hotel_id
+            JOIN udrive.users o ON o.id=h.owner_user_id
+            JOIN udrive.hotel_rooms r ON r.id=b.room_id
+            WHERE b.id=@id
+            """;
+        cmd.Parameters.AddWithValue("id",bookingId);
+        await using var r=await cmd.ExecuteReaderAsync(ct);
+        if(!await r.ReadAsync(ct))return null;
+        var to=r.IsDBNull(1)?"":r.GetString(1);
+        var ownerEmail=r.IsDBNull(2)?"":r.GetString(2);
+        if(string.IsNullOrWhiteSpace(to)||ownerEmail.StartsWith("selftest.",StringComparison.OrdinalIgnoreCase))return null;
+
+        var checkIn=r.GetFieldValue<DateOnly>(9);var checkOut=r.GetFieldValue<DateOnly>(10);
+        var nights=checkOut.DayNumber-checkIn.DayNumber;
+        var arrival=r.IsDBNull(11)?"Not given":DateTime.Today.Add(r.GetFieldValue<TimeSpan>(11)).ToString("h:mm tt",System.Globalization.CultureInfo.InvariantCulture);
+        var mode=r.GetString(12) switch{"UDriveRide"=>"UDrive ride","HotelTransport"=>"Hotel transport (please arrange pickup)",_=>"Own car"};
+        var car=r.IsDBNull(13)?"":$" · {r.GetString(13)}";
+        static string D(DateOnly d)=>d.ToString("ddd d MMM yyyy",System.Globalization.CultureInfo.InvariantCulture);
+
+        var message=
+            $"*New booking — {r.GetString(0)}*\n"+
+            $"Booking: {(r.IsDBNull(3)?"":r.GetString(3))}\n\n"+
+            $"Guest: {(r.IsDBNull(4)?"":r.GetString(4))}\n"+
+            $"Mobile / WhatsApp: {(r.IsDBNull(5)?"":r.GetString(5))}\n"+
+            $"Guests: {r.GetInt32(6)} · Rooms: {r.GetInt32(7)} ({r.GetString(8)})\n\n"+
+            $"Check-in: {D(checkIn)}\n"+
+            $"Arriving around: {arrival}\n"+
+            $"Check-out: {D(checkOut)} ({nights} {(nights==1?"night":"nights")})\n\n"+
+            $"Coming by: {mode}{car}\n"+
+            $"Amount: PKR {r.GetDecimal(14):N0} — to be paid at the hotel\n\n"+
+            "Please keep the room ready. To change or cancel, open the UDrive hotel panel.";
+        return new HotelOwnerNotice(to,message);
+    }
+
+    /// <summary>Records whether the hotel's WhatsApp message went out.</summary>
+    public async Task RecordOwnerNoticeAsync(Guid bookingId,bool sent,string? error,CancellationToken ct)
+    {
+        await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();
+        cmd.CommandText="UPDATE udrive.hotel_bookings SET owner_notified_at=CASE WHEN @sent THEN now() ELSE owner_notified_at END,owner_notify_error=@err,updated_at=now() WHERE id=@id";
+        cmd.Parameters.AddWithValue("sent",sent);
+        cmd.Parameters.Add(new NpgsqlParameter("err",NpgsqlDbType.Text){Value=(object?)Clip(error,300)??DBNull.Value});
+        cmd.Parameters.AddWithValue("id",bookingId);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>The customer's own hotel bookings, newest first: "My stays".</summary>
+    public async Task<ServiceResult<object>> MyBookingsAsync(Guid userId,CancellationToken ct)
+    {
+        await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var cmd=c.CreateCommand();
+        cmd.CommandText="""
+            SELECT b.id,b.booking_reference,b.hotel_id,h.name,h.address,h.city,h.latitude,h.longitude,h.contact_phone,h.main_image_url,
+                   r.room_type,b.check_in,b.check_out,b.guests,b.rooms,b.amount,b.status,b.arrival_time,b.arrival_mode,b.car_number,
+                   b.owner_notified_at IS NOT NULL,b.created_at
+            FROM udrive.hotel_bookings b
+            JOIN udrive.hotels h ON h.id=b.hotel_id
+            JOIN udrive.hotel_rooms r ON r.id=b.room_id
+            WHERE b.customer_user_id=@u
+            ORDER BY b.check_in DESC,b.created_at DESC
+            LIMIT 100
+            """;
+        cmd.Parameters.AddWithValue("u",userId);
+        var list=new List<object>();await using var rr=await cmd.ExecuteReaderAsync(ct);
+        while(await rr.ReadAsync(ct))
+        {
+            var checkIn=rr.GetFieldValue<DateOnly>(11);var checkOut=rr.GetFieldValue<DateOnly>(12);
+            list.Add(new
+            {
+                id=rr.GetGuid(0),
+                reference=rr.IsDBNull(1)?null:rr.GetString(1),
+                hotelId=rr.GetGuid(2),hotelName=rr.GetString(3),address=rr.GetString(4),city=rr.GetString(5),
+                latitude=rr.GetDouble(6),longitude=rr.GetDouble(7),contactPhone=rr.GetString(8),mainImageUrl=rr.GetString(9),
+                roomType=rr.GetString(10),checkIn,checkOut,nights=checkOut.DayNumber-checkIn.DayNumber,
+                guests=rr.GetInt32(13),rooms=rr.GetInt32(14),amount=rr.GetDecimal(15),status=rr.GetString(16),
+                arrivalTime=rr.IsDBNull(17)?null:TimeOnly.FromTimeSpan(rr.GetFieldValue<TimeSpan>(17)).ToString("HH:mm",System.Globalization.CultureInfo.InvariantCulture),
+                arrivalMode=rr.GetString(18),carNumber=rr.IsDBNull(19)?null:rr.GetString(19),
+                ownerNotified=rr.GetBoolean(20),createdAt=rr.GetDateTime(21)
+            });
+        }
+        return ServiceResult<object>.Ok(list);
+    }
+
+    static string? Clip(string? value,int max){var v=value?.Trim();if(string.IsNullOrEmpty(v))return null;return v.Length>max?v[..max]:v;}
 
     /// <remarks>
     /// @h is bound as a typed uuid parameter, not with AddWithValue. The filter

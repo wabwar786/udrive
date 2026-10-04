@@ -20,7 +20,42 @@ public sealed class HotelsController(HotelService service):ControllerBase
     [Authorize,HttpPost("owner")] public async Task<IActionResult> Create(CreateHotelRequest x,CancellationToken ct)=>Result(await service.CreateAsync(User.GetRequiredUserId(),x,ct));
     [Authorize,HttpGet("owner/bookings")] public async Task<IActionResult> OwnerBookings([FromQuery]Guid? hotelId,CancellationToken ct)=>Result(await service.OwnerBookingsAsync(User.GetRequiredUserId(),hotelId,ct));
         [Authorize,HttpPost("owner/{hotelId:guid}/rooms")] public async Task<IActionResult> AddRoom(Guid hotelId,CreateHotelRoomRequest x,CancellationToken ct)=>Result(await service.AddRoomAsync(User.GetRequiredUserId(),hotelId,x,ct));
-    [Authorize,HttpPost("{hotelId:guid}/bookings")] public async Task<IActionResult> Book(Guid hotelId,CreateHotelBookingRequest x,CancellationToken ct)=>Result(await service.BookAsync(User.GetRequiredUserId(),hotelId,x,ct));
+    [Authorize,HttpGet("my-bookings")] public async Task<IActionResult> MyBookings(CancellationToken ct)=>Result(await service.MyBookingsAsync(User.GetRequiredUserId(),ct));
+
+    /// <summary>
+    /// Books the room, then tells the hotel on WhatsApp who is coming and when.
+    /// </summary>
+    /// <remarks>
+    /// The message goes after the booking is committed and never undoes it: a
+    /// guest with a confirmed room must not be turned away because WhatsApp was
+    /// slow. Whether it went out is recorded on the booking and returned as
+    /// <c>ownerNotified</c>, so the app can tell the customer to call instead.
+    /// </remarks>
+    [Authorize,HttpPost("{hotelId:guid}/bookings")]
+    public async Task<IActionResult> Book(Guid hotelId,CreateHotelBookingRequest x,[FromServices]WhatsAppService whatsApp,[FromServices]ILogger<HotelsController> logger,CancellationToken ct)
+    {
+        var result=await service.BookAsync(User.GetRequiredUserId(),hotelId,x,ct);
+        if(!result.Success||result.Data is null)return Result(result);
+
+        var booking=result.Data;
+        var notified=false;
+        try
+        {
+            var notice=await service.OwnerNoticeAsync(booking.BookingId,CancellationToken.None);
+            if(notice is not null)
+            {
+                using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(12));
+                var sent=await whatsApp.SendTextAsync(notice.To,notice.Message,timeout.Token);
+                notified=sent.Success;
+                await service.RecordOwnerNoticeAsync(booking.BookingId,sent.Success,sent.Success?null:sent.ErrorCode,CancellationToken.None);
+            }
+        }
+        catch(Exception exception)
+        {
+            logger.LogError(exception,"Hotel booking {BookingId} was saved but the owner could not be messaged.",booking.BookingId);
+        }
+        return Ok(new{success=true,data=booking with{OwnerNotified=notified}});
+    }
     [Authorize(Roles="Admin,SuperAdmin"),HttpGet("admin")] public async Task<IActionResult> AdminList([FromQuery]string? status,[FromQuery]string? query,CancellationToken ct)=>Result(await service.AdminListAsync(status,query,ct));
     [Authorize(Roles="Admin,SuperAdmin"),HttpGet("admin/pending")] public async Task<IActionResult> Pending(CancellationToken ct)=>Result(await service.PendingAsync(ct));
     [Authorize(Roles="Admin,SuperAdmin"),HttpPost("admin/{id:guid}/review")] public async Task<IActionResult> Review(Guid id,ReviewHotelRequest x,CancellationToken ct)=>Result(await service.ReviewAsync(User.GetRequiredUserId(),id,x,ct));

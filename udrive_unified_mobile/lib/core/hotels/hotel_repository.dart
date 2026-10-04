@@ -134,6 +134,15 @@ class HotelRepository {
     await api.postJson('/api/v1/hotels/owner/$id/rooms', values);
   }
 
+  /// The customer's own hotel bookings, newest first.
+  Future<List<HotelStay>> myBookings() async {
+    final response = await api.getJson('/api/v1/hotels/my-bookings');
+    return ((_data(response) as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => HotelStay.fromJson(Map<String, dynamic>.from(item)))
+        .toList(growable: false);
+  }
+
   Future<Map<String, dynamic>> book(
     String hotelId,
     Map<String, dynamic> values,

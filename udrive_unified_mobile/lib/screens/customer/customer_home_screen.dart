@@ -1598,6 +1598,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       );
       return;
     }
+    // Hotel too: the hotel screen asks where and when itself, at the top of
+    // its own list, so the home panel in between is one screen too many.
+    if (service == HomeService.hotel) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const HotelListScreen()),
+      );
+      return;
+    }
     // Hotel opens its own panel straight away, so it needs the room now rather
     // than after a destination it never asks for.
     if (service == HomeService.hotel) _liftSheet();

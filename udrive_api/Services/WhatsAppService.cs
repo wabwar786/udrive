@@ -84,6 +84,55 @@ public sealed class WhatsAppService(
         }
     }
 
+    /// <summary>
+    /// One plain WhatsApp text through the WA Engine, for system notices such
+    /// as a hotel being told about a booking. The API key stays in the admin
+    /// settings; nothing here reads it from a file.
+    /// </summary>
+    public async Task<ServiceResult<WhatsAppSendResultDto>> SendTextAsync(
+        string to,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        var number = NormalizePhone(to);
+        if (number.Length < 10 || number.Length > 15)
+        {
+            return ServiceResult<WhatsAppSendResultDto>.Fail(400, "invalid_whatsapp_number", "A valid WhatsApp mobile number is required.");
+        }
+
+        var endpoint = await otpDelivery.EndpointAsync(cancellationToken);
+        if (!Configured(endpoint.ApiKey))
+        {
+            return ServiceResult<WhatsAppSendResultDto>.Fail(503, "whatsapp_not_configured", "WhatsApp is not configured.");
+        }
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint.BaseUrl + endpoint.SendPath);
+        httpRequest.Headers.TryAddWithoutValidation("x-api-key", endpoint.ApiKey);
+        httpRequest.Content = JsonContent.Create(new { to = number, message });
+
+        try
+        {
+            using var response = await client.SendAsync(httpRequest, cancellationToken);
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                LogProviderFailure(response, responseBody, "text notice");
+                return ServiceResult<WhatsAppSendResultDto>.Fail(502, "whatsapp_delivery_failed", "The WhatsApp message could not be sent.");
+            }
+
+            return ServiceResult<WhatsAppSendResultDto>.Ok(new WhatsAppSendResultDto(true, ProviderMessageId(responseBody)));
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return ServiceResult<WhatsAppSendResultDto>.Fail(504, "whatsapp_timeout", "WhatsApp timed out.");
+        }
+        catch (HttpRequestException exception)
+        {
+            logger.LogError(exception, "WA Engine text notice failed.");
+            return ServiceResult<WhatsAppSendResultDto>.Fail(503, "whatsapp_unavailable", "WhatsApp is temporarily unavailable.");
+        }
+    }
+
     public async Task<ServiceResult<WhatsAppBulkSendResultDto>> SendEmergencyBroadcastAsync(
         WhatsAppEmergencyBroadcastRequest request,
         CancellationToken cancellationToken)
