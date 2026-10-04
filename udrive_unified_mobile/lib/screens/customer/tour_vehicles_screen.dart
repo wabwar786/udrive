@@ -22,7 +22,11 @@ import 'live_tour_interest_screen.dart';
 /// ask: are there seats, is the whole vehicle still free, what leaves today,
 /// what can I take for my own party.
 class TourVehiclesScreen extends StatefulWidget {
-  const TourVehiclesScreen({super.key});
+  const TourVehiclesScreen({this.initialDestination, super.key});
+
+  /// Opened from Explore: the place the customer was looking at, already in
+  /// the "where to" filter.
+  final String? initialDestination;
 
   @override
   State<TourVehiclesScreen> createState() => _TourVehiclesScreenState();
@@ -90,7 +94,8 @@ class _TourVehiclesScreenState extends State<TourVehiclesScreen> {
   String? _error;
   List<LiveTourPackage> _all = const [];
   _TourFilter _filter = _TourFilter.all;
-  _TourQuery _query = const _TourQuery();
+  late _TourQuery _query =
+      _TourQuery(destination: widget.initialDestination?.trim() ?? '');
 
   @override
   void initState() {

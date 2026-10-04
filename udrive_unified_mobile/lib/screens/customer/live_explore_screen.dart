@@ -1,24 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 
-import '../../core/theme/app_tokens.dart';
-import '../../core/auth/session_store.dart';
-import '../../core/network/api_client.dart';
-import '../../core/network/api_config.dart';
+import '../../core/explore/explore_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
-import '../../models/booking_models.dart';
-import 'live_packages_screen.dart';
-import 'tourism_booking_screen.dart';
+import '../explore/explore_bits.dart';
+import '../explore/explore_map_screen.dart';
+import '../explore/explore_place_screen.dart';
+import '../hotels/hotel_list_screen.dart';
+import 'rental_list_screen.dart';
+import 'tour_vehicles_screen.dart';
 
-/// C-40 — Explore Kashmir.
+/// Explore Kashmir — read like a travel magazine.
 ///
-/// A bottom-nav tab root. It used to carry its own `Scaffold` and a navy
-/// `AppBar` with a back arrow and a Home button, which since the shell started
-/// drawing a white bar for every tab meant **two bars stacked on one screen** —
-/// and a back arrow on a tab root, which has nothing to go back to. The bar is
-/// the shell's; this screen is just the page under it.
+/// A big photograph of a place that is in season right now, districts to
+/// narrow by, what is close to the customer, then every place. Everything on
+/// it comes from the destination catalogue the admin keeps in the portal.
 class LiveExploreScreen extends StatefulWidget {
   const LiveExploreScreen({super.key});
 
@@ -27,767 +26,1050 @@ class LiveExploreScreen extends StatefulWidget {
 }
 
 class _LiveExploreScreenState extends State<LiveExploreScreen> {
-  late final ApiClient _api;
-  final _search = TextEditingController();
-  List<Map<String, dynamic>> _items = const [];
+  List<ExplorePlace> _places = const [];
+  Set<String> _saved = const {};
+  LatLng? _me;
   bool _busy = true;
   String? _error;
-  int _tab = 0;
+  bool _started = false;
 
-  bool get _urdu => AppControllerScope.of(context).locale.languageCode == 'ur';
-  String _t(String en, String ur) => _urdu ? ur : en;
+  /// Selected district, '★' for saved, or null for All.
+  String? _district;
+  final PageController _hero = PageController();
+  int _heroIndex = 0;
+
+  static const _savedKey = '★';
 
   @override
-  void initState() {
-    super.initState();
-    _api = ApiClient(SessionStore());
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
   void dispose() {
-    _search.dispose();
+    _hero.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    if (mounted) {
-      setState(() {
-        _busy = true;
-        _error = null;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     final controller = AppControllerScope.of(context);
-
     try {
-      final language = controller.locale.languageCode;
-      // Separately, not in one `Future.wait`.
-      //
-      // `Future.wait` rejects on the first failure, so a marketplace refresh
-      // that failed threw away a destination list that had already arrived and
-      // the screen showed an error with nothing on it. The two have nothing to
-      // do with each other.
-      final response = await _api.getJson(
-        '/api/v1/catalog/destinations?language=$language',
-        authenticated: false,
-      );
-      final raw = response['data'] as List? ?? const [];
-      _items =
-          raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-    } catch (error) {
-      _error = '$error';
-    }
-
-    try {
-      await controller.refreshPhase9Marketplace();
+      final places = await ExploreRepository(controller.apiClient)
+          .places(language: controller.locale.languageCode);
+      final saved = await ExploreRepository.saved();
+      if (!mounted) return;
+      setState(() {
+        _places = places;
+        _saved = saved;
+      });
     } catch (_) {
-      // The packages rail is optional. The destinations above are the screen.
+      if (!mounted) return;
+      setState(() =>
+          _error = 'Places could not be loaded. Check your connection.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    if (mounted) setState(() => _busy = false);
+    // Distances are a nicety: the screen does not wait for them.
+    final me = await ExploreLocation.get();
+    if (mounted && me != null) setState(() => _me = me);
+  }
+
+  double? _km(ExplorePlace p) {
+    final me = _me;
+    if (me == null || (p.latitude == 0 && p.longitude == 0)) return null;
+    return ExploreLocation.roadKm(me, p.latitude, p.longitude);
+  }
+
+  List<ExplorePlace> get _featured {
+    final month = DateTime.now().month;
+    final inSeason = _places.where((p) => p.inSeason(month)).toList()
+      ..sort((a, b) => b.familyScore.compareTo(a.familyScore));
+    final pool = inSeason.isEmpty ? [..._places] : inSeason;
+    return pool.take(3).toList(growable: false);
+  }
+
+  List<String> get _districts {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final p in _places) {
+      final d = p.district;
+      if (d.isEmpty || !seen.add(d.toLowerCase())) continue;
+      out.add(d);
+    }
+    return out;
+  }
+
+  List<ExplorePlace> get _filtered => _places.where((p) {
+        final d = _district;
+        if (d == null) return true;
+        if (d == _savedKey) return _saved.contains(p.id);
+        return p.district.toLowerCase() == d.toLowerCase();
+      }).toList(growable: false);
+
+  List<ExplorePlace> get _nearOrPopular {
+    final list = [..._places];
+    if (_me != null) {
+      list.sort((a, b) =>
+          (_km(a) ?? double.infinity).compareTo(_km(b) ?? double.infinity));
+    } else {
+      list.sort((a, b) => b.familyScore.compareTo(a.familyScore));
+    }
+    return list.take(6).toList(growable: false);
+  }
+
+  Future<void> _open(ExplorePlace place) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ExplorePlaceScreen(place: place, places: _places),
+      ),
+    );
+    final saved = await ExploreRepository.saved();
+    if (mounted) setState(() => _saved = saved);
+  }
+
+  void _openMap() => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ExploreMapScreen(places: _places, onOpen: _open),
+        ),
+      );
+
+  Future<void> _search() async {
+    final picked = await showModalBottomSheet<ExplorePlace>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SearchSheet(places: _places),
+    );
+    if (picked != null && mounted) await _open(picked);
+  }
+
+  Future<void> _planTrip() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheet) => _PlanSheet(onPick: (v) => Navigator.pop(sheet, v)),
+    );
+    if (!mounted || choice == null) return;
+    final Widget screen = switch (choice) {
+      'tour' => const TourVehiclesScreen(),
+      'rent' => const RentalListScreen(),
+      _ => const HotelListScreen(),
+    };
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = AppControllerScope.of(context);
-    final q = _search.text.trim().toLowerCase();
-
-    // The filters are untouched: destinations match on name, district, summary
-    // and season; packages on title, both cities, driver and vehicle.
-    final destinations = _items.where((e) {
-      if (q.isEmpty) return true;
-      return '${e['name']} ${e['district']} ${e['summary']} ${e['bestSeason']}'
-          .toLowerCase()
-          .contains(q);
-    }).toList();
-    final packages = controller.liveMarketplacePackages.where((p) {
-      if (q.isEmpty) return true;
-      return '${p.title} ${p.startingCity} ${p.destination} ${p.driverName} ${p.vehicle}'
-          .toLowerCase()
-          .contains(q);
-    }).toList();
-
-    final nothingLoaded =
-        _items.isEmpty && controller.liveMarketplacePackages.isEmpty;
-
-    return RefreshIndicator(
-      onRefresh: _load,
-      color: AppColors.navy,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(
-            AppSizes.sidePadding, 0, AppSizes.sidePadding, 34),
-        children: [
-          UdHeroTitle(
-            title: _t('Explore Kashmir', 'کشمیر کی سیر کریں'),
-            subtitle: _t(
-              'Discover verified destinations and book Admin-approved Driver '
-                  'packages.',
-              'تصدیق شدہ مقامات دیکھیں اور ایڈمن سے منظور شدہ ڈرائیور پیکیجز بک کریں۔',
-            ),
-            padding: const EdgeInsets.only(bottom: 18),
-          ),
-          UdTextField(
-            controller: _search,
-            hint: _t('Search destination or package', 'مقام یا پیکیج تلاش کریں'),
-            icon: Icons.search_rounded,
-            onChanged: (_) => setState(() {}),
-            suffix: _search.text.isEmpty
-                ? null
-                : UdIconButton(
-                    icon: Icons.close_rounded,
-                    small: true,
-                    variant: UdIconButtonVariant.soft,
-                    tooltip: _t('Clear', 'صاف کریں'),
-                    onPressed: () => setState(_search.clear),
-                  ),
-          ),
-          const SizedBox(height: 14),
-          _SegmentedTabs(
-            selected: _tab,
-            destinationsCount: destinations.length,
-            packagesCount: packages.length,
-            onChanged: (value) => setState(() => _tab = value),
-            destinationLabel: _t('Destinations', 'سیاحتی مقامات'),
-            packageLabel: _t('Driver Packages', 'ڈرائیور پیکیجز'),
-          ),
-          const SizedBox(height: 20),
-          if (_busy && nothingLoaded)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 60),
-              child: Center(
-                child: CircularProgressIndicator(color: AppColors.navy),
-              ),
-            )
-          // Shown whenever the last load failed, not only when the screen is
-          // also empty. A failed reload used to be swallowed completely, so a
-          // customer read yesterday's list believing it was today's.
-          else if (_error != null)
-            UdBanner(
-              tone: UdTone.err,
+    if (_busy && _places.isEmpty) {
+      return const ColoredBox(
+        color: AppColors.background,
+        child: Center(child: CircularProgressIndicator(color: AppColors.navy)),
+      );
+    }
+    if (_error != null && _places.isEmpty) {
+      return ColoredBox(
+        color: AppColors.background,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 60, 16, 40),
+          children: [
+            UdEmptyState(
               icon: Icons.cloud_off_rounded,
-              trailing: UdButton.outline(
-                label: _t('Retry', 'دوبارہ کوشش کریں'),
-                size: UdButtonSize.xs,
+              tone: UdTone.err,
+              title: 'Could not load places',
+              text: _error,
+              action: UdButton.outline(
+                label: 'Try again',
+                icon: Icons.refresh_rounded,
                 expand: false,
                 onPressed: _load,
-              ),
-              text: _t('Explore data could not be loaded.',
-                  'ایکسپلور کا ڈیٹا لوڈ نہیں ہو سکا۔'),
-            )
-          else if (_tab == 0)
-            _destinations(destinations)
-          else
-            _packages(packages),
-        ],
-      ),
-    );
-  }
-
-  Widget _destinations(List<Map<String, dynamic>> items) {
-    if (items.isEmpty) {
-      return UdEmptyState(
-        icon: Icons.landscape_outlined,
-        title: _t('No destination found', 'کوئی مقام نہیں ملا'),
-        text: _t(
-          'Destinations added by Admin will appear here.',
-          'ایڈمن کی طرف سے شامل کیے گئے مقامات یہاں نظر آئیں گے۔',
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        UdSectionHeader(
-          title: _t('Destinations', 'سیاحتی مقامات'),
-          caption: _t('${items.length} verified spots',
-              '${items.length} تصدیق شدہ مقامات'),
-        ),
-        const SizedBox(height: 14),
-        for (final item in items)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: _DestinationCard(
-              item: item,
-              urdu: _urdu,
-              onBook: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      TourismBookingScreen(initialDestination: '${item['name']}'),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _packages(List<LiveTourPackage> packages) {
-    if (packages.isEmpty) {
-      return UdEmptyState(
-        icon: Icons.luggage_outlined,
-        title: _t('No approved package yet', 'ابھی کوئی منظور شدہ پیکیج نہیں'),
-        text: _t(
-          'A Driver package appears here only after Admin approval and '
-              'activation.',
-          'ڈرائیور کا پیکیج ایڈمن کی منظوری اور فعال ہونے کے بعد یہاں نظر آئے گا۔',
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        UdSectionHeader(
-          title: _t('Driver Packages', 'ڈرائیور پیکیجز'),
-          caption: _t('${packages.length} approved', '${packages.length} منظور شدہ'),
-        ),
-        const SizedBox(height: 14),
-        for (final package in packages)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: _ExplorePackageCard(
-              package: package,
-              urdu: _urdu,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => LivePackageDetailScreen(package: package),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-/// Two tabs on a grey track, each carrying its own live count.
-///
-/// Not [UdSegmented]: that one takes plain labels, and the count pill is the
-/// point here — it says how much is behind each tab before you switch.
-class _SegmentedTabs extends StatelessWidget {
-  const _SegmentedTabs({
-    required this.selected,
-    required this.destinationsCount,
-    required this.packagesCount,
-    required this.onChanged,
-    required this.destinationLabel,
-    required this.packageLabel,
-  });
-
-  final int selected;
-  final int destinationsCount;
-  final int packagesCount;
-  final ValueChanged<int> onChanged;
-  final String destinationLabel;
-  final String packageLabel;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: AppRadii.all(AppRadii.field),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: _TabButton(
-                selected: selected == 0,
-                icon: Icons.landscape_rounded,
-                label: destinationLabel,
-                count: destinationsCount,
-                onTap: () => onChanged(0),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: _TabButton(
-                selected: selected == 1,
-                icon: Icons.luggage_rounded,
-                label: packageLabel,
-                count: packagesCount,
-                onTap: () => onChanged(1),
               ),
             ),
           ],
         ),
       );
-}
+    }
 
-class _TabButton extends StatelessWidget {
-  const _TabButton({
-    required this.selected,
-    required this.icon,
-    required this.label,
-    required this.count,
-    required this.onTap,
-  });
+    final featured = _featured;
+    final filtered = _filtered;
+    final near = _nearOrPopular;
+    final districts = _districts;
+    final selected = _district;
 
-  final bool selected;
-  final IconData icon;
-  final String label;
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: AppRadii.all(12),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            constraints:
-                const BoxConstraints(minHeight: AppSizes.buttonSmall),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: selected ? AppColors.surfaceHigh : Colors.transparent,
-              borderRadius: AppRadii.all(12),
-              boxShadow: selected ? AppShadows.panel : const <BoxShadow>[],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+    return ColoredBox(
+      color: AppColors.background,
+      child: Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: _load,
+            color: AppColors.navy,
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 110),
               children: [
-                Icon(icon,
-                    size: 18,
-                    color: selected ? AppColors.navy : AppText.secondary),
-                const SizedBox(width: 7),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 2,
-                    textAlign: TextAlign.center,
-                    style: AppType.buttonSm.copyWith(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? AppText.primary : AppText.secondary,
+                if (featured.isNotEmpty)
+                  SizedBox(
+                    height: 430,
+                    child: Stack(
+                      children: [
+                        PageView.builder(
+                          controller: _hero,
+                          itemCount: featured.length,
+                          onPageChanged: (i) => setState(() => _heroIndex = i),
+                          itemBuilder: (context, i) => _HeroPage(
+                            place: featured[i],
+                            km: _km(featured[i]),
+                            onTap: () => _open(featured[i]),
+                          ),
+                        ),
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          top: 0,
+                          child: SafeArea(
+                            bottom: false,
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 14),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'DISCOVER KASHMIR',
+                                          style: AppType.caption.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 1.4,
+                                            color: AppColors.brand,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Good to visit this month',
+                                          style: AppType.small.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: AppText.onInk,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Semantics(
+                                    button: true,
+                                    label: 'Search places',
+                                    child: Material(
+                                      color: AppColors.background,
+                                      borderRadius: AppRadii.all(14),
+                                      child: InkWell(
+                                        onTap: _search,
+                                        borderRadius: AppRadii.all(14),
+                                        child: const SizedBox(
+                                          width: 44,
+                                          height: 44,
+                                          child: Icon(Icons.search_rounded,
+                                              size: 22, color: AppColors.navy),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (featured.length > 1)
+                          Positioned(
+                            right: 18,
+                            bottom: 26,
+                            child: Row(
+                              children: [
+                                for (var i = 0; i < featured.length; i++)
+                                  Container(
+                                    margin: const EdgeInsets.only(left: 5),
+                                    width: i == _heroIndex ? 18 : 5,
+                                    height: 5,
+                                    decoration: BoxDecoration(
+                                      color: i == _heroIndex
+                                          ? AppColors.brand
+                                          : AppColors.onInkMuted,
+                                      borderRadius: AppRadii.all(3),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                // Districts
+                SizedBox(
+                  height: 64,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
+                    children: [
+                      _Pill(
+                        label: 'All',
+                        selected: selected == null,
+                        onTap: () => setState(() => _district = null),
+                      ),
+                      if (_saved.isNotEmpty)
+                        _Pill(
+                          label: 'Saved',
+                          icon: Icons.bookmark_rounded,
+                          selected: selected == _savedKey,
+                          onTap: () => setState(() => _district = _savedKey),
+                        ),
+                      for (final d in districts)
+                        _Pill(
+                          label: d,
+                          selected: selected == d,
+                          onTap: () => setState(() => _district = d),
+                        ),
+                    ],
+                  ),
+                ),
+
+                _SectionTitle(
+                  title: _me == null ? 'Popular' : 'Near you',
+                  action: 'See on map',
+                  onAction: _openMap,
+                ),
+                SizedBox(
+                  height: 252,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: near.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (context, i) => _TallCard(
+                      place: near[i],
+                      km: _km(near[i]),
+                      onTap: () => _open(near[i]),
                     ),
                   ),
                 ),
-                const SizedBox(width: 7),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: selected ? AppColors.brand : AppColors.surfaceAlt,
-                    borderRadius: AppRadii.all(AppRadii.chip),
+
+                _SectionTitle(
+                  title: selected == null
+                      ? 'All places'
+                      : selected == _savedKey
+                          ? 'Saved'
+                          : selected,
+                  trailing: '${filtered.length} '
+                      '${filtered.length == 1 ? 'place' : 'places'}',
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    children: [
+                      for (final place in filtered)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _PlaceRow(
+                            place: place,
+                            onTap: () => _open(place),
+                          ),
+                        ),
+                    ],
                   ),
-                  child: Text(
-                    '$count',
-                    style: AppType.overline.copyWith(
-                      letterSpacing: 0,
-                      color: AppText.primary,
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 16,
+            child: _PlanBar(onPlan: _planTrip, onMap: _openMap),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroPage extends StatelessWidget {
+  const _HeroPage({required this.place, required this.km, required this.onTap});
+
+  final ExplorePlace place;
+  final double? km;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final facts = [
+      if (km != null) '${ExploreLocation.kmLabel(km!)} from you',
+      if (place.needsFourByFour) '4x4 needed',
+    ];
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ExplorePhoto(url: place.coverImageUrl, iconSize: 72),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 190,
+            child: ColoredBox(
+              color: AppColors.navy.withValues(alpha: .55),
+            ),
+          ),
+          Positioned(
+            left: 18,
+            right: 60,
+            bottom: 22,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    _HeroChip(
+                        label: 'Best: ${place.seasonShort}', lime: true),
+                    if (place.district.isNotEmpty)
+                      _HeroChip(label: '${place.district} district'),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  place.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.display.copyWith(
+                    fontSize: 38,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1.2,
+                    height: 1.02,
+                    color: AppText.onInk,
+                  ),
+                ),
+                if (place.summary.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    place.summary,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppType.small.copyWith(
+                      height: 1.45,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.onInkMuted,
                     ),
+                  ),
+                ],
+                if (facts.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    facts.join('  ·  '),
+                    style: AppType.small.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppText.onInk,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroChip extends StatelessWidget {
+  const _HeroChip({required this.label, this.lime = false});
+
+  final String label;
+  final bool lime;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 24,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: lime ? AppColors.brand : AppColors.navy.withValues(alpha: .6),
+        borderRadius: AppRadii.all(8),
+      ),
+      child: Text(
+        label,
+        style: AppType.caption.copyWith(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: lime ? AppColors.navy : AppText.onInk,
+        ),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: selected ? AppColors.navy : AppColors.background,
+        shape: StadiumBorder(
+          side: BorderSide(
+            color: selected ? AppColors.navy : AppColors.border,
+            width: 1.5,
+          ),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const StadiumBorder(),
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 15),
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon,
+                      size: 15,
+                      color: selected ? AppColors.brand : AppColors.navy),
+                  const SizedBox(width: 5),
+                ],
+                Text(
+                  label,
+                  style: AppType.small.copyWith(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? AppText.onInk : AppText.primary,
                   ),
                 ),
               ],
             ),
           ),
         ),
-      );
-}
-
-/// A cover band with the district and the safety score on it, then the
-/// destination and what it is like to get there.
-class _DestinationCard extends StatelessWidget {
-  const _DestinationCard({
-    required this.item,
-    required this.urdu,
-    required this.onBook,
-  });
-
-  final Map<String, dynamic> item;
-  final bool urdu;
-  final VoidCallback onBook;
-
-  String _t(String en, String ur) => urdu ? ur : en;
-
-  @override
-  Widget build(BuildContext context) {
-    final cover = item['coverImageUrl']?.toString();
-    final name = '${item['name']}';
-    final district = '${item['district'] ?? ''}'.trim();
-    final season = '${item['bestSeason'] ?? ''}'.trim();
-    final summary = '${item['summary'] ?? ''}'.trim();
-
-    return UdCard(
-      tone: UdCardTone.raised,
-      padding: EdgeInsets.zero,
-      child: ClipRRect(
-        borderRadius: AppRadii.all(AppRadii.card),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: 160,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _Cover(url: cover, fallbackIcon: Icons.landscape_rounded),
-                  if (district.isNotEmpty)
-                    Positioned(
-                      left: 12,
-                      top: 12,
-                      child: UdMapChip(label: district),
-                    ),
-                  // Only when there is a score.
-                  //
-                  // A missing one used to render "0/100 safety" — the worst
-                  // result the scale can express — in the positive colour, on
-                  // a destination nobody had scored. The tone follows the
-                  // number now too, so a genuinely low score no longer reads
-                  // as reassurance.
-                  if (item['routeSafetyScore'] != null)
-                    Positioned(
-                      right: 12,
-                      top: 12,
-                      child: UdBadge(
-                        label: _t(
-                          '${item['routeSafetyScore']}/100 safety',
-                          '${item['routeSafetyScore']}/100 حفاظت',
-                        ),
-                        tone: (num.tryParse('${item['routeSafetyScore']}') ?? 0) >= 60
-                            ? UdTone.lime
-                            : UdTone.warn,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(top: 2),
-                        child: Icon(Icons.location_on_rounded,
-                            size: 19, color: AppColors.brandInk),
-                      ),
-                      const SizedBox(width: 7),
-                      Expanded(
-                        child: Text(
-                          name,
-                          style: AppType.h3.copyWith(color: AppText.primary),
-                        ),
-                      ),
-                      if (season.isNotEmpty) ...[
-                        const SizedBox(width: 10),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 3),
-                          child: Text(
-                            _t('Best: $season', 'بہترین: $season'),
-                            style: AppType.small
-                                .copyWith(color: AppText.secondary),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  if (summary.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      summary,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppType.body2.copyWith(color: AppText.secondary),
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _InfoChip(
-                        Icons.directions_car_rounded,
-                        '${item['recommendedVehicle'] ?? _t('Any vehicle', 'کوئی بھی گاڑی')}',
-                      ),
-                      _InfoChip(
-                        Icons.language_rounded,
-                        '${item['networkStatus'] ?? _t('Unknown', 'نامعلوم')}',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  UdButton.primary(
-                    label: _t('Plan ride to $name', '$name کے لیے سفر بنائیں'),
-                    size: UdButtonSize.small,
-                    trailingIcon: Icons.arrow_forward_rounded,
-                    onPressed: onBook,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
 }
 
-/// A marketplace package, seen from Explore. Tapping it opens C-28.
-class _ExplorePackageCard extends StatelessWidget {
-  const _ExplorePackageCard({
-    required this.package,
-    required this.urdu,
-    required this.onTap,
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({
+    required this.title,
+    this.action,
+    this.onAction,
+    this.trailing,
   });
 
-  final LiveTourPackage package;
-  final bool urdu;
-  final VoidCallback onTap;
-
-  String _t(String en, String ur) => urdu ? ur : en;
-
-  @override
-  Widget build(BuildContext context) {
-    final tight = package.bookableSeats <= 2;
-
-    return UdCard(
-      tone: UdCardTone.raised,
-      padding: EdgeInsets.zero,
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: AppRadii.all(AppRadii.card),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: 150,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _Cover(
-                    url: package.coverImageUrl,
-                    fallbackIcon: Icons.luggage_rounded,
-                  ),
-                  Positioned(
-                    right: 12,
-                    top: 12,
-                    child: UdBadge(
-                      label: _t('${package.bookableSeats} seats free',
-                          '${package.bookableSeats} نشستیں خالی'),
-                      tone: tight ? UdTone.warn : UdTone.ok,
-                    ),
-                  ),
-                  Positioned(
-                    left: 12,
-                    right: 12,
-                    bottom: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 9),
-                      decoration: BoxDecoration(
-                        color: AppColors.background,
-                        borderRadius: AppRadii.all(AppRadii.tile),
-                        boxShadow: AppShadows.floating,
-                      ),
-                      child: Text(
-                        package.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppType.listTitle.copyWith(
-                          fontSize: 16,
-                          color: AppText.primary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 11),
-                    decoration: BoxDecoration(
-                      color: AppColors.brandWash,
-                      borderRadius: AppRadii.all(AppRadii.row),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.route_rounded,
-                            size: 17, color: AppColors.navy),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            package.startingCity,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppType.small.copyWith(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: AppText.primary,
-                            ),
-                          ),
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 6),
-                          child: Icon(Icons.arrow_forward_rounded,
-                              size: 16, color: AppColors.navy),
-                        ),
-                        Flexible(
-                          child: Text(
-                            package.destination,
-                            textAlign: TextAlign.end,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppType.small.copyWith(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.brandInk,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${package.driverName} · ${package.vehicle}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppType.small.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: AppText.primary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.verified_rounded,
-                          size: 18, color: AppColors.brandInk),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      const Icon(Icons.calendar_month_rounded,
-                          size: 16, color: AppText.secondary),
-                      const SizedBox(width: 7),
-                      Expanded(
-                        child: Text(
-                          DateFormat('dd MMM · hh:mm a')
-                              .format(package.departureAt),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppType.small.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: AppText.primary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _t('Per seat', 'فی نشست'),
-                            style: AppType.caption
-                                .copyWith(color: AppText.secondary),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'PKR ${NumberFormat('#,###').format(package.pricePerSeat)}',
-                            style: AppType.priceMd.copyWith(
-                              fontSize: 18,
-                              color: AppColors.brandInk,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A cover photo, or the map's own pale wash when there is none.
-///
-/// The fallback used to be a navy gradient — the last of the dark theme on
-/// this screen — which on a white card read as a hole rather than a missing
-/// photo.
-class _Cover extends StatelessWidget {
-  const _Cover({required this.url, required this.fallbackIcon});
-
-  final String? url;
-  final IconData fallbackIcon;
+  final String title;
+  final String? action;
+  final VoidCallback? onAction;
+  final String? trailing;
 
   @override
   Widget build(BuildContext context) {
-    final address = url?.trim();
-    if (address == null || address.isEmpty) return _placeholder();
-    return Image.network(
-      ApiConfig.absoluteUrl(address),
-      cacheWidth: 900,
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => _placeholder(),
-    );
-  }
-
-  Widget _placeholder() => DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppTint.mapPark, AppTint.mapWater],
-          ),
-        ),
-        child: Center(
-          child: Icon(fallbackIcon, size: 52, color: AppColors.borderStrong),
-        ),
-      );
-}
-
-/// A small outlined fact: the vehicle that suits the road, the mobile signal.
-class _InfoChip extends StatelessWidget {
-  const _InfoChip(this.icon, this.label);
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: AppRadii.all(AppRadii.chip),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: AppText.secondary),
-            const SizedBox(width: 7),
-            Text(
-              label,
-              style: AppType.caption.copyWith(
-                fontSize: 13.5,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 12, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: AppType.h3.copyWith(
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
                 color: AppText.primary,
               ),
             ),
+          ),
+          if (action != null && onAction != null)
+            TextButton(
+              onPressed: onAction,
+              child: Text(
+                action!,
+                style: AppType.small.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.brandInk,
+                ),
+              ),
+            ),
+          if (trailing != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Text(
+                trailing!,
+                style: AppType.small.copyWith(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppText.secondary,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TallCard extends StatelessWidget {
+  const _TallCard({required this.place, required this.km, required this.onTap});
+
+  final ExplorePlace place;
+  final double? km;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadii.all(20),
+      child: SizedBox(
+        width: 150,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 190,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ExplorePhoto(url: place.coverImageUrl, radius: 20),
+                  if (km != null)
+                    Positioned(
+                      left: 8,
+                      top: 8,
+                      child: Container(
+                        height: 24,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: AppRadii.all(8),
+                        ),
+                        child: Text(
+                          ExploreLocation.kmLabel(km!),
+                          style: AppType.caption.copyWith(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppText.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              place.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppType.listTitle.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: AppText.primary,
+              ),
+            ),
+            Text(
+              place.district,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppType.caption.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppText.secondary,
+              ),
+            ),
           ],
         ),
-      );
+      ),
+    );
+  }
+}
+
+class _PlaceRow extends StatelessWidget {
+  const _PlaceRow({required this.place, required this.onTap});
+
+  final ExplorePlace place;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tags = exploreTags(
+      fourByFour: place.needsFourByFour,
+      weakSignal: place.weakSignal,
+      familyScore: place.familyScore,
+    );
+    return Material(
+      color: AppColors.background,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadii.all(18),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: RoundedRectangleBorder(borderRadius: AppRadii.all(18)),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 76,
+                height: 76,
+                child: ExplorePhoto(
+                    url: place.coverImageUrl, radius: 14, iconSize: 28),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      place.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.listTitle.copyWith(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppText.primary,
+                      ),
+                    ),
+                    Text(
+                      '${place.district} · best ${place.seasonShort}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.caption.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: AppText.secondary,
+                      ),
+                    ),
+                    if (tags.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 5,
+                        runSpacing: 5,
+                        children: [
+                          for (final t in tags) ExploreTag(label: t),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Icon(Icons.chevron_right_rounded, color: AppColors.navy),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanBar extends StatelessWidget {
+  const _PlanBar({required this.onPlan, required this.onMap});
+
+  final VoidCallback onPlan;
+  final VoidCallback onMap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.navy,
+      elevation: 8,
+      shadowColor: AppColors.navy.withValues(alpha: .4),
+      borderRadius: AppRadii.all(20),
+      child: SizedBox(
+        height: 64,
+        child: Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: onPlan,
+                borderRadius: AppRadii.all(20),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 18),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Plan a trip',
+                        style: AppType.listTitle.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppText.onInk,
+                        ),
+                      ),
+                      Text(
+                        'Tour · car rental · hotel',
+                        style: AppType.caption.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.onInkMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Material(
+                color: AppColors.brand,
+                borderRadius: AppRadii.all(14),
+                child: InkWell(
+                  onTap: onMap,
+                  borderRadius: AppRadii.all(14),
+                  child: Container(
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.map_rounded,
+                            size: 17, color: AppColors.navy),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Map',
+                          style: AppType.small.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.navy,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanSheet extends StatelessWidget {
+  const _PlanSheet({required this.onPick});
+
+  final ValueChanged<String> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget row(String id, IconData icon, String title, String sub) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Material(
+            color: AppColors.surface,
+            borderRadius: AppRadii.all(16),
+            child: InkWell(
+              onTap: () => onPick(id),
+              borderRadius: AppRadii.all(16),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: AppColors.brand,
+                        borderRadius: AppRadii.all(12),
+                      ),
+                      child: Icon(icon, size: 21, color: AppColors.navy),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title,
+                              style: AppType.listTitle.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: AppText.primary,
+                              )),
+                          Text(sub,
+                              style: AppType.caption.copyWith(
+                                color: AppText.secondary,
+                              )),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded,
+                        color: AppColors.navy),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Plan a trip',
+              style: AppType.h3.copyWith(
+                fontWeight: FontWeight.w800,
+                color: AppText.primary,
+              ),
+            ),
+            const SizedBox(height: 14),
+            row('tour', Icons.terrain_rounded, 'Join a tour',
+                'Seats or a whole vehicle'),
+            row('rent', Icons.directions_car_rounded, 'Rent a car',
+                'With driver or self drive'),
+            row('hotel', Icons.apartment_rounded, 'Find a hotel',
+                'Rooms for your dates'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Type a name, pick a place.
+class _SearchSheet extends StatefulWidget {
+  const _SearchSheet({required this.places});
+
+  final List<ExplorePlace> places;
+
+  @override
+  State<_SearchSheet> createState() => _SearchSheetState();
+}
+
+class _SearchSheetState extends State<_SearchSheet> {
+  final TextEditingController _text = TextEditingController();
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _text.text.trim().toLowerCase();
+    final hits = widget.places
+        .where((p) =>
+            q.isEmpty ||
+            '${p.name} ${p.district} ${p.summary}'.toLowerCase().contains(q))
+        .toList();
+
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        height: MediaQuery.of(context).size.height * .8,
+        decoration: const BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: AppRadii.all(16),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.search_rounded,
+                      size: 20, color: AppColors.navy),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _text,
+                      autofocus: true,
+                      onChanged: (_) => setState(() {}),
+                      style: AppType.body2.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppText.primary,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Search a place',
+                        hintStyle: AppType.body2.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: AppText.caption,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        filled: false,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: ListView.builder(
+                itemCount: hits.length,
+                itemBuilder: (context, i) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: ExplorePhoto(
+                      url: hits[i].coverImageUrl,
+                      radius: 12,
+                      iconSize: 20,
+                    ),
+                  ),
+                  title: Text(
+                    hits[i].name,
+                    style: AppType.listTitle.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: AppText.primary,
+                    ),
+                  ),
+                  subtitle: Text(
+                    hits[i].district,
+                    style: AppType.caption.copyWith(color: AppText.secondary),
+                  ),
+                  onTap: () => Navigator.pop(context, hits[i]),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

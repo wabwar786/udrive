@@ -16,7 +16,11 @@ import 'rental_booking_screen.dart';
 /// asked in the footer. Picking dates reloads the list from the server, so a
 /// car already out that week is not on screen at all.
 class RentalListScreen extends StatefulWidget {
-  const RentalListScreen({super.key});
+  const RentalListScreen({this.fourByFour = false, super.key});
+
+  /// Opened from Explore for a place that needs a 4x4: the list starts on
+  /// the 4x4 filter.
+  final bool fourByFour;
 
   @override
   State<RentalListScreen> createState() => _RentalListScreenState();
@@ -35,7 +39,8 @@ class _RentalListScreenState extends State<RentalListScreen> {
 
   /// 'WithDriver' or 'SelfDrive' — the same strings the booking uses.
   String _mode = 'WithDriver';
-  _RentCategory _category = _RentCategory.all;
+  late _RentCategory _category =
+      widget.fourByFour ? _RentCategory.fourByFour : _RentCategory.all;
 
   @override
   void initState() {

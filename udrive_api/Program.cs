@@ -192,6 +192,7 @@ builder.Services.AddScoped<PartnerPortalService>(sp =>
 builder.Services.AddScoped<Phase18TourService>(_ => new Phase18TourService(connectionString));
 builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(connectionString));
 builder.Services.AddScoped<HotelService>(_ => new HotelService(connectionString));
+builder.Services.AddScoped<ExploreService>(_ => new ExploreService(connectionString));
 builder.Services.AddScoped<AdminDataService>(sp =>
     new AdminDataService(connectionString, sp.GetRequiredService<ILogger<AdminDataService>>()));
 builder.Services.AddScoped<VerificationFileLookupService>(serviceProvider =>
