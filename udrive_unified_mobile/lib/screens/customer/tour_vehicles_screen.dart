@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/booking/booking_repository.dart';
 import '../../core/format/money.dart';
+import '../../core/network/api_config.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
@@ -759,7 +760,7 @@ class _TourPhoto extends StatelessWidget {
       alignment: Alignment.center,
       child: Icon(icon, size: 40, color: AppColors.navy),
     );
-    final link = url?.trim() ?? '';
+    final link = ApiConfig.absoluteUrl(url?.trim());
 
     return ClipRRect(
       borderRadius: AppRadii.all(13),
