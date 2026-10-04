@@ -17,7 +17,6 @@ import '../../core/pricing/fare_quote_repository.dart';
 import '../../core/vehicles/nearby_repository.dart';
 import '../../core/vehicles/nearby_vehicle.dart';
 import '../../core/vehicles/seat_fares_repository.dart';
-import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/vehicles/vehicle_options_repository.dart';
 import '../../core/widgets/home_service.dart';
 import '../../models/auth_models.dart';
@@ -81,9 +80,6 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   late int _seats = widget.seats;
   int _fare = 0;
 
-  /// Admin-supplied photographs, keyed by setting name.
-  Map<String, String> _images = const {};
-
   /// Fixed per-seat fares for this route, keyed by vehicle category.
   ///
   /// A Coster running per seat charges a known fare for a known route. Where
@@ -141,9 +137,6 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   /// confidently and not naming one at all.
   List<NearbyVehicle> _nearby = const [];
 
-  /// True while the hero area is showing the map instead of the photograph.
-  bool _showMap = false;
-
   final _mapController = UdMapController();
 
   /// How far around the pickup counts as nearby, in kilometres.
@@ -181,29 +174,11 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   bool _submitting = false;
   String? _error;
 
-  /// Drives the swipeable vehicle photographs.
-  ///
-  /// The photograph is the biggest thing on the screen, so it is also the most
-  /// obvious thing to swipe. Making that gesture change the vehicle means the
-  /// customer can compare four of them with their thumb where it already is,
-  /// instead of reaching up to the pill row for every change.
-  final PageController _pages = PageController();
-
-  /// One key per pill, so a pill selected by swiping can be scrolled into view.
-  ///
-  /// Swiping to the fourth vehicle used to leave its pill off the right edge of
-  /// the row, which made the row look like it had stopped responding.
+  /// One key per vehicle card, so a selected card in a scrolling row (more
+  /// vehicles than fit across the screen) can be scrolled into view.
   final Map<String, GlobalKey> _pillKeys = <String, GlobalKey>{};
 
   bool get _perSeat => _bookingType == BookingType.perSeat;
-
-  int get _index {
-    final selected = _selected;
-    if (selected == null) return 0;
-    final index =
-        _options.indexWhere((option) => option.category == selected.category);
-    return index < 0 ? 0 : index;
-  }
 
   int get _step {
     if (_fare >= 10000) return 500;
@@ -295,7 +270,6 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
 
   @override
   void dispose() {
-    _pages.dispose();
     _nearbyTimer?.cancel();
     _mapController.dispose();
     super.dispose();
@@ -319,6 +293,17 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     });
 
     await _load();
+  }
+
+  /// Puts the fare back to the server's suggestion.
+  void _useRecommended() {
+    if (_fareIsFixed) return;
+    final recommended = _recommended;
+    if (recommended <= 0) return;
+    setState(() => _fare = recommended.clamp(
+          _minimum > 0 ? _minimum : recommended,
+          _maximum,
+        ));
   }
 
   /// Reads the drivers around the pickup, and keeps reading.
@@ -354,12 +339,6 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         ? (distanceKm / 25 * 60).round()
         : (route.durationSeconds / 60).round();
 
-    final images = VehicleImageRepository(controller.apiClient);
-    // Paint from cache immediately, then refresh in the background. Waiting on
-    // the network to show a picture the customer has already seen would be a
-    // poor trade.
-    final cachedImages = await images.cached();
-
     final options = await repository.optionsFor(
       distanceKm: distanceKm,
       durationMinutes: minutes,
@@ -367,10 +346,6 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
       pickupLongitude: widget.pickupPoint.longitude,
     );
     if (!mounted) return;
-
-    images.refresh().then((fresh) {
-      if (mounted && fresh.isNotEmpty) setState(() => _images = fresh);
-    });
 
     // Only the vehicles that can actually be sold by the seat are looked up.
     // Asking for a bike's route fare would be a request that can only ever come
@@ -405,26 +380,9 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
             ),
           );
 
-    // Open the pager on the same vehicle, without an animation the customer
-    // never asked for.
-    //
-    // Unconditionally, including index 0. PageController keeps its page across
-    // a rebuild, so skipping the jump for the first vehicle left the pager
-    // showing whatever had been swiped to while the pills and the fare panel
-    // described a different one.
-    if (preferred != null && options.isNotEmpty) {
-      final index = options.indexOf(preferred);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _pages.hasClients && index >= 0) {
-          _pages.jumpToPage(index);
-        }
-      });
-    }
-
     setState(() {
       _options = options;
       _selected = preferred;
-      _images = cachedImages;
       _loading = false;
       if (preferred == null) {
         _error = 'No vehicles are available for this trip right now.';
@@ -440,6 +398,49 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     });
 
     if (_selected != null) unawaited(_loadQuote());
+    _frameRoute();
+  }
+
+  /// Puts the chosen road in view, inside the part of the map above the panel.
+  void _frameRoute() {
+    final points = _route?.points ?? const <LatLng>[];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _mapController.fitBounds(
+        points.length > 1
+            ? points
+            : [widget.pickupPoint, widget.destinationPoint],
+        padding: 56,
+      );
+    });
+  }
+
+  /// Nearby vehicles of the same kind as [option].
+  ///
+  /// Categories arrive spelt both ways ("Coster" and "Coaster"), so both sides
+  /// are normalised before comparing.
+  List<NearbyVehicle> _nearbyFor(VehicleOption option) {
+    String norm(String value) =>
+        value.toLowerCase().replaceAll('coster', 'coaster').trim();
+    final wanted = norm(option.category);
+    return _nearby
+        .where((vehicle) => norm(vehicle.category) == wanted)
+        .toList(growable: false);
+  }
+
+  /// Minutes until the nearest vehicle of this kind could reach the pickup,
+  /// or null when none is nearby.
+  int? _etaFor(VehicleOption option) {
+    final near = _nearbyFor(option);
+    if (near.isEmpty) return null;
+    var best = 1 << 30;
+    for (final vehicle in near) {
+      final minutes = vehicle.etaMinutes > 0
+          ? vehicle.etaMinutes
+          : (vehicle.distanceKm / 25 * 60).ceil();
+      if (minutes < best) best = minutes;
+    }
+    return best < 1 ? 1 : best;
   }
 
   /// Asks the server what this trip costs, and holds the answer.
@@ -575,31 +576,8 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     if (_seats > option.seats) _seats = option.seats;
   }
 
-  /// Chosen from the pill row.
-  ///
-  /// Animates the photograph across so the two controls never disagree about
-  /// which vehicle is showing.
-  void _select(VehicleOption option) {
-    final target =
-        _options.indexWhere((item) => item.category == option.category);
-    _apply(option);
-    if (target >= 0 && _pages.hasClients) {
-      _pages.animateToPage(
-        target,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-      );
-    }
-  }
-
-  /// Chosen by swiping the photograph.
-  ///
-  /// No animation call here — the page is already where the finger left it, and
-  /// animating towards it would fight the gesture.
-  void _onPageChanged(int index) {
-    if (index < 0 || index >= _options.length) return;
-    _apply(_options[index]);
-  }
+  /// Chosen from the vehicle row.
+  void _select(VehicleOption option) => _apply(option);
 
   void _apply(VehicleOption option) {
     if (_selected?.category == option.category) return;
@@ -863,288 +841,269 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final selected = _selected;
+    final route = _route;
+    final maxSheet = MediaQuery.sizeOf(context).height * .66;
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      // No outer SafeArea: the header draws its own top inset and the fare
-      // panel its own bottom one, so wrapping the pair would inset twice.
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _RouteHeader(
-            pickup: widget.pickupLabel,
-            destination: widget.destinationLabel,
-            route: _route,
-            onBack: () => Navigator.pop(context),
-          ),
+          // The map takes everything the panel does not. It runs a little
+          // under the panel's rounded top, so the corners show map rather than
+          // a strip of background.
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _buildBody(),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  bottom: -24,
+                  child: _buildMap(),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: _DestinationHeader(
+                    destination: widget.destinationLabel,
+                    route: route,
+                    onBack: () => Navigator.pop(context),
+                  ),
+                ),
+                if (selected != null)
+                  Positioned(
+                    left: AppSizes.sidePadding,
+                    bottom: 12,
+                    child: _NearbyChip(
+                      label: selected.label,
+                      count: _nearbyFor(selected).length,
+                      etaMinutes: _etaFor(selected),
+                    ),
+                  ),
+                Positioned(
+                  right: AppSizes.sidePadding,
+                  bottom: 6,
+                  child: UdFloatButton(
+                    tooltip: 'Show the whole route',
+                    onPressed: _frameRoute,
+                    child: const Icon(Icons.my_location_rounded,
+                        size: 22, color: AppColors.navy),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxSheet),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+                boxShadow: AppShadows.floating,
+              ),
+              child: _loading || selected == null
+                  ? SizedBox(
+                      height: 220,
+                      child: Center(
+                        child: _loading
+                            ? const CircularProgressIndicator()
+                            : Padding(
+                                padding: const EdgeInsets.all(
+                                    AppSizes.sidePadding),
+                                child: Text(
+                                  _error ??
+                                      'No vehicles are available for this trip right now.',
+                                  textAlign: TextAlign.center,
+                                  style: AppType.body2
+                                      .copyWith(color: AppText.secondary),
+                                ),
+                              ),
+                      ),
+                    )
+                  : _buildSheet(selected),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBody() {
-    final selected = _selected;
-    if (selected == null) return const SizedBox.shrink();
+  Widget _buildMap() {
+    return UdMap(
+      controller: _mapController,
+      initialCenter: widget.pickupPoint,
+      zoom: 13.5,
+      showMyLocation: false,
+      // The panel covers the bottom of the map; Google keeps the camera
+      // centred in what is left.
+      padding: const EdgeInsets.only(bottom: 24),
+      polylines: [
+        // Alternatives first and thin, so the chosen road is never buried
+        // under one it overlaps for most of its length.
+        for (var i = _routes.length - 1; i >= 0; i--)
+          if (i != _routeIndex)
+            UdPolyline(
+              id: 'route-$i',
+              points: _routes[i].points,
+              color: AppText.disabled,
+              width: 4,
+              onTap: () => _selectRoute(i),
+            ),
+        if (_route != null) ...[
+          UdPolyline(
+            id: 'route-selected-casing',
+            points: _route!.points,
+            color: AppColors.brand,
+            width: 10,
+          ),
+          UdPolyline(
+            id: 'route-selected',
+            points: _route!.points,
+            color: AppColors.navy,
+            width: 5,
+          ),
+        ],
+      ],
+      markers: [
+        UdMarker(
+          id: 'pickup',
+          position: widget.pickupPoint,
+          label: widget.pickupLabel,
+          hue: UdMarkerHue.info,
+        ),
+        UdMarker(
+          id: 'destination',
+          position: widget.destinationPoint,
+          label: widget.destinationLabel,
+          hue: UdMarkerHue.brand,
+        ),
+        for (final vehicle in _nearby)
+          UdMarker(
+            id: 'nearby-${vehicle.id}',
+            position: vehicle.point,
+            sprite: vehicle.sprite,
+            headingDegrees: vehicle.headingDegrees,
+          ),
+      ],
+    );
+  }
 
-    // The photograph gets the largest single share of the screen. It is what
-    // the customer is choosing between, and a vehicle shown at thumbnail size
-    // is a label with a picture next to it rather than a picture.
-    final heroHeight =
-        (MediaQuery.sizeOf(context).height * .38).clamp(230.0, 400.0);
+  Widget _buildSheet(VehicleOption selected) {
+    final manyOptions = _options.length > 5;
 
     return Column(
-      // Stretch, so the fare panel and the rows above it span the screen
-      // whatever constraints this column is handed. A Column's default is
-      // centre, which gives its children loose width — and a child that sizes
-      // itself from its constraints then collapses.
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Route options, when there is more than one.
-        //
-        // Chips rather than only tapping the lines on the map. A route drawn on
-        // a phone is a few pixels wide and two of them run together for most of
-        // their length — a target nobody can hit reliably. The map still shows
-        // which one is chosen; the chips are how it is chosen.
-        if (_routes.length > 1)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                AppSizes.sidePadding, 12, AppSizes.sidePadding, 0),
-            child: SizedBox(
-              height: 62,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _routes.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, index) => _RouteChip(
-                  route: _routes[index],
-                  // The first is the shortest by construction, and the one
-                  // people take unless they have a reason not to.
-                  shortest: index == 0,
-                  selected: index == _routeIndex,
-                  onTap: () => _selectRoute(index),
-                ),
-              ),
+        const SizedBox(height: 8),
+        Center(
+          child: Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.borderStrong,
+              borderRadius: AppRadii.all(2),
             ),
           ),
-
-        // Every vehicle's fare, on its own pill.
-        //
-        // The comparison is the decision, and it used to be four swipes deep:
-        // the customer had to page through the photographs one at a time to
-        // find out what a Coster cost. Four numbers side by side answer it at a
-        // glance, and the row still fits without scrolling because the labels
-        // are short.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-              AppSizes.sidePadding, 12, AppSizes.sidePadding, 0),
-          child: Row(
-            children: [
-              for (final option in _options) ...[
-                Expanded(
-                  child: _VehiclePill(
-                    key: _pillKeys.putIfAbsent(option.category, GlobalKey.new),
-                    option: option,
-                    fare: _fareForOption(option),
-                    selected: option.category == selected.category,
-                    onTap: () => _select(option),
-                  ),
-                ),
-                if (option != _options.last) const SizedBox(width: 8),
-              ],
-            ],
-          ),
         ),
-
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(0, 14, 0, 10),
-            children: [
-              // No separate Vehicle / Drivers toggle any more.
-              //
-              // It was a second row of controls under the pills, and the
-              // driver count — the thing a waiting customer actually wants —
-              // was hidden behind it. The count now sits on the photograph, and
-              // tapping it turns the photograph into the map.
-              SizedBox(
-                height: heroHeight,
-                child: _showMap
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: AppSizes.sidePadding),
-                        child: ClipRRect(
-                          borderRadius: AppRadii.all(AppRadii.largeCard),
-                          child: UdMap(
-                            controller: _mapController,
-                            initialCenter: widget.pickupPoint,
-                            zoom: 14.2,
-                            // Interactive here, unlike the offers screen: the
-                            // whole point is that the customer can zoom out to
-                            // see how far the nearest driver really is.
-                            showMyLocation: false,
-                            // Every route, with the chosen one on top and in
-                            // the accent colour.
-                            //
-                            // Drawn in reverse so the selected line paints last
-                            // and is never buried under an alternative it
-                            // overlaps — which is most of the way, for most
-                            // pairs of routes.
-                            polylines: [
-                              for (var i = _routes.length - 1; i >= 0; i--)
-                                if (i != _routeIndex)
-                                  UdPolyline(
-                                    id: 'route-$i',
-                                    points: _routes[i].points,
-                                    color: AppText.disabled,
-                                    width: 3,
-                                    onTap: () => _selectRoute(i),
-                                  ),
-                              if (_route != null)
-                                UdPolyline(
-                                  id: 'route-selected',
-                                  points: _route!.points,
-                                  color: AppColors.secondary,
-                                  width: 5,
-                                ),
-                            ],
-                            circles: [
-                              UdCircle(
-                                id: 'nearby-radius',
-                                centre: widget.pickupPoint,
-                                radiusMetres: _nearbyRadiusKm * 1000,
-                              ),
-                            ],
-                            markers: [
-                              UdMarker(
-                                id: 'pickup',
-                                position: widget.pickupPoint,
-                                label: widget.pickupLabel,
-                              ),
-                              for (final vehicle in _nearby)
-                                UdMarker(
-                                  id: 'nearby-${vehicle.id}',
-                                  position: vehicle.point,
-                                  sprite: vehicle.sprite,
-                                  headingDegrees: vehicle.headingDegrees,
-                                ),
-                            ],
+        Flexible(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+                AppSizes.sidePadding, 12, AppSizes.sidePadding, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Route options, when there is more than one. Chips rather
+                // than only the lines on the map: two routes a few pixels
+                // wide that run together are not a target anyone can hit.
+                if (_routes.length > 1) ...[
+                  Row(
+                    children: [
+                      for (var i = 0; i < _routes.length && i < 3; i++) ...[
+                        if (i > 0) const SizedBox(width: 8),
+                        Expanded(
+                          child: _RouteChip(
+                            route: _routes[i],
+                            title: i == 0 ? 'SHORTEST' : 'ROUTE ${i + 1}',
+                            selected: i == _routeIndex,
+                            onTap: () => _selectRoute(i),
                           ),
                         ),
-                      )
-                    : Stack(
-                        children: [
-                          PageView.builder(
-                            controller: _pages,
-                            itemCount: _options.length,
-                            onPageChanged: _onPageChanged,
-                            itemBuilder: (context, index) {
-                              final option = _options[index];
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: AppSizes.sidePadding),
-                                child: _VehiclePhoto(
-                                  option: option,
-                                  imageUrl: _images[
-                                      VehicleImageRepository.settingKeyFor(
-                                              option.category) ??
-                                          ''],
-                                ),
-                              );
-                            },
-                          ),
-
-                          // Seats, bottom left. Two words of description under
-                          // the photograph told the customer less than a number
-                          // and a figure on top of it.
-                          Positioned(
-                            left: 32,
-                            bottom: 14,
-                            child: _PhotoBadge(
-                              icon: Icons.people_alt_rounded,
-                              label: '${selected.seats}',
-                            ),
-                          ),
-
-                          // Drivers nearby, bottom right, tappable.
-                          //
-                          // Always visible, so the answer to "is anyone around"
-                          // does not need a tab. Tapping swaps the photograph
-                          // for the map rather than opening another screen.
-                          Positioned(
-                            right: 32,
-                            bottom: 14,
-                            child: _PhotoBadge(
-                              icon: Icons.my_location_rounded,
-                              label: '${_nearby.length} nearby',
-                              highlight: _nearby.isNotEmpty,
-                              onTap: () => setState(() => _showMap = true),
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-
-              const SizedBox(height: 12),
-              if (!_showMap)
-                _PageDots(count: _options.length, index: _index)
-              else
-                // The way back from the map. A view you can enter and not leave
-                // is a trap, and the badge that opened it is now covered by it.
-                Center(
-                  child: UdButton.ghost(
-                    label: 'Show the vehicle',
-                    icon: Icons.photo_outlined,
-                    size: UdButtonSize.small,
-                    expand: false,
-                    onPressed: () => setState(() => _showMap = false),
+                      ],
+                    ],
                   ),
-                ),
+                  const SizedBox(height: 12),
+                ],
 
-              // Only a vehicle with seats to spare can be sold by the seat. For
-              // everything else the row is absent rather than disabled: a
-              // control that cannot be used is worse than one that was never
-              // there.
-              if (selected.allowsPerSeat) ...[
-                const SizedBox(height: 18),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSizes.sidePadding),
-                  child: _BookingTypeToggle(
-                    value: _bookingType,
-                    onChanged: _setBookingType,
-                  ),
-                ),
-                if (_perSeat) ...[
-                  const SizedBox(height: 10),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSizes.sidePadding),
-                    child: _SeatStepper(
-                      seats: _seats,
-                      maximum: selected.seats,
-                      perSeatFare: selected.perSeatFare,
-                      onChanged: _setSeats,
+                // Every vehicle with its fare, seats and how far the nearest
+                // one is. The comparison is the decision.
+                if (manyOptions)
+                  SizedBox(
+                    height: 104,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _options.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (context, index) {
+                        final option = _options[index];
+                        return SizedBox(
+                          width: 72,
+                          child: _vehicleCard(option, selected),
+                        );
+                      },
                     ),
+                  )
+                else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final option in _options) ...[
+                        Expanded(child: _vehicleCard(option, selected)),
+                        if (option != _options.last) const SizedBox(width: 6),
+                      ],
+                    ],
+                  ),
+
+                // Only a vehicle with seats to spare can be sold by the seat.
+                // For everything else the row is absent rather than disabled.
+                if (selected.allowsPerSeat) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _BookingTypeToggle(
+                          value: _bookingType,
+                          onChanged: _setBookingType,
+                        ),
+                      ),
+                      if (_perSeat) ...[
+                        const SizedBox(width: 10),
+                        _SeatStepper(
+                          seats: _seats,
+                          maximum: selected.seats,
+                          onChanged: _setSeats,
+                        ),
+                      ],
+                    ],
                   ),
                 ],
-              ],
 
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSizes.sidePadding),
-                  child: UdBanner(
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  UdBanner(
                     tone: UdTone.warn,
                     icon: Icons.error_outline_rounded,
                     text: _error!,
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
 
@@ -1166,122 +1125,134 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
           onDecrease: () => _nudge(-1),
           onIncrease: () => _nudge(1),
           onEdit: _editFare,
+          onUseRecommended: _useRecommended,
           onSubmit: _findOffers,
         ),
       ],
     );
   }
+
+  Widget _vehicleCard(VehicleOption option, VehicleOption selected) {
+    final eta = _etaFor(option);
+    return _VehiclePill(
+      key: _pillKeys.putIfAbsent(option.category, GlobalKey.new),
+      option: option,
+      fare: _fareForOption(option),
+      etaMinutes: eta,
+      nearby: eta != null,
+      selected: option.category == selected.category,
+      onTap: () => _select(option),
+    );
+  }
 }
 
-/// The trip, stated plainly at the top of the screen.
+/// Where the trip goes, floating over the map.
 ///
-/// This replaces a second map. The customer has just seen the route on Home;
-/// what they need here is confirmation of where they are going and roughly how
-/// long it takes, while they decide what to pay. Repeating the map would cost a
-/// tile session and the space the vehicle list needs.
-class _RouteHeader extends StatelessWidget {
-  const _RouteHeader({
-    required this.pickup,
+/// Only the destination. The pickup is where the customer is standing, and
+/// they know that already; the space is better spent on the name of the place
+/// they are going, which is what they check before paying.
+class _DestinationHeader extends StatelessWidget {
+  const _DestinationHeader({
     required this.destination,
     required this.route,
     required this.onBack,
   });
 
-  final String pickup;
   final String destination;
   final TripRoute? route;
   final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.background,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
-      ),
-      padding: const EdgeInsets.fromLTRB(
-          AppSizes.sidePadding, 12, AppSizes.sidePadding, 14),
-      child: SafeArea(
-        bottom: false,
+    final r = route;
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+            AppSizes.sidePadding, 10, AppSizes.sidePadding, 0),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            UdIconButton(
-              icon: Icons.arrow_back_rounded,
-              onPressed: onBack,
-              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(height: 2),
-                  // Both ends on one line.
-                  //
-                  // Two stacked From/To blocks spent about ninety pixels of a
-                  // phone screen saying what an arrow says. The destination is
-                  // the part that matters and keeps its weight; the pickup is
-                  // where the customer is standing, and they know that already.
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          pickup,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppType.small.copyWith(
-                            fontSize: 13.5,
-                            color: AppText.secondary,
-                          ),
-                        ),
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 7),
-                        child: Icon(Icons.arrow_forward_rounded,
-                            size: 15, color: AppText.caption),
-                      ),
-                      Flexible(
-                        flex: 2,
-                        child: Text(
-                          destination,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppType.listTitle.copyWith(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: AppText.primary,
-                          ),
-                        ),
-                      ),
-                    ],
+            Material(
+              color: AppColors.background,
+              borderRadius: AppRadii.all(16),
+              elevation: 0,
+              child: InkWell(
+                onTap: onBack,
+                borderRadius: AppRadii.all(16),
+                child: Ink(
+                  width: 50,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    borderRadius: AppRadii.all(16),
+                    boxShadow: AppShadows.floating,
                   ),
-                  if (route != null) ...[
-                    const SizedBox(height: 7),
-                    Row(
-                      children: [
-                        const Icon(Icons.schedule_rounded,
-                            size: 16, color: AppColors.brandInk),
-                        const SizedBox(width: 7),
-                        Flexible(
-                          child: Text(
-                            '${route!.durationLabel}  ·  '
-                            '${route!.distanceLabel}'
-                            '${route!.summary.isEmpty ? '' : '  ·  via '
-                                '${route!.summary.split('/').first.trim()}'}',
+                  child: Tooltip(
+                    message: MaterialLocalizations.of(context).backButtonTooltip,
+                    child: const Icon(Icons.arrow_back_rounded,
+                        size: 22, color: AppColors.navy),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 58),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: AppRadii.all(16),
+                  boxShadow: AppShadows.floating,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.brand,
+                        borderRadius: AppRadii.all(10),
+                      ),
+                      child: const Icon(Icons.place_rounded,
+                          size: 19, color: AppColors.navy),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            destination,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: AppType.small.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.brandInk,
+                            style: AppType.listTitle.copyWith(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: AppText.primary,
                             ),
                           ),
-                        ),
-                      ],
+                          if (r != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              '${r.durationLabel} · ${r.distanceLabel}'
+                              '${r.summary.isEmpty ? '' : ' · via '
+                                  '${r.summary.split('/').first.trim()}'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppType.small.copyWith(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.brandInk,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
-                ],
+                ),
               ),
             ),
           ],
@@ -1291,75 +1262,164 @@ class _RouteHeader extends StatelessWidget {
   }
 }
 
-/// A vehicle type in the pill row.
+/// "Car · 8 nearby · ~4 min", over the bottom-left of the map.
+class _NearbyChip extends StatelessWidget {
+  const _NearbyChip({
+    required this.label,
+    required this.count,
+    required this.etaMinutes,
+  });
+
+  final String label;
+  final int count;
+  final int? etaMinutes;
+
+  @override
+  Widget build(BuildContext context) {
+    final any = count > 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: AppRadii.all(999),
+        boxShadow: AppShadows.floating,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: any ? AppColors.success : AppText.disabled,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            any
+                ? '$label · $count nearby'
+                    '${etaMinutes == null ? '' : ' · ~$etaMinutes min'}'
+                : 'No $label nearby yet',
+            style: AppType.small.copyWith(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: AppText.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A vehicle in the row: icon, name, fare, seats and how far the nearest is.
 ///
-/// Selected is navy with a lime icon tile and a lime price. Not lime on lime,
-/// and never white on lime — the only ink that goes on the brand colour is
-/// navy, and the only ink that goes on navy is white or lime.
+/// Selected is navy with a lime icon tile and a lime price. A vehicle with
+/// none nearby is drawn quieter but stays tappable — a request still reaches
+/// drivers further out.
 class _VehiclePill extends StatelessWidget {
   const _VehiclePill({
     required this.option,
     required this.fare,
+    required this.etaMinutes,
+    required this.nearby,
     required this.selected,
     required this.onTap,
     super.key,
   });
 
   final VehicleOption option;
-
-  /// What this vehicle would cost for this trip.
   final int fare;
-
+  final int? etaMinutes;
+  final bool nearby;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final quiet = !nearby && !selected;
+    final seats = '${option.seats} seat${option.seats == 1 ? '' : 's'}';
+    final detail = nearby ? '$seats · ${etaMinutes ?? 1} min' : 'None near';
+
     return Semantics(
       button: true,
       selected: selected,
-      label: '${option.label}, ${Money.amount(fare)}',
+      label: '${option.label}, ${Money.amount(fare)}, $detail',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 170),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          padding: const EdgeInsets.fromLTRB(2, 9, 2, 8),
           decoration: BoxDecoration(
-            color: selected ? AppColors.navy : AppColors.surfaceHigh,
-            borderRadius: AppRadii.all(AppRadii.tile),
-            border: Border.all(
-              color: selected ? AppColors.navy : AppColors.border,
-            ),
-            boxShadow: AppShadows.card,
+            color: selected
+                ? AppColors.navy
+                : quiet
+                    ? AppColors.surfaceAlt
+                    : AppColors.background,
+            borderRadius: AppRadii.all(14),
+            border: selected
+                ? null
+                : Border.all(
+                    color: AppColors.border,
+                    width: 1.5,
+                  ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              UdIconTile(
-                icon: option.icon,
-                tone: selected ? UdIconTone.lime : UdIconTone.neutral,
-                size: UdIconTileSize.sm,
+              Container(
+                width: 34,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: selected ? AppColors.brand : AppColors.surfaceAlt,
+                  borderRadius: AppRadii.all(9),
+                ),
+                child: Icon(
+                  option.icon,
+                  size: 18,
+                  color: quiet ? AppText.caption : AppColors.navy,
+                ),
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 4),
               Text(
                 option.label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: AppType.overline.copyWith(
-                  letterSpacing: 0,
-                  color: selected ? AppText.onInkMuted : AppText.secondary,
+                style: AppType.small.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: selected
+                      ? AppText.onInk
+                      : quiet
+                          ? AppText.caption
+                          : AppText.primary,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
-                Money.amount(fare),
+                Money.plain(fare),
                 maxLines: 1,
-                style: AppType.caption.copyWith(
-                  fontSize: 13.5,
+                style: AppType.small.copyWith(
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: -0.2,
-                  color: selected ? AppColors.brand : AppText.primary,
+                  color: selected
+                      ? AppColors.brand
+                      : quiet
+                          ? AppText.caption
+                          : AppText.primary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                detail,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppType.caption.copyWith(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? AppText.onInkMuted : AppText.caption,
                 ),
               ),
             ],
@@ -1370,30 +1430,17 @@ class _VehiclePill extends StatelessWidget {
   }
 }
 
-/// The chosen vehicle, shown large.
-///
-/// This is the only picture on the screen and there is room for it, so it gets
-/// real size — a small image floating in empty space reads as a placeholder
-/// nobody finished.
-/// The hero toggle, its `_Half` button and `_RateBasis` used to sit here.
-///
-/// All three are gone. The toggle was a second row of controls under the
-/// pills whose only job was to reveal a driver count — that count is now a
-/// badge on the photograph itself, which costs no height at all. `_RateBasis`
-/// printed the per-kilometre rate, which is not something the customer was
-/// asked to check.
-
-/// One route option: how far, how long, and whether it is the short way.
+/// One route option: how far and how long.
 class _RouteChip extends StatelessWidget {
   const _RouteChip({
     required this.route,
-    required this.shortest,
+    required this.title,
     required this.selected,
     required this.onTap,
   });
 
   final TripRoute route;
-  final bool shortest;
+  final String title;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1409,37 +1456,36 @@ class _RouteChip extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: EdgeInsets.symmetric(
-            horizontal: selected ? 13 : 14,
-            vertical: selected ? 7 : 8,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: selected ? AppColors.brandWash : AppColors.surfaceHigh,
-            borderRadius: AppRadii.all(AppRadii.tile),
+            color: selected ? AppColors.brandWash : AppColors.background,
+            borderRadius: AppRadii.all(12),
             border: Border.all(
               color: selected ? AppColors.navy : AppColors.border,
-              width: selected ? 2 : 1,
+              width: selected ? 2 : 1.5,
             ),
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                shortest ? 'SHORTEST' : 'ALTERNATIVE',
+                title,
+                maxLines: 1,
                 style: AppType.overline.copyWith(
-                  fontSize: 11,
+                  fontSize: 10.5,
                   color: selected ? AppColors.brandInk : AppText.secondary,
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 2),
               Text(
                 '${route.distanceKm.toStringAsFixed(route.distanceKm < 10 ? 1 : 0)} km'
-                '  ·  $minutes min',
+                ' · $minutes min',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: AppType.small.copyWith(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
                   color: AppText.primary,
                 ),
               ),
@@ -1447,159 +1493,6 @@ class _RouteChip extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// A small label over the vehicle photograph.
-///
-/// On the picture rather than under it. The space beneath was a line of grey
-/// text nobody read, and putting seats and the driver count where the eye
-/// already is costs no extra height.
-class _PhotoBadge extends StatelessWidget {
-  const _PhotoBadge({
-    required this.icon,
-    required this.label,
-    this.highlight = false,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-
-  /// Draws attention when the number is worth acting on — drivers are nearby.
-  final bool highlight;
-
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final ink = highlight ? AppColors.brandInk : AppText.primary;
-
-    return Material(
-      color: AppColors.background,
-      borderRadius: AppRadii.all(AppRadii.tile),
-      elevation: 0,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: AppRadii.all(AppRadii.tile),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: AppRadii.all(AppRadii.tile),
-            boxShadow: AppShadows.floating,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 16, color: ink),
-                const SizedBox(width: 7),
-                Text(
-                  label,
-                  style: AppType.small.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: ink,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// One vehicle photograph, filling its page.
-///
-/// The whole vehicle stays visible: `BoxFit.contain` inside a rounded frame,
-/// never cropped. A cropped bike with its front wheel cut off looks like a
-/// mistake, and this picture is the main thing the customer is judging.
-class _VehiclePhoto extends StatelessWidget {
-  const _VehiclePhoto({required this.option, this.imageUrl});
-
-  final VehicleOption option;
-
-  /// Admin-supplied photograph. Falls back to the bundled illustration, and
-  /// then to an icon, so an unset or broken URL never leaves a hole.
-  final String? imageUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    final url = imageUrl?.trim() ?? '';
-
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.largeCard),
-        border: Border.all(color: AppColors.border),
-      ),
-      padding: const EdgeInsets.all(10),
-      child: url.isEmpty
-          ? _bundled()
-          : Image.network(
-              url,
-              cacheWidth: 600,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => _bundled(),
-              // The outline, not the stock photograph, while the real one
-              // loads. Showing _bundled() here meant a slow connection
-              // displayed a generic car for a second and then swapped it —
-              // which reads as the app having shown the wrong vehicle.
-              loadingBuilder: (context, child, progress) =>
-                  progress == null ? child : _placeholder(),
-            ),
-    );
-  }
-
-  Widget _bundled() {
-    if (option.asset.isEmpty) return _placeholder();
-    return Image.asset(
-      option.asset,
-      fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => _placeholder(),
-    );
-  }
-
-  /// Shown when there is no photograph for this vehicle.
-  ///
-  /// An outline of the right vehicle rather than a photograph of the wrong one.
-  Widget _placeholder() => Center(
-        child: Icon(
-          option.icon,
-          size: 104,
-          color: AppColors.borderStrong,
-        ),
-      );
-}
-
-class _PageDots extends StatelessWidget {
-  const _PageDots({required this.count, required this.index});
-
-  final int count;
-  final int index;
-
-  @override
-  Widget build(BuildContext context) {
-    if (count < 2) return const SizedBox.shrink();
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (var i = 0; i < count; i++)
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            width: i == index ? 18 : 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: i == index ? AppColors.navy : AppColors.borderStrong,
-              borderRadius: AppRadii.all(3),
-            ),
-          ),
-      ],
     );
   }
 }
@@ -1624,61 +1517,116 @@ class _BookingTypeToggle extends StatelessWidget {
       );
 }
 
+/// A compact `−  N seats  +` control beside the booking-type toggle.
 class _SeatStepper extends StatelessWidget {
   const _SeatStepper({
     required this.seats,
     required this.maximum,
-    required this.perSeatFare,
     required this.onChanged,
   });
 
   final int seats;
   final int maximum;
-  final int perSeatFare;
   final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return UdCard(
-      tone: UdCardTone.tint,
-      radius: AppRadii.tile,
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+    final canLess = seats > 1;
+    final canMore = seats < maximum;
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: AppRadii.all(14),
+        border: Border.all(color: AppColors.border, width: 1.5),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
+          _SeatButton(
+            icon: Icons.remove_rounded,
+            tooltip: 'One seat fewer',
+            onTap: canLess ? () => onChanged(seats - 1) : null,
+          ),
+          SizedBox(
+            width: 50,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  '$seats ${seats == 1 ? 'seat' : 'seats'}',
+                  '$seats',
                   style: AppType.listTitle.copyWith(
-                    fontSize: 16,
+                    fontSize: 17,
+                    height: 1,
+                    fontWeight: FontWeight.w800,
                     color: AppText.primary,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'About PKR $perSeatFare each',
-                  style: AppType.small.copyWith(color: AppText.secondary),
+                  seats == 1 ? 'seat' : 'seats',
+                  style: AppType.caption.copyWith(
+                    fontSize: 10,
+                    height: 1,
+                    color: AppText.secondary,
+                  ),
                 ),
               ],
             ),
           ),
-          UdIconButton(
-            icon: Icons.remove_rounded,
-            small: true,
-            tooltip: 'One seat fewer',
-            onPressed: seats > 1 ? () => onChanged(seats - 1) : null,
-          ),
-          const SizedBox(width: 4),
-          UdIconButton(
+          _SeatButton(
             icon: Icons.add_rounded,
-            small: true,
             tooltip: 'One seat more',
-            onPressed: seats < maximum ? () => onChanged(seats + 1) : null,
+            dark: true,
+            onTap: canMore ? () => onChanged(seats + 1) : null,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SeatButton extends StatelessWidget {
+  const _SeatButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.dark = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  final bool dark;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    final Color background = !enabled
+        ? AppColors.surfaceAlt
+        : dark
+            ? AppColors.navy
+            : AppColors.surfaceAlt;
+    final Color ink = !enabled
+        ? AppText.disabled
+        : dark
+            ? AppText.onInk
+            : AppColors.navy;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: background,
+        borderRadius: AppRadii.all(10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: AppRadii.all(10),
+          child: SizedBox(
+            width: 36,
+            height: 38,
+            child: Icon(icon, size: 20, color: ink),
+          ),
+        ),
       ),
     );
   }
@@ -1705,6 +1653,7 @@ class _FarePanel extends StatelessWidget {
     required this.onDecrease,
     required this.onIncrease,
     required this.onEdit,
+    required this.onUseRecommended,
     required this.onSubmit,
   });
 
@@ -1733,6 +1682,9 @@ class _FarePanel extends StatelessWidget {
   final VoidCallback onDecrease;
   final VoidCallback onIncrease;
   final VoidCallback onEdit;
+
+  /// Puts the suggested fare back after the customer moved away from it.
+  final VoidCallback onUseRecommended;
   final VoidCallback onSubmit;
 
   bool get _isFixed => fixedRoute != null || quote?.negotiable == false;
@@ -1748,30 +1700,35 @@ class _FarePanel extends StatelessWidget {
       return 'Fixed fare · $published'
           '${seats > 1 ? '  ·  $seats seats' : ''}';
     }
-    if (recommended == 0) return '';
+    if (recommended == 0) return 'Tolls & parking extra';
     // At the floor, say so plainly. "31% below" reads like there is further to
     // go; there is not, and the customer pressing minus again needs to know
     // why nothing moves.
     if (minimum > 0 && fare <= minimum) {
-      return 'Minimum fare for this trip · may take longer';
+      return 'Minimum fare · may take longer$_tolls';
     }
     if (fare == recommended) {
-      return perSeat ? 'Recommended for $seats seats' : 'Recommended fare';
+      return (perSeat ? 'Recommended for $seats seats' : 'Recommended fare') +
+          _tolls;
     }
     final difference = ((fare - recommended) / recommended * 100).round();
-    if (difference > 0) return '$difference% above · faster pickup';
-    return '${difference.abs()}% below · may take longer';
+    if (difference > 0) return '$difference% above · faster pickup$_tolls';
+    return '${difference.abs()}% below · may take longer$_tolls';
   }
+
+  /// Tolls used to have their own line; folded into the caption so the sheet
+  /// leaves room for the map.
+  static const String _tolls = ' · tolls & parking extra';
+
+  bool get _showSuggested =>
+      !_isFixed && recommended > 0 && fare != recommended;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.background,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
+      color: AppColors.background,
       padding: const EdgeInsets.fromLTRB(
-          AppSizes.sidePadding, 12, AppSizes.sidePadding, 14),
+          AppSizes.sidePadding, 8, AppSizes.sidePadding, 14),
       child: SafeArea(
         top: false,
         child: Column(
@@ -1818,24 +1775,14 @@ class _FarePanel extends StatelessWidget {
               const SizedBox(height: 10),
             ],
 
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.info_outline_rounded,
-                    size: 15, color: AppText.caption),
-                const SizedBox(width: 7),
-                Flexible(
-                  child: Text(
-                    _isFixed
-                        ? 'Set fare for this route · not negotiable'
-                        : 'Tolls, parking and entry fees are not included',
-                    textAlign: TextAlign.center,
-                    style: AppType.caption.copyWith(color: AppText.caption),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
+            if (_isFixed) ...[
+              Text(
+                'Set fare for this route · not negotiable',
+                textAlign: TextAlign.center,
+                style: AppType.caption.copyWith(color: AppText.caption),
+              ),
+              const SizedBox(height: 4),
+            ],
             Row(
               children: [
                 // No stepper on a fixed route. Buttons that refuse to move are
@@ -1884,14 +1831,56 @@ class _FarePanel extends StatelessWidget {
                   ),
               ],
             ),
+            if (_showSuggested) ...[
+              const SizedBox(height: 10),
+              Center(
+                child: Material(
+                  color: AppColors.brandWash,
+                  borderRadius: AppRadii.all(999),
+                  child: InkWell(
+                    onTap: onUseRecommended,
+                    borderRadius: AppRadii.all(999),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.auto_awesome_rounded,
+                              size: 15, color: AppColors.brandInk),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Suggested fare ${Money.amount(recommended)}'
+                              ' · tap to use',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppType.caption.copyWith(
+                                color: AppColors.brandInk,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
-            UdButton.primary(
-              label: vehicleLabel.isEmpty
-                  ? 'Find offers'
-                  : 'Find offers · $vehicleLabel',
-              trailingIcon: Icons.chevron_right_rounded,
-              busy: submitting,
-              onPressed: onSubmit,
+            // Taller than the kit's default: this is the one action on the
+            // screen, and it sits where the thumb already is.
+            SizedBox(
+              height: 64,
+              child: UdButton.primary(
+                label: vehicleLabel.isEmpty
+                    ? 'Find offers'
+                    : 'Find offers · $vehicleLabel',
+                trailingIcon: Icons.chevron_right_rounded,
+                busy: submitting,
+                onPressed: onSubmit,
+              ),
             ),
           ],
         ),
