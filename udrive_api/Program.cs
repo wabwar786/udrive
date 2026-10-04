@@ -130,6 +130,10 @@ builder.Services.AddScoped<AdminUserManagementService>(_ =>
     new AdminUserManagementService(connectionString));
 builder.Services.AddScoped<TripOperationsService>(_ => new TripOperationsService(connectionString, authOptions));
 builder.Services.AddScoped<TrackingService>(_ => new TrackingService(connectionString));
+builder.Services.AddScoped<TripRouteService>(sp => new TripRouteService(
+    connectionString,
+    sp.GetRequiredService<IHttpClientFactory>(),
+    sp.GetRequiredService<ILogger<TripRouteService>>()));
 builder.Services.AddScoped<FinanceService>(_ => new FinanceService(connectionString));
 builder.Services.AddScoped<PaymentService>(_ => new PaymentService(connectionString));
 builder.Services.AddScoped<FeedbackService>(sp => new FeedbackService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));

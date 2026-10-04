@@ -146,6 +146,20 @@ class UdMapController {
     await _state?._fitBounds(points, padding: padding);
   }
 
+  /// Points the camera the way a navigation app does: centred on [target],
+  /// turned so [bearing] is up, and tilted by [tilt] degrees.
+  ///
+  /// Used by the live-ride screens, once per fix. Google animates the move,
+  /// so the map glides with the car rather than stepping after it.
+  Future<void> follow(
+    LatLng target, {
+    required double zoom,
+    double bearing = 0,
+    double tilt = 0,
+  }) async {
+    await _state?._follow(target, zoom: zoom, bearing: bearing, tilt: tilt);
+  }
+
   void dispose() => _state = null;
 }
 
@@ -177,6 +191,8 @@ class UdMap extends StatefulWidget {
     this.darkStyle = false,
     this.onTap,
     this.onSourceChanged,
+    this.keepGoogleOffline = false,
+    this.padding = EdgeInsets.zero,
     super.key,
   });
 
@@ -214,6 +230,24 @@ class UdMap extends StatefulWidget {
   final ValueChanged<LatLng>? onTap;
   final ValueChanged<UdMapSource>? onSourceChanged;
 
+  /// Stay on Google's map when the connection drops, instead of switching to
+  /// OpenStreetMap.
+  ///
+  /// The live-ride screens set this. Switching renderers mid-ride throws away
+  /// the Google tiles already on the phone and replaces them with OSM tiles
+  /// that cannot load either, so the driver ends up with a blank map exactly
+  /// where they most need one. Staying put keeps every tile Google already
+  /// drew, and the GPS car, the stored route and the Urdu voice carry on over
+  /// them with no network at all.
+  final bool keepGoogleOffline;
+
+  /// Space the map should treat as covered at its edges.
+  ///
+  /// Google centres the camera inside what is left, so a large top padding
+  /// puts the followed car low on the screen with the road ahead of it in
+  /// view — the way a navigation app frames it. Ignored on the OSM fallback.
+  final EdgeInsets padding;
+
   @override
   State<UdMap> createState() => _UdMapState();
 }
@@ -242,7 +276,7 @@ class _UdMapState extends State<UdMap> {
   ///
   /// The trade-off is that web shows OpenStreetMap rather than Google's
   /// cartography. Web is the testing surface; customers will be on Android.
-  bool get _useGoogle => _online && !kIsWeb;
+  bool get _useGoogle => !kIsWeb && (_online || widget.keepGoogleOffline);
 
   /// Where the camera currently points. Tracked so the idle callback can report
   /// it — Google gives the position during the move, not at the end.
@@ -271,7 +305,19 @@ class _UdMapState extends State<UdMap> {
   late LatLng _center;
   late double _zoom;
 
-  UdMapSource get _source => _online ? UdMapSource.google : UdMapSource.osm;
+  UdMapSource get _source =>
+      _online || (widget.keepGoogleOffline && !kIsWeb)
+          ? UdMapSource.google
+          : UdMapSource.osm;
+
+  /// Google polylines built from the last [UdMap.polylines] list.
+  ///
+  /// The live-ride screens rebuild this widget many times a second while the
+  /// car glides, and a mountain route can be thousands of points. Converting
+  /// all of them on every frame is exactly the garbage that shows as stutter,
+  /// so the conversion is redone only when the caller hands over a new list.
+  List<UdPolyline>? _polylineSource;
+  Set<gmap.Polyline> _googlePolylines = const <gmap.Polyline>{};
 
   @override
   void initState() {
@@ -397,6 +443,86 @@ class _UdMapState extends State<UdMap> {
         _pendingCamera = (target: target, zoom: nextZoom);
       }
     }
+  }
+
+  Future<void> _follow(
+    LatLng target, {
+    required double zoom,
+    required double bearing,
+    required double tilt,
+  }) async {
+    if (!target.latitude.isFinite ||
+        !target.longitude.isFinite ||
+        (target.latitude.abs() < 0.01 && target.longitude.abs() < 0.01)) {
+      return;
+    }
+
+    final nextZoom = (zoom.isFinite ? zoom : AppConfig.defaultMapZoom)
+        .clamp(widget.minZoom ?? 3.0, 21.0)
+        .toDouble();
+    final nextBearing = bearing.isFinite ? bearing % 360 : 0.0;
+    final nextTilt = tilt.isFinite ? tilt.clamp(0.0, 60.0).toDouble() : 0.0;
+    _center = target;
+    _zoom = nextZoom;
+
+    if (_useGoogle) {
+      if (!_googleController.isCompleted) {
+        _pendingCamera = (target: target, zoom: nextZoom);
+        return;
+      }
+      final controller = await _googleController.future;
+      try {
+        await controller.animateCamera(
+          gmap.CameraUpdate.newCameraPosition(
+            gmap.CameraPosition(
+              target: gmap.LatLng(target.latitude, target.longitude),
+              zoom: nextZoom,
+              bearing: nextBearing,
+              tilt: nextTilt,
+            ),
+          ),
+        );
+      } catch (_) {
+        // The map can be mid-teardown when the screen closes; the next fix
+        // tries again.
+      }
+      return;
+    }
+
+    if (!_osmReady) {
+      _pendingCamera = (target: target, zoom: nextZoom);
+      return;
+    }
+    try {
+      // flutter_map turns the map, not the camera: heading-up is the
+      // negative of the bearing.
+      _osmController.moveAndRotate(target, nextZoom, -nextBearing);
+    } catch (_) {
+      _pendingCamera = (target: target, zoom: nextZoom);
+    }
+  }
+
+  Set<gmap.Polyline> _buildGooglePolylines() {
+    if (identical(_polylineSource, widget.polylines)) return _googlePolylines;
+    _polylineSource = widget.polylines;
+    _googlePolylines = widget.polylines
+        .map(
+          (line) => gmap.Polyline(
+            polylineId: gmap.PolylineId(line.id),
+            color: line.color,
+            width: line.width.round(),
+            startCap: gmap.Cap.roundCap,
+            endCap: gmap.Cap.roundCap,
+            jointType: gmap.JointType.round,
+            consumeTapEvents: line.onTap != null,
+            onTap: line.onTap,
+            points: line.points
+                .map((point) => gmap.LatLng(point.latitude, point.longitude))
+                .toList(growable: false),
+          ),
+        )
+        .toSet();
+    return _googlePolylines;
   }
 
   /// Frames a set of points by computing the camera directly.
@@ -594,6 +720,7 @@ class _UdMapState extends State<UdMap> {
         }
       },
       myLocationEnabled: widget.showMyLocation,
+      padding: widget.padding,
       minMaxZoomPreference: widget.minZoom == null
           ? gmap.MinMaxZoomPreference.unbounded
           : gmap.MinMaxZoomPreference(widget.minZoom, null),
@@ -676,23 +803,7 @@ class _UdMapState extends State<UdMap> {
             ),
           )
           .toSet(),
-      polylines: widget.polylines
-          .map(
-            (line) => gmap.Polyline(
-              polylineId: gmap.PolylineId(line.id),
-              color: line.color,
-              width: line.width.round(),
-              startCap: gmap.Cap.roundCap,
-              endCap: gmap.Cap.roundCap,
-              jointType: gmap.JointType.round,
-              consumeTapEvents: line.onTap != null,
-              onTap: line.onTap,
-              points: line.points
-                  .map((point) => gmap.LatLng(point.latitude, point.longitude))
-                  .toList(growable: false),
-            ),
-          )
-          .toSet(),
+      polylines: _buildGooglePolylines(),
     );
   }
 

@@ -67,6 +67,10 @@ flutter:
     # offer arriving. See lib/core/media/alert_sound.dart for why it is bundled
     # rather than using the phone's own notification tone.
     - assets/sounds/
+    # The driver's Urdu turn-by-turn clips (turn_left.mp3, d_200.mp3, ...).
+    # Listed on its own because Flutter does not include subfolders of a
+    # listed folder. See assets/sounds/ur/README.txt for the full list.
+    - assets/sounds/ur/
 
   fonts:
     # Plus Jakarta Sans, the typeface of design system v2. SIL Open Font
