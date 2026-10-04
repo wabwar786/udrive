@@ -3,7 +3,10 @@ using Npgsql;
 
 namespace UDrive.Api.Services;
 
-public sealed class AdminDataService(string connectionString, ILogger<AdminDataService> logger)
+public sealed class AdminDataService(
+    string connectionString,
+    ILogger<AdminDataService> logger,
+    DemoFleetPhotos photos)
 {
     /// <summary>Which accounts count as demo content.</summary>
     /// <remarks>
@@ -76,7 +79,22 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
                 (SELECT count(*) FROM udrive.hotel_bookings) AS hotel_bookings,
                 (SELECT count(*) FROM udrive.tour_packages) AS tour_packages,
                 (SELECT count(*) FROM udrive.destinations) AS destinations,
-                (SELECT count(*) FROM udrive.users WHERE email LIKE 'demo.%@udrive.local') AS demo_users;
+                (SELECT count(*) FROM udrive.users WHERE email LIKE 'demo.%@udrive.local') AS demo_users,
+                (SELECT count(*) FROM udrive.vehicles v
+                   JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
+                   JOIN udrive.users u ON u.id = dp.user_id
+                  WHERE u.email LIKE 'demo.%@udrive.local') AS demo_vehicles,
+                (SELECT count(*) FROM udrive.tour_packages tp
+                   JOIN udrive.driver_profiles dp ON dp.id = tp.driver_profile_id
+                   JOIN udrive.users u ON u.id = dp.user_id
+                  WHERE u.email LIKE 'demo.%@udrive.local') AS demo_tours,
+                (SELECT count(*) FROM udrive.vehicles v
+                   JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
+                   JOIN udrive.users u ON u.id = dp.user_id
+                  WHERE u.email LIKE 'demo.%@udrive.local' AND v.available_for_rent) AS demo_rentals,
+                (SELECT count(*) FROM udrive.hotels h
+                   JOIN udrive.users u ON u.id = h.owner_user_id
+                  WHERE u.email LIKE 'demo.%@udrive.local') AS demo_hotels;
             """;
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -92,7 +110,11 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
             hotelBookings = reader.GetInt64(6),
             tourPackages = reader.GetInt64(7),
             destinations = reader.GetInt64(8),
-            demoUsers = reader.GetInt64(9)
+            demoUsers = reader.GetInt64(9),
+            demoVehicles = reader.GetInt64(10),
+            demoTours = reader.GetInt64(11),
+            demoRentals = reader.GetInt64(12),
+            demoHotels = reader.GetInt64(13)
         };
     }
 
@@ -218,6 +240,8 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
                 await ReadEmbeddedSqlAsync("reference_data.sql", cancellationToken)),
             ("the demo hotels",
                 await ReadEmbeddedSqlAsync("demo_hotels.sql", cancellationToken)),
+            (FleetScriptName,
+                await ReadEmbeddedSqlAsync("demo_fleet.sql", cancellationToken)),
         ];
 
         await using var connection = new NpgsqlConnection(connectionString);
@@ -274,6 +298,27 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
             throw;
         }
 
+        // Photographs after the commit: downloading them inside the
+        // transaction would hold its locks for as long as Wikimedia takes.
+        string? photoNote = null;
+        if (applied.Contains(FleetScriptName))
+        {
+            try
+            {
+                var fitted = await photos.FitAsync(cancellationToken);
+                photoNote = fitted.Missing.Count == 0
+                    ? $" Vehicle photos: {fitted.Fitted} ready."
+                    : $" Vehicle photos: {fitted.Fitted} ready; could not fetch "
+                      + string.Join(", ", fitted.Missing)
+                      + " — press Add demo data again to retry (rental cars without a photo stay hidden).";
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Demo vehicle photos could not be fitted.");
+                photoNote = " Vehicle photos could not be fetched just now — press Add demo data again to retry.";
+            }
+        }
+
         if (failures.Count == 0)
         {
             logger.LogInformation("Demo data was seeded by admin {AdminUserId}", adminUserId);
@@ -289,12 +334,16 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
                   ? "Added " + string.Join(" and ", applied) + "."
                   : "Nothing was added.");
 
+        message += photoNote ?? string.Empty;
+
         return new
         {
             message,
             status = await GetStatusAsync(cancellationToken)
         };
     }
+
+    private const string FleetScriptName = "the demo drivers, vehicles, tours and rental cars";
 
     /// <summary>Removes the seeded demo hotels and their owner accounts.</summary>
     /// <remarks>
@@ -328,6 +377,8 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
         int accountsRemoved;
         string? accountsBlockedBy = null;
         int accountsFound, roomsFound, bookingsRemoved, hotelsRemoved;
+        int toursRemoved, vehiclesRemoved;
+        List<Guid> demoVehicleIds;
 
         try
         {
@@ -343,6 +394,49 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
                 JOIN udrive.hotels h ON h.id = r.hotel_id
                 JOIN udrive.users u ON u.id = h.owner_user_id
                 WHERE u.email LIKE @pattern;
+                """, cancellationToken);
+
+            // The demo fleet first: departures, then the cars, then the driver
+            // profiles. Every statement is scoped to demo accounts by email,
+            // so a real driver's car or tour cannot match.
+            demoVehicleIds = new List<Guid>();
+            await using (var ids = connection.CreateCommand())
+            {
+                ids.Transaction = transaction;
+                ids.CommandText = """
+                    SELECT v.id FROM udrive.vehicles v
+                    JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
+                    JOIN udrive.users u ON u.id = dp.user_id
+                    WHERE u.email LIKE @pattern;
+                    """;
+                ids.Parameters.AddWithValue("pattern", DemoEmailPattern);
+                await using var idReader = await ids.ExecuteReaderAsync(cancellationToken);
+                while (await idReader.ReadAsync(cancellationToken)) demoVehicleIds.Add(idReader.GetGuid(0));
+            }
+
+            await ExecuteDemoAsync(connection, transaction, """
+                DELETE FROM udrive.package_waitlist w
+                USING udrive.tour_packages tp, udrive.driver_profiles dp, udrive.users u
+                WHERE w.tour_package_id = tp.id AND tp.driver_profile_id = dp.id
+                  AND dp.user_id = u.id AND u.email LIKE @pattern;
+                """, cancellationToken);
+            toursRemoved = await ExecuteDemoAsync(connection, transaction, """
+                DELETE FROM udrive.tour_packages tp
+                USING udrive.driver_profiles dp, udrive.users u
+                WHERE tp.driver_profile_id = dp.id AND dp.user_id = u.id
+                  AND u.email LIKE @pattern;
+                """, cancellationToken);
+            await ExecuteDemoAsync(connection, transaction, """
+                DELETE FROM udrive.rental_bookings rb
+                USING udrive.vehicles v, udrive.driver_profiles dp, udrive.users u
+                WHERE rb.vehicle_id = v.id AND v.driver_profile_id = dp.id
+                  AND dp.user_id = u.id AND u.email LIKE @pattern;
+                """, cancellationToken);
+            vehiclesRemoved = await ExecuteDemoAsync(connection, transaction, """
+                DELETE FROM udrive.vehicles v
+                USING udrive.driver_profiles dp, udrive.users u
+                WHERE v.driver_profile_id = dp.id AND dp.user_id = u.id
+                  AND u.email LIKE @pattern;
                 """, cancellationToken);
 
             bookingsRemoved = await ExecuteDemoAsync(connection, transaction, """
@@ -366,6 +460,12 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
                     DELETE FROM udrive.refresh_tokens t
                     USING udrive.users u
                     WHERE t.user_id = u.id AND u.email LIKE @pattern;
+                    """, cancellationToken);
+
+                await ExecuteDemoAsync(connection, transaction, """
+                    DELETE FROM udrive.driver_profiles dp
+                    USING udrive.users u
+                    WHERE dp.user_id = u.id AND u.email LIKE @pattern;
                     """, cancellationToken);
 
                 await ExecuteDemoAsync(connection, transaction, """
@@ -421,11 +521,15 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
             "Demo data was removed by admin {AdminUserId}: {Hotels} hotels, {Accounts} accounts",
             adminUserId, hotelsRemoved, accountsRemoved);
 
-        var removed = new List<string>(4);
+        photos.Delete(demoVehicleIds);
+
+        var removed = new List<string>(6);
+        if (toursRemoved > 0) removed.Add(Plural(toursRemoved, "demo tour", "demo tours"));
+        if (vehiclesRemoved > 0) removed.Add(Plural(vehiclesRemoved, "demo vehicle", "demo vehicles"));
         if (hotelsRemoved > 0) removed.Add(Plural(hotelsRemoved, "hotel", "hotels"));
         if (roomsFound > 0) removed.Add(Plural(roomsFound, "room type", "room types"));
         if (bookingsRemoved > 0) removed.Add(Plural(bookingsRemoved, "hotel booking", "hotel bookings"));
-        if (accountsRemoved > 0) removed.Add(Plural(accountsRemoved, "demo owner account", "demo owner accounts"));
+        if (accountsRemoved > 0) removed.Add(Plural(accountsRemoved, "demo account", "demo accounts"));
 
         var message = removed.Count == 0
             ? "There was no demo data left to remove."
@@ -433,10 +537,10 @@ public sealed class AdminDataService(string connectionString, ILogger<AdminDataS
 
         if (accountsBlockedBy is not null && accountsFound > 0)
         {
-            message += $" The {Plural(accountsFound, "demo owner account", "demo owner accounts")} "
+            message += $" The {Plural(accountsFound, "demo account", "demo accounts")} "
                 + $"could not be removed because other records still reference "
                 + $"{(accountsFound == 1 ? "it" : "them")} (constraint '{accountsBlockedBy}'). "
-                + "The hotels are gone either way.";
+                + "The demo listings are gone either way.";
         }
 
         message += " The destination catalogue and the vehicle rate card were not touched.";

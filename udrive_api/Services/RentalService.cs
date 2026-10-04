@@ -78,7 +78,8 @@ public sealed class RentalService(string connectionString)
                    v.rent_pickup_point,
                    COALESCE(NULLIF(u.full_name, ''), 'Owner'),
                    COALESCE(dp.average_rating, 0),
-                   v.has_air_conditioning, v.is_four_by_four
+                   v.has_air_conditioning, v.is_four_by_four,
+                   COALESCE(u.email LIKE 'demo.%@udrive.local', false)
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
@@ -163,7 +164,8 @@ public sealed class RentalService(string connectionString)
                 reader.GetString(16),
                 reader.GetDecimal(17),
                 reader.GetBoolean(18),
-                reader.GetBoolean(19)));
+                reader.GetBoolean(19),
+                reader.GetBoolean(20)));
         }
 
         return ServiceResult<IReadOnlyList<RentalVehicleDto>>.Ok(list);
@@ -221,6 +223,12 @@ public sealed class RentalService(string connectionString)
         CreateRentalBookingRequest request,
         CancellationToken cancellationToken)
     {
+        if (await DemoListing.IsDemoVehicleAsync(connectionString, request.VehicleId, cancellationToken))
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict, DemoListing.ErrorCode, DemoListing.Message);
+        }
+
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(

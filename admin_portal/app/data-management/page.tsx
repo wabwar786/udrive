@@ -24,6 +24,10 @@ type DataStatus = {
   tourPackages: number;
   destinations: number;
   demoUsers: number;
+  demoVehicles: number;
+  demoTours: number;
+  demoRentals: number;
+  demoHotels: number;
 };
 
 const emptyStatus: DataStatus = {
@@ -37,6 +41,10 @@ const emptyStatus: DataStatus = {
   tourPackages: 0,
   destinations: 0,
   demoUsers: 0,
+  demoVehicles: 0,
+  demoTours: 0,
+  demoRentals: 0,
+  demoHotels: 0,
 };
 
 export default function DataManagementPage() {
@@ -66,7 +74,7 @@ export default function DataManagementPage() {
   }, [load]);
 
   async function seedDemo() {
-    if (!window.confirm('Restore the destination catalogue and vehicle rate card, and add the demo hotels? Nothing is deleted — existing rows are refreshed in place.')) return;
+    if (!window.confirm('Restore the destination catalogue and vehicle rate card, and add the demo hotels, tours and rental cars with their photos? Nothing is deleted — existing rows are refreshed in place.')) return;
     setAction('demo');
     setError('');
     setSuccess('');
@@ -83,9 +91,9 @@ export default function DataManagementPage() {
 
   async function removeDemo() {
     if (!window.confirm(
-      'Remove the demo hotels and their owner accounts? The destination catalogue and '
-      + 'vehicle rate card are not touched, and nothing belonging to a real customer is '
-      + 'affected. You can put the demo hotels back with Restore / refresh.'
+      'Remove the demo hotels, tours, rental cars and their demo accounts? The destination '
+      + 'catalogue and vehicle rate card are not touched, and nothing belonging to a real '
+      + 'customer, driver or hotel is affected. You can put the demo data back with Restore / refresh.'
     )) return;
     setAction('removeDemo');
     setError('');
@@ -157,13 +165,17 @@ export default function DataManagementPage() {
               <p>
                 Puts back the 35 Azad Kashmir destinations and the vehicle rate card — the two
                 things the customer app cannot work without, because an empty rate card means no
-                fare can be quoted. Also adds a few approved hotels with rooms, and one pending
-                hotel for testing approval. Existing records are refreshed, never duplicated.
+                fare can be quoted. Also adds demo data so the app has something to show: a few
+                approved hotels with rooms (and one pending hotel for testing approval), 10 tour
+                departures and 7 rental cars, each with a photo. Every demo listing carries a small
+                &quot;Demo&quot; label in the app and cannot be booked. Existing records are refreshed,
+                never duplicated.
               </p>
               <div className="dataMiniStats">
-                <span><strong>{status.demoUsers}</strong> demo users</span>
                 <span><strong>{status.destinations}</strong> destinations</span>
-                <span><strong>{status.pendingHotels}</strong> pending hotels</span>
+                <span><strong>{status.demoTours}</strong> demo tours</span>
+                <span><strong>{status.demoRentals}</strong> demo rental cars</span>
+                <span><strong>{status.demoHotels}</strong> demo hotels</span>
               </div>
               <button className="primaryButton wide" disabled={!!action} onClick={() => void seedDemo()}>
                 <Database /> {action === 'demo' ? 'Restoring…' : 'Restore / refresh'}
@@ -175,16 +187,16 @@ export default function DataManagementPage() {
               <span className="dataEyebrow">SCOPED / REVERSIBLE</span>
               <h2>Remove demo data</h2>
               <p>
-                Removes the seeded demo hotels, their rooms and bookings, and the demo owner
-                accounts — the ones whose address starts with &quot;demo.&quot;. Use it before going
-                live, so demo hotels stop appearing in customer searches and revenue figures.
+                Removes everything the demo accounts own — the ones whose address starts with
+                &quot;demo.&quot;: demo hotels with their rooms and bookings, demo tours, demo
+                vehicles and their photos, and the accounts themselves. Use it before going live.
                 Kept: the destination catalogue, the vehicle rate card, every real record, and
-                your own portal account. Restore / refresh puts the demo hotels back.
+                your own portal account. Restore / refresh puts the demo data back.
               </p>
               <div className="dataMiniStats">
                 <span><strong>{status.demoUsers}</strong> demo accounts</span>
-                <span><strong>{status.hotels}</strong> hotels</span>
-                <span><strong>{status.hotelBookings}</strong> hotel bookings</span>
+                <span><strong>{status.demoVehicles}</strong> demo vehicles</span>
+                <span><strong>{status.demoHotels}</strong> demo hotels</span>
               </div>
               <button
                 className="secondaryButton wide"

@@ -391,6 +391,7 @@ class LiveTourPackage {
     this.luggageAllowance,
     this.coverImageUrl,
     this.reviewNotes,
+    this.isDemo = false,
   });
 
   final String id;
@@ -425,6 +426,10 @@ class LiveTourPackage {
   final int mountainReadinessScore;
   final String? coverImageUrl;
   final String? reviewNotes;
+
+  /// A sample departure added from the admin portal. It is shown with a Demo
+  /// label and the server refuses to book it.
+  final bool isDemo;
 
   int get bookableSeats => (availableSeats - heldSeats).clamp(0, totalSeats);
 
@@ -487,6 +492,7 @@ class LiveTourPackage {
         mountainReadinessScore: _int(json['mountainReadinessScore']),
         coverImageUrl: json['coverImageUrl']?.toString(),
         reviewNotes: json['reviewNotes']?.toString(),
+        isDemo: json['isDemo'] == true,
       );
 }
 

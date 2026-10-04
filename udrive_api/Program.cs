@@ -193,8 +193,23 @@ builder.Services.AddScoped<Phase18TourService>(_ => new Phase18TourService(conne
 builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(connectionString));
 builder.Services.AddScoped<HotelService>(_ => new HotelService(connectionString));
 builder.Services.AddScoped<ExploreService>(_ => new ExploreService(connectionString));
+builder.Services.AddHttpClient(DemoFleetPhotos.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    // Wikimedia asks every client to identify itself.
+    client.DefaultRequestHeaders.Add("User-Agent", "UDrive-API/1.0 (+https://udrive.pk) demo-photos");
+});
+builder.Services.AddScoped<DemoFleetPhotos>(sp =>
+    new DemoFleetPhotos(
+        connectionString,
+        sp.GetRequiredService<LocalFileStorageService>(),
+        sp.GetRequiredService<IHttpClientFactory>(),
+        sp.GetRequiredService<ILogger<DemoFleetPhotos>>()));
 builder.Services.AddScoped<AdminDataService>(sp =>
-    new AdminDataService(connectionString, sp.GetRequiredService<ILogger<AdminDataService>>()));
+    new AdminDataService(
+        connectionString,
+        sp.GetRequiredService<ILogger<AdminDataService>>(),
+        sp.GetRequiredService<DemoFleetPhotos>()));
 builder.Services.AddScoped<VerificationFileLookupService>(serviceProvider =>
     new VerificationFileLookupService(
         connectionString,

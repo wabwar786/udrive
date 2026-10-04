@@ -10,6 +10,7 @@ import '../../core/network/api_config.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/demo_tag.dart';
 import '../../models/booking_models.dart';
 import 'live_packages_screen.dart';
 import 'live_tour_interest_screen.dart';
@@ -552,8 +553,12 @@ class _TourCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (rating != null) ...[
+                        if (p.isDemo) ...[
                           const SizedBox(width: 6),
+                          const DemoTag(),
+                        ],
+                        const SizedBox(width: 6),
+                        if (rating != null) ...[
                           const Icon(Icons.star_rounded,
                               size: 14, color: AppColors.brandInk),
                           const SizedBox(width: 2),
@@ -564,7 +569,8 @@ class _TourCard extends StatelessWidget {
                               color: AppColors.brandInk,
                             ),
                           ),
-                        ],
+                        ] else
+                          const NewRatingTag(),
                       ],
                     ),
                     const SizedBox(height: 6),

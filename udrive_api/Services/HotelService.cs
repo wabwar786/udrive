@@ -39,7 +39,9 @@ public sealed class HotelService(string connectionString)
                    LEFT JOIN udrive.hotel_room_inventory i
                      ON i.room_id=r.id AND i.inventory_date=@check_in
                    WHERE r.hotel_id=h.id AND r.is_active
-               ),0) AS available_rooms
+               ),0) AS available_rooms,
+               COALESCE((SELECT o.email LIKE 'demo.%@udrive.local'
+                         FROM udrive.users o WHERE o.id=h.owner_user_id), false) AS is_demo
         FROM udrive.hotels h
         WHERE lower(h.approval_status)='approved'
           AND h.is_active=true
@@ -79,7 +81,7 @@ public sealed class HotelService(string connectionString)
     public async Task<ServiceResult<object>> GetAsync(Guid id, DateOnly? checkIn, DateOnly? checkOut, CancellationToken ct)
     {
         await using var c=new NpgsqlConnection(connectionString); await c.OpenAsync(ct);
-        object? hotel=null; await using(var cmd=c.CreateCommand()) {cmd.CommandText="""SELECT h.id,h.name,h.address,h.city,h.district,h.latitude,h.longitude,h.contact_phone,h.rating,h.main_image_url,h.amenities,h.transport_available,h.description,0::numeric,0::bigint FROM udrive.hotels h WHERE h.id=@id AND lower(h.approval_status)='approved' AND h.is_active""";cmd.Parameters.AddWithValue("id",id);await using var r=await cmd.ExecuteReaderAsync(ct);if(await r.ReadAsync(ct))hotel=MapHotel(r,true);} if(hotel is null)return ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");
+        object? hotel=null; await using(var cmd=c.CreateCommand()) {cmd.CommandText="""SELECT h.id,h.name,h.address,h.city,h.district,h.latitude,h.longitude,h.contact_phone,h.rating,h.main_image_url,h.amenities,h.transport_available,h.description,0::numeric,0::bigint,COALESCE((SELECT o.email LIKE 'demo.%@udrive.local' FROM udrive.users o WHERE o.id=h.owner_user_id),false) AS is_demo FROM udrive.hotels h WHERE h.id=@id AND lower(h.approval_status)='approved' AND h.is_active""";cmd.Parameters.AddWithValue("id",id);await using var r=await cmd.ExecuteReaderAsync(ct);if(await r.ReadAsync(ct))hotel=MapHotel(r,true);} if(hotel is null)return ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");
         var rooms=new List<object>(); await using(var cmd=c.CreateCommand()){cmd.CommandText="""SELECT r.id,r.room_type,r.description,r.capacity,r.total_rooms,r.base_rate,r.image_url,r.amenities,COALESCE(i.available_rooms,r.total_rooms),COALESCE(i.rate,r.base_rate) FROM udrive.hotel_rooms r LEFT JOIN udrive.hotel_room_inventory i ON i.room_id=r.id AND i.inventory_date=@d WHERE r.hotel_id=@id AND r.is_active ORDER BY r.base_rate""";cmd.Parameters.AddWithValue("id",id);cmd.Parameters.AddWithValue("d",(object?)checkIn??DateOnly.FromDateTime(DateTime.UtcNow));await using var rr=await cmd.ExecuteReaderAsync(ct);while(await rr.ReadAsync(ct))rooms.Add(new{id=rr.GetGuid(0),roomType=rr.GetString(1),description=rr.GetString(2),capacity=rr.GetInt32(3),totalRooms=rr.GetInt32(4),baseRate=rr.GetDecimal(5),imageUrl=rr.GetString(6),amenities=JsonSerializer.Deserialize<string[]>(rr.GetFieldValue<string>(7))??[],availableRooms=rr.GetInt32(8),rate=rr.GetDecimal(9)});}
         return ServiceResult<object>.Ok(new {hotel,rooms});
     }
@@ -127,6 +129,7 @@ public sealed class HotelService(string connectionString)
     {
         if(x.CheckOut<=x.CheckIn)return ServiceResult<HotelBookingCreatedDto>.Fail(400,"dates","Check-out must be after check-in.");
         if(x.Guests<1||x.Rooms<1)return ServiceResult<HotelBookingCreatedDto>.Fail(400,"guests","At least one guest and one room are needed.");
+        if(await DemoListing.IsDemoHotelAsync(connectionString,hotelId,ct))return ServiceResult<HotelBookingCreatedDto>.Fail(409,DemoListing.ErrorCode,DemoListing.Message);
 
         // How the customer is getting there. Anything unknown is the customer's
         // own car, which is what the booking assumed before this was asked.
@@ -385,5 +388,6 @@ public sealed class HotelService(string connectionString)
         catch{await tx.RollbackAsync(CancellationToken.None);throw;}
     }
 
-    static object MapHotel(NpgsqlDataReader r,bool detail=false)=>new{id=r.GetGuid(0),name=r.GetString(1),address=r.GetString(2),city=r.GetString(3),district=r.GetString(4),latitude=r.GetDouble(5),longitude=r.GetDouble(6),contactPhone=r.GetString(7),rating=r.GetDecimal(8),mainImageUrl=r.GetString(9),amenities=JsonSerializer.Deserialize<string[]>(r.GetFieldValue<string>(10))??[],transportAvailable=r.GetBoolean(11),description=detail?r.GetString(12):null,startingRate=detail?0:r.GetDecimal(12),availableRooms=detail?0:r.GetInt64(13)};
+    static object MapHotel(NpgsqlDataReader r,bool detail=false)=>new{id=r.GetGuid(0),name=r.GetString(1),address=r.GetString(2),city=r.GetString(3),district=r.GetString(4),latitude=r.GetDouble(5),longitude=r.GetDouble(6),contactPhone=r.GetString(7),rating=r.GetDecimal(8),mainImageUrl=r.GetString(9),amenities=JsonSerializer.Deserialize<string[]>(r.GetFieldValue<string>(10))??[],transportAvailable=r.GetBoolean(11),description=detail?r.GetString(12):null,startingRate=detail?0:r.GetDecimal(12),availableRooms=detail?0:r.GetInt64(13),isDemo=IsDemoColumn(r)};
+    static bool IsDemoColumn(NpgsqlDataReader r){for(var i=0;i<r.FieldCount;i++){if(r.GetName(i)=="is_demo")return !r.IsDBNull(i)&&r.GetBoolean(i);}return false;}
 }

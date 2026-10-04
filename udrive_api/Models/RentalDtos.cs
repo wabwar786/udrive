@@ -31,7 +31,8 @@ public sealed record RentalVehicleDto(
     string OwnerName,
     decimal OwnerRating,
     bool HasAirConditioning,
-    bool IsFourByFour);
+    bool IsFourByFour,
+    bool IsDemo = false);
 
 /// <summary>A day this vehicle cannot be rented, and why.</summary>
 /// <param name="Reason">

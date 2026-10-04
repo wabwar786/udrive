@@ -5,6 +5,7 @@ import '../../core/hotels/hotel_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/demo_tag.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/hotel_models.dart';
 import 'hotel_bits.dart';
@@ -180,12 +181,14 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
             ),
             _BottomBar(
               total: total,
-              caption: room == null
+              caption: hotel.isDemo
+                  ? 'Demo · not bookable'
+                  : room == null
                   ? 'Choose a room'
                   : '${room.roomType} · ${_stay.nights} '
                       '${_stay.nights == 1 ? 'night' : 'nights'}'
                       '${_stay.rooms > 1 ? ' · ${_stay.rooms} rooms' : ''}',
-              onBook: room == null ? null : _book,
+              onBook: room == null || hotel.isDemo ? null : _book,
             ),
           ],
         ),
@@ -204,6 +207,14 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (hotel.isDemo) ...[
+          const UdBanner(
+            tone: UdTone.warn,
+            icon: Icons.info_outline_rounded,
+            text: demoListingMessage,
+          ),
+          const SizedBox(height: 14),
+        ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -232,6 +243,13 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                 ],
               ),
             ),
+            if (hotel.rating <= 0) ...[
+              const SizedBox(width: 10),
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: NewRatingTag(),
+              ),
+            ],
             if (hotel.rating > 0) ...[
               const SizedBox(width: 10),
               Container(

@@ -5,6 +5,7 @@ import '../../core/config/app_config.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/demo_tag.dart';
 import '../../core/widgets/ud_controls.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../core/widgets/vehicle_art.dart';
@@ -600,6 +601,14 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
         padding: const EdgeInsets.fromLTRB(
             AppSizes.sidePadding, 14, AppSizes.sidePadding, 30),
         children: [
+          if (package.isDemo) ...[
+            const UdBanner(
+              tone: UdTone.warn,
+              icon: Icons.info_outline_rounded,
+              child: Text(demoListingMessage),
+            ),
+            const SizedBox(height: 14),
+          ],
           VehicleLiveMap(package: package),
           const SizedBox(height: 16),
           _DetailCard(package: package),
@@ -669,7 +678,7 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
               ),
             ),
           ),
-          if (package.customerOffersAllowed) ...[
+          if (package.customerOffersAllowed && !package.isDemo) ...[
             const SizedBox(height: 16),
             UdButton.dark(
               label: 'Make offer',
@@ -706,9 +715,17 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
               Expanded(
                 flex: 2,
                 child: UdButton.primary(
-                  label: canHold ? 'Hold & confirm' : 'Join waiting list',
+                  label: package.isDemo
+                      ? 'Demo · not bookable'
+                      : canHold
+                          ? 'Hold & confirm'
+                          : 'Join waiting list',
                   busy: _busy,
-                  onPressed: canHold ? _reserve : _joinWaitlist,
+                  onPressed: package.isDemo
+                      ? null
+                      : canHold
+                          ? _reserve
+                          : _joinWaitlist,
                 ),
               ),
             ],

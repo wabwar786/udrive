@@ -6,6 +6,7 @@ import '../../core/rental/rental_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/demo_tag.dart';
 import '../../core/widgets/ud_kit.dart';
 import 'rental_booking_screen.dart';
 
@@ -621,8 +622,12 @@ class _RentCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (v.ownerRating > 0) ...[
+                        if (v.isDemo) ...[
                           const SizedBox(width: 6),
+                          const DemoTag(),
+                        ],
+                        const SizedBox(width: 6),
+                        if (v.ownerRating > 0) ...[
                           const Icon(Icons.star_rounded,
                               size: 14, color: AppColors.brandInk),
                           const SizedBox(width: 2),
@@ -633,7 +638,8 @@ class _RentCard extends StatelessWidget {
                               color: AppColors.brandInk,
                             ),
                           ),
-                        ],
+                        ] else
+                          const NewRatingTag(),
                       ],
                     ),
                     const SizedBox(height: 2),

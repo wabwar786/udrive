@@ -7,6 +7,7 @@ import '../../core/rental/rental_repository.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/demo_tag.dart';
 import '../../core/widgets/ud_kit.dart';
 
 /// C-32 to C-35 — taking one car for a set of days.
@@ -85,6 +86,7 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
   /// to terms written into the app, carrying version 0 — and the server
   /// refuses any booking whose accepted version is not the current one.
   bool get _ready =>
+      !widget.vehicle.isDemo &&
       _quote != null &&
       !_quote!.documentsMissing &&
       _papersChecked &&
@@ -298,6 +300,9 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
 
   String get _buttonLabel {
     if (_busy) return _t('Working…', 'کام ہو رہا ہے…');
+    if (widget.vehicle.isDemo) {
+      return _t('Demo · not bookable', 'ڈیمو · بک نہیں ہو سکتی');
+    }
     final quote = _quote;
     if (quote == null) return _t('Choose your dates first', 'پہلے تاریخیں چنیں');
     if (quote.documentsMissing) {
@@ -344,6 +349,17 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
                       children: [
                         _titleBlock(v),
                         const SizedBox(height: 16),
+                        if (v.isDemo) ...[
+                          UdBanner(
+                            tone: UdTone.warn,
+                            icon: Icons.info_outline_rounded,
+                            text: _t(
+                              demoListingMessage,
+                              'یہ ڈیمو گاڑی ہے جو دکھاتی ہے کہ UDrive کیسے کام کرتا ہے۔ اسے بک نہیں کیا جا سکتا۔',
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         _specs(v),
                         const SizedBox(height: 16),
 
@@ -627,6 +643,11 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
                 ),
               ),
             ),
+            if (v.isDemo) ...[
+              const DemoTag(),
+              const SizedBox(width: 6),
+            ],
+            if (v.ownerRating <= 0) const NewRatingTag(),
             if (v.ownerRating > 0)
               Container(
                 height: 28,

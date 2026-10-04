@@ -454,6 +454,12 @@ public sealed class PackageMarketplaceService(
         AcquirePackageHoldRequest request,
         CancellationToken cancellationToken)
     {
+        if (await DemoListing.IsDemoPackageAsync(connectionString, packageId, cancellationToken))
+        {
+            return ServiceResult<PackageSeatHoldDto>.Fail(
+                StatusCodes.Status409Conflict, DemoListing.ErrorCode, DemoListing.Message);
+        }
+
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(
@@ -632,6 +638,12 @@ public sealed class PackageMarketplaceService(
         CreatePackageOfferRequest request,
         CancellationToken cancellationToken)
     {
+        if (await DemoListing.IsDemoPackageAsync(connectionString, packageId, cancellationToken))
+        {
+            return ServiceResult<PackageOfferDto>.Fail(
+                StatusCodes.Status409Conflict, DemoListing.ErrorCode, DemoListing.Message);
+        }
+
         var packageResult = await GetPublicPackageAsync(packageId, cancellationToken);
         if (!packageResult.Success || packageResult.Data is null)
         {
@@ -903,6 +915,12 @@ public sealed class PackageMarketplaceService(
         JoinPackageWaitlistRequest request,
         CancellationToken cancellationToken)
     {
+        if (await DemoListing.IsDemoPackageAsync(connectionString, packageId, cancellationToken))
+        {
+            return ServiceResult<PackageWaitlistDto>.Fail(
+                StatusCodes.Status409Conflict, DemoListing.ErrorCode, DemoListing.Message);
+        }
+
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(
@@ -1374,7 +1392,8 @@ public sealed class PackageMarketplaceService(
                    u.full_name, dp.average_rating, dp.safety_score,
                    concat_ws(' ', v.make, v.model, v.year::text),
                    v.registration_number, v.mountain_readiness_score,
-                   tp.cover_image_url, tp.review_notes, tp.created_at
+                   tp.cover_image_url, tp.review_notes, tp.created_at,
+                   COALESCE(u.email LIKE 'demo.%@udrive.local', false)
             FROM udrive.tour_packages tp
             JOIN udrive.driver_profiles dp ON dp.id=tp.driver_profile_id
             JOIN udrive.users u ON u.id=dp.user_id
@@ -1473,7 +1492,8 @@ public sealed class PackageMarketplaceService(
             reader.GetString(30), reader.GetString(31), reader.GetInt32(32),
             reader.IsDBNull(33) ? null : reader.GetString(33),
             reader.IsDBNull(34) ? null : reader.GetString(34),
-            reader.GetFieldValue<DateTimeOffset>(35));
+            reader.GetFieldValue<DateTimeOffset>(35),
+            reader.GetBoolean(36));
     }
 
     private async Task<ServiceResult<PackageAvailabilityDto>> ReadAvailabilityAsync(

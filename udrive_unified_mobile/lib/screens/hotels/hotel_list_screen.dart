@@ -7,6 +7,7 @@ import '../../core/maps/ud_map.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../core/widgets/demo_tag.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/auth_models.dart';
 import '../../models/hotel_models.dart';
@@ -627,6 +628,27 @@ class _HotelTile extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 HotelPhoto(url: hotel.mainImageUrl),
+                if (hotel.isDemo)
+                  const Positioned(
+                    left: 8,
+                    bottom: 8,
+                    child: DemoTag(onDark: true),
+                  ),
+                if (hotel.rating <= 0)
+                  Positioned(
+                    left: 8,
+                    top: 8,
+                    child: Container(
+                      height: 26,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: AppRadii.all(9),
+                      ),
+                      child: const NewRatingTag(),
+                    ),
+                  ),
                 if (hotel.rating > 0)
                   Positioned(
                     left: 8,

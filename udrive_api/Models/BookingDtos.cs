@@ -293,7 +293,8 @@ public sealed record TourPackageLiveDto(
     int MountainReadinessScore,
     string? CoverImageUrl,
     string? ReviewNotes,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool IsDemo = false);
 
 public sealed record PackageAvailabilityDto(
     Guid TourPackageId,

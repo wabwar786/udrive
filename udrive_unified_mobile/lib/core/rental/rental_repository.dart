@@ -26,6 +26,7 @@ class RentalVehicle {
     required this.ownerRating,
     required this.hasAirConditioning,
     required this.isFourByFour,
+    this.isDemo = false,
   });
 
   final String vehicleId;
@@ -52,6 +53,10 @@ class RentalVehicle {
   final double ownerRating;
   final bool hasAirConditioning;
   final bool isFourByFour;
+
+  /// A sample car added from the admin portal. It is shown with a Demo label
+  /// and the server refuses to book it.
+  final bool isDemo;
 
   bool get offersWithDriver => (withDriverDaily ?? 0) > 0;
   bool get offersSelfDrive => (selfDriveDaily ?? 0) > 0;
@@ -87,6 +92,7 @@ class RentalVehicle {
         ownerRating: _number(json['ownerRating']) ?? 0,
         hasAirConditioning: json['hasAirConditioning'] == true,
         isFourByFour: json['isFourByFour'] == true,
+        isDemo: json['isDemo'] == true,
       );
 }
 
