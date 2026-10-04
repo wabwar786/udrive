@@ -41,6 +41,7 @@ import 'place_search_screen.dart';
 import 'tour_map_screen.dart';
 import 'rental_list_screen.dart';
 import 'tour_search_results_screen.dart';
+import 'tour_vehicles_screen.dart';
 import 'vehicle_choice_screen.dart';
 import 'udrive_route_flow_screen.dart';
 
@@ -1588,6 +1589,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
 
   void _selectService(HomeService service) {
     FocusScope.of(context).unfocus();
+    // Tour opens its own screen: every published departure as a list of
+    // vehicles, with where-to asked in that screen's footer. Home stays a
+    // ride screen.
+    if (service.isTour) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const TourVehiclesScreen()),
+      );
+      return;
+    }
     // Hotel opens its own panel straight away, so it needs the room now rather
     // than after a destination it never asks for.
     if (service == HomeService.hotel) _liftSheet();
