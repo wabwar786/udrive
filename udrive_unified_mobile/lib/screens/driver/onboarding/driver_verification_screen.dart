@@ -1,5 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../../../core/areas/area_picker.dart';
+import '../../../core/areas/area_repository.dart';
 import '../../../core/media/image_compressor.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_theme.dart';
@@ -26,6 +28,9 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
   final _payoutAccount = TextEditingController();
   bool _busy = false;
   String? _error;
+
+  /// The tehsil picked in the form; null until the driver picks one.
+  AreaSelection? _area;
 
   @override
   void didChangeDependencies() {
@@ -177,6 +182,20 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
                   Icons.badge_outlined, required: true),
               _field(_address, urdu ? 'مکمل پتہ' : 'Residential address',
                   Icons.home_outlined, required: true, lines: 2),
+              AreaPicker(
+                api: AppControllerScope.of(context).apiClient,
+                initialTehsilId:
+                    AppControllerScope.of(context).driverProfile?.tehsilId,
+                title: urdu
+                    ? 'آپ کہاں سے گاڑی چلاتے ہیں؟'
+                    : 'WHERE DO YOU DRIVE FROM?',
+                hint: urdu
+                    ? 'وہ علاقہ چنیں جہاں آپ عام طور پر گاڑی چلاتے ہیں، تاکہ آپ کو قریب کی سواریاں ملیں۔'
+                    : 'Pick the area you usually drive in, so you get rides '
+                        'near you.',
+                onChanged: (selection) => setState(() => _area = selection),
+              ),
+              const SizedBox(height: 14),
               _field(
                   _emergencyName,
                   urdu ? 'ایمرجنسی رابطے کا نام' : 'Emergency contact name',
@@ -237,6 +256,10 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
                   : profile.languages.join(', '),
             ),
             UdKeyValue(
+              label: urdu ? 'ضلع / تحصیل' : 'District / Tehsil',
+              value: _areaLabel(profile),
+            ),
+            UdKeyValue(
               label: urdu ? 'سروس ایریاز' : 'Service areas',
               value: profile.serviceAreas.isEmpty
                   ? '—'
@@ -246,6 +269,14 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
           ],
         ),
       );
+
+  /// "District / Tehsil", or a dash when no area is set yet.
+  static String _areaLabel(DriverProfileLive profile) {
+    final text = [profile.districtName, profile.tehsilName]
+        .whereType<String>()
+        .join(' / ');
+    return text.isEmpty ? '—' : text;
+  }
 
   Widget _documentsSection(bool urdu) {
     const documents = <(String, String, IconData)>[
@@ -371,6 +402,9 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
+    final area = _area;
+    final tehsilId =
+        area?.tehsilId ?? AppControllerScope.of(context).driverProfile?.tehsilId;
     await _run(() async {
       await AppControllerScope.of(context).saveDriverProfile({
         'fullName': _name.text.trim(),
@@ -383,7 +417,12 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
         'payoutMethod': _payoutAccount.text.trim().isEmpty ? null : 'BankOrWallet',
         'payoutAccount': _payoutAccount.text.trim().isEmpty ? null : _payoutAccount.text.trim(),
         'languages': ['Urdu', 'English'],
-        'serviceAreas': ['Muzaffarabad', 'Neelum Valley', 'Rawalakot'],
+        'tehsilId': tehsilId,
+        // The server sets the service area to the district; sent here too so
+        // the saved profile reads the same before the next refresh.
+        'serviceAreas': area != null
+            ? [area.districtName]
+            : ['Muzaffarabad', 'Neelum Valley', 'Rawalakot'],
       });
       _message('Driver registration details saved.');
     });

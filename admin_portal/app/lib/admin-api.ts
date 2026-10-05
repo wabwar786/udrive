@@ -39,12 +39,15 @@ function friendlyApiError(status: number, body: Record<string, unknown>): string
       ? message
       : 'This section or record is not available.';
   }
-  if (status === 409) return 'This record was updated elsewhere. Refresh and try again.';
-  if (status === 422 || status === 400) {
+  // A 409 usually carries the reason in words ("Not ready: mountain score…",
+  // "a district with that name already exists"); show it when there is one.
+  if (status === 409 || status === 422 || status === 400) {
     const message = typeof body.message === 'string' ? body.message : '';
     return message && !/traceid|request could not be completed/i.test(message)
       ? message
-      : 'Some information is invalid. Please review the form and try again.';
+      : status === 409
+        ? 'This record was updated elsewhere. Refresh and try again.'
+        : 'Some information is invalid. Please review the form and try again.';
   }
   if (status >= 500) return 'This section is temporarily unavailable. Please refresh after a moment.';
   const message = typeof body.message === 'string' ? body.message : '';
@@ -196,6 +199,28 @@ export async function apiFetch<T>(
   }
 
   return (body as Envelope<T>).data;
+}
+
+/**
+ * Same as `apiFetch`, but also returns the envelope's `message` so a screen
+ * can show what the server said after an action (approve, reject, …).
+ */
+export async function apiAction<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<{ data: T; message: string }> {
+  const response = await runAuthorized(path, init);
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(friendlyApiError(response.status, body as Record<string, unknown>));
+  }
+
+  const envelope = body as Envelope<T>;
+  return {
+    data: envelope.data,
+    message: typeof envelope.message === 'string' ? envelope.message : '',
+  };
 }
 
 export async function apiProtectedFile(

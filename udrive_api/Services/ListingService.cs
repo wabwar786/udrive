@@ -106,6 +106,11 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         if (problem is not null) return Fail<ListingVehicleDto>(400, problem.Value.Code, problem.Value.Message);
 
         await using var connection = await OpenAsync(ct);
+        if (request.TehsilId is { } tehsilId && !await AreaService.IsTehsilAsync(connection, null, tehsilId, ct))
+        {
+            return Fail<ListingVehicleDto>(400, "area_invalid", "Choose the district and tehsil again.");
+        }
+
         var profileId = await EnsureOwnerProfileAsync(connection, userId, ct);
 
         // Self or Both: the owner drives customers, so his licence will be asked.
@@ -155,7 +160,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                          mountain_readiness_score, status, booking_mode,
                          available_for_city, available_for_tour, available_for_rent,
                          rent_with_driver_daily, rent_self_drive_daily, rent_pickup_point, rent_minimum_days,
-                         listed_via, listing_wants_rent, listing_wants_tour, created_at, updated_at)
+                         listed_via, listing_wants_rent, listing_wants_tour, territory_id, created_at, updated_at)
                     VALUES
                         (@id, @profileId, @category, @make, @model, @year, @registration, '',
                          @seats, 0,
@@ -164,7 +169,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                          @readiness, 'Draft', @bookingMode,
                          false, false, false,
                          @withDriver, @selfDrive, @pickup, 1,
-                         'Listing', @wantsRent, @wantsTour, now(), now());
+                         'Listing', @wantsRent, @wantsTour, @tehsil, now(), now());
                     """, connection);
                 insert.Parameters.AddWithValue("id", id);
                 insert.Parameters.AddWithValue("profileId", profileId);
@@ -186,6 +191,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                         rent_with_driver_daily = @withDriver, rent_self_drive_daily = @selfDrive,
                         rent_pickup_point = @pickup,
                         listing_wants_rent = @wantsRent, listing_wants_tour = @wantsTour,
+                        territory_id = COALESCE(@tehsil, territory_id),
                         -- An edit goes back to the owner's desk: it is submitted again.
                         status = 'Draft', updated_at = now()
                     WHERE id = @id AND driver_profile_id = @profileId
@@ -207,8 +213,106 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                 "A vehicle with this number plate is already on UDrive. If it is yours, contact UDrive support.");
         }
 
+        if (clean.TehsilId is not null)
+        {
+            await SetProfileAreaIfEmptyAsync(connection, profileId, clean.TehsilId.Value, ct);
+        }
+
         var list = await VehiclesAsync(connection, profileId, vehicleId, ct);
         return ServiceResult<ListingVehicleDto>.Ok(list[0]);
+    }
+
+    /// <summary>Where a vehicle is based. Allowed at any time, live or not.</summary>
+    public async Task<ServiceResult<ListingVehicleDto>> SetLocationAsync(
+        Guid userId, Guid vehicleId, VehicleLocationRequest request, CancellationToken ct)
+    {
+        await using var connection = await OpenAsync(ct);
+        if (!await AreaService.IsTehsilAsync(connection, null, request.TehsilId, ct))
+        {
+            return Fail<ListingVehicleDto>(400, "area_invalid", "Choose the district and tehsil again.");
+        }
+
+        var profileId = await ProfileIdAsync(connection, userId, ct);
+        if (profileId is null || await VehicleStatusAsync(connection, profileId.Value, vehicleId, ct) is null)
+        {
+            return Fail<ListingVehicleDto>(404, "vehicle_not_found", "This vehicle was not found on your account.");
+        }
+
+        await using (var command = new NpgsqlCommand(
+            "UPDATE udrive.vehicles SET territory_id = @tehsil, updated_at = now() WHERE id = @id;", connection))
+        {
+            command.Parameters.AddWithValue("id", vehicleId);
+            command.Parameters.AddWithValue("tehsil", request.TehsilId);
+            await command.ExecuteNonQueryAsync(ct);
+        }
+
+        await SetProfileAreaIfEmptyAsync(connection, profileId.Value, request.TehsilId, ct);
+        return ServiceResult<ListingVehicleDto>.Ok((await VehiclesAsync(connection, profileId.Value, vehicleId, ct))[0]);
+    }
+
+    /// <summary>
+    /// Sends one use of the vehicle (rent or tour) for review: a new use on a
+    /// live vehicle, or the same use again after UDrive asked for something.
+    /// </summary>
+    public async Task<ServiceResult<ListingVehicleDto>> SubmitPurposeAsync(
+        Guid userId, Guid vehicleId, string purpose, CancellationToken ct)
+    {
+        var column = PurposeColumn(purpose);
+        if (column is null) return Fail<ListingVehicleDto>(400, "purpose_invalid", "Choose rent or tour.");
+
+        await using var connection = await OpenAsync(ct);
+        var profileId = await ProfileIdAsync(connection, userId, ct);
+        if (profileId is null) return Fail<ListingVehicleDto>(404, "vehicle_not_found", "This vehicle was not found on your account.");
+        var list = await VehiclesAsync(connection, profileId.Value, vehicleId, ct);
+        if (list.Count == 0) return Fail<ListingVehicleDto>(404, "vehicle_not_found", "This vehicle was not found on your account.");
+        var vehicle = list[0];
+
+        if (vehicle.Status is "Draft" or "Rejected")
+        {
+            return Fail<ListingVehicleDto>(409, "listing_not_submitted", "Finish and submit the vehicle first.");
+        }
+
+        if (column == "rent" && vehicle.WithDriverDaily is not > 0 && vehicle.SelfDriveDaily is not > 0)
+        {
+            return Fail<ListingVehicleDto>(409, "listing_rent_rate_required",
+                "Give a daily rent rate — with driver, self-drive, or both — in Rent settings first.");
+        }
+
+        var sql = column == "rent"
+            ? """
+              UPDATE udrive.vehicles
+              SET listing_wants_rent = true, rent_review_status = 'Pending', updated_at = now()
+              WHERE id = @id AND rent_review_status <> 'Approved';
+              """
+            : """
+              UPDATE udrive.vehicles
+              SET listing_wants_tour = true, tour_review_status = 'Pending', updated_at = now()
+              WHERE id = @id AND tour_review_status <> 'Approved';
+              """;
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("id", vehicleId);
+            await command.ExecuteNonQueryAsync(ct);
+        }
+
+        return ServiceResult<ListingVehicleDto>.Ok((await VehiclesAsync(connection, profileId.Value, vehicleId, ct))[0],
+            "Sent for review. UDrive usually answers within 24 hours.");
+    }
+
+    private static string? PurposeColumn(string? purpose) => purpose?.Trim().ToLowerInvariant() switch
+    {
+        "rent" => "rent",
+        "tour" or "tours" => "tour",
+        _ => null,
+    };
+
+    private static async Task SetProfileAreaIfEmptyAsync(NpgsqlConnection connection, Guid profileId, Guid tehsilId, CancellationToken ct)
+    {
+        await using var command = new NpgsqlCommand(
+            "UPDATE udrive.driver_profiles SET territory_id = @tehsil WHERE id = @id AND territory_id IS NULL;", connection);
+        command.Parameters.AddWithValue("id", profileId);
+        command.Parameters.AddWithValue("tehsil", tehsilId);
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     public async Task<ServiceResult<ListingVehicleDto>> UploadVehiclePhotoAsync(
@@ -397,7 +501,15 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
 
                 UPDATE udrive.vehicles
                 SET status = 'PendingReview', listing_submitted_at = now(),
-                    listing_review_note = NULL, updated_at = now()
+                    listing_review_note = NULL,
+                    rent_review_status = CASE WHEN NOT listing_wants_rent THEN 'None'
+                                              WHEN rent_review_status = 'Approved' THEN 'Approved'
+                                              ELSE 'Pending' END,
+                    tour_review_status = CASE WHEN NOT listing_wants_tour THEN 'None'
+                                              WHEN tour_review_status = 'Approved' THEN 'Approved'
+                                              ELSE 'Pending' END,
+                    rent_review_note = NULL, tour_review_note = NULL,
+                    updated_at = now()
                 WHERE id = @vehicleId AND driver_profile_id = @profileId;
                 """, connection, transaction))
             {
@@ -998,33 +1110,110 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
 
     public sealed record ApprovalResult(AdminListingDto Listing, string OwnerPhone, string Message);
 
-    public async Task<ServiceResult<ApprovalResult>> ApproveListingAsync(Guid adminId, Guid vehicleId, CancellationToken ct)
+    /// <summary>
+    /// What approving this vehicle for rent or tours needs, each line true or
+    /// false. The verification page shows the same list the approval checks.
+    /// </summary>
+    internal static async Task<IReadOnlyList<VerificationCheckDto>> PurposeChecksAsync(
+        NpgsqlConnection connection, Guid vehicleId, string purpose, CancellationToken ct)
     {
+        var minimum = await SettingIntAsync(connection, null, "tour.minimum_readiness", TourReadiness.DefaultMinimum, ct);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT
+                EXISTS (SELECT 1 FROM udrive.vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'VEHICLE_FRONT'),
+                EXISTS (SELECT 1 FROM udrive.vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'REGISTRATION_BOOK')
+                  AND EXISTS (SELECT 1 FROM udrive.vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'REGISTRATION_BOOK_BACK'),
+                EXISTS (SELECT 1 FROM udrive.driver_documents d WHERE d.driver_profile_id = dp.id AND d.document_type = 'CNIC_FRONT')
+                  AND EXISTS (SELECT 1 FROM udrive.driver_documents d WHERE d.driver_profile_id = dp.id AND d.document_type = 'CNIC_BACK'),
+                EXISTS (SELECT 1 FROM udrive.driver_documents d WHERE d.driver_profile_id = dp.id AND d.document_type IN ('SELFIE', 'SELFIE_WITH_CNIC')),
+                dp.drives_self AND COALESCE(dp.profile_kind, 'Driver') = 'Owner',
+                EXISTS (SELECT 1 FROM udrive.driver_documents d WHERE d.driver_profile_id = dp.id AND d.document_type = 'DRIVING_LICENCE')
+                  AND EXISTS (SELECT 1 FROM udrive.driver_documents d WHERE d.driver_profile_id = dp.id AND d.document_type = 'DRIVING_LICENCE_BACK')
+                  AND dp.driving_licence_expiry > (now() AT TIME ZONE 'Asia/Karachi')::date,
+                COALESCE(v.rent_with_driver_daily, 0) > 0 OR COALESCE(v.rent_self_drive_daily, 0) > 0,
+                v.mountain_readiness_score,
+                COALESCE(dp.profile_kind, 'Driver') = 'Driver'
+                  OR EXISTS (SELECT 1 FROM udrive.fleet_drivers fd
+                             WHERE fd.owner_profile_id = dp.id
+                               AND (fd.status = 'Approved' OR (fd.is_owner AND fd.status = 'Submitted'))
+                               AND fd.licence_expiry >= (now() AT TIME ZONE 'Asia/Karachi')::date),
+                v.territory_id IS NOT NULL OR dp.territory_id IS NOT NULL
+            FROM udrive.vehicles v
+            JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
+            WHERE v.id = @id;
+            """, connection);
+        command.Parameters.AddWithValue("id", vehicleId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return [];
+
+        var list = new List<VerificationCheckDto>
+        {
+            new("Car front photo", reader.GetBoolean(0)),
+            new("Registration book, front and back", reader.GetBoolean(1)),
+            new("Owner CNIC, front and back", reader.GetBoolean(2)),
+            new("Owner selfie", reader.GetBoolean(3)),
+        };
+        if (reader.GetBoolean(4)) list.Add(new("Owner drives: licence on file and valid", reader.GetBoolean(5)));
+        if (purpose == "rent")
+        {
+            list.Add(new("Daily rent rate set", reader.GetBoolean(6)));
+        }
+        else
+        {
+            var score = reader.GetInt32(7);
+            list.Add(new($"Mountain score {score}% (needs {minimum}%)", score >= minimum));
+            list.Add(new("At least one driver with a valid licence", reader.GetBoolean(8)));
+        }
+
+        list.Add(new("District and tehsil known", reader.GetBoolean(9)));
+        return list;
+    }
+
+    /// <summary>Approves one use of a listed vehicle. The other use is not touched.</summary>
+    public async Task<ServiceResult<ApprovalResult>> ApprovePurposeAsync(
+        Guid adminId, Guid vehicleId, string purpose, CancellationToken ct)
+    {
+        var use = PurposeColumn(purpose);
+        if (use is null) return Fail<ApprovalResult>(400, "purpose_invalid", "Choose rent or tour.");
+
         await using var connection = await OpenAsync(ct);
         var row = (await AdminRowsAsync(connection, string.Empty, vehicleId, ct)).FirstOrDefault();
         if (row is null) return Fail<ApprovalResult>(404, "listing_not_found", "That listing was not found.");
-        // A listing already marked Verified (for example from the older
-        // verification workspace) is approved again here rather than skipped:
-        // that is what switches its rent and tours on. Every step is idempotent.
 
-        var docs = row.Docs;
-        if (docs.Front is null || docs.RegistrationFront is null || docs.RegistrationBack is null
-            || docs.CnicFront is null || docs.CnicBack is null || docs.Selfie is null)
+        var missing = (await PurposeChecksAsync(connection, vehicleId, use, ct)).FirstOrDefault(c => !c.Ok);
+        if (missing is not null)
         {
-            return Fail<ApprovalResult>(409, "listing_documents_missing",
-                "Some documents are missing. Use \"Ask for info\" to tell the owner which.");
-        }
-        if (row.DrivesSelf && (docs.LicenceFront is null || docs.LicenceBack is null || row.LicenceExpiry is null))
-        {
-            return Fail<ApprovalResult>(409, "listing_licence_missing",
-                "The owner drives customers himself but his licence is missing.");
+            return Fail<ApprovalResult>(409, "approval_blocked",
+                $"Not ready: {missing.Label}. Use \"Ask for info\" to tell the owner.");
         }
 
         await using var transaction = await connection.BeginTransactionAsync(ct);
         try
         {
+            await using (var command = new NpgsqlCommand(
+                use == "rent"
+                    ? """
+                      UPDATE udrive.vehicles
+                      SET listing_wants_rent = true, rent_review_status = 'Approved', rent_review_note = NULL,
+                          reviewed_purpose_at = now(), updated_at = now()
+                      WHERE id = @id;
+                      """
+                    : """
+                      UPDATE udrive.vehicles
+                      SET listing_wants_tour = true, tour_review_status = 'Approved', tour_review_note = NULL,
+                          reviewed_purpose_at = now(), updated_at = now()
+                      WHERE id = @id;
+                      """,
+                connection, transaction))
+            {
+                command.Parameters.AddWithValue("id", vehicleId);
+                await command.ExecuteNonQueryAsync(ct);
+            }
+
             await MakeLiveAsync(connection, transaction, adminId, vehicleId, ct);
-            await AuditAsync(connection, transaction, adminId, "ListingApproved", "Vehicle", vehicleId, new { row.Name, row.RegistrationNumber }, ct);
+            await AuditAsync(connection, transaction, adminId, use == "rent" ? "ListingRentApproved" : "ListingTourApproved",
+                "Vehicle", vehicleId, new { row.Name, row.RegistrationNumber }, ct);
             await transaction.CommitAsync(ct);
         }
         catch
@@ -1034,16 +1223,102 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         }
 
         var after = (await AdminRowsAsync(connection, string.Empty, vehicleId, ct))[0];
-        var live = await LiveSummaryAsync(connection, vehicleId, ct);
-        var message = $"UDrive: your {after.Name} ({after.RegistrationNumber}) is approved. {live} "
-            + "Open the UDrive app → My vehicles.";
+        var message = use == "rent"
+            ? $"UDrive: your {after.Name} ({after.RegistrationNumber}) is approved for rent and customers can book it now. "
+              + "Open the UDrive app → My vehicles."
+            : $"UDrive: your {after.Name} ({after.RegistrationNumber}) is approved for tours. "
+              + "Post your departures in the UDrive app → My vehicles → Departures.";
         return ServiceResult<ApprovalResult>.Ok(new ApprovalResult(after, after.OwnerPhone, message));
     }
 
+    /// <summary>Rejects one use, or asks the owner for something (<paramref name="requestInfo"/>).</summary>
+    public async Task<ServiceResult<ApprovalResult>> RejectPurposeAsync(
+        Guid adminId, Guid vehicleId, string purpose, string? reason, bool requestInfo, CancellationToken ct)
+    {
+        var use = PurposeColumn(purpose);
+        if (use is null) return Fail<ApprovalResult>(400, "purpose_invalid", "Choose rent or tour.");
+        var note = Clip(reason?.Trim(), 500);
+        if (string.IsNullOrWhiteSpace(note))
+        {
+            return Fail<ApprovalResult>(400, "reason_required",
+                requestInfo ? "Write what the owner needs to add or fix." : "Write why it is rejected.");
+        }
+
+        var newStatus = requestInfo ? "Info" : "Rejected";
+        await using var connection = await OpenAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(ct);
+        try
+        {
+            await using (var command = new NpgsqlCommand(
+                use == "rent"
+                    ? """
+                      UPDATE udrive.vehicles
+                      SET rent_review_status = @status, rent_review_note = @note,
+                          available_for_rent = false, reviewed_purpose_at = now(), updated_at = now()
+                      WHERE id = @id AND listed_via IN ('Listing', 'Staff')
+                      RETURNING id;
+                      """
+                    : """
+                      UPDATE udrive.vehicles
+                      SET tour_review_status = @status, tour_review_note = @note,
+                          available_for_tour = false, reviewed_purpose_at = now(), updated_at = now()
+                      WHERE id = @id AND listed_via IN ('Listing', 'Staff')
+                      RETURNING id;
+                      """,
+                connection, transaction))
+            {
+                command.Parameters.AddWithValue("id", vehicleId);
+                command.Parameters.AddWithValue("status", newStatus);
+                command.Parameters.AddWithValue("note", note);
+                if (await command.ExecuteScalarAsync(ct) is not Guid)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return Fail<ApprovalResult>(404, "listing_not_found", "That listing was not found.");
+                }
+            }
+
+            // A vehicle not live yet: "ask for info" sends it back to the owner
+            // to edit; when every use it asked for is rejected, it is rejected.
+            await using (var command = new NpgsqlCommand(
+                """
+                UPDATE udrive.vehicles
+                SET status = CASE
+                        WHEN @info THEN 'Draft'
+                        WHEN (NOT listing_wants_rent OR rent_review_status = 'Rejected')
+                         AND (NOT listing_wants_tour OR tour_review_status = 'Rejected') THEN 'Rejected'
+                        ELSE status END,
+                    listing_review_note = @note, updated_at = now()
+                WHERE id = @id AND status <> 'Verified';
+                """, connection, transaction))
+            {
+                command.Parameters.AddWithValue("id", vehicleId);
+                command.Parameters.AddWithValue("info", requestInfo);
+                command.Parameters.AddWithValue("note", note);
+                await command.ExecuteNonQueryAsync(ct);
+            }
+
+            await AuditAsync(connection, transaction, adminId,
+                (use == "rent" ? "ListingRent" : "ListingTour") + (requestInfo ? "InfoRequested" : "Rejected"),
+                "Vehicle", vehicleId, new { note }, ct);
+            await transaction.CommitAsync(ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+
+        var row = (await AdminRowsAsync(connection, string.Empty, vehicleId, ct))[0];
+        var what = use == "rent" ? "rent" : "tours";
+        var message = requestInfo
+            ? $"UDrive: about your {row.Name} for {what} — {note} Please update it in the UDrive app → My vehicles."
+            : $"UDrive: your {row.Name} was not approved for {what} — {note}";
+        return ServiceResult<ApprovalResult>.Ok(new ApprovalResult(row, row.OwnerPhone, message));
+    }
+
     /// <summary>
-    /// Approves a listed vehicle and its owner, and switches rent and tours on
-    /// as the owner asked. Shared by "Vehicle listings" and the older
-    /// verification workspace, so approving from either page has the same result.
+    /// Approves a listed vehicle and its owner, and switches on each use that
+    /// has been approved (rent_review_status / tour_review_status).
     /// </summary>
     internal static async Task MakeLiveAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid adminId, Guid vehicleId, CancellationToken ct)
@@ -1071,7 +1346,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
             UPDATE udrive.vehicles v
             SET status = 'Verified', listing_review_note = NULL,
                 available_for_city = false,
-                available_for_rent = v.listing_wants_rent
+                available_for_rent = v.rent_review_status = 'Approved'
                     AND NULLIF(v.image_url, '') IS NOT NULL
                     AND (COALESCE(v.rent_with_driver_daily, 0) > 0 OR COALESCE(v.rent_self_drive_daily, 0) > 0),
                 updated_at = now()
@@ -1099,44 +1374,6 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         }
 
         await SwitchToursOnAsync(connection, transaction, "v.id = @key", vehicleId, minimum, ct);
-    }
-
-    public async Task<ServiceResult<ApprovalResult>> RejectListingAsync(
-        Guid adminId, Guid vehicleId, string? reason, bool requestInfo, CancellationToken ct)
-    {
-        var note = Clip(reason?.Trim(), 500);
-        if (string.IsNullOrWhiteSpace(note))
-        {
-            return Fail<ApprovalResult>(400, "reason_required",
-                requestInfo ? "Write what the owner needs to add or fix." : "Write why the listing is rejected.");
-        }
-
-        await using var connection = await OpenAsync(ct);
-        await using (var command = new NpgsqlCommand(
-            """
-            UPDATE udrive.vehicles
-            SET status = @status, listing_review_note = @note,
-                available_for_rent = false, available_for_tour = false, updated_at = now()
-            WHERE id = @id AND listed_via IN ('Listing', 'Staff')
-            RETURNING id;
-            """, connection))
-        {
-            command.Parameters.AddWithValue("id", vehicleId);
-            command.Parameters.AddWithValue("status", requestInfo ? "Draft" : "Rejected");
-            command.Parameters.AddWithValue("note", note);
-            if (await command.ExecuteScalarAsync(ct) is not Guid)
-            {
-                return Fail<ApprovalResult>(404, "listing_not_found", "That listing was not found.");
-            }
-        }
-
-        await AuditAsync(connection, null, adminId, requestInfo ? "ListingInfoRequested" : "ListingRejected",
-            "Vehicle", vehicleId, new { note }, ct);
-        var row = (await AdminRowsAsync(connection, string.Empty, vehicleId, ct))[0];
-        var message = requestInfo
-            ? $"UDrive: please update your {row.Name} listing — {note} Open the UDrive app → My vehicles."
-            : $"UDrive: your {row.Name} listing was not approved — {note}";
-        return ServiceResult<ApprovalResult>.Ok(new ApprovalResult(row, row.OwnerPhone, message));
     }
 
     public async Task<ServiceResult<IReadOnlyList<AdminFleetDriverDto>>> AdminDriversAsync(string? status, CancellationToken ct)
@@ -1234,7 +1471,8 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
             int.TryParse(Field("seats"), out var seats) ? seats : 0,
             Flag("wantsRent"), Flag("wantsTour"), "Drivers",
             Money("withDriverDaily"), Money("selfDriveDaily"), Field("pickupPoint"),
-            new ListingKitDto(Field("category").Equals("Jeep", StringComparison.OrdinalIgnoreCase), false, false, false, false, false, false));
+            new ListingKitDto(Field("category").Equals("Jeep", StringComparison.OrdinalIgnoreCase), false, false, false, false, false, false),
+            Guid.TryParse(Field("tehsilId"), out var tehsil) ? tehsil : null);
         var problem = ValidateVehicle(request, out var clean);
         if (problem is not null) return Fail<AdminListingDto>(400, problem.Value.Code, problem.Value.Message);
 
@@ -1299,6 +1537,8 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
             UPDATE udrive.vehicles v
             SET status = 'Verified', listed_via = 'Staff', listing_added_by = @admin,
                 listing_submitted_at = now(), available_for_city = false,
+                rent_review_status = CASE WHEN v.listing_wants_rent THEN 'Approved' ELSE 'None' END,
+                tour_review_status = CASE WHEN v.listing_wants_tour THEN 'Approved' ELSE 'None' END,
                 available_for_rent = v.listing_wants_rent
                     AND NULLIF(v.image_url, '') IS NOT NULL
                     AND (COALESCE(v.rent_with_driver_daily, 0) > 0 OR COALESCE(v.rent_self_drive_daily, 0) > 0),
@@ -1415,8 +1655,12 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                    EXISTS (SELECT 1 FROM udrive.vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'VEHICLE_FRONT'),
                    EXISTS (SELECT 1 FROM udrive.vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'REGISTRATION_BOOK'),
                    EXISTS (SELECT 1 FROM udrive.vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'REGISTRATION_BOOK_BACK'),
-                   (SELECT count(*)::int FROM udrive.rental_bookings rb WHERE rb.vehicle_id = v.id AND rb.status = 'PendingOwner')
+                   (SELECT count(*)::int FROM udrive.rental_bookings rb WHERE rb.vehicle_id = v.id AND rb.status = 'PendingOwner'),
+                   t.id, t.name, d.name,
+                   v.rent_review_status, v.rent_review_note, v.tour_review_status, v.tour_review_note
             FROM udrive.vehicles v
+            LEFT JOIN udrive.territories t ON t.id = v.territory_id
+            LEFT JOIN udrive.territories d ON d.id = t.parent_id
             WHERE v.driver_profile_id = @profileId AND v.status <> 'Deleted'
               AND (@vehicleId::uuid IS NULL OR v.id = @vehicleId::uuid)
             ORDER BY v.created_at DESC;
@@ -1446,7 +1690,14 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                 new ListingKitDto(reader.GetBoolean(19), reader.GetBoolean(20), reader.GetBoolean(21), reader.GetBoolean(22),
                     reader.GetBoolean(23), reader.GetBoolean(24), reader.GetBoolean(25)),
                 new ListingVehicleDocsDto(reader.GetBoolean(26), reader.GetBoolean(27), reader.GetBoolean(28)),
-                reader.GetInt32(29)));
+                reader.GetInt32(29))
+            {
+                TehsilId = reader.IsDBNull(30) ? null : reader.GetGuid(30),
+                TehsilName = reader.IsDBNull(31) ? null : reader.GetString(31),
+                DistrictName = reader.IsDBNull(32) ? null : reader.GetString(32),
+                RentReview = new PurposeReviewDto(reader.GetString(33), reader.IsDBNull(34) ? null : reader.GetString(34)),
+                TourReview = new PurposeReviewDto(reader.GetString(35), reader.IsDBNull(36) ? null : reader.GetString(36)),
+            });
         }
         return list;
     }
@@ -1687,8 +1938,18 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         return list;
     }
 
+    /// <summary>The drivers of the owner of this vehicle, for the verification page.</summary>
+    public async Task<IReadOnlyList<AdminFleetDriverDto>> OwnerDriversForVehicleAsync(
+        NpgsqlConnection connection, Guid vehicleId, CancellationToken ct)
+    {
+        await using var command = new NpgsqlCommand("SELECT driver_profile_id FROM udrive.vehicles WHERE id = @id;", connection);
+        command.Parameters.AddWithValue("id", vehicleId);
+        if (await command.ExecuteScalarAsync(ct) is not Guid profileId) return [];
+        return await AdminDriverRowsAsync(connection, string.Empty, null, ct, profileId);
+    }
+
     private static async Task<IReadOnlyList<AdminFleetDriverDto>> AdminDriverRowsAsync(
-        NpgsqlConnection connection, string status, Guid? driverId, CancellationToken ct)
+        NpgsqlConnection connection, string status, Guid? driverId, CancellationToken ct, Guid? ownerProfileId = null)
     {
         await using var command = new NpgsqlCommand(
             """
@@ -1702,11 +1963,13 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
             WHERE fd.status NOT IN ('Removed', 'Declined')
               AND (@status = '' OR fd.status = @status)
               AND (@driverId::uuid IS NULL OR fd.id = @driverId::uuid)
+              AND (@owner::uuid IS NULL OR fd.owner_profile_id = @owner::uuid)
             ORDER BY (fd.status = 'Submitted') DESC, fd.submitted_at DESC NULLS LAST, fd.created_at DESC
             LIMIT 500;
             """, connection);
         command.Parameters.AddWithValue("status", status);
         command.Parameters.Add(new NpgsqlParameter("driverId", NpgsqlDbType.Uuid) { Value = (object?)driverId ?? DBNull.Value });
+        command.Parameters.Add(new NpgsqlParameter("owner", NpgsqlDbType.Uuid) { Value = (object?)ownerProfileId ?? DBNull.Value });
         var today = Today();
         var list = new List<AdminFleetDriverDto>();
         await using var reader = await command.ExecuteReaderAsync(ct);
@@ -1794,6 +2057,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
             SET available_for_tour = true, updated_at = now()
             WHERE {scope}
               AND v.status = 'Verified' AND v.listing_wants_tour AND NOT v.available_for_tour
+              AND v.tour_review_status = 'Approved'
               AND v.mountain_readiness_score >= @minimum
               AND (EXISTS (SELECT 1 FROM udrive.driver_profiles dp
                            WHERE dp.id = v.driver_profile_id AND dp.profile_kind = 'Driver')
@@ -1804,26 +2068,6 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         command.Parameters.AddWithValue("key", key);
         command.Parameters.AddWithValue("minimum", minimum);
         await command.ExecuteNonQueryAsync(ct);
-    }
-
-    private static async Task<string> LiveSummaryAsync(NpgsqlConnection connection, Guid vehicleId, CancellationToken ct)
-    {
-        await using var command = new NpgsqlCommand(
-            """
-            SELECT available_for_rent, available_for_tour, listing_wants_tour, mountain_readiness_score
-            FROM udrive.vehicles WHERE id = @id;
-            """, connection);
-        command.Parameters.AddWithValue("id", vehicleId);
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        if (!await reader.ReadAsync(ct)) return string.Empty;
-        var rent = reader.GetBoolean(0);
-        var tour = reader.GetBoolean(1);
-        var wantsTour = reader.GetBoolean(2);
-        var parts = new List<string>();
-        if (rent) parts.Add("It is live for rent.");
-        if (tour) parts.Add("It is live for tours — post today's departure in the app.");
-        else if (wantsTour) parts.Add("Tours switch on once an approved driver is added (or its tour equipment is complete).");
-        return string.Join(' ', parts);
     }
 
     private static void BindVehicle(NpgsqlCommand command, CleanVehicle clean, int readiness)
@@ -1848,6 +2092,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         command.Parameters.Add(new NpgsqlParameter("pickup", NpgsqlDbType.Varchar) { Value = (object?)clean.PickupPoint ?? DBNull.Value });
         command.Parameters.AddWithValue("wantsRent", clean.WantsRent);
         command.Parameters.AddWithValue("wantsTour", clean.WantsTour);
+        command.Parameters.Add(new NpgsqlParameter("tehsil", NpgsqlDbType.Uuid) { Value = (object?)clean.TehsilId ?? DBNull.Value });
     }
 
     private static void BindDeparture(
@@ -1872,7 +2117,8 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
     private sealed record CleanVehicle(
         string Category, string Make, string Model, int Year, string RegistrationNumber, int Seats,
         bool WantsRent, bool WantsTour, bool DrivesSelf,
-        decimal? WithDriverDaily, decimal? SelfDriveDaily, string? PickupPoint, ListingKitDto Kit);
+        decimal? WithDriverDaily, decimal? SelfDriveDaily, string? PickupPoint, ListingKitDto Kit,
+        Guid? TehsilId = null);
 
     private static (string Code, string Message)? ValidateVehicle(SaveListingVehicleRequest request, out CleanVehicle clean)
     {
@@ -1918,7 +2164,8 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
             request.WantsRent, request.WantsTour, drivesSelf,
             request.WantsRent ? withDriver : null, request.WantsRent ? selfDrive : null,
             Clip(request.PickupPoint?.Trim(), 200) is { Length: > 0 } pickup ? pickup : null,
-            kit);
+            kit,
+            request.TehsilId);
         return null;
     }
 

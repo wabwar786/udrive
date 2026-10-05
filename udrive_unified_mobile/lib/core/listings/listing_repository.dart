@@ -149,6 +149,21 @@ class ListingOwner {
       );
 }
 
+/// Where one use (rent or tour) of a vehicle stands with UDrive.
+class PurposeReview {
+  const PurposeReview({this.status = 'None', this.note});
+
+  /// "None", "Pending", "Approved", "Rejected" or "Info".
+  final String status;
+  final String? note;
+
+  factory PurposeReview.fromJson(Object? json) {
+    if (json is! Map) return const PurposeReview();
+    final status = _text(json['status']);
+    return PurposeReview(status: status ?? 'None', note: _text(json['note']));
+  }
+}
+
 class ListingVehicle {
   const ListingVehicle({
     required this.id,
@@ -177,6 +192,11 @@ class ListingVehicle {
     required this.docRegistrationFront,
     required this.docRegistrationBack,
     required this.pendingRentals,
+    this.tehsilId,
+    this.tehsilName,
+    this.districtName,
+    this.rentReview = const PurposeReview(),
+    this.tourReview = const PurposeReview(),
   });
 
   final String id;
@@ -209,6 +229,23 @@ class ListingVehicle {
   final bool docRegistrationFront;
   final bool docRegistrationBack;
   final int pendingRentals;
+  final String? tehsilId;
+  final String? tehsilName;
+  final String? districtName;
+  final PurposeReview rentReview;
+  final PurposeReview tourReview;
+
+  bool get hasLocation => tehsilId != null;
+
+  /// "District · Tehsil", or null when no area is set.
+  String? get locationLabel {
+    if (tehsilId == null) return null;
+    final parts = [districtName, tehsilName]
+        .whereType<String>()
+        .where((p) => p.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
 
   bool get isLive => status == 'Verified';
   bool get inReview => status == 'PendingReview';
@@ -251,6 +288,11 @@ class ListingVehicle {
       docRegistrationFront: docs['registrationFront'] == true,
       docRegistrationBack: docs['registrationBack'] == true,
       pendingRentals: _int(json['pendingRentals']),
+      tehsilId: _text(json['tehsilId']),
+      tehsilName: _text(json['tehsilName']),
+      districtName: _text(json['districtName']),
+      rentReview: PurposeReview.fromJson(json['rentReview']),
+      tourReview: PurposeReview.fromJson(json['tourReview']),
     );
   }
 }
@@ -528,6 +570,7 @@ class ListingRepository {
     double? selfDriveDaily,
     String? pickupPoint,
     required ListingKit kit,
+    String? tehsilId,
   }) =>
       _guard(() async {
         final body = <String, dynamic>{
@@ -544,12 +587,28 @@ class ListingRepository {
           'selfDriveDaily': selfDriveDaily,
           'pickupPoint': pickupPoint?.trim(),
           'kit': kit.toJson(),
+          'tehsilId': tehsilId,
         };
         final response = vehicleId == null
             ? await api.postJson('/api/v1/listings/vehicles', body)
             : await api.putJson('/api/v1/listings/vehicles/$vehicleId', body);
         return ListingVehicle.fromJson(_map(response));
       });
+
+  /// Moves a vehicle to another tehsil; allowed live or not.
+  Future<ListingVehicle> setLocation(String vehicleId, String tehsilId) =>
+      _guard(() async => ListingVehicle.fromJson(_map(await api.putJson(
+            '/api/v1/listings/vehicles/$vehicleId/location',
+            {'tehsilId': tehsilId},
+          ))));
+
+  /// purpose: `rent` or `tour`. Sends that use for review again, or adds it
+  /// to a vehicle that is already live.
+  Future<ListingVehicle> submitPurpose(String vehicleId, String purpose) =>
+      _guard(() async => ListingVehicle.fromJson(_map(await api.postJson(
+            '/api/v1/listings/vehicles/$vehicleId/purposes/$purpose/submit',
+            const {},
+          ))));
 
   /// kind: `front`, `registration-front` or `registration-back`.
   Future<ListingVehicle> uploadVehiclePhoto(

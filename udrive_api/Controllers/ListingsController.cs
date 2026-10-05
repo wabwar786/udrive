@@ -42,6 +42,16 @@ public sealed class ListingsController(
     public async Task<IActionResult> OwnerDocument(string kind, IFormFile file, CancellationToken ct) =>
         Result(await service.UploadOwnerDocumentAsync(User.GetRequiredUserId(), kind, file, ct));
 
+    /// <summary>Where the vehicle is based (district / tehsil). Allowed at any time.</summary>
+    [HttpPut("vehicles/{id:guid}/location")]
+    public async Task<IActionResult> Location(Guid id, VehicleLocationRequest request, CancellationToken ct) =>
+        Result(await service.SetLocationAsync(User.GetRequiredUserId(), id, request, ct));
+
+    /// <summary>Sends rent or tour for review again, or adds it to a live vehicle.</summary>
+    [HttpPost("vehicles/{id:guid}/purposes/{purpose}/submit")]
+    public async Task<IActionResult> SubmitPurpose(Guid id, string purpose, CancellationToken ct) =>
+        Result(await service.SubmitPurposeAsync(User.GetRequiredUserId(), id, purpose, ct));
+
     [HttpPost("vehicles/{id:guid}/submit")]
     public async Task<IActionResult> Submit(Guid id, SubmitListingRequest request, CancellationToken ct) =>
         Result(await service.SubmitAsync(User.GetRequiredUserId(), id, request, ct));
@@ -171,7 +181,7 @@ public sealed class ListingsController(
             });
 }
 
-/// <summary>Admin review of listed vehicles and owners' drivers.</summary>
+/// <summary>Owners' drivers, staff listings, and the listing list. Approval itself is on the verification hub.</summary>
 [ApiController]
 [Authorize(Roles = "Admin,SuperAdmin")]
 [Route("api/v1/admin")]
@@ -183,20 +193,6 @@ public sealed class AdminListingsController(
     [HttpGet("listings")]
     public async Task<IActionResult> Listings([FromQuery] string? status, CancellationToken ct) =>
         Result(await service.AdminListingsAsync(status, ct));
-
-    [HttpPost("listings/{vehicleId:guid}/approve")]
-    public async Task<IActionResult> Approve(Guid vehicleId, CancellationToken ct) =>
-        await Notified(await service.ApproveListingAsync(User.GetRequiredUserId(), vehicleId, ct));
-
-    [HttpPost("listings/{vehicleId:guid}/reject")]
-    public async Task<IActionResult> Reject(Guid vehicleId, AdminReasonRequest request, CancellationToken ct) =>
-        await Notified(await service.RejectListingAsync(
-            User.GetRequiredUserId(), vehicleId, request.Reason ?? request.Note, false, ct));
-
-    [HttpPost("listings/{vehicleId:guid}/request-info")]
-    public async Task<IActionResult> RequestInfo(Guid vehicleId, AdminReasonRequest request, CancellationToken ct) =>
-        await Notified(await service.RejectListingAsync(
-            User.GetRequiredUserId(), vehicleId, request.Note ?? request.Reason, true, ct));
 
     /// <summary>Staff list a vehicle for an owner they met in person.</summary>
     [HttpPost("listings/for-owner")]
@@ -224,21 +220,6 @@ public sealed class AdminListingsController(
     public async Task<IActionResult> RejectDriver(Guid id, AdminReasonRequest request, CancellationToken ct) =>
         await DriverNotified(await service.ReviewDriverAsync(
             User.GetRequiredUserId(), id, false, request.Reason ?? request.Note, ct), false);
-
-    private async Task<IActionResult> Notified(ServiceResult<ListingService.ApprovalResult> result)
-    {
-        if (!result.Success || result.Data is null)
-        {
-            return StatusCode(result.StatusCode, new { success = false, error = result.ErrorCode, message = result.Message });
-        }
-
-        if (!string.IsNullOrWhiteSpace(result.Data.Message))
-        {
-            await SendAsync(result.Data.OwnerPhone, result.Data.Message);
-        }
-
-        return Ok(ApiResponse<AdminListingDto>.Ok(result.Data.Listing, result.Message));
-    }
 
     private async Task<IActionResult> DriverNotified(ServiceResult<AdminFleetDriverDto> result, bool approved)
     {

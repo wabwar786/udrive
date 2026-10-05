@@ -52,7 +52,25 @@ public sealed record ListingVehicleDto(
     int ReadinessRequired,
     ListingKitDto Kit,
     ListingVehicleDocsDto Docs,
-    int PendingRentals);
+    int PendingRentals)
+{
+    /// <summary>Where the vehicle is based; null until the owner says.</summary>
+    public Guid? TehsilId { get; init; }
+
+    public string? TehsilName { get; init; }
+
+    public string? DistrictName { get; init; }
+
+    /// <summary>Rent and tours are approved separately.</summary>
+    public PurposeReviewDto RentReview { get; init; } = new("None", null);
+
+    public PurposeReviewDto TourReview { get; init; } = new("None", null);
+}
+
+/// <param name="Status">None, Pending, Approved, Rejected or Info (UDrive asked for something).</param>
+public sealed record PurposeReviewDto(string Status, string? Note);
+
+public sealed record VehicleLocationRequest(Guid TehsilId);
 
 public sealed record FleetDriverDto(
     Guid Id,
@@ -84,7 +102,8 @@ public sealed record SaveListingVehicleRequest(
     decimal? WithDriverDaily,
     decimal? SelfDriveDaily,
     string? PickupPoint,
-    ListingKitDto? Kit);
+    ListingKitDto? Kit,
+    Guid? TehsilId = null);
 
 public sealed record SubmitListingRequest(
     string? LicenceNumber,
@@ -231,3 +250,66 @@ public sealed record AdminFleetDriverDto(
     AdminFleetDriverDocsDto Docs);
 
 public sealed record AdminReasonRequest(string? Reason, string? Note);
+
+// ─────────────────────────────────────────────────────────────── areas
+
+public sealed record AreaTehsilDto(Guid Id, string Name, double? Latitude, double? Longitude, bool IsActive);
+
+public sealed record AreaDistrictDto(Guid Id, string Name, bool IsActive, IReadOnlyList<AreaTehsilDto> Tehsils);
+
+public sealed record AdminAreaTehsilDto(
+    Guid Id, string Name, double? Latitude, double? Longitude, bool IsActive, int Vehicles, int Drivers);
+
+public sealed record AdminAreaDistrictDto(
+    Guid Id, string Name, bool IsActive, int Vehicles, int Drivers, IReadOnlyList<AdminAreaTehsilDto> Tehsils);
+
+public sealed record SaveDistrictRequest(string Name, bool IsActive = true);
+
+public sealed record SaveTehsilRequest(Guid DistrictId, string Name, double? Latitude, double? Longitude, bool IsActive = true);
+
+public sealed record UpdateAreaRequest(string Name, double? Latitude, double? Longitude, bool IsActive);
+
+// ─────────────────────────────────────────────────────────── verification hub
+
+/// <summary>Waiting counts per tab, for the tab badges.</summary>
+public sealed record VerificationSummaryDto(int City, int Tour, int Rent, int Hotels, int Businesses);
+
+/// <param name="Kind">city-driver, city-vehicle, tour, rent, hotel or business.</param>
+/// <param name="Status">Waiting, Approved, Rejected or Info.</param>
+public sealed record VerificationRowDto(
+    string Kind,
+    Guid Id,
+    string Title,
+    string Subtitle,
+    string PersonName,
+    string PersonPhone,
+    Guid? TehsilId,
+    string? TehsilName,
+    string? DistrictName,
+    DateTimeOffset? SubmittedAt,
+    string Status,
+    string? Note,
+    int ChecksDone,
+    int ChecksTotal,
+    string? PhotoUrl,
+    int DriversWaiting);
+
+/// <param name="Url">A protected admin file url, or a public image url.</param>
+public sealed record VerificationDocumentDto(string Label, string? Url);
+
+public sealed record VerificationCheckDto(string Label, bool Ok);
+
+public sealed record VerificationFactDto(string Label, string Value);
+
+/// <param name="CanApprove">False when a rule is not met; BlockReason says which.</param>
+public sealed record VerificationDetailDto(
+    VerificationRowDto Row,
+    IReadOnlyList<VerificationDocumentDto> Documents,
+    IReadOnlyList<VerificationCheckDto> Checks,
+    IReadOnlyList<VerificationFactDto> Facts,
+    IReadOnlyList<AdminFleetDriverDto> Drivers,
+    bool CanApprove,
+    string? BlockReason,
+    bool CanAskInfo);
+
+public sealed record VerificationNoteRequest(string? Note);

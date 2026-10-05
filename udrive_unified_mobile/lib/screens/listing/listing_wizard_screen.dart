@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/areas/area_picker.dart';
 import '../../core/listings/listing_repository.dart';
 import '../../core/network/api_config.dart';
 import '../../core/state/app_controller.dart';
@@ -87,6 +88,9 @@ class _ListingWizardScreenState extends State<ListingWizardScreen> {
   bool _wantsTour = false;
   ListingKit _kit = const ListingKit();
 
+  /// The tehsil the vehicle is kept in. Required on step 1.
+  String? _tehsilId;
+
   /// "Self", "Drivers" or "Both".
   String _drivers = 'Self';
   DateTime? _licenceExpiry;
@@ -119,6 +123,7 @@ class _ListingWizardScreenState extends State<ListingWizardScreen> {
       _withDriver.text = _rateText(existing.withDriverDaily);
       _selfDrive.text = _rateText(existing.selfDriveDaily);
       _pickup.text = existing.pickupPoint ?? '';
+      _tehsilId = existing.tehsilId;
     } else {
       _seats.text = '${_seatDefaults[_category]}';
     }
@@ -250,6 +255,7 @@ class _ListingWizardScreenState extends State<ListingWizardScreen> {
         selfDriveDaily: _wantsRent ? _rate(_selfDrive) : null,
         pickupPoint: _wantsRent ? _pickup.text : null,
         kit: _kit,
+        tehsilId: _tehsilId,
       );
       if (!mounted) return false;
       setState(() {
@@ -402,6 +408,11 @@ class _ListingWizardScreenState extends State<ListingWizardScreen> {
   Future<void> _nextFromVehicle() async {
     if (!(_vehicleForm.currentState?.validate() ?? false)) {
       setState(() => _error = 'Check the highlighted fields.');
+      return;
+    }
+    if (_tehsilId == null) {
+      setState(() => _error =
+          'Choose the district and tehsil where the vehicle is based.');
       return;
     }
     final hadDraft = _vehicle != null;
@@ -724,6 +735,13 @@ class _ListingWizardScreenState extends State<ListingWizardScreen> {
             ),
           ],
         ),
+      ),
+      const SizedBox(height: 16),
+      AreaPicker(
+        api: _repo!.api,
+        initialTehsilId: _tehsilId,
+        onChanged: (selection) =>
+            setState(() => _tehsilId = selection?.tehsilId),
       ),
       const SizedBox(height: 20),
       const OwnerCaps('3 photos'),

@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/areas/area_picker.dart';
 import '../../../core/media/image_compressor.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_theme.dart';
@@ -45,6 +46,9 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
   final _firstName = TextEditingController();
   final _lastName = TextEditingController();
   DateTime? _dateOfBirth;
+
+  /// The tehsil the driver works from. Rides near it are offered first.
+  String? _tehsilId;
 
   // Step 2 — your licence.
   final _licenceNumber = TextEditingController();
@@ -96,6 +100,7 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
         0 => _firstName.text.trim().isNotEmpty &&
             _lastName.text.trim().isNotEmpty &&
             _dateOfBirth != null &&
+            _tehsilId != null &&
             _files.containsKey('SELFIE'),
         1 => _licenceNumber.text.trim().isNotEmpty &&
             _licenceExpiry != null &&
@@ -199,6 +204,7 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
         'drivingLicenceNumber': _licenceNumber.text.trim(),
         'drivingLicenceExpiry': _iso(_licenceExpiry),
         'dateOfBirth': _iso(_dateOfBirth),
+        'tehsilId': _tehsilId,
         // Address and emergency contact are not sent at all.
         //
         // They are not asked for in these four steps, and empty strings were
@@ -453,6 +459,16 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
             last: DateTime.now().subtract(const Duration(days: 365 * 18)),
             onPicked: (date) => setState(() => _dateOfBirth = date),
           ),
+        ),
+        const SizedBox(height: 16),
+        AreaPicker(
+          api: AppControllerScope.of(context).apiClient,
+          initialTehsilId: _tehsilId,
+          title: 'WHERE DO YOU DRIVE FROM?',
+          hint: 'Pick the area you usually drive in, so you get rides near '
+              'you.',
+          onChanged: (selection) =>
+              setState(() => _tehsilId = selection?.tehsilId),
         ),
       ]);
 

@@ -32,7 +32,9 @@ public sealed record DriverOnboardingRequest(
     [StringLength(40)] string? PayoutMethod,
     [StringLength(80)] string? PayoutAccount,
     string[]? Languages,
-    string[]? ServiceAreas);
+    string[]? ServiceAreas,
+    /// <summary>The tehsil the driver works from (district / tehsil picker).</summary>
+    Guid? TehsilId = null);
 
 public sealed record DriverOnboardingDto(
     Guid DriverProfileId,
@@ -50,7 +52,16 @@ public sealed record DriverOnboardingDto(
     IReadOnlyList<string> ServiceAreas,
     DateTimeOffset? SubmittedAt,
     DateTimeOffset? ReviewedAt,
-    string? ReviewNotes);
+    string? ReviewNotes)
+{
+    public Guid? TehsilId { get; init; }
+
+    public string? TehsilName { get; init; }
+
+    public Guid? DistrictId { get; init; }
+
+    public string? DistrictName { get; init; }
+}
 
 public sealed record DriverDocumentDto(
     Guid Id,
@@ -187,7 +198,10 @@ public sealed record DriverReviewListItemDto(
     string? DrivingLicenceMasked,
     DateTimeOffset? SubmittedAt,
     int DocumentCount,
-    int VehicleCount);
+    int VehicleCount,
+    Guid? TehsilId = null,
+    string? TehsilName = null,
+    string? DistrictName = null);
 
 public sealed record VehicleReviewListItemDto(
     Guid VehicleId,
@@ -197,7 +211,10 @@ public sealed record VehicleReviewListItemDto(
     string Vehicle,
     string Status,
     int MountainReadinessScore,
-    int DocumentCount);
+    int DocumentCount,
+    Guid? TehsilId = null,
+    string? TehsilName = null,
+    string? DistrictName = null);
 
 public sealed record DriverReviewDetailDto(
     DriverReviewListItemDto Driver,

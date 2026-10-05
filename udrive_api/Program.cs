@@ -198,6 +198,13 @@ builder.Services.AddScoped<BusinessService>(_ => new BusinessService(connectionS
 // rent requests that wait for the owner, and daily departures.
 builder.Services.AddScoped<ListingService>(sp =>
     new ListingService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
+// Districts / tehsils and the one Verification page (migration 071).
+builder.Services.AddScoped<AreaService>(_ => new AreaService(connectionString));
+builder.Services.AddScoped<VerificationHubService>(sp => new VerificationHubService(
+    connectionString,
+    sp.GetRequiredService<ListingService>(),
+    sp.GetRequiredService<HotelService>(),
+    sp.GetRequiredService<BusinessService>()));
 builder.Services.AddHostedService(sp => new ListingSweepService(
     sp.GetRequiredService<IServiceScopeFactory>(),
     connectionString,

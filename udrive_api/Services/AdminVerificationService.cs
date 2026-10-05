@@ -29,20 +29,32 @@ public sealed class AdminVerificationService(
             "Expired"
         };
 
+    /// <remarks>
+    /// City-ride drivers only. Vehicle owners from "Earn with your vehicle"
+    /// (profile_kind Owner) are reviewed in the Tour and Rent tabs instead.
+    /// <paramref name="area"/> is a district or tehsil id, or "none".
+    /// </remarks>
     public async Task<ServiceResult<IReadOnlyList<DriverReviewListItemDto>>> GetDriversAsync(
         string? status,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? area = null)
     {
         const string sql = """
             SELECT dp.id, u.id, u.full_name, u.phone_number,
                    dp.verification_status, dp.cnic_number_masked,
                    dp.driving_licence_number_masked, dp.submitted_at,
                    (SELECT count(*) FROM udrive.driver_documents dd WHERE dd.driver_profile_id = dp.id),
-                   (SELECT count(*) FROM udrive.vehicles v WHERE v.driver_profile_id = dp.id)
+                   (SELECT count(*) FROM udrive.vehicles v WHERE v.driver_profile_id = dp.id),
+                   t.id, t.name, d.name
             FROM udrive.driver_profiles dp
             JOIN udrive.users u ON u.id = dp.user_id
+            LEFT JOIN udrive.territories t ON t.id = dp.territory_id
+            LEFT JOIN udrive.territories d ON d.id = t.parent_id
             WHERE dp.verification_status <> 'Deleted'
+              AND COALESCE(dp.profile_kind, 'Driver') = 'Driver'
               AND (@status IS NULL OR dp.verification_status = @status)
+              AND (@unassigned AND dp.territory_id IS NULL
+                   OR NOT @unassigned AND (@area::uuid IS NULL OR t.id = @area::uuid OR t.parent_id = @area::uuid))
             ORDER BY dp.submitted_at NULLS LAST, dp.created_at DESC;
             """;
 
@@ -52,6 +64,7 @@ public sealed class AdminVerificationService(
         await using var command = new NpgsqlCommand(sql, connection);
         var statusParameter = command.Parameters.Add("status", NpgsqlDbType.Varchar);
         statusParameter.Value = string.IsNullOrWhiteSpace(status) ? DBNull.Value : status.Trim();
+        BindArea(command, area);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -65,7 +78,10 @@ public sealed class AdminVerificationService(
                 reader.IsDBNull(6) ? null : reader.GetString(6),
                 reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7),
                 Convert.ToInt32(reader.GetInt64(8)),
-                Convert.ToInt32(reader.GetInt64(9))));
+                Convert.ToInt32(reader.GetInt64(9)),
+                reader.IsDBNull(10) ? null : reader.GetGuid(10),
+                reader.IsDBNull(11) ? null : reader.GetString(11),
+                reader.IsDBNull(12) ? null : reader.GetString(12)));
         }
         return ServiceResult<IReadOnlyList<DriverReviewListItemDto>>.Ok(result);
     }
@@ -661,20 +677,28 @@ public sealed class AdminVerificationService(
             + "send your documents for approval.";
     }
 
+    /// <remarks>City-ride vehicles only; listed vehicles are in the Tour and Rent tabs.</remarks>
     public async Task<ServiceResult<IReadOnlyList<VehicleReviewListItemDto>>> GetVehiclesAsync(
         string? status,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? area = null)
     {
         const string sql = """
             SELECT v.id, v.driver_profile_id, u.full_name,
                    v.registration_number, v.make || ' ' || v.model,
                    v.status, v.mountain_readiness_score,
-                   (SELECT count(*) FROM udrive.vehicle_documents vd WHERE vd.vehicle_id = v.id AND vd.document_type NOT LIKE '%\_THUMB')
+                   (SELECT count(*) FROM udrive.vehicle_documents vd WHERE vd.vehicle_id = v.id AND vd.document_type NOT LIKE '%\_THUMB'),
+                   t.id, t.name, d.name
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
+            LEFT JOIN udrive.territories t ON t.id = COALESCE(v.territory_id, dp.territory_id)
+            LEFT JOIN udrive.territories d ON d.id = t.parent_id
             WHERE v.status <> 'Deleted'
+              AND v.listed_via = 'Driver'
               AND (@status IS NULL OR v.status = @status)
+              AND (@unassigned AND COALESCE(v.territory_id, dp.territory_id) IS NULL
+                   OR NOT @unassigned AND (@area::uuid IS NULL OR t.id = @area::uuid OR t.parent_id = @area::uuid))
             ORDER BY v.created_at DESC;
             """;
         var result = new List<VehicleReviewListItemDto>();
@@ -683,6 +707,7 @@ public sealed class AdminVerificationService(
         await using var command = new NpgsqlCommand(sql, connection);
         var statusParameter = command.Parameters.Add("status", NpgsqlDbType.Varchar);
         statusParameter.Value = string.IsNullOrWhiteSpace(status) ? DBNull.Value : status.Trim();
+        BindArea(command, area);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -694,7 +719,10 @@ public sealed class AdminVerificationService(
                 reader.GetString(4),
                 reader.GetString(5),
                 reader.GetInt32(6),
-                Convert.ToInt32(reader.GetInt64(7))));
+                Convert.ToInt32(reader.GetInt64(7)),
+                reader.IsDBNull(8) ? null : reader.GetGuid(8),
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                reader.IsDBNull(10) ? null : reader.GetString(10)));
         }
         return ServiceResult<IReadOnlyList<VehicleReviewListItemDto>>.Ok(result);
     }
@@ -846,22 +874,6 @@ public sealed class AdminVerificationService(
             documentCommand.Parameters.AddWithValue("notes", (object?)request.Notes?.Trim() ?? DBNull.Value);
             documentCommand.Parameters.AddWithValue("vehicleId", vehicleId);
             await documentCommand.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        // A vehicle an owner listed from the app ("Earn with your vehicle") goes
-        // live the same way as from the Vehicle listings page: owner approved,
-        // rent and tours switched on as asked. Without this, verifying it here
-        // left it Verified but nowhere in the app.
-        if (string.Equals(request.Decision, "Verified", StringComparison.OrdinalIgnoreCase))
-        {
-            await using var listedCommand = new NpgsqlCommand(
-                "SELECT listed_via IN ('Listing', 'Staff') FROM udrive.vehicles WHERE id = @vehicleId;",
-                connection, transaction);
-            listedCommand.Parameters.AddWithValue("vehicleId", vehicleId);
-            if (await listedCommand.ExecuteScalarAsync(cancellationToken) is true)
-            {
-                await ListingService.MakeLiveAsync(connection, transaction, adminUserId, vehicleId, cancellationToken);
-            }
         }
 
         await InsertAuditAsync(
@@ -1180,5 +1192,16 @@ public sealed class AdminVerificationService(
         command.Parameters.AddWithValue("decision", decision);
         command.Parameters.AddWithValue("notes", (object?)notes ?? DBNull.Value);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>A district or tehsil id, "none" for no area yet, or nothing for all.</summary>
+    private static void BindArea(NpgsqlCommand command, string? area)
+    {
+        var unassigned = string.Equals(area?.Trim(), "none", StringComparison.OrdinalIgnoreCase);
+        command.Parameters.Add(new NpgsqlParameter("area", NpgsqlDbType.Uuid)
+        {
+            Value = Guid.TryParse(area, out var id) ? id : DBNull.Value,
+        });
+        command.Parameters.AddWithValue("unassigned", unassigned);
     }
 }

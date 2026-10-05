@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/areas/area_picker.dart';
+import '../../core/areas/area_repository.dart';
 import '../../core/listings/listing_repository.dart';
 import '../../core/network/api_config.dart';
 import '../../core/state/app_controller.dart';
@@ -11,6 +13,7 @@ import 'driver_invite_screen.dart';
 import 'listing_departures_screen.dart' show ListingDeparturesScreen;
 import 'listing_owner_parts.dart';
 import 'listing_rent_screen.dart' show ListingRentScreen;
+import 'listing_rent_settings_screen.dart' show ListingRentSettingsScreen;
 import 'listing_wizard_screen.dart';
 
 /// My vehicles — every vehicle this account has listed, and its drivers.
@@ -29,6 +32,9 @@ class _MyVehiclesScreenState extends State<MyVehiclesScreen> {
   ListingHome? _home;
   bool _loading = true;
   String? _error;
+
+  /// "vehicleId:purpose" while that use is being sent to UDrive.
+  String? _sending;
 
   @override
   void didChangeDependencies() {
@@ -72,6 +78,70 @@ class _MyVehiclesScreenState extends State<MyVehiclesScreen> {
       MaterialPageRoute<void>(builder: (_) => screen),
     );
     if (mounted) await _load();
+  }
+
+  Future<void> _addLocation(ListingVehicle vehicle) async {
+    final repo = _repo;
+    if (repo == null) return;
+    final saved = await showUdSheet<bool>(
+      context: context,
+      builder: (_) => _LocationSheet(repository: repo, vehicle: vehicle),
+    );
+    if (saved == true && mounted) await _load();
+  }
+
+  static bool _hasRentRate(ListingVehicle vehicle) =>
+      (vehicle.withDriverDaily ?? 0) > 0 || (vehicle.selfDriveDaily ?? 0) > 0;
+
+  /// purpose: `rent` or `tour`.
+  Future<void> _submitPurpose(ListingVehicle vehicle, String purpose) async {
+    final repo = _repo;
+    if (repo == null || _sending != null) return;
+    if (purpose == 'rent' && !_hasRentRate(vehicle)) {
+      await showUdDialog<void>(
+        context: context,
+        title: 'Set the daily rate first',
+        message: 'Open Rent settings and enter a daily rate, then send it '
+            'for rent.',
+        actions: [
+          Builder(
+            builder: (dialogContext) => UdButton.primary(
+              label: 'Open Rent settings',
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _open(ListingRentSettingsScreen(vehicle: vehicle));
+              },
+            ),
+          ),
+          Builder(
+            builder: (dialogContext) => UdButton.outline(
+              label: 'Close',
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+          ),
+        ],
+      );
+      return;
+    }
+    setState(() {
+      _sending = '${vehicle.id}:$purpose';
+      _error = null;
+    });
+    try {
+      await repo.submitPurpose(vehicle.id, purpose);
+      if (!mounted) return;
+      setState(() => _sending = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sent. UDrive will check it soon.')),
+      );
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _sending = null;
+        _error = _message(error);
+      });
+    }
   }
 
   Future<void> _invite() async {
@@ -230,13 +300,23 @@ class _MyVehiclesScreenState extends State<MyVehiclesScreen> {
           onEdit: vehicle.status == 'Draft' || vehicle.status == 'Rejected'
               ? () => _open(ListingWizardScreen(existing: vehicle))
               : null,
-          onRent: vehicle.isLive && vehicle.wantsRent
+          onRent: vehicle.isLive &&
+                  _VehicleCard._shownLive(vehicle.wantsRent, vehicle.rentReview)
               ? () => _open(
                   ListingRentScreen(vehicle: vehicle, drivers: home.drivers))
               : null,
-          onDepartures: vehicle.isLive && vehicle.wantsTour
+          onDepartures: vehicle.isLive &&
+                  _VehicleCard._shownLive(vehicle.wantsTour, vehicle.tourReview)
               ? () => _open(ListingDeparturesScreen(
                   vehicle: vehicle, drivers: home.drivers))
+              : null,
+          onAddLocation: () => _addLocation(vehicle),
+          onSubmitPurpose: _sending == null
+              ? (purpose) => _submitPurpose(vehicle, purpose)
+              : null,
+          sending: _sending != null &&
+                  _sending!.startsWith('${vehicle.id}:')
+              ? _sending!.substring(vehicle.id.length + 1)
               : null,
         ),
         const SizedBox(height: 10),
@@ -335,12 +415,26 @@ class _VehicleCard extends StatelessWidget {
     required this.onEdit,
     required this.onRent,
     required this.onDepartures,
+    required this.onAddLocation,
+    required this.onSubmitPurpose,
+    required this.sending,
   });
 
   final ListingVehicle vehicle;
   final VoidCallback? onEdit;
   final VoidCallback? onRent;
   final VoidCallback? onDepartures;
+  final VoidCallback onAddLocation;
+
+  /// `rent` or `tour`. Null while another use is being sent.
+  final ValueChanged<String>? onSubmitPurpose;
+
+  /// The use being sent for this vehicle right now, if any.
+  final String? sending;
+
+  /// A use that is live or was never reviewed separately shows as before.
+  static bool _shownLive(bool wants, PurposeReview review) =>
+      wants && (review.status == 'Approved' || review.status == 'None');
 
   @override
   Widget build(BuildContext context) {
@@ -357,18 +451,30 @@ class _VehicleCard extends StatelessWidget {
           color: AppText.caption, size: 28),
     );
 
+    final rent = vehicle.rentReview;
+    final tour = vehicle.tourReview;
     final tags = <Widget>[];
     if (vehicle.isLive) {
-      if (vehicle.wantsRent) {
+      if (_shownLive(vehicle.wantsRent, rent)) {
         tags.add(OwnerTag(
           label: vehicle.availableForRent ? 'Rent · live' : 'Rent · off',
           tone: vehicle.availableForRent ? OwnerTagTone.ok : OwnerTagTone.gray,
         ));
+      } else if (rent.status == 'Pending') {
+        tags.add(const OwnerTag(
+          label: 'Rent · Waiting for UDrive',
+          tone: OwnerTagTone.warn,
+        ));
       }
-      if (vehicle.wantsTour) {
+      if (_shownLive(vehicle.wantsTour, tour)) {
         tags.add(OwnerTag(
           label: vehicle.availableForTour ? 'Tour · live' : 'Tour · off',
           tone: vehicle.availableForTour ? OwnerTagTone.ok : OwnerTagTone.gray,
+        ));
+      } else if (tour.status == 'Pending') {
+        tags.add(const OwnerTag(
+          label: 'Tour · Waiting for UDrive',
+          tone: OwnerTagTone.warn,
         ));
       }
     } else {
@@ -403,6 +509,59 @@ class _VehicleCard extends StatelessWidget {
         ),
     ];
 
+    // UDrive's answer on one use, once the vehicle itself has been sent.
+    final reviewed = vehicle.status != 'Draft' && vehicle.status != 'Rejected';
+    Widget? purposeNote(String purpose, String label, PurposeReview review) {
+      if (!reviewed) return null;
+      if (review.status != 'Info' && review.status != 'Rejected') return null;
+      final asked = review.status == 'Info';
+      final said = review.note ?? '';
+      return _PurposeNote(
+        text: asked
+            ? (said.isEmpty
+                ? '$label — UDrive asked for more details.'
+                : '$label — UDrive asked: $said')
+            : (said.isEmpty
+                ? '$label — Not approved.'
+                : '$label — Not approved: $said'),
+        tone: asked ? OwnerTagTone.warn : OwnerTagTone.err,
+        busy: sending == purpose,
+        onSendAgain:
+            onSubmitPurpose == null ? null : () => onSubmitPurpose!(purpose),
+      );
+    }
+
+    final purposeNotes = [
+      purposeNote('rent', 'Rent', rent),
+      purposeNote('tour', 'Tour', tour),
+    ].whereType<Widget>().toList();
+
+    final offers = <Widget>[
+      if (vehicle.isLive && rent.status == 'None' && !vehicle.wantsRent)
+        Expanded(
+          child: UdButton.outline(
+            label: 'Also offer for rent',
+            size: UdButtonSize.small,
+            busy: sending == 'rent',
+            onPressed: onSubmitPurpose == null
+                ? null
+                : () => onSubmitPurpose!('rent'),
+          ),
+        ),
+      if (vehicle.isLive && tour.status == 'None' && !vehicle.wantsTour)
+        Expanded(
+          child: UdButton.outline(
+            label: 'Also offer for tours',
+            size: UdButtonSize.small,
+            busy: sending == 'tour',
+            onPressed: onSubmitPurpose == null
+                ? null
+                : () => onSubmitPurpose!('tour'),
+          ),
+        ),
+    ];
+
+    final location = vehicle.locationLabel;
     final note = vehicle.reviewNote;
     return Opacity(
       opacity: vehicle.inReview ? 0.85 : 1.0,
@@ -461,6 +620,26 @@ class _VehicleCard extends StatelessWidget {
                               color: AppText.secondary,
                             ),
                           ),
+                          if (location != null)
+                            Row(
+                              children: [
+                                const Icon(Icons.place_outlined,
+                                    size: 14, color: AppText.secondary),
+                                const SizedBox(width: 3),
+                                Expanded(
+                                  child: Text(
+                                    location,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppType.small.copyWith(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppText.secondary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           const SizedBox(height: 6),
                           Wrap(spacing: 6, runSpacing: 6, children: tags),
                         ],
@@ -487,14 +666,215 @@ class _VehicleCard extends StatelessWidget {
                     ),
                   ),
                 ],
+                if (location == null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _AddLocationChip(onTap: onAddLocation),
+                  ),
+                ],
+                for (final purposeNote in purposeNotes) ...[
+                  const SizedBox(height: 8),
+                  purposeNote,
+                ],
                 if (actions.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Row(children: actions),
+                ],
+                if (offers.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      for (var i = 0; i < offers.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 8),
+                        offers[i],
+                      ],
+                    ],
+                  ),
                 ],
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// "Add location" — a warning chip on a vehicle with no area yet.
+class _AddLocationChip extends StatelessWidget {
+  const _AddLocationChip({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Add location',
+      child: Material(
+        color: AppTint.warning,
+        borderRadius: AppRadii.all(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: AppRadii.all(12),
+          child: Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              borderRadius: AppRadii.all(12),
+              border: Border.all(color: AppTint.warningBorder),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.add_location_alt_outlined,
+                    size: 18, color: AppTint.warningText),
+                const SizedBox(width: 6),
+                Text(
+                  'Add location',
+                  style: AppType.small.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppTint.warningText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// UDrive's question or refusal on one use, with "Send again".
+class _PurposeNote extends StatelessWidget {
+  const _PurposeNote({
+    required this.text,
+    required this.tone,
+    required this.busy,
+    required this.onSendAgain,
+  });
+
+  final String text;
+  final OwnerTagTone tone;
+  final bool busy;
+  final VoidCallback? onSendAgain;
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color background, Color ink, Color border) = tone == OwnerTagTone.err
+        ? (AppTint.danger, AppTint.dangerText, AppTint.dangerBorder)
+        : (AppTint.warning, AppTint.warningText, AppTint.warningBorder);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: AppRadii.all(12),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              style: AppType.small.copyWith(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: ink,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          UdButton.outline(
+            label: 'Send again',
+            size: UdButtonSize.small,
+            expand: false,
+            busy: busy,
+            onPressed: onSendAgain,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The "Add location" sheet: the area picker and Save.
+class _LocationSheet extends StatefulWidget {
+  const _LocationSheet({required this.repository, required this.vehicle});
+
+  final ListingRepository repository;
+  final ListingVehicle vehicle;
+
+  @override
+  State<_LocationSheet> createState() => _LocationSheetState();
+}
+
+class _LocationSheetState extends State<_LocationSheet> {
+  AreaSelection? _selection;
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _save() async {
+    final selection = _selection;
+    if (selection == null) {
+      setState(() => _error =
+          'Choose the district and tehsil where the vehicle is based.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.repository
+          .setLocation(widget.vehicle.id, selection.tehsilId);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = '$error'.replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 8),
+          Text('Vehicle location',
+              style: AppType.h2.copyWith(color: AppText.primary)),
+          const SizedBox(height: 14),
+          AreaPicker(
+            api: widget.repository.api,
+            initialTehsilId: widget.vehicle.tehsilId,
+            onChanged: (selection) => setState(() {
+              _selection = selection;
+              _error = null;
+            }),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            UdBanner(
+              tone: UdTone.err,
+              icon: Icons.error_outline_rounded,
+              text: _error,
+            ),
+          ],
+          const SizedBox(height: 16),
+          UdButton.primary(
+            label: 'Save',
+            busy: _busy,
+            onPressed: _busy ? null : _save,
+          ),
+        ],
       ),
     );
   }

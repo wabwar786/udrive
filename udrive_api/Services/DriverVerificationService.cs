@@ -114,6 +114,32 @@ public sealed class DriverVerificationService(
         var languages = SanitizeArray(request.Languages, 8);
         var serviceAreas = SanitizeArray(request.ServiceAreas, 16);
 
+        // The district the driver chose is his service area: launch-city
+        // matching on approval reads service_areas by name.
+        string? districtName = null;
+        if (request.TehsilId is { } chosenTehsil)
+        {
+            await using var areaConnection = new NpgsqlConnection(connectionString);
+            await areaConnection.OpenAsync(cancellationToken);
+            await using var areaCommand = new NpgsqlCommand(
+                """
+                SELECT d.name FROM udrive.territories t
+                JOIN udrive.territories d ON d.id = t.parent_id
+                WHERE t.id = @id AND t.kind = 'Tehsil' AND t.is_active;
+                """, areaConnection);
+            areaCommand.Parameters.AddWithValue("id", chosenTehsil);
+            districtName = await areaCommand.ExecuteScalarAsync(cancellationToken) as string;
+            if (districtName is null)
+            {
+                return ServiceResult<DriverOnboardingDto>.Fail(
+                    StatusCodes.Status400BadRequest,
+                    "area_invalid",
+                    "Choose your district and tehsil again.");
+            }
+
+            serviceAreas = [districtName];
+        }
+
         const string sql = """
             INSERT INTO udrive.driver_profiles
                 (id, user_id, cnic_number_masked, driving_licence_number_masked,
@@ -122,13 +148,13 @@ public sealed class DriverVerificationService(
                  is_online, date_of_birth, driving_licence_expiry,
                  driving_licence_number, cnic_number, residential_address,
                  emergency_contact_name, emergency_contact_phone, bank_account_title,
-                 payout_method, payout_account_masked, created_at, updated_at)
+                 payout_method, payout_account_masked, territory_id, created_at, updated_at)
             VALUES
                 (@id, @userId, @cnicMasked, @licenceMasked, @cnicHash, @licenceHash,
                  'Draft', 0, 0, 80, @languages, @serviceAreas, false, @dob,
                  @licenceExpiry, @licence, @cnicPlain, @address,
                  @emergencyName, @emergencyPhone, @bankTitle, @payoutMethod,
-                 @payoutMasked, now(), now())
+                 @payoutMasked, @tehsil, now(), now())
             ON CONFLICT (user_id) DO UPDATE SET
                 cnic_number_masked = EXCLUDED.cnic_number_masked,
                 driving_licence_number_masked = EXCLUDED.driving_licence_number_masked,
@@ -146,6 +172,7 @@ public sealed class DriverVerificationService(
                 payout_account_masked = EXCLUDED.payout_account_masked,
                 languages = EXCLUDED.languages,
                 service_areas = EXCLUDED.service_areas,
+                territory_id = COALESCE(EXCLUDED.territory_id, udrive.driver_profiles.territory_id),
                 verification_status = CASE
                     WHEN udrive.driver_profiles.verification_status IN ('Approved', 'Suspended')
                     THEN udrive.driver_profiles.verification_status
@@ -198,6 +225,10 @@ public sealed class DriverVerificationService(
             command.Parameters.AddWithValue("bankTitle", (object?)request.BankAccountTitle?.Trim() ?? DBNull.Value);
             command.Parameters.AddWithValue("payoutMethod", (object?)request.PayoutMethod?.Trim() ?? DBNull.Value);
             command.Parameters.AddWithValue("payoutMasked", string.IsNullOrWhiteSpace(payoutMasked) ? DBNull.Value : payoutMasked);
+            command.Parameters.Add(new NpgsqlParameter("tehsil", NpgsqlTypes.NpgsqlDbType.Uuid)
+            {
+                Value = (object?)request.TehsilId ?? DBNull.Value,
+            });
             await command.ExecuteScalarAsync(cancellationToken);
         }
 
@@ -672,14 +703,17 @@ public sealed class DriverVerificationService(
         CancellationToken cancellationToken)
     {
         const string sql = """
-            SELECT id, verification_status, cnic_number_masked,
+            SELECT dp.id, dp.verification_status, cnic_number_masked,
                    driving_licence_number_masked, date_of_birth,
                    residential_address, emergency_contact_name,
                    emergency_contact_phone, bank_account_title,
                    payout_method, payout_account_masked, languages,
-                   service_areas, submitted_at, reviewed_at, review_notes
-            FROM udrive.driver_profiles
-            WHERE user_id = @userId
+                   service_areas, submitted_at, reviewed_at, review_notes,
+                   t.id, t.name, d.id, d.name
+            FROM udrive.driver_profiles dp
+            LEFT JOIN udrive.territories t ON t.id = dp.territory_id
+            LEFT JOIN udrive.territories d ON d.id = t.parent_id
+            WHERE dp.user_id = @userId
             LIMIT 1;
             """;
 
@@ -709,7 +743,13 @@ public sealed class DriverVerificationService(
             reader.IsDBNull(12) ? [] : reader.GetFieldValue<string[]>(12),
             reader.IsDBNull(13) ? null : reader.GetFieldValue<DateTimeOffset>(13),
             reader.IsDBNull(14) ? null : reader.GetFieldValue<DateTimeOffset>(14),
-            reader.IsDBNull(15) ? null : reader.GetString(15));
+            reader.IsDBNull(15) ? null : reader.GetString(15))
+        {
+            TehsilId = reader.IsDBNull(16) ? null : reader.GetGuid(16),
+            TehsilName = reader.IsDBNull(17) ? null : reader.GetString(17),
+            DistrictId = reader.IsDBNull(18) ? null : reader.GetGuid(18),
+            DistrictName = reader.IsDBNull(19) ? null : reader.GetString(19),
+        };
     }
 
     private async Task<Guid?> GetDriverProfileIdAsync(Guid userId, CancellationToken cancellationToken)

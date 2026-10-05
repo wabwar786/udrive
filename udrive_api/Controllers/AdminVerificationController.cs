@@ -16,8 +16,9 @@ public sealed class AdminVerificationController(
     [HttpGet("drivers")]
     public async Task<IActionResult> GetDrivers(
         [FromQuery] string? status,
+        [FromQuery] string? area,
         CancellationToken cancellationToken) =>
-        ToActionResult(await adminService.GetDriversAsync(status, cancellationToken));
+        ToActionResult(await adminService.GetDriversAsync(status, cancellationToken, area));
 
     [HttpGet("drivers/{driverProfileId:guid}")]
     public async Task<IActionResult> GetDriver(
@@ -108,8 +109,9 @@ public sealed class AdminVerificationController(
     [HttpGet("vehicles")]
     public async Task<IActionResult> GetVehicles(
         [FromQuery] string? status,
+        [FromQuery] string? area,
         CancellationToken cancellationToken) =>
-        ToActionResult(await adminService.GetVehiclesAsync(status, cancellationToken));
+        ToActionResult(await adminService.GetVehiclesAsync(status, cancellationToken, area));
 
     [HttpGet("vehicles/{vehicleId:guid}")]
     public async Task<IActionResult> GetVehicle(

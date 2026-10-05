@@ -119,6 +119,10 @@ class DriverProfileLive {
     this.cnicMasked,
     this.drivingLicenceMasked,
     this.reviewNotes,
+    this.tehsilId,
+    this.tehsilName,
+    this.districtId,
+    this.districtName,
   });
 
   final String driverProfileId;
@@ -128,6 +132,15 @@ class DriverProfileLive {
   final List<String> languages;
   final List<String> serviceAreas;
   final String? reviewNotes;
+  final String? tehsilId;
+  final String? tehsilName;
+  final String? districtId;
+  final String? districtName;
+
+  static String? _optional(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
+  }
 
   factory DriverProfileLive.fromJson(Map<String, dynamic> json) => DriverProfileLive(
         driverProfileId: json['driverProfileId']?.toString() ?? '',
@@ -137,6 +150,10 @@ class DriverProfileLive {
         languages: (json['languages'] as List? ?? const []).map((e) => e.toString()).toList(),
         serviceAreas: (json['serviceAreas'] as List? ?? const []).map((e) => e.toString()).toList(),
         reviewNotes: json['reviewNotes']?.toString(),
+        tehsilId: _optional(json['tehsilId']),
+        tehsilName: _optional(json['tehsilName']),
+        districtId: _optional(json['districtId']),
+        districtName: _optional(json['districtName']),
       );
 }
 
