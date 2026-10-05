@@ -1003,7 +1003,9 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         await using var connection = await OpenAsync(ct);
         var row = (await AdminRowsAsync(connection, string.Empty, vehicleId, ct)).FirstOrDefault();
         if (row is null) return Fail<ApprovalResult>(404, "listing_not_found", "That listing was not found.");
-        if (row.Status == "Verified") return ServiceResult<ApprovalResult>.Ok(new ApprovalResult(row, row.OwnerPhone, string.Empty));
+        // A listing already marked Verified (for example from the older
+        // verification workspace) is approved again here rather than skipped:
+        // that is what switches its rent and tours on. Every step is idempotent.
 
         var docs = row.Docs;
         if (docs.Front is null || docs.RegistrationFront is null || docs.RegistrationBack is null
@@ -1018,60 +1020,10 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                 "The owner drives customers himself but his licence is missing.");
         }
 
-        var minimum = await SettingIntAsync(connection, null, "tour.minimum_readiness", TourReadiness.DefaultMinimum, ct);
-
         await using var transaction = await connection.BeginTransactionAsync(ct);
         try
         {
-            await using (var command = new NpgsqlCommand(
-                """
-                UPDATE udrive.driver_profiles dp
-                SET verification_status = 'Approved', approved_at = COALESCE(approved_at, now()),
-                    reviewed_at = now(), reviewed_by_user_id = @admin, updated_at = now()
-                FROM udrive.vehicles v
-                WHERE v.id = @vehicleId AND v.driver_profile_id = dp.id
-                  AND dp.verification_status <> 'Approved';
-
-                UPDATE udrive.driver_documents d
-                SET status = 'Approved', updated_at = now()
-                FROM udrive.vehicles v
-                WHERE v.id = @vehicleId AND d.driver_profile_id = v.driver_profile_id
-                  AND d.status <> 'Approved';
-
-                UPDATE udrive.vehicle_documents SET status = 'Verified', updated_at = now()
-                WHERE vehicle_id = @vehicleId;
-
-                UPDATE udrive.vehicles v
-                SET status = 'Verified', listing_review_note = NULL,
-                    available_for_city = false,
-                    available_for_rent = v.listing_wants_rent
-                        AND NULLIF(v.image_url, '') IS NOT NULL
-                        AND (COALESCE(v.rent_with_driver_daily, 0) > 0 OR COALESCE(v.rent_self_drive_daily, 0) > 0),
-                    updated_at = now()
-                WHERE v.id = @vehicleId;
-                """, connection, transaction))
-            {
-                command.Parameters.AddWithValue("vehicleId", vehicleId);
-                command.Parameters.AddWithValue("admin", adminId);
-                await command.ExecuteNonQueryAsync(ct);
-            }
-
-            if (row.DrivesSelf)
-            {
-                await using var command = new NpgsqlCommand(
-                    """
-                    UPDATE udrive.fleet_drivers fd
-                    SET status = 'Approved', reviewed_by = @admin, reviewed_at = now(), review_note = NULL, updated_at = now()
-                    FROM udrive.vehicles v
-                    WHERE v.id = @vehicleId AND fd.owner_profile_id = v.driver_profile_id
-                      AND fd.is_owner AND fd.status = 'Submitted';
-                    """, connection, transaction);
-                command.Parameters.AddWithValue("vehicleId", vehicleId);
-                command.Parameters.AddWithValue("admin", adminId);
-                await command.ExecuteNonQueryAsync(ct);
-            }
-
-            await SwitchToursOnAsync(connection, transaction, "v.id = @key", vehicleId, minimum, ct);
+            await MakeLiveAsync(connection, transaction, adminId, vehicleId, ct);
             await AuditAsync(connection, transaction, adminId, "ListingApproved", "Vehicle", vehicleId, new { row.Name, row.RegistrationNumber }, ct);
             await transaction.CommitAsync(ct);
         }
@@ -1086,6 +1038,67 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         var message = $"UDrive: your {after.Name} ({after.RegistrationNumber}) is approved. {live} "
             + "Open the UDrive app → My vehicles.";
         return ServiceResult<ApprovalResult>.Ok(new ApprovalResult(after, after.OwnerPhone, message));
+    }
+
+    /// <summary>
+    /// Approves a listed vehicle and its owner, and switches rent and tours on
+    /// as the owner asked. Shared by "Vehicle listings" and the older
+    /// verification workspace, so approving from either page has the same result.
+    /// </summary>
+    internal static async Task MakeLiveAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Guid adminId, Guid vehicleId, CancellationToken ct)
+    {
+        var minimum = await SettingIntAsync(connection, transaction, "tour.minimum_readiness", TourReadiness.DefaultMinimum, ct);
+
+        await using (var command = new NpgsqlCommand(
+            """
+            UPDATE udrive.driver_profiles dp
+            SET verification_status = 'Approved', approved_at = COALESCE(approved_at, now()),
+                reviewed_at = now(), reviewed_by_user_id = @admin, updated_at = now()
+            FROM udrive.vehicles v
+            WHERE v.id = @vehicleId AND v.driver_profile_id = dp.id
+              AND dp.verification_status <> 'Approved';
+
+            UPDATE udrive.driver_documents d
+            SET status = 'Approved', updated_at = now()
+            FROM udrive.vehicles v
+            WHERE v.id = @vehicleId AND d.driver_profile_id = v.driver_profile_id
+              AND d.status <> 'Approved';
+
+            UPDATE udrive.vehicle_documents SET status = 'Verified', updated_at = now()
+            WHERE vehicle_id = @vehicleId;
+
+            UPDATE udrive.vehicles v
+            SET status = 'Verified', listing_review_note = NULL,
+                available_for_city = false,
+                available_for_rent = v.listing_wants_rent
+                    AND NULLIF(v.image_url, '') IS NOT NULL
+                    AND (COALESCE(v.rent_with_driver_daily, 0) > 0 OR COALESCE(v.rent_self_drive_daily, 0) > 0),
+                updated_at = now()
+            WHERE v.id = @vehicleId;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("vehicleId", vehicleId);
+            command.Parameters.AddWithValue("admin", adminId);
+            await command.ExecuteNonQueryAsync(ct);
+        }
+
+        // Only an owner who drives has an is_owner row, so no extra check.
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                UPDATE udrive.fleet_drivers fd
+                SET status = 'Approved', reviewed_by = @admin, reviewed_at = now(), review_note = NULL, updated_at = now()
+                FROM udrive.vehicles v
+                WHERE v.id = @vehicleId AND fd.owner_profile_id = v.driver_profile_id
+                  AND fd.is_owner AND fd.status = 'Submitted';
+                """, connection, transaction);
+            command.Parameters.AddWithValue("vehicleId", vehicleId);
+            command.Parameters.AddWithValue("admin", adminId);
+            await command.ExecuteNonQueryAsync(ct);
+        }
+
+        await SwitchToursOnAsync(connection, transaction, "v.id = @key", vehicleId, minimum, ct);
     }
 
     public async Task<ServiceResult<ApprovalResult>> RejectListingAsync(

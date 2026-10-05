@@ -848,6 +848,22 @@ public sealed class AdminVerificationService(
             await documentCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // A vehicle an owner listed from the app ("Earn with your vehicle") goes
+        // live the same way as from the Vehicle listings page: owner approved,
+        // rent and tours switched on as asked. Without this, verifying it here
+        // left it Verified but nowhere in the app.
+        if (string.Equals(request.Decision, "Verified", StringComparison.OrdinalIgnoreCase))
+        {
+            await using var listedCommand = new NpgsqlCommand(
+                "SELECT listed_via IN ('Listing', 'Staff') FROM udrive.vehicles WHERE id = @vehicleId;",
+                connection, transaction);
+            listedCommand.Parameters.AddWithValue("vehicleId", vehicleId);
+            if (await listedCommand.ExecuteScalarAsync(cancellationToken) is true)
+            {
+                await ListingService.MakeLiveAsync(connection, transaction, adminUserId, vehicleId, cancellationToken);
+            }
+        }
+
         await InsertAuditAsync(
             connection,
             transaction,
