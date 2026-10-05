@@ -16,6 +16,12 @@ public sealed class AreasCatalogController(AreaService service) : ControllerBase
     [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Any)]
     public async Task<IActionResult> Get(CancellationToken ct) =>
         HubResults.From(this, await service.PublicAsync(ct));
+
+    /// <summary>Names suggested while typing a departure's From / To.</summary>
+    [AllowAnonymous, HttpGet("/api/v1/catalog/place-names")]
+    [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Any)]
+    public async Task<IActionResult> PlaceNames(CancellationToken ct) =>
+        HubResults.From(this, await service.PlaceNamesAsync(ct));
 }
 
 /// <summary>Settings → Areas.</summary>
@@ -39,6 +45,18 @@ public sealed class AdminAreasController(AreaService service) : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, UpdateAreaRequest request, CancellationToken ct) =>
         HubResults.From(this, await service.UpdateAsync(User.GetRequiredUserId(), id, request, ct));
+
+    [HttpGet("places")]
+    public async Task<IActionResult> Places(CancellationToken ct) =>
+        HubResults.From(this, await service.AdminPlacesAsync(ct));
+
+    [HttpPost("places")]
+    public async Task<IActionResult> AddPlace(SavePlaceNameRequest request, CancellationToken ct) =>
+        HubResults.From(this, await service.SavePlaceAsync(User.GetRequiredUserId(), null, request, ct));
+
+    [HttpPut("places/{id:guid}")]
+    public async Task<IActionResult> UpdatePlace(Guid id, SavePlaceNameRequest request, CancellationToken ct) =>
+        HubResults.From(this, await service.SavePlaceAsync(User.GetRequiredUserId(), id, request, ct));
 }
 
 /// <summary>

@@ -851,7 +851,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
     public async Task<ServiceResult<DepartureDayDto>> SaveDepartureAsync(
         Guid userId, Guid vehicleId, DateOnly date, SaveDepartureRequest request, CancellationToken ct)
     {
-        var from = Clip(request.From?.Trim(), 120) ?? string.Empty;
+        var from = Clip(NormalisePlace(request.From), 120) ?? string.Empty;
         if (from.Length < 2) return Fail<DepartureDayDto>(400, "departure_from_required", "Where does the trip start?");
         if (!TimeOnly.TryParseExact(request.Time?.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time))
         {
@@ -906,14 +906,25 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         if (wholePrice <= 0 || wholePrice > 2_000_000) return Fail<DepartureDayDto>(400, "departure_price_required", "Enter the price for the whole vehicle.");
         if (seatPrice > wholePrice) return Fail<DepartureDayDto>(400, "departure_price_invalid", "A seat cannot cost more than the whole vehicle.");
 
+        // "To" is typed by hand. It becomes a destination row: an existing one
+        // with the same name, or a new hidden one (kept out of Explore).
+        Guid destinationId;
         string destinationName;
-        await using (var command = new NpgsqlCommand(
-            "SELECT name_en FROM udrive.destinations WHERE id = @id;", connection))
+        if (!string.IsNullOrWhiteSpace(request.To))
         {
+            var to = NormalisePlace(request.To);
+            if (to.Length < 2) return Fail<DepartureDayDto>(400, "departure_to_required", "Where does the trip go?");
+            (destinationId, destinationName) = await ResolveDestinationAsync(connection, to, vehicleId, ct);
+        }
+        else
+        {
+            destinationId = request.DestinationId;
+            await using var command = new NpgsqlCommand(
+                "SELECT name_en FROM udrive.destinations WHERE id = @id;", connection);
             command.Parameters.AddWithValue("id", request.DestinationId);
             if (await command.ExecuteScalarAsync(ct) is not string name)
             {
-                return Fail<DepartureDayDto>(400, "destination_not_found", "Choose where the trip goes.");
+                return Fail<DepartureDayDto>(400, "departure_to_required", "Where does the trip go?");
             }
             destinationName = name;
         }
@@ -999,7 +1010,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
             }
 
             if (existingId is not null && seatsSold > 0
-                && (existingDeparture != departureAt || existingDestination != request.DestinationId))
+                && (existingDeparture != departureAt || existingDestination != destinationId))
             {
                 await transaction.RollbackAsync(ct);
                 return Fail<DepartureDayDto>(409, "departure_has_passengers",
@@ -1024,7 +1035,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                     RETURNING id;
                     """, connection, transaction);
                 insert.Parameters.AddWithValue("profileId", profileId.Value);
-                BindDeparture(insert, vehicleId, request.DestinationId, title, from, pickup!, departureAt, returnAt,
+                BindDeparture(insert, vehicleId, destinationId, title, from, pickup!, departureAt, returnAt,
                     capacity, seatPrice, wholePrice, fleetDriverId);
                 existingId = (Guid)(await insert.ExecuteScalarAsync(ct))!;
             }
@@ -1040,7 +1051,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                     WHERE id = @id AND vehicle_id = @vehicleId;
                     """, connection, transaction);
                 update.Parameters.AddWithValue("id", existingId.Value);
-                BindDeparture(update, vehicleId, request.DestinationId, title, from, pickup!, departureAt, returnAt,
+                BindDeparture(update, vehicleId, destinationId, title, from, pickup!, departureAt, returnAt,
                     capacity, seatPrice, wholePrice, fleetDriverId);
                 await update.ExecuteNonQueryAsync(ct);
             }
@@ -2068,6 +2079,79 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         command.Parameters.AddWithValue("key", key);
         command.Parameters.AddWithValue("minimum", minimum);
         await command.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>Trims, collapses spaces, and capitalises a name typed all in one case ("rawalpindi" → "Rawalpindi").</summary>
+    internal static string NormalisePlace(string? value)
+    {
+        var text = string.Join(' ', (value ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (text.Length > 120) text = text[..120];
+        if (text.Length == 0) return text;
+        var oneCase = text == text.ToLowerInvariant() || text == text.ToUpperInvariant();
+        return oneCase ? CultureInfo.InvariantCulture.TextInfo.ToTitleCase(text.ToLowerInvariant()) : text;
+    }
+
+    /// <summary>
+    /// The destination for a typed "To": one with the same name (any state),
+    /// else a new hidden destination placed at the matching place name or
+    /// tehsil, else at the vehicle's own area. Hidden rows never show in
+    /// Explore or the destination lists; they only name the departure.
+    /// </summary>
+    private static async Task<(Guid Id, string Name)> ResolveDestinationAsync(
+        NpgsqlConnection connection, string to, Guid vehicleId, CancellationToken ct)
+    {
+        await using (var find = new NpgsqlCommand(
+            "SELECT id, name_en FROM udrive.destinations WHERE lower(name_en) = lower(@name) ORDER BY is_active DESC, created_at LIMIT 1;",
+            connection))
+        {
+            find.Parameters.AddWithValue("name", to);
+            await using var reader = await find.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct)) return (reader.GetGuid(0), reader.GetString(1));
+        }
+
+        var slug = "place-" + new string(to.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray()).Trim('-');
+        if (slug.Length > 70) slug = slug[..70];
+        slug += "-" + Guid.NewGuid().ToString("N")[..6];
+
+        await using var insert = new NpgsqlCommand(
+            """
+            WITH pin AS (
+                SELECT lat, lng, district FROM (
+                    SELECT p.latitude AS lat, p.longitude AS lng, p.region AS district, 1 AS rank
+                    FROM udrive.place_names p
+                    WHERE lower(p.name) = lower(@name) AND p.latitude IS NOT NULL
+                    UNION ALL
+                    SELECT t.latitude, t.longitude, d.name, 2
+                    FROM udrive.territories t JOIN udrive.territories d ON d.id = t.parent_id
+                    WHERE t.kind = 'Tehsil' AND lower(t.name) = lower(@name) AND t.latitude IS NOT NULL
+                    UNION ALL
+                    SELECT t.latitude, t.longitude, d.name, 3
+                    FROM udrive.vehicles v
+                    JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
+                    JOIN udrive.territories t ON t.id = COALESCE(v.territory_id, dp.territory_id)
+                    JOIN udrive.territories d ON d.id = t.parent_id
+                    WHERE v.id = @vehicleId AND t.latitude IS NOT NULL
+                    UNION ALL
+                    SELECT 34.3700, 73.4710, 'Muzaffarabad', 4
+                ) x ORDER BY rank LIMIT 1
+            )
+            INSERT INTO udrive.destinations
+                (id, slug, name_en, name_ur, summary_en, summary_ur, location, district, best_season,
+                 recommended_vehicle, network_status, family_suitability_score, route_safety_score,
+                 cover_image_url, is_active, created_at, updated_at)
+            SELECT gen_random_uuid(), @slug, @name, @name,
+                   'Added from a driver''s departure.', 'Added from a driver''s departure.',
+                   ST_SetSRID(ST_MakePoint(pin.lng, pin.lat), 4326)::geography,
+                   pin.district, 'All year', 'Any', 'Unknown', 50, 50, NULL, false, now(), now()
+            FROM pin
+            RETURNING id, name_en;
+            """, connection);
+        insert.Parameters.AddWithValue("name", to);
+        insert.Parameters.AddWithValue("slug", slug);
+        insert.Parameters.AddWithValue("vehicleId", vehicleId);
+        await using var created = await insert.ExecuteReaderAsync(ct);
+        await created.ReadAsync(ct);
+        return (created.GetGuid(0), created.GetString(1));
     }
 
     private static void BindVehicle(NpgsqlCommand command, CleanVehicle clean, int readiness)

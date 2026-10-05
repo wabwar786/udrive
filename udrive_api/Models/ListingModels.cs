@@ -168,7 +168,9 @@ public sealed record SaveDepartureRequest(
     decimal PricePerSeat,
     decimal WholeVehiclePrice,
     string? PickupPoint,
-    Guid? FleetDriverId);
+    Guid? FleetDriverId,
+    /// <summary>Where the trip goes, typed by hand (preferred over DestinationId).</summary>
+    string? To = null);
 
 // ─────────────────────────────────────────────── rentals: the owner's answer
 
@@ -313,3 +315,13 @@ public sealed record VerificationDetailDto(
     bool CanAskInfo);
 
 public sealed record VerificationNoteRequest(string? Note);
+
+// ─────────────────────────────────────────────────────── place names
+
+/// <param name="Kind">Tehsil, Destination or City.</param>
+/// <param name="Detail">e.g. "Bagh district", "UDrive destination", "Punjab".</param>
+public sealed record PlaceNameDto(string Name, string Kind, string Detail, double? Latitude, double? Longitude);
+
+public sealed record AdminPlaceNameDto(Guid Id, string Name, string Region, double? Latitude, double? Longitude, bool IsActive);
+
+public sealed record SavePlaceNameRequest(string Name, string? Region, double? Latitude, double? Longitude, bool IsActive = true);

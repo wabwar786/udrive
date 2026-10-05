@@ -220,6 +220,108 @@ public sealed class AreaService(string connectionString)
         }
     }
 
+    /// <summary>
+    /// Names the app suggests while a driver types "From" or "To": active
+    /// tehsils, UDrive destinations, and other places in Pakistan.
+    /// </summary>
+    public async Task<ServiceResult<IReadOnlyList<PlaceNameDto>>> PlaceNamesAsync(CancellationToken ct)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT t.name, 'Tehsil', d.name || ' district', t.latitude, t.longitude, 1
+            FROM udrive.territories t JOIN udrive.territories d ON d.id = t.parent_id
+            WHERE t.kind = 'Tehsil' AND t.is_active AND d.is_active
+            UNION ALL
+            SELECT x.name_en, 'Destination', 'UDrive destination',
+                   ST_Y(x.location::geometry), ST_X(x.location::geometry), 0
+            FROM udrive.destinations x WHERE x.is_active
+            UNION ALL
+            SELECT p.name, 'City', p.region, p.latitude, p.longitude, 2
+            FROM udrive.place_names p WHERE p.is_active
+            ORDER BY 6, 1;
+            """, connection);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var list = new List<PlaceNameDto>();
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var name = reader.GetString(0);
+            if (!seen.Add(name)) continue;
+            list.Add(new PlaceNameDto(
+                name, reader.GetString(1), reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetDouble(3),
+                reader.IsDBNull(4) ? null : reader.GetDouble(4)));
+        }
+
+        return ServiceResult<IReadOnlyList<PlaceNameDto>>.Ok(list);
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<AdminPlaceNameDto>>> AdminPlacesAsync(CancellationToken ct)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        await using var command = new NpgsqlCommand(
+            "SELECT id, name, region, latitude, longitude, is_active FROM udrive.place_names ORDER BY region, name;", connection);
+        var list = new List<AdminPlaceNameDto>();
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            list.Add(new AdminPlaceNameDto(reader.GetGuid(0), reader.GetString(1), reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetDouble(3), reader.IsDBNull(4) ? null : reader.GetDouble(4),
+                reader.GetBoolean(5)));
+        }
+
+        return ServiceResult<IReadOnlyList<AdminPlaceNameDto>>.Ok(list);
+    }
+
+    public async Task<ServiceResult<Guid>> SavePlaceAsync(Guid adminId, Guid? id, SavePlaceNameRequest request, CancellationToken ct)
+    {
+        var name = Clean(request.Name);
+        if (name is null) return Fail<Guid>(400, "name_required", "Enter the place name.");
+        if (!ValidPin(request.Latitude, request.Longitude))
+        {
+            return Fail<Guid>(400, "pin_invalid", "Enter both latitude and longitude, or neither.");
+        }
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        try
+        {
+            await using var command = new NpgsqlCommand(
+                id is null
+                    ? """
+                      INSERT INTO udrive.place_names (name, region, latitude, longitude, is_active)
+                      VALUES (@name, @region, @lat, @lng, @active) RETURNING id;
+                      """
+                    : """
+                      UPDATE udrive.place_names
+                      SET name = @name, region = @region, latitude = @lat, longitude = @lng,
+                          is_active = @active, updated_at = now()
+                      WHERE id = @id RETURNING id;
+                      """,
+                connection);
+            command.Parameters.AddWithValue("id", id ?? Guid.Empty);
+            command.Parameters.AddWithValue("name", name);
+            command.Parameters.AddWithValue("region", Clean(request.Region) ?? string.Empty);
+            command.Parameters.Add(new NpgsqlParameter("lat", NpgsqlDbType.Double) { Value = (object?)request.Latitude ?? DBNull.Value });
+            command.Parameters.Add(new NpgsqlParameter("lng", NpgsqlDbType.Double) { Value = (object?)request.Longitude ?? DBNull.Value });
+            command.Parameters.AddWithValue("active", request.IsActive);
+            if (await command.ExecuteScalarAsync(ct) is not Guid saved)
+            {
+                return Fail<Guid>(404, "place_not_found", "That place was not found.");
+            }
+
+            await AuditAsync(connection, adminId, id is null ? "PlaceNameAdded" : "PlaceNameUpdated", saved, new { name, request.Region }, ct);
+            return ServiceResult<Guid>.Ok(saved);
+        }
+        catch (PostgresException error) when (error.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            return Fail<Guid>(409, "duplicate", "That place is already in the list.");
+        }
+    }
+
     /// <summary>Whether this id is an active tehsil. Used before saving it on anything.</summary>
     internal static async Task<bool> IsTehsilAsync(
         NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid id, CancellationToken ct)

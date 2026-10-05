@@ -735,7 +735,7 @@ class ListingRepository {
     String vehicleId,
     DateTime date, {
     required String from,
-    required String destinationId,
+    required String to,
     required String time,
     required int durationDays,
     required double pricePerSeat,
@@ -747,7 +747,9 @@ class ListingRepository {
             '/api/v1/listings/vehicles/$vehicleId/departures/${_ymd(date)}',
             {
               'from': from.trim(),
-              'destinationId': destinationId,
+              // Typed destination; the server reuses or creates the place.
+              'to': to.trim(),
+              'destinationId': '00000000-0000-0000-0000-000000000000',
               'time': time,
               'durationDays': durationDays,
               'pricePerSeat': pricePerSeat,

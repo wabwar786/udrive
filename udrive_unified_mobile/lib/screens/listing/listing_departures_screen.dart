@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
-import '../../core/explore/explore_repository.dart';
+import '../../core/areas/place_repository.dart';
 import '../../core/format/money.dart';
 import '../../core/listings/listing_repository.dart';
 import '../../core/state/app_controller.dart';
@@ -34,17 +34,16 @@ class ListingDeparturesScreen extends StatefulWidget {
 
 class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
   ListingRepository? _repository;
-  ExploreRepository? _explore;
+  PlaceRepository? _placeRepository;
 
   late DateTime _month = _firstOfMonth(DateTime.now());
   late DateTime _selected = rentDayOnly(DateTime.now());
 
   DepartureMonth? _data;
-  List<ExplorePlace>? _places;
+  List<PlaceName> _places = const [];
 
   bool _loading = true;
   bool _saving = false;
-  bool _loadingPlaces = false;
   String? _error;
   String? _notice;
 
@@ -54,8 +53,13 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
   final TextEditingController _perSeat = TextEditingController();
   final TextEditingController _whole = TextEditingController();
   final TextEditingController _pickup = TextEditingController();
+  final FocusNode _fromFocus = FocusNode();
+  final FocusNode _toFocus = FocusNode();
 
-  String? _destinationId;
+  /// "Did you mean …?" for each field, when the typed name looks misspelt.
+  String? _fromFix;
+  String? _toFix;
+
   TimeOfDay _timeOfDay = const TimeOfDay(hour: 6, minute: 0);
   int _days = 1;
   String? _driverId;
@@ -71,8 +75,11 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
     if (_repository == null) {
       final api = AppControllerScope.of(context).apiClient;
       _repository = ListingRepository(api);
-      _explore = ExploreRepository(api);
+      _placeRepository = PlaceRepository(api);
+      _fromFocus.addListener(_fromFocusChanged);
+      _toFocus.addListener(_toFocusChanged);
       _load();
+      _loadPlaces();
     }
   }
 
@@ -84,6 +91,8 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
     _perSeat.dispose();
     _whole.dispose();
     _pickup.dispose();
+    _fromFocus.dispose();
+    _toFocus.dispose();
     super.dispose();
   }
 
@@ -140,11 +149,42 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
     }
   }
 
+  /// Suggestions for From / To. A failure leaves both as plain text fields.
+  Future<void> _loadPlaces() async {
+    final repository = _placeRepository;
+    if (repository == null) return;
+    try {
+      final places = await repository.names();
+      if (!mounted) return;
+      setState(() => _places = places);
+    } catch (_) {
+      // Typing still works; there are just no suggestions.
+    }
+  }
+
+  void _fromFocusChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (!_fromFocus.hasFocus) {
+        _fromFix = PlaceRepository.closest(_places, _from.text);
+      }
+    });
+  }
+
+  void _toFocusChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (!_toFocus.hasFocus) {
+        _toFix = PlaceRepository.closest(_places, _to.text);
+      }
+    });
+  }
+
   static String _price(double value) =>
       value > 0 ? value.round().toString() : '';
 
   /// Fills the card for [_selected]: that day's departure, else the last
-  /// one's price, pickup and driver with an empty destination.
+  /// one's route, price, pickup and driver.
   void _prefill() {
     final day = _current;
     final template = _data?.template;
@@ -153,9 +193,9 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
     final from = (day?.from ?? template?.from ?? '').trim();
     _from.text = from.isEmpty ? 'Muzaffarabad' : from;
 
-    _destinationId =
-        (day?.destinationId ?? '').isEmpty ? null : day!.destinationId;
-    _to.text = day?.destination ?? '';
+    _to.text = (day?.destination ?? template?.destination ?? '').trim();
+    _fromFix = null;
+    _toFix = null;
 
     _timeOfDay = _parseTime(source?.time) ?? const TimeOfDay(hour: 6, minute: 0);
     _time.text = _display(_timeOfDay);
@@ -236,40 +276,6 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
     });
   }
 
-  Future<void> _pickDestination() async {
-    final explore = _explore;
-    if (explore == null || _loadingPlaces) return;
-    if (_places == null) {
-      setState(() => _loadingPlaces = true);
-      try {
-        final places = await explore.places();
-        if (!mounted) return;
-        setState(() {
-          _places = places;
-          _loadingPlaces = false;
-        });
-      } catch (_) {
-        if (!mounted) return;
-        setState(() {
-          _loadingPlaces = false;
-          _error = 'Could not load places. Pull down and try again.';
-        });
-        return;
-      }
-    }
-    if (!mounted) return;
-
-    final place = await showUdSheet<ExplorePlace>(
-      context: context,
-      builder: (_) => _PlacePicker(places: _places ?? const []),
-    );
-    if (place == null || !mounted) return;
-    setState(() {
-      _destinationId = place.id;
-      _to.text = place.name;
-    });
-  }
-
   Future<void> _pickDriver() async {
     final driver = await showAssignDriverSheet(
       context,
@@ -293,21 +299,26 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
     if (repository == null || _saving) return;
 
     final from = _from.text.trim();
-    final destinationId = _destinationId;
+    final to = _to.text.trim();
     final perSeat = _perSeatAllowed ? _amount(_perSeat) : 0.0;
     final whole = _amount(_whole);
 
     String? problem;
     if (from.isEmpty) {
       problem = 'Say where the tour leaves from.';
-    } else if (destinationId == null) {
-      problem = 'Choose where it goes.';
+    } else if (to.isEmpty) {
+      problem = 'Where does the trip go?';
     } else if (whole <= 0 && perSeat <= 0) {
       problem = 'Set a price for the whole vehicle'
           '${_perSeatAllowed ? ' or per seat' : ''}.';
     }
+    // Spelling hints only; an unknown place is saved as typed.
+    final fromFix = PlaceRepository.closest(_places, from);
+    final toFix = PlaceRepository.closest(_places, to);
     if (problem != null) {
       setState(() {
+        _fromFix = fromFix;
+        _toFix = toFix;
         _error = problem;
         if (whole <= 0 && perSeat <= 0) _editOpen = true;
       });
@@ -315,6 +326,8 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
     }
 
     setState(() {
+      _fromFix = fromFix;
+      _toFix = toFix;
       _saving = true;
       _error = null;
       _notice = null;
@@ -324,7 +337,7 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
         widget.vehicle.id,
         _selected,
         from: from,
-        destinationId: destinationId!,
+        to: to,
         time: _wire(_timeOfDay),
         durationDays: _days,
         pricePerSeat: perSeat,
@@ -548,22 +561,23 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: UdTextField(
+                    child: _placeField(
                       controller: _from,
+                      focus: _fromFocus,
                       label: 'FROM',
-                      enabled: !_locked,
-                      textCapitalization: TextCapitalization.words,
+                      fix: _fromFix,
+                      onFix: (value) => _fromFix = value,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: UdTextField(
+                    child: _placeField(
                       controller: _to,
+                      focus: _toFocus,
                       label: 'TO',
-                      hint: _loadingPlaces ? 'Loading…' : 'Where to',
-                      readOnly: true,
-                      enabled: !_locked,
-                      onTap: _locked ? null : _pickDestination,
+                      hint: 'Where to',
+                      fix: _toFix,
+                      onFix: (value) => _toFix = value,
                     ),
                   ),
                 ],
@@ -622,6 +636,87 @@ class _ListingDeparturesScreenState extends State<ListingDeparturesScreen> {
         if (_editOpen) _editSection(),
       ],
     );
+  }
+
+  /// A typed place with suggestions under it while focused, and a
+  /// "Did you mean …?" chip once it looks misspelt.
+  Widget _placeField({
+    required TextEditingController controller,
+    required FocusNode focus,
+    required String label,
+    required String? fix,
+    required ValueChanged<String?> onFix,
+    String? hint,
+  }) {
+    final shown = focus.hasFocus && !_locked
+        ? PlaceRepository.suggest(_places, controller.text)
+        : const <PlaceName>[];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UdTextField(
+          controller: controller,
+          focusNode: focus,
+          label: label,
+          hint: hint,
+          enabled: !_locked,
+          textCapitalization: TextCapitalization.words,
+          onChanged: (_) => setState(() => onFix(null)),
+        ),
+        if (shown.isNotEmpty)
+          TextFieldTapRegion(
+            child: Container(
+              margin: const EdgeInsets.only(top: 6),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: AppRadii.all(12),
+                border: Border.all(color: AppColors.border, width: 1.5),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Material(
+                type: MaterialType.transparency,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < shown.length; i++) ...[
+                      if (i > 0)
+                        const Divider(height: 1, color: AppColors.border),
+                      _Suggestion(
+                        place: shown[i],
+                        onTap: () =>
+                            _usePlace(controller, focus, onFix, shown[i].name),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        if (fix != null && !focus.hasFocus && !_locked) ...[
+          const SizedBox(height: 6),
+          _DidYouMean(
+            name: fix,
+            onTap: () => _usePlace(controller, focus, onFix, fix),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Puts a suggested [name] in the field and closes its list.
+  void _usePlace(
+    TextEditingController controller,
+    FocusNode focus,
+    ValueChanged<String?> onFix,
+    String name,
+  ) {
+    controller.value = TextEditingValue(
+      text: name,
+      selection: TextSelection.collapsed(offset: name.length),
+    );
+    setState(() => onFix(null));
+    focus.unfocus();
   }
 
   Widget _editSection() {
@@ -847,79 +942,112 @@ class _DepartureCell extends StatelessWidget {
   }
 }
 
-/// Searchable list of destinations for "To".
-class _PlacePicker extends StatefulWidget {
-  const _PlacePicker({required this.places});
+/// One suggestion under a From / To field.
+class _Suggestion extends StatelessWidget {
+  const _Suggestion({required this.place, required this.onTap});
 
-  final List<ExplorePlace> places;
-
-  @override
-  State<_PlacePicker> createState() => _PlacePickerState();
-}
-
-class _PlacePickerState extends State<_PlacePicker> {
-  final TextEditingController _search = TextEditingController();
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
+  final PlaceName place;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final needle = _search.text.trim().toLowerCase();
-    final shown = needle.isEmpty
-        ? widget.places
-        : widget.places
-            .where((p) =>
-                p.name.toLowerCase().contains(needle) ||
-                p.district.toLowerCase().contains(needle))
-            .toList(growable: false);
-    final height = MediaQuery.sizeOf(context).height * 0.55;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 4),
-        Text('Where to?', style: AppType.h2.copyWith(color: AppText.primary)),
-        const SizedBox(height: 12),
-        UdTextField(
-          controller: _search,
-          hint: 'Search places',
-          icon: Icons.search_rounded,
-          autofocus: true,
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: height,
-          child: shown.isEmpty
-              ? Center(
-                  child: Text(
-                    widget.places.isEmpty
-                        ? 'No places available right now.'
-                        : 'Nothing matches "${_search.text.trim()}".',
-                    style: AppType.small.copyWith(color: AppText.secondary),
+    return Semantics(
+      button: true,
+      label: place.detail.isEmpty
+          ? place.name
+          : '${place.name}, ${place.detail}',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  place.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.small.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
                   ),
-                )
-              : ListView.separated(
-                  itemCount: shown.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1, color: AppColors.border),
-                  itemBuilder: (context, index) {
-                    final place = shown[index];
-                    return UdListRow(
-                      title: place.name,
-                      subtitle:
-                          place.district.trim().isEmpty ? null : place.district,
-                      onTap: () => Navigator.pop(context, place),
-                    );
-                  },
                 ),
+                if (place.detail.isNotEmpty)
+                  Text(
+                    place.detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppType.caption.copyWith(color: AppText.secondary),
+                  ),
+              ],
+            ),
+          ),
         ),
-      ],
+      ),
+    );
+  }
+}
+
+/// "Did you mean Rawalpindi?" — tap to use that spelling. Never blocks saving.
+class _DidYouMean extends StatelessWidget {
+  const _DidYouMean({required this.name, required this.onTap});
+
+  final String name;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Semantics(
+        button: true,
+        label: 'Did you mean $name?',
+        excludeSemantics: true,
+        child: Material(
+          color: AppColors.brandWash,
+          shape: RoundedRectangleBorder(borderRadius: AppRadii.all(12)),
+          child: InkWell(
+            onTap: onTap,
+            customBorder:
+                RoundedRectangleBorder(borderRadius: AppRadii.all(12)),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: 1,
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(text: 'Did you mean '),
+                        TextSpan(
+                          text: name,
+                          style: AppType.caption.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.brandInk,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                        const TextSpan(text: '?'),
+                      ],
+                    ),
+                    style: AppType.caption.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.brandInk,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
