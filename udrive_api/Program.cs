@@ -161,8 +161,8 @@ builder.Services.AddScoped<VehicleUsageService>(sp =>
     new VehicleUsageService(
         connectionString,
         sp.GetRequiredService<LocalFileStorageService>()));
-builder.Services.AddScoped<RentalService>(_ =>
-    new RentalService(connectionString));
+builder.Services.AddScoped<RentalService>(sp =>
+    new RentalService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<AdminRentalService>(_ =>
     new AdminRentalService(connectionString));
 builder.Services.AddScoped<CustomerDocumentsService>(sp =>
@@ -194,6 +194,14 @@ builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(con
 builder.Services.AddScoped<HotelService>(_ => new HotelService(connectionString));
 builder.Services.AddScoped<ExploreService>(_ => new ExploreService(connectionString));
 builder.Services.AddScoped<BusinessService>(_ => new BusinessService(connectionString));
+// "Earn with your vehicle" (migration 070): owner listings, their drivers,
+// rent requests that wait for the owner, and daily departures.
+builder.Services.AddScoped<ListingService>(sp =>
+    new ListingService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
+builder.Services.AddHostedService(sp => new ListingSweepService(
+    sp.GetRequiredService<IServiceScopeFactory>(),
+    connectionString,
+    sp.GetRequiredService<ILogger<ListingSweepService>>()));
 builder.Services.AddHttpClient(DemoFleetPhotos.HttpClientName, client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);

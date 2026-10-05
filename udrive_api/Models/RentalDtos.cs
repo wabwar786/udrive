@@ -116,7 +116,27 @@ public sealed record RentalBookingDto(
     /// settings value it would have to fetch separately and could get wrong.
     /// The Customer sees the answer, not the rule.
     /// </remarks>
-    bool AdvanceRefundableNow);
+    bool AdvanceRefundableNow)
+{
+    /// <summary>When the owner must answer by; only while PendingOwner.</summary>
+    public DateTimeOffset? OwnerRespondBy { get; init; }
+
+    /// <summary>The driver the owner assigned (with-driver), once confirmed.</summary>
+    public string? DriverName { get; init; }
+
+    public string? DriverPhone { get; init; }
+
+    public RentalConditionPhotosDto HandoverPhotos { get; init; } = new(null, null, null, null);
+
+    public RentalConditionPhotosDto ReturnPhotos { get; init; } = new(null, null, null, null);
+
+    public RentalMeterDto? Handover { get; init; }
+
+    public RentalMeterDto? Returned { get; init; }
+
+    /// <summary>Self-drive: all four of the customer's documents are on file.</summary>
+    public bool CustomerDocumentsVerified { get; init; }
+}
 
 public sealed record CancelRentalRequest([StringLength(500)] string? Reason);
 

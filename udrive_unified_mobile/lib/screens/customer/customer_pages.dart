@@ -5,6 +5,9 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../data/models.dart';
+import '../listing/driver_invite_screen.dart';
+import '../listing/listing_wizard_screen.dart';
+import '../listing/my_vehicles_screen.dart';
 
 // `ExploreScreen` used to live here too, and nothing built it. `main_shell`
 // sends the 'explore' key to `LiveExploreScreen`, and this file is imported
@@ -118,6 +121,39 @@ class ProfileScreen extends StatelessWidget {
                 showChevron: true,
                 onTap: () => onNavigate(item.$1),
               ),
+            UdListRow(
+              title: 'List your vehicle',
+              subtitle: 'Rent it out or run tours · 3 quick steps',
+              leading: const UdIconTile(icon: Icons.add_road_rounded),
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ListingWizardScreen(),
+                ),
+              ),
+            ),
+            UdListRow(
+              title: 'My vehicles',
+              subtitle: 'Listings, rent calendar, departures and drivers',
+              leading: const UdIconTile(icon: Icons.directions_car_rounded),
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const MyVehiclesScreen(),
+                ),
+              ),
+            ),
+            UdListRow(
+              title: 'Driver invites',
+              subtitle: 'An owner added you as a driver',
+              leading: const UdIconTile(icon: Icons.mail_outline_rounded),
+              showChevron: true,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DriverInviteScreen(),
+                ),
+              ),
+            ),
           ],
         ),
       ],

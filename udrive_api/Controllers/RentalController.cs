@@ -51,12 +51,46 @@ public sealed class RentalController(RentalService service) : ControllerBase
         CancellationToken ct) =>
         Result(await service.QuoteAsync(User.GetUserIdOrNull(), vehicleId, request, ct));
 
+    /// <summary>
+    /// Sends the request to the owner, then tells them on WhatsApp.
+    /// </summary>
+    /// <remarks>
+    /// The message goes after the request is saved and never undoes it. If
+    /// WhatsApp is slow or down, the owner still sees the request in the app,
+    /// and the sweep sends a reminder before the answer is due.
+    /// </remarks>
     [Authorize]
     [HttpPost("bookings")]
     public async Task<IActionResult> Book(
         CreateRentalBookingRequest request,
-        CancellationToken ct) =>
-        Result(await service.BookAsync(User.GetRequiredUserId(), request, ct));
+        [FromServices] WhatsAppService whatsApp,
+        [FromServices] ILogger<RentalController> logger,
+        CancellationToken ct)
+    {
+        var result = await service.BookAsync(User.GetRequiredUserId(), request, ct);
+        if (result.Success && result.Data is { } booking)
+        {
+            try
+            {
+                var notice = await service.OwnerNoticeAsync(booking.Id, CancellationToken.None);
+                if (notice is not null)
+                {
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+                    var sent = await whatsApp.SendTextAsync(notice.To, notice.Message, timeout.Token);
+                    if (sent.Success)
+                    {
+                        await service.RecordOwnerNoticeAsync(booking.Id, false, CancellationToken.None);
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Rental {BookingId} was saved but the owner could not be messaged.", booking.Id);
+            }
+        }
+
+        return Result(result);
+    }
 
     [Authorize]
     [HttpGet("bookings")]
@@ -128,6 +162,39 @@ public sealed class DriverRentalController(
     [HttpGet]
     public async Task<IActionResult> Mine(CancellationToken ct) =>
         Result(await service.DriverRentalsAsync(User.GetRequiredUserId(), ct));
+
+    /// <summary>The owner confirms or rejects a waiting request.</summary>
+    [HttpPost("{bookingId:guid}/respond")]
+    public async Task<IActionResult> Respond(
+        Guid bookingId,
+        RespondRentalRequest request,
+        CancellationToken ct) =>
+        Result(await service.RespondAsync(User.GetRequiredUserId(), bookingId, request, ct));
+
+    /// <summary>One condition photo: phase handover|return, side front|back|left|right.</summary>
+    [HttpPost("{bookingId:guid}/photos/{phase}/{side}")]
+    [RequestSizeLimit(12 * 1024 * 1024)]
+    public async Task<IActionResult> Photo(
+        Guid bookingId,
+        string phase,
+        string side,
+        IFormFile? file,
+        CancellationToken ct) =>
+        Result(await service.UploadConditionPhotoAsync(User.GetRequiredUserId(), bookingId, phase, side, file, ct));
+
+    [HttpPost("{bookingId:guid}/handover")]
+    public async Task<IActionResult> Handover(
+        Guid bookingId,
+        RentalHandoverRequest request,
+        CancellationToken ct) =>
+        Result(await service.HandOverAsync(User.GetRequiredUserId(), bookingId, request, ct));
+
+    [HttpPost("{bookingId:guid}/return")]
+    public async Task<IActionResult> Return(
+        Guid bookingId,
+        RentalReturnRequest request,
+        CancellationToken ct) =>
+        Result(await service.ReturnAsync(User.GetRequiredUserId(), bookingId, request, ct));
 
     /// <summary>Marks the car handed over, returned, or a no-show.</summary>
     [HttpPost("{bookingId:guid}/status/{status}")]

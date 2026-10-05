@@ -9,6 +9,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/demo_tag.dart';
 import '../../core/widgets/ud_kit.dart';
 import 'rental_booking_screen.dart';
+import 'rental_waiting_screen.dart';
 
 /// Car rental — every car on offer, as a list.
 ///
@@ -1006,6 +1007,23 @@ class _MyRentalsScreenState extends State<_MyRentalsScreen> {
     }
   }
 
+  /// A booking still waiting for the owner opens the waiting screen, which
+  /// runs the clock and can cancel it.
+  Future<void> _openWaiting(RentalBooking booking) async {
+    final findOther = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RentalWaitingScreen(booking: booking),
+      ),
+    );
+    if (!mounted) return;
+    if (findOther == true) {
+      Navigator.pop(context);
+      return;
+    }
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1046,8 +1064,12 @@ class _MyRentalsScreenState extends State<_MyRentalsScreen> {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _BookingCard(
                           booking: booking,
-                          onCancel:
-                              booking.isLive ? () => _cancel(booking) : null,
+                          onCancel: booking.isLive && !booking.isPendingOwner
+                              ? () => _cancel(booking)
+                              : null,
+                          onOpen: booking.isPendingOwner
+                              ? () => _openWaiting(booking)
+                              : null,
                         ),
                       ),
                 ],
@@ -1059,14 +1081,32 @@ class _MyRentalsScreenState extends State<_MyRentalsScreen> {
 
 /// One of the Customer's own rentals.
 class _BookingCard extends StatelessWidget {
-  const _BookingCard({required this.booking, required this.onCancel});
+  const _BookingCard({
+    required this.booking,
+    required this.onCancel,
+    this.onOpen,
+  });
 
   final RentalBooking booking;
   final VoidCallback? onCancel;
 
+  /// Set while the owner has not answered: opens the waiting screen.
+  final VoidCallback? onOpen;
+
+  /// Short enough for the chip; the refund is said in full below it.
+  static String _chip(String status) => switch (status) {
+        'PendingOwner' => 'Waiting for owner',
+        'Declined' => 'Owner declined',
+        'Expired' => 'Expired',
+        _ => rentalStatusLabel(status),
+      };
+
   @override
   Widget build(BuildContext context) {
+    final pending = booking.isPendingOwner;
+    final refused = booking.isRefusedByOwner;
     return UdCard(
+      onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1091,8 +1131,10 @@ class _BookingCard extends StatelessWidget {
                 ),
               ),
               UdBadge(
-                label: booking.status,
+                label: _chip(booking.status),
                 tone: switch (booking.status) {
+                  'PendingOwner' => UdTone.warn,
+                  'Declined' || 'Expired' => UdTone.info,
                   'Cancelled' || 'NoShow' => UdTone.err,
                   'Returned' => UdTone.gray,
                   _ => UdTone.ok,
@@ -1100,6 +1142,19 @@ class _BookingCard extends StatelessWidget {
               ),
             ],
           ),
+          if (pending || refused) ...[
+            const SizedBox(height: 10),
+            UdBanner(
+              tone: pending ? UdTone.warn : UdTone.info,
+              icon: pending
+                  ? Icons.hourglass_top_rounded
+                  : Icons.check_circle_outline_rounded,
+              text: pending
+                  ? 'Waiting for the owner to confirm. Tap to see the time '
+                      'left or cancel.'
+                  : booking.statusLabel,
+            ),
+          ],
           const SizedBox(height: 12),
           UdListGroup(
             children: [
@@ -1126,7 +1181,8 @@ class _BookingCard extends StatelessWidget {
                 ),
               UdListRow(
                 title: booking.counterpartName,
-                subtitle: booking.counterpartPhone ?? 'Owner',
+                subtitle: booking.counterpartPhone ??
+                    (pending ? 'Number shown once the owner confirms' : 'Owner'),
                 leading: const UdIconTile(
                   icon: Icons.person_outline_rounded,
                   tone: UdIconTone.neutral,

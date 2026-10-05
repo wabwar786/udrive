@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Npgsql;
 using NpgsqlTypes;
@@ -29,7 +30,9 @@ namespace UDrive.Api.Services;
 ///   * a car out on rent still showing on the city-ride map — migration 061's
 ///     CHECK, which will not let rent and city both be true.
 /// </remarks>
-public sealed class RentalService(string connectionString)
+public sealed class RentalService(
+    string connectionString,
+    LocalFileStorageService? fileStorage = null)
 {
     /// <summary>What a Customer pays at booking when no setting says.</summary>
     public const int DefaultAdvancePercent = 20;
@@ -40,7 +43,14 @@ public sealed class RentalService(string connectionString)
     /// <summary>How far ahead a calendar is worth drawing.</summary>
     private const int CalendarDays = 120;
 
-    private static readonly string[] LiveRentalStatuses = ["Confirmed", "HandedOver"];
+    /// <remarks>
+    /// A request waiting for the owner's answer holds the days as well: two
+    /// customers must not both be told "waiting for the owner" for the same car
+    /// on the same dates. The database's exclusion constraint says the same.
+    /// </remarks>
+    private static readonly string[] LiveRentalStatuses = ["PendingOwner", "Confirmed", "HandedOver"];
+
+    private static readonly string[] ConditionSides = ["front", "back", "left", "right"];
 
     // ─────────────────────────────────────────────────────────── browsing
 
@@ -106,6 +116,10 @@ public sealed class RentalService(string connectionString)
                       AND rb.status = ANY(@liveStatuses)
                       AND daterange(rb.start_date, rb.end_date, '[]')
                           && daterange(@from::date, @to::date, '[]')))
+              AND (@from::date IS NULL OR NOT EXISTS (
+                    SELECT 1 FROM udrive.rental_blocked_days bd
+                    WHERE bd.vehicle_id = v.id
+                      AND bd.day BETWEEN @from::date AND @to::date))
               AND (@from::date IS NULL OR NOT EXISTS (
                     SELECT 1 FROM udrive.tour_packages tp
                     WHERE tp.vehicle_id = v.id
@@ -231,6 +245,11 @@ public sealed class RentalService(string connectionString)
 
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
+
+        // A request the owner never answered still holds its days until it is
+        // marked expired, so that happens before the dates are checked.
+        await ExpireOverdueAsync(connection, cancellationToken);
+
         await using var transaction = await connection.BeginTransactionAsync(
             IsolationLevel.ReadCommitted, cancellationToken);
 
@@ -284,6 +303,9 @@ public sealed class RentalService(string connectionString)
                 + "before booking.");
         }
 
+        var respondBy = await OwnerRespondByAsync(
+            connection, transaction, terms.StartDate, cancellationToken);
+
         var reference = $"RN-{DateTime.UtcNow:yyMM}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
 
         const string insertSql = """
@@ -292,12 +314,12 @@ public sealed class RentalService(string connectionString)
                  start_date, end_date, rental_mode, daily_rate, days, subtotal,
                  security_deposit, advance_amount, balance_due, km_per_day,
                  fuel_included, pickup_point, status, disclaimer_version,
-                 disclaimer_accepted_at, created_at, updated_at)
+                 disclaimer_accepted_at, owner_respond_by, created_at, updated_at)
             SELECT @reference, v.id, v.driver_profile_id, @customer,
                    @start, @end, @mode, @rate, @days, @subtotal,
                    @deposit, @advance, @balance, v.rent_km_per_day,
                    COALESCE(v.rent_fuel_included, false), v.rent_pickup_point,
-                   'Confirmed', @disclaimer, now(), now(), now()
+                   'PendingOwner', @disclaimer, now(), @respondBy, now(), now()
             FROM udrive.vehicles v
             WHERE v.id = @vehicleId
             RETURNING id;
@@ -320,6 +342,7 @@ public sealed class RentalService(string connectionString)
             command.Parameters.AddWithValue("advance", terms.AdvanceAmount);
             command.Parameters.AddWithValue("balance", terms.BalanceDue);
             command.Parameters.AddWithValue("disclaimer", terms.DisclaimerVersion);
+            command.Parameters.AddWithValue("respondBy", respondBy);
             bookingId = (Guid)(await command.ExecuteScalarAsync(cancellationToken))!;
         }
         catch (PostgresException exception)
@@ -336,7 +359,10 @@ public sealed class RentalService(string connectionString)
         await transaction.CommitAsync(cancellationToken);
 
         var created = await LoadBookingAsync(connection, bookingId, userId, false, cancellationToken);
-        return ServiceResult<RentalBookingDto>.Created(created!);
+        return ServiceResult<RentalBookingDto>.Created(
+            created!,
+            "Request sent. The owner will confirm by "
+            + $"{respondBy.ToOffset(Karachi):h:mm tt}. If they don't, your advance comes back.");
     }
 
     /// <summary>Calls a booking off, from either side.</summary>
@@ -396,13 +422,21 @@ public sealed class RentalService(string connectionString)
                 "This rental booking is not yours.");
         }
 
-        if (status is not "Confirmed")
+        if (status is "PendingOwner" && isOwner)
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "rental_use_respond",
+                "This request is waiting for your answer. Reject it instead.");
+        }
+
+        if (status is not ("Confirmed" or "PendingOwner"))
         {
             return ServiceResult<RentalBookingDto>.Fail(
                 StatusCodes.Status409Conflict,
                 "rental_not_cancellable",
-                status is "Cancelled"
-                    ? "This booking has already been cancelled."
+                status is "Cancelled" or "Declined" or "Expired"
+                    ? "This booking has already been closed."
                     : "The car has already been handed over, so this booking "
                       + "cannot be cancelled here. Speak to the owner.");
         }
@@ -414,7 +448,7 @@ public sealed class RentalService(string connectionString)
                 cancelled_by = @by,
                 cancel_reason = @reason,
                 updated_at = now()
-            WHERE id = @id AND status = 'Confirmed';
+            WHERE id = @id AND status IN ('Confirmed', 'PendingOwner');
             """;
 
         await using (var command = new NpgsqlCommand(cancelSql, connection))
@@ -432,7 +466,9 @@ public sealed class RentalService(string connectionString)
 
         var freeCancelHours = await SettingAsync(
             connection, null, "rental.free_cancel_hours", DefaultFreeCancelHours, cancellationToken);
-        var refunded = isOwner || RefundableNow(startDate, freeCancelHours);
+        // A request the owner had not yet accepted always refunds: the customer
+        // never had a car to turn other bookings away for.
+        var refunded = isOwner || status == "PendingOwner" || RefundableNow(startDate, freeCancelHours);
 
         var dto = await LoadBookingAsync(connection, bookingId, userId, isOwner, cancellationToken);
         return ServiceResult<RentalBookingDto>.Ok(
@@ -537,7 +573,7 @@ public sealed class RentalService(string connectionString)
             WHERE rb.id = @bookingId
               AND dp.user_id = @ownerUserId
               AND rb.rental_mode = 'SelfDrive'
-              AND rb.status IN ('Confirmed', 'HandedOver');
+              AND rb.status IN ('PendingOwner', 'Confirmed', 'HandedOver');
             """;
 
         await using var connection = new NpgsqlConnection(connectionString);
@@ -562,6 +598,611 @@ public sealed class RentalService(string connectionString)
             "selfie" => "selfie_url",
             _ => null,
         };
+
+    // ─────────────────────────────────────────── the owner's answer
+
+    /// <summary>A WhatsApp message for the owner about one new request.</summary>
+    public sealed record OwnerNotice(string To, string Message);
+
+    /// <summary>When the owner must answer a request starting on that day.</summary>
+    /// <remarks>
+    /// Two hours normally; half an hour when the car is wanted within a few
+    /// hours, so a same-day customer is not left waiting for most of the day.
+    /// Never later than the start of the rental day itself.
+    /// </remarks>
+    private static async Task<DateTimeOffset> OwnerRespondByAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        DateOnly startDate,
+        CancellationToken cancellationToken)
+    {
+        var normal = await SettingAsync(connection, transaction, "rental.owner_response_minutes", 120, cancellationToken);
+        var shortWindow = await SettingAsync(connection, transaction, "rental.owner_response_short_minutes", 30, cancellationToken);
+        var shortNotice = await SettingAsync(connection, transaction, "rental.short_notice_hours", 6, cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        var startsAt = new DateTimeOffset(startDate.ToDateTime(new TimeOnly(9, 0)), Karachi);
+        var minutes = startsAt - now <= TimeSpan.FromHours(shortNotice) ? shortWindow : normal;
+        return now.AddMinutes(Math.Max(5, minutes));
+    }
+
+    /// <summary>
+    /// Closes every request the owner did not answer in time, and tells each
+    /// customer their advance is coming back.
+    /// </summary>
+    /// <remarks>
+    /// Called before anything reads or books rentals, and by the sweep every few
+    /// minutes. One statement, so two callers at once cannot both notify.
+    /// </remarks>
+    internal static async Task<int> ExpireOverdueAsync(
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            WITH expired AS (
+                UPDATE udrive.rental_bookings
+                SET status = 'Expired',
+                    cancelled_at = now(),
+                    cancelled_by = 'System',
+                    cancel_reason = 'The owner did not answer in time.',
+                    updated_at = now()
+                WHERE status = 'PendingOwner'
+                  AND owner_respond_by IS NOT NULL
+                  AND owner_respond_by < now()
+                RETURNING id, customer_user_id, booking_reference
+            )
+            INSERT INTO udrive.notifications
+                (id, user_id, type, title, body, data_json, action_path, created_at, updated_at)
+            SELECT gen_random_uuid(), e.customer_user_id, 'RentalExpired',
+                   'The owner did not answer',
+                   'Your rental request ' || e.booking_reference
+                     || ' was not confirmed in time. Your advance will be returned. Please choose another car.',
+                   jsonb_build_object('rentalBookingId', e.id), '/rentals', now(), now()
+            FROM expired e;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>The message telling the owner a new request is waiting.</summary>
+    public async Task<OwnerNotice?> OwnerNoticeAsync(Guid bookingId, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        return await NoticeAsync(connection, bookingId, false, cancellationToken);
+    }
+
+    /// <summary>Notes that the owner was told, so the sweep does not tell them again.</summary>
+    public async Task RecordOwnerNoticeAsync(Guid bookingId, bool reminder, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            reminder
+                ? "UPDATE udrive.rental_bookings SET owner_reminded_at = now() WHERE id = @id;"
+                : "UPDATE udrive.rental_bookings SET owner_notified_at = now() WHERE id = @id;",
+            connection);
+        command.Parameters.AddWithValue("id", bookingId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests whose answer is due within half an hour and whose owner has not
+    /// been reminded yet.
+    /// </summary>
+    public async Task<IReadOnlyList<(Guid BookingId, OwnerNotice Notice)>> DueRemindersAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        var ids = new List<Guid>();
+        await using (var command = new NpgsqlCommand(
+            """
+            SELECT id FROM udrive.rental_bookings
+            WHERE status = 'PendingOwner'
+              AND owner_reminded_at IS NULL
+              AND owner_respond_by > now()
+              AND owner_respond_by <= now() + interval '30 minutes'
+              -- A request made with only half an hour to answer has just had its
+              -- first message; a reminder five minutes later is noise.
+              AND created_at <= now() - interval '10 minutes'
+            ORDER BY owner_respond_by
+            LIMIT 50;
+            """,
+            connection))
+        {
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken)) ids.Add(reader.GetGuid(0));
+        }
+
+        var list = new List<(Guid, OwnerNotice)>();
+        foreach (var id in ids)
+        {
+            var notice = await NoticeAsync(connection, id, true, cancellationToken);
+            if (notice is not null) list.Add((id, notice));
+        }
+
+        return list;
+    }
+
+    private static async Task<OwnerNotice?> NoticeAsync(
+        NpgsqlConnection connection,
+        Guid bookingId,
+        bool reminder,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT owner_u.phone_number,
+                   trim(concat_ws(' ', v.make, v.model)), v.registration_number,
+                   rb.start_date, rb.end_date, rb.days, rb.rental_mode,
+                   rb.subtotal, rb.advance_amount, rb.owner_respond_by, rb.booking_reference
+            FROM udrive.rental_bookings rb
+            JOIN udrive.vehicles v ON v.id = rb.vehicle_id
+            JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id
+            JOIN udrive.users owner_u ON owner_u.id = dp.user_id
+            WHERE rb.id = @id AND rb.status = 'PendingOwner';
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("id", bookingId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken) || reader.IsDBNull(0)) return null;
+
+        var phone = reader.GetString(0);
+        var car = reader.GetString(1);
+        var plate = reader.GetString(2);
+        var start = DateOnly.FromDateTime(reader.GetDateTime(3));
+        var end = DateOnly.FromDateTime(reader.GetDateTime(4));
+        var days = reader.GetInt32(5);
+        var mode = reader.GetString(6) == "SelfDrive" ? "Self-drive" : "With driver";
+        var total = reader.GetDecimal(7);
+        var advance = reader.GetDecimal(8);
+        var respondBy = reader.IsDBNull(9) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(9);
+        var reference = reader.GetString(10);
+        var by = respondBy is null ? "soon" : respondBy.Value.ToOffset(Karachi).ToString("h:mm tt");
+
+        var message = reminder
+            ? $"UDrive reminder: the rental request {reference} for your {car} ({plate}) "
+              + $"is still waiting. Please answer by {by}, or it will be cancelled and the customer refunded.\n"
+              + "Open the UDrive app → My vehicles → Rent."
+            : $"UDrive: new rental request {reference}\n"
+              + $"Car: {car} ({plate})\n"
+              + $"Dates: {start:dd MMM} – {end:dd MMM} ({days} day{(days == 1 ? "" : "s")})\n"
+              + $"Type: {mode}\n"
+              + $"Total: Rs {total:N0} · advance paid: Rs {advance:N0}\n"
+              + $"Please confirm or reject by {by}.\n"
+              + "Open the UDrive app → My vehicles → Rent.";
+        return new OwnerNotice(phone, message);
+    }
+
+    /// <summary>The owner confirms or rejects a waiting request.</summary>
+    /// <remarks>
+    /// A with-driver rental names who drives on accept: one of the owner's
+    /// approved drivers whose licence is valid to the last day. An owner who
+    /// signed up as a UDrive driver is that driver and need not name anyone.
+    /// </remarks>
+    public async Task<ServiceResult<RentalBookingDto>> RespondAsync(
+        Guid userId,
+        Guid bookingId,
+        RespondRentalRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await ExpireOverdueAsync(connection, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted, cancellationToken);
+
+        const string loadSql = """
+            SELECT dp.id, rb.status, rb.rental_mode, rb.end_date,
+                   COALESCE(dp.profile_kind, 'Driver'), rb.customer_user_id, rb.booking_reference
+            FROM udrive.rental_bookings rb
+            JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id
+            WHERE rb.id = @id AND dp.user_id = @userId
+            FOR UPDATE OF rb;
+            """;
+
+        Guid profileId;
+        string status;
+        string mode;
+        DateOnly endDate;
+        string profileKind;
+        Guid customerId;
+        string reference;
+        await using (var command = new NpgsqlCommand(loadSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", bookingId);
+            command.Parameters.AddWithValue("userId", userId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return ServiceResult<RentalBookingDto>.Fail(
+                    StatusCodes.Status404NotFound, "rental_not_found", "That rental booking was not found.");
+            }
+
+            profileId = reader.GetGuid(0);
+            status = reader.GetString(1);
+            mode = reader.GetString(2);
+            endDate = DateOnly.FromDateTime(reader.GetDateTime(3));
+            profileKind = reader.GetString(4);
+            customerId = reader.GetGuid(5);
+            reference = reader.GetString(6);
+        }
+
+        if (status != "PendingOwner")
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "rental_not_pending",
+                status == "Expired"
+                    ? "The time to answer this request has passed. The customer has been refunded."
+                    : "This request has already been answered.");
+        }
+
+        Guid? fleetDriverId = null;
+        if (request.Accept && mode == "WithDriver")
+        {
+            if (request.FleetDriverId is { } chosen)
+            {
+                if (!await ListingService.IsValidDriverAsync(
+                        connection, transaction, profileId, chosen, endDate, cancellationToken))
+                {
+                    return ServiceResult<RentalBookingDto>.Fail(
+                        StatusCodes.Status409Conflict,
+                        "driver_not_valid",
+                        "That driver is not approved, or their licence ends before this rental does.");
+                }
+
+                fleetDriverId = chosen;
+            }
+            else if (profileKind != "Driver")
+            {
+                return ServiceResult<RentalBookingDto>.Fail(
+                    StatusCodes.Status400BadRequest,
+                    "driver_required",
+                    "Choose who will drive this customer.");
+            }
+        }
+
+        const string acceptSql = """
+            UPDATE udrive.rental_bookings
+            SET status = 'Confirmed', owner_responded_at = now(),
+                fleet_driver_id = @driver, updated_at = now()
+            WHERE id = @id AND status = 'PendingOwner';
+            """;
+        const string declineSql = """
+            UPDATE udrive.rental_bookings
+            SET status = 'Declined', owner_responded_at = now(),
+                cancelled_at = now(), cancelled_by = 'Owner',
+                cancel_reason = @reason, updated_at = now()
+            WHERE id = @id AND status = 'PendingOwner';
+            """;
+
+        await using (var command = new NpgsqlCommand(request.Accept ? acceptSql : declineSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", bookingId);
+            if (request.Accept)
+            {
+                command.Parameters.Add(new NpgsqlParameter("driver", NpgsqlDbType.Uuid)
+                {
+                    Value = (object?)fleetDriverId ?? DBNull.Value,
+                });
+            }
+            else
+            {
+                var reason = request.Reason?.Trim();
+                command.Parameters.Add(new NpgsqlParameter("reason", NpgsqlDbType.Varchar)
+                {
+                    Value = string.IsNullOrEmpty(reason)
+                        ? "The owner could not take this booking."
+                        : reason.Length > 500 ? reason[..500] : reason,
+                });
+            }
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var notify = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.notifications
+                (id, user_id, type, title, body, data_json, action_path, created_at, updated_at)
+            VALUES (gen_random_uuid(), @customer, @type, @title, @body,
+                    jsonb_build_object('rentalBookingId', @id), '/rentals', now(), now());
+            """,
+            connection, transaction))
+        {
+            notify.Parameters.AddWithValue("customer", customerId);
+            notify.Parameters.AddWithValue("id", bookingId);
+            notify.Parameters.AddWithValue("type", request.Accept ? "RentalConfirmed" : "RentalDeclined");
+            notify.Parameters.AddWithValue("title", request.Accept ? "Your car is confirmed" : "The owner could not take your booking");
+            notify.Parameters.AddWithValue("body", request.Accept
+                ? $"Rental {reference} is confirmed. The owner's number is now in your booking."
+                : $"Rental {reference} was not accepted. Your advance will be returned. Please choose another car.");
+            await notify.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        var dto = await LoadBookingAsync(connection, bookingId, userId, true, cancellationToken);
+        return ServiceResult<RentalBookingDto>.Ok(
+            dto!,
+            request.Accept ? "Confirmed. The customer has been told." : "Rejected. The customer's advance will be returned.");
+    }
+
+    // ─────────────────────────────────────────── handover and return
+
+    /// <summary>One condition photo, before the car goes out or when it comes back.</summary>
+    public async Task<ServiceResult<RentalConditionPhotoDto>> UploadConditionPhotoAsync(
+        Guid userId,
+        Guid bookingId,
+        string phase,
+        string side,
+        IFormFile? file,
+        CancellationToken cancellationToken)
+    {
+        var cleanPhase = phase?.Trim().ToLowerInvariant();
+        var cleanSide = side?.Trim().ToLowerInvariant();
+        var column = cleanPhase switch { "handover" => "handover_json", "return" => "return_json", _ => null };
+        if (column is null || cleanSide is null || !ConditionSides.Contains(cleanSide))
+        {
+            return ServiceResult<RentalConditionPhotoDto>.Fail(
+                StatusCodes.Status400BadRequest, "photo_kind_invalid", "Unknown photo.");
+        }
+
+        if (file is null)
+        {
+            return ServiceResult<RentalConditionPhotoDto>.Fail(
+                StatusCodes.Status400BadRequest, "file_required", "Choose a photo.");
+        }
+
+        if (fileStorage is null)
+        {
+            return ServiceResult<RentalConditionPhotoDto>.Fail(
+                StatusCodes.Status503ServiceUnavailable, "storage_unavailable", "Photos cannot be saved right now.");
+        }
+
+        var needed = cleanPhase == "handover" ? "Confirmed" : "HandedOver";
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        if (!await OwnsBookingInAsync(connection, userId, bookingId, needed, cancellationToken))
+        {
+            return ServiceResult<RentalConditionPhotoDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "rental_not_updatable",
+                cleanPhase == "handover"
+                    ? "Photos for handover can be added once the booking is confirmed."
+                    : "Return photos can be added once the car has been handed over.");
+        }
+
+        string url;
+        try
+        {
+            var stored = await fileStorage.SaveAsync(file, "vehicle-images", bookingId, cancellationToken);
+            var segments = stored.RelativeUrl.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            url = segments.Length >= 2
+                ? $"/api/v1/vehicle-images/{segments[^2]}/{segments[^1]}"
+                : stored.RelativeUrl;
+        }
+        catch (InvalidDataException error)
+        {
+            return ServiceResult<RentalConditionPhotoDto>.Fail(StatusCodes.Status400BadRequest, "file_invalid", error.Message);
+        }
+        catch (InvalidOperationException error)
+        {
+            return ServiceResult<RentalConditionPhotoDto>.Fail(StatusCodes.Status503ServiceUnavailable, "storage_unavailable", error.Message);
+        }
+
+        // The column name comes from the fixed map above, never the caller.
+        var sql = $"""
+            UPDATE udrive.rental_bookings
+            SET {column} = COALESCE({column}, '{"{}"}'::jsonb)
+                    || jsonb_build_object('photos',
+                         COALESCE({column} -> 'photos', '{"{}"}'::jsonb)
+                         || jsonb_build_object(CAST(@side AS text), CAST(@url AS text))),
+                updated_at = now()
+            WHERE id = @id;
+            """;
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("id", bookingId);
+            command.Parameters.AddWithValue("side", cleanSide);
+            command.Parameters.AddWithValue("url", url);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return ServiceResult<RentalConditionPhotoDto>.Ok(new RentalConditionPhotoDto(cleanPhase!, cleanSide, url));
+    }
+
+    /// <summary>The car goes out: four photos, the meter, the tank, and the checks.</summary>
+    public async Task<ServiceResult<RentalBookingDto>> HandOverAsync(
+        Guid userId,
+        Guid bookingId,
+        RentalHandoverRequest request,
+        CancellationToken cancellationToken)
+    {
+        var fuel = NormaliseFuel(request.Fuel);
+        if (fuel is null || request.OdometerKm <= 0 || request.OdometerKm > 3_000_000)
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status400BadRequest, "meter_invalid", "Enter the odometer reading and the fuel level.");
+        }
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        var state = await ConditionStateAsync(connection, userId, bookingId, "handover_json", cancellationToken);
+        if (state is null || state.Value.Status != "Confirmed")
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict, "rental_not_updatable",
+                "Only a confirmed booking can be handed over.");
+        }
+
+        if (state.Value.Photos < 4)
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict, "handover_photos_missing",
+                "Take all four photos of the car first.");
+        }
+
+        var selfDrive = state.Value.Mode == "SelfDrive";
+        if (!request.IdentityChecked)
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict, "identity_not_checked",
+                "Check the customer's CNIC against the person in front of you.");
+        }
+
+        if (selfDrive && !request.LicenceSeen)
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict, "licence_not_seen",
+                "Self-drive: see the customer's original driving licence first.");
+        }
+
+        if (selfDrive && state.Value.Deposit > 0 && !request.DepositReceived)
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict, "deposit_not_received",
+                "Take the security deposit before handing over the keys.");
+        }
+
+        const string sql = """
+            UPDATE udrive.rental_bookings
+            SET handover_json = COALESCE(handover_json, '{}'::jsonb) || jsonb_build_object(
+                    'odometerKm', @km, 'fuel', CAST(@fuel AS text), 'at', to_jsonb(now()),
+                    'identityChecked', @identity, 'licenceSeen', @licence, 'depositReceived', @deposit),
+                status = 'HandedOver', handed_over_at = now(), updated_at = now()
+            WHERE id = @id AND status = 'Confirmed';
+            """;
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("id", bookingId);
+            command.Parameters.AddWithValue("km", request.OdometerKm);
+            command.Parameters.AddWithValue("fuel", fuel);
+            command.Parameters.AddWithValue("identity", request.IdentityChecked);
+            command.Parameters.AddWithValue("licence", selfDrive && request.LicenceSeen);
+            command.Parameters.AddWithValue("deposit", selfDrive && request.DepositReceived);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var dto = await LoadBookingAsync(connection, bookingId, userId, true, cancellationToken);
+        return ServiceResult<RentalBookingDto>.Ok(dto!, "Handed over. Have a good trip.");
+    }
+
+    /// <summary>The car is back: four photos, the meter and the tank.</summary>
+    public async Task<ServiceResult<RentalBookingDto>> ReturnAsync(
+        Guid userId,
+        Guid bookingId,
+        RentalReturnRequest request,
+        CancellationToken cancellationToken)
+    {
+        var fuel = NormaliseFuel(request.Fuel);
+        if (fuel is null || request.OdometerKm <= 0)
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status400BadRequest, "meter_invalid", "Enter the odometer reading and the fuel level.");
+        }
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        var state = await ConditionStateAsync(connection, userId, bookingId, "return_json", cancellationToken);
+        if (state is null || state.Value.Status != "HandedOver")
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict, "rental_not_updatable",
+                "Only a car that was handed over can be returned.");
+        }
+
+        if (state.Value.Photos < 4)
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict, "return_photos_missing",
+                "Take all four photos of the car first.");
+        }
+
+        if (state.Value.HandoverKm is { } outKm && request.OdometerKm < outKm)
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status400BadRequest, "odometer_below_handover",
+                $"The reading cannot be less than at handover ({outKm:N0} km).");
+        }
+
+        const string sql = """
+            UPDATE udrive.rental_bookings
+            SET return_json = COALESCE(return_json, '{}'::jsonb) || jsonb_build_object(
+                    'odometerKm', @km, 'fuel', CAST(@fuel AS text), 'at', to_jsonb(now())),
+                status = 'Returned', returned_at = now(), updated_at = now()
+            WHERE id = @id AND status = 'HandedOver';
+            """;
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("id", bookingId);
+            command.Parameters.AddWithValue("km", request.OdometerKm);
+            command.Parameters.AddWithValue("fuel", fuel);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var dto = await LoadBookingAsync(connection, bookingId, userId, true, cancellationToken);
+        return ServiceResult<RentalBookingDto>.Ok(dto!, "Returned. Booking complete.");
+    }
+
+    private static async Task<bool> OwnsBookingInAsync(
+        NpgsqlConnection connection, Guid userId, Guid bookingId, string status, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM udrive.rental_bookings rb
+                JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id
+                WHERE rb.id = @id AND dp.user_id = @userId AND rb.status = @status);
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", bookingId);
+        command.Parameters.AddWithValue("userId", userId);
+        command.Parameters.AddWithValue("status", status);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+
+    private readonly record struct ConditionState(
+        string Status, string Mode, decimal Deposit, int Photos, int? HandoverKm);
+
+    private static async Task<ConditionState?> ConditionStateAsync(
+        NpgsqlConnection connection, Guid userId, Guid bookingId, string column, CancellationToken cancellationToken)
+    {
+        // column is one of two fixed names chosen by the caller in this file.
+        var sql = $"""
+            SELECT rb.status, rb.rental_mode, rb.security_deposit,
+                   (SELECT count(*)::int FROM jsonb_each_text(COALESCE(rb.{column} -> 'photos', '{"{}"}'::jsonb)) p
+                     WHERE p.key IN ('front', 'back', 'left', 'right') AND p.value <> ''),
+                   (rb.handover_json ->> 'odometerKm')::int
+            FROM udrive.rental_bookings rb
+            JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id
+            WHERE rb.id = @id AND dp.user_id = @userId;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("id", bookingId);
+        command.Parameters.AddWithValue("userId", userId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return null;
+        return new ConditionState(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetDecimal(2),
+            reader.GetInt32(3),
+            reader.IsDBNull(4) ? null : reader.GetInt32(4));
+    }
+
+    private static string? NormaliseFuel(string? fuel) => fuel?.Trim().ToLowerInvariant() switch
+    {
+        "quarter" or "1/4" => "Quarter",
+        "half" or "1/2" => "Half",
+        "threequarters" or "three_quarters" or "3/4" => "ThreeQuarters",
+        "full" => "Full",
+        _ => null,
+    };
 
     // ───────────────────────────────────────────────────────── internals
 
@@ -775,6 +1416,12 @@ public sealed class RentalService(string connectionString)
                 JOIN udrive.trip_operations o ON o.booking_id = b.id
                 WHERE b.vehicle_id = @vehicleId
                   AND o.trip_status NOT IN ('TripCompleted', 'Cancelled', 'NoShow')
+            ),
+            owner_blocked AS (
+                SELECT bd.day
+                FROM udrive.rental_blocked_days bd
+                WHERE bd.vehicle_id = @vehicleId
+                  AND bd.day BETWEEN @from::date AND @to::date
             )
             SELECT w.day,
                    CASE
@@ -788,6 +1435,8 @@ public sealed class RentalService(string connectionString)
                      WHEN EXISTS (SELECT 1 FROM toured t
                                    WHERE w.day BETWEEN t.start_date AND t.end_date)
                        THEN 'tour'
+                     WHEN EXISTS (SELECT 1 FROM owner_blocked ob WHERE ob.day = w.day)
+                       THEN 'blocked'
                      ELSE 'trip'
                    END AS reason
             FROM calendar w
@@ -797,6 +1446,7 @@ public sealed class RentalService(string connectionString)
                            WHERE w.day BETWEEN t.start_date AND t.end_date)
                OR EXISTS (SELECT 1 FROM tripped p
                            WHERE w.day BETWEEN p.start_date AND p.end_date)
+               OR EXISTS (SELECT 1 FROM owner_blocked ob WHERE ob.day = w.day)
             ORDER BY w.day;
             """;
 
@@ -879,6 +1529,7 @@ public sealed class RentalService(string connectionString)
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
+        await ExpireOverdueAsync(connection, cancellationToken);
 
         var sql = BookingSelect(asOwner
             ? "dp.user_id = @userId"
@@ -936,14 +1587,22 @@ public sealed class RentalService(string connectionString)
                CASE WHEN rb.customer_user_id = @userId
                     THEN COALESCE(NULLIF(owner_u.full_name, ''), 'Owner')
                     ELSE COALESCE(NULLIF(cust_u.full_name, ''), 'Customer') END,
-               CASE WHEN rb.customer_user_id = @userId
+               CASE WHEN rb.status NOT IN ('Confirmed', 'HandedOver', 'Returned') THEN NULL
+                    WHEN rb.customer_user_id = @userId
                     THEN owner_u.phone_number ELSE cust_u.phone_number END,
-               rb.created_at, rb.cancelled_at, rb.cancel_reason
+               rb.created_at, rb.cancelled_at, rb.cancel_reason,
+               rb.owner_respond_by,
+               fd.full_name, fd.phone_number,
+               rb.handover_json::text, rb.return_json::text,
+               COALESCE(cp.cnic_front_url IS NOT NULL AND cp.cnic_back_url IS NOT NULL
+                        AND cp.driving_licence_url IS NOT NULL AND cp.selfie_url IS NOT NULL, false)
         FROM udrive.rental_bookings rb
         JOIN udrive.vehicles v ON v.id = rb.vehicle_id
         JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id
         JOIN udrive.users owner_u ON owner_u.id = dp.user_id
         JOIN udrive.users cust_u ON cust_u.id = rb.customer_user_id
+        LEFT JOIN udrive.fleet_drivers fd ON fd.id = rb.fleet_driver_id
+        LEFT JOIN udrive.customer_profiles cp ON cp.user_id = rb.customer_user_id
         WHERE {where}
         """;
 
@@ -951,6 +1610,9 @@ public sealed class RentalService(string connectionString)
     {
         var start = DateOnly.FromDateTime(reader.GetDateTime(6));
         var status = reader.GetString(18);
+        var showDriver = status is "Confirmed" or "HandedOver" or "Returned";
+        var handover = Json(reader, 27);
+        var returned = Json(reader, 28);
 
         return new RentalBookingDto(
             reader.GetGuid(0),
@@ -977,7 +1639,62 @@ public sealed class RentalService(string connectionString)
             reader.GetFieldValue<DateTimeOffset>(21),
             reader.IsDBNull(22) ? null : reader.GetFieldValue<DateTimeOffset>(22),
             reader.IsDBNull(23) ? null : reader.GetString(23),
-            status == "Confirmed" && RefundableNow(start, freeCancelHours));
+            status == "PendingOwner" || (status == "Confirmed" && RefundableNow(start, freeCancelHours)))
+        {
+            OwnerRespondBy = status == "PendingOwner" && !reader.IsDBNull(24)
+                ? reader.GetFieldValue<DateTimeOffset>(24)
+                : null,
+            DriverName = showDriver && !reader.IsDBNull(25) ? reader.GetString(25) : null,
+            DriverPhone = showDriver && !reader.IsDBNull(26) ? reader.GetString(26) : null,
+            HandoverPhotos = Photos(handover),
+            ReturnPhotos = Photos(returned),
+            Handover = Meter(handover),
+            Returned = Meter(returned),
+            CustomerDocumentsVerified = reader.GetBoolean(29),
+        };
+    }
+
+    private static JsonElement? Json(NpgsqlDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal)) return null;
+        using var document = JsonDocument.Parse(reader.GetString(ordinal));
+        return document.RootElement.Clone();
+    }
+
+    private static RentalConditionPhotosDto Photos(JsonElement? record)
+    {
+        if (record is not { ValueKind: JsonValueKind.Object } value
+            || !value.TryGetProperty("photos", out var photos)
+            || photos.ValueKind != JsonValueKind.Object)
+        {
+            return new RentalConditionPhotosDto(null, null, null, null);
+        }
+
+        string? Side(string name) =>
+            photos.TryGetProperty(name, out var url) && url.ValueKind == JsonValueKind.String
+                ? url.GetString()
+                : null;
+        return new RentalConditionPhotosDto(Side("front"), Side("back"), Side("left"), Side("right"));
+    }
+
+    private static RentalMeterDto? Meter(JsonElement? record)
+    {
+        if (record is not { ValueKind: JsonValueKind.Object } value
+            || !value.TryGetProperty("odometerKm", out var km)
+            || km.ValueKind != JsonValueKind.Number)
+        {
+            return null;
+        }
+
+        var fuel = value.TryGetProperty("fuel", out var f) && f.ValueKind == JsonValueKind.String
+            ? f.GetString() ?? string.Empty
+            : string.Empty;
+        DateTimeOffset? at = value.TryGetProperty("at", out var a)
+                             && a.ValueKind == JsonValueKind.String
+                             && DateTimeOffset.TryParse(a.GetString(), out var parsed)
+            ? parsed
+            : null;
+        return new RentalMeterDto(km.GetInt32(), fuel, at);
     }
 
     private static async Task<bool> HasDocumentsAsync(

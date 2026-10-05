@@ -161,6 +161,101 @@ class RentalQuote {
       );
 }
 
+/// The four condition photos taken at one end of a rental.
+class RentalConditionPhotos {
+  const RentalConditionPhotos({this.front, this.back, this.left, this.right});
+
+  final String? front;
+  final String? back;
+  final String? left;
+  final String? right;
+
+  static const sides = ['front', 'back', 'left', 'right'];
+
+  String? operator [](String side) => switch (side) {
+        'front' => front,
+        'back' => back,
+        'left' => left,
+        'right' => right,
+        _ => null,
+      };
+
+  bool get complete =>
+      front != null && back != null && left != null && right != null;
+
+  RentalConditionPhotos withSide(String side, String? url) =>
+      RentalConditionPhotos(
+        front: side == 'front' ? url : front,
+        back: side == 'back' ? url : back,
+        left: side == 'left' ? url : left,
+        right: side == 'right' ? url : right,
+      );
+
+  static const empty = RentalConditionPhotos();
+
+  factory RentalConditionPhotos.fromJson(Object? json) {
+    if (json is! Map) return empty;
+    return RentalConditionPhotos(
+      front: _text(json['front']),
+      back: _text(json['back']),
+      left: _text(json['left']),
+      right: _text(json['right']),
+    );
+  }
+}
+
+/// The meter and the tank, at handover or at return.
+class RentalMeterReading {
+  const RentalMeterReading({
+    required this.odometerKm,
+    required this.fuel,
+    required this.at,
+  });
+
+  final int odometerKm;
+
+  /// "Quarter", "Half", "ThreeQuarters" or "Full".
+  final String fuel;
+  final DateTime? at;
+
+  String get fuelLabel => rentalFuelLabel(fuel);
+
+  static RentalMeterReading? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final at = _text(json['at']);
+    return RentalMeterReading(
+      odometerKm: (json['odometerKm'] as num?)?.toInt() ?? 0,
+      fuel: '${json['fuel'] ?? ''}',
+      at: at == null ? null : DateTime.tryParse(at)?.toLocal(),
+    );
+  }
+}
+
+/// "¼", "½", "¾" or "Full" for the server's fuel words.
+String rentalFuelLabel(String fuel) => switch (fuel) {
+      'Quarter' => '¼',
+      'Half' => '½',
+      'ThreeQuarters' => '¾',
+      'Full' => 'Full',
+      _ => fuel,
+    };
+
+/// How a rental status reads to a person, and which tone it gets.
+///
+/// One place for every status the server sends, so a new one — PendingOwner,
+/// Declined, Expired — reads the same on every screen.
+String rentalStatusLabel(String status) => switch (status) {
+      'PendingOwner' => 'Waiting for owner',
+      'Confirmed' => 'Confirmed',
+      'HandedOver' => 'Car out',
+      'Returned' => 'Returned',
+      'Cancelled' => 'Cancelled',
+      'NoShow' => 'No-show',
+      'Declined' => 'Owner declined — advance refunded',
+      'Expired' => 'Expired — advance refunded',
+      _ => status,
+    };
+
 class RentalBooking {
   const RentalBooking({
     required this.id,
@@ -181,6 +276,15 @@ class RentalBooking {
     required this.counterpartName,
     required this.counterpartPhone,
     required this.advanceRefundableNow,
+    this.vehicleId = '',
+    this.ownerRespondBy,
+    this.driverName,
+    this.driverPhone,
+    this.handoverPhotos = RentalConditionPhotos.empty,
+    this.returnPhotos = RentalConditionPhotos.empty,
+    this.handover,
+    this.returned,
+    this.customerDocumentsVerified = false,
   });
 
   final String id;
@@ -207,15 +311,43 @@ class RentalBooking {
   /// server so the app never has to work the rule out for itself.
   final bool advanceRefundableNow;
 
+  final String vehicleId;
+
+  /// The owner's answer deadline. Only set while [isPendingOwner].
+  final DateTime? ownerRespondBy;
+
+  /// The driver the owner assigned (with-driver rentals), once confirmed.
+  final String? driverName;
+  final String? driverPhone;
+
+  final RentalConditionPhotos handoverPhotos;
+  final RentalConditionPhotos returnPhotos;
+  final RentalMeterReading? handover;
+  final RentalMeterReading? returned;
+
+  /// Self-drive: all four of the customer's documents are on file.
+  final bool customerDocumentsVerified;
+
   bool get isSelfDrive => rentalMode == 'SelfDrive';
-  bool get isLive => status == 'Confirmed' || status == 'HandedOver';
+  bool get isPendingOwner => status == 'PendingOwner';
+
+  /// Ended with the advance going back: the owner said no or never answered.
+  bool get isRefusedByOwner => status == 'Declined' || status == 'Expired';
+
+  /// Still open: waiting for the owner, confirmed, or out on the road.
+  bool get isLive =>
+      status == 'PendingOwner' ||
+      status == 'Confirmed' ||
+      status == 'HandedOver';
+
+  String get statusLabel => rentalStatusLabel(status);
 
   factory RentalBooking.fromJson(Map<String, dynamic> json) => RentalBooking(
         id: '${json['id'] ?? ''}',
         reference: '${json['bookingReference'] ?? ''}',
         vehicleName: '${json['vehicleName'] ?? ''}',
         registrationNumber: '${json['registrationNumber'] ?? ''}',
-        photoUrl: _text(json['photoUrl']),
+        photoUrl: _text(json['vehiclePhotoUrl']) ?? _text(json['photoUrl']),
         startDate: DateTime.parse('${json['startDate']}'),
         endDate: DateTime.parse('${json['endDate']}'),
         rentalMode: '${json['rentalMode'] ?? ''}',
@@ -228,7 +360,17 @@ class RentalBooking {
         status: '${json['status'] ?? ''}',
         counterpartName: '${json['counterpartName'] ?? ''}',
         counterpartPhone: _text(json['counterpartPhone']),
-        advanceRefundableNow: json['advanceRefundableNow'] == true,
+        advanceRefundableNow: json['advanceRefundableNow'] == true ||
+            json['refundableNow'] == true,
+        vehicleId: '${json['vehicleId'] ?? ''}',
+        ownerRespondBy: _timestamp(json['ownerRespondBy']),
+        driverName: _text(json['driverName']),
+        driverPhone: _text(json['driverPhone']),
+        handoverPhotos: RentalConditionPhotos.fromJson(json['handoverPhotos']),
+        returnPhotos: RentalConditionPhotos.fromJson(json['returnPhotos']),
+        handover: RentalMeterReading.fromJson(json['handover']),
+        returned: RentalMeterReading.fromJson(json['returned']),
+        customerDocumentsVerified: json['customerDocumentsVerified'] == true,
       );
 }
 
@@ -418,6 +560,92 @@ class RentalRepository {
         RentalBooking.fromJson,
       );
 
+  /// Every rental of the owner's vehicles, newest states included.
+  Future<List<RentalBooking>> ownerRentals() => driverBookings();
+
+  /// The owner's answer to a new booking.
+  ///
+  /// A with-driver rental needs [fleetDriverId] on accept: an approved driver
+  /// whose licence is still valid. A refusal refunds the customer's advance.
+  Future<RentalBooking> respond(
+    String bookingId, {
+    required bool accept,
+    String? fleetDriverId,
+    String? reason,
+  }) async =>
+      _one(
+        () => api.postJson('/api/v1/driver/rentals/$bookingId/respond', {
+          'accept': accept,
+          'fleetDriverId': fleetDriverId,
+          'reason': (reason == null || reason.trim().isEmpty)
+              ? null
+              : reason.trim(),
+        }),
+        RentalBooking.fromJson,
+      );
+
+  /// One condition photo. [phase] is `handover` or `return`; [side] is
+  /// `front`, `back`, `left` or `right`. Returns the stored photo's url.
+  Future<String> uploadConditionPhoto(
+    String bookingId,
+    String phase,
+    String side,
+    PlatformFile file,
+  ) async {
+    final Map<String, dynamic> response;
+    try {
+      response = await api.uploadFile(
+        '/api/v1/driver/rentals/$bookingId/photos/$phase/$side',
+        fieldName: 'file',
+        file: file,
+        fields: const {},
+      );
+    } on ApiException catch (error) {
+      throw RentalRefused(error.code ?? '', error.message);
+    }
+    final payload = response['data'] ?? response;
+    final url = payload is Map ? _text(payload['url']) : null;
+    if (url == null) {
+      throw const RentalRefused(
+          'unexpected_response', 'The photo was not saved. Please try again.');
+    }
+    return url;
+  }
+
+  /// The car goes out. Needs all four handover photos on the server first.
+  Future<RentalBooking> handOver(
+    String bookingId, {
+    required int odometerKm,
+    required String fuel,
+    required bool identityChecked,
+    required bool licenceSeen,
+    required bool depositReceived,
+  }) async =>
+      _one(
+        () => api.postJson('/api/v1/driver/rentals/$bookingId/handover', {
+          'odometerKm': odometerKm,
+          'fuel': fuel,
+          'identityChecked': identityChecked,
+          'licenceSeen': licenceSeen,
+          'depositReceived': depositReceived,
+        }),
+        RentalBooking.fromJson,
+      );
+
+  /// The car is back. Needs all four return photos on the server first.
+  Future<RentalBooking> markReturned(
+    String bookingId, {
+    required int odometerKm,
+    required String fuel,
+  }) async =>
+      _one(
+        () => api.postJson('/api/v1/driver/rentals/$bookingId/return', {
+          'odometerKm': odometerKm,
+          'fuel': fuel,
+        }),
+        RentalBooking.fromJson,
+      );
+
   /// The current terms text and its version.
   ///
   /// Read from the public settings route the app already uses, so there is no
@@ -528,4 +756,9 @@ String? _text(Object? value) {
   if (value == null) return null;
   final text = '$value'.trim();
   return text.isEmpty ? null : text;
+}
+
+DateTime? _timestamp(Object? value) {
+  final text = _text(value);
+  return text == null ? null : DateTime.tryParse(text)?.toLocal();
 }

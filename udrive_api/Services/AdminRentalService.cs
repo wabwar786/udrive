@@ -101,9 +101,9 @@ public sealed class AdminRentalService(string connectionString)
     {
         var predicate = (scope?.Trim().ToLowerInvariant()) switch
         {
-            "upcoming" => "rb.status = 'Confirmed' AND rb.start_date > (now() AT TIME ZONE 'Asia/Karachi')::date",
+            "upcoming" => "rb.status IN ('PendingOwner', 'Confirmed') AND rb.start_date > (now() AT TIME ZONE 'Asia/Karachi')::date",
             "finished" => "rb.status IN ('Returned', 'NoShow')",
-            "cancelled" => "rb.status = 'Cancelled'",
+            "cancelled" => "rb.status IN ('Cancelled', 'Declined', 'Expired')",
             "all" => "true",
             _ => "rb.status = ANY(@live) AND (now() AT TIME ZONE 'Asia/Karachi')::date "
                  + "BETWEEN rb.start_date AND rb.end_date",
@@ -346,7 +346,7 @@ public sealed class AdminRentalService(string connectionString)
                 cancelled_by = 'Admin',
                 cancel_reason = @reason,
                 updated_at = now()
-            WHERE id = @id AND status IN ('Confirmed', 'HandedOver');
+            WHERE id = @id AND status IN ('PendingOwner', 'Confirmed', 'HandedOver');
             """;
 
         await using var connection = new NpgsqlConnection(connectionString);

@@ -160,12 +160,33 @@ class _TourVehiclesScreenState extends State<TourVehiclesScreen> {
     return _matches(_query.destination, [p.destination, p.title]);
   }
 
-  /// Departures with nothing left to sell are not shown at all.
-  List<LiveTourPackage> get _shown => _all
-      .where((p) => p.bookableSeats > 0)
-      .where(_passesQuery)
-      .where(_passesFilter)
-      .toList(growable: false);
+  /// The calendar day in Pakistan (UTC+5, no daylight saving), so "leaving
+  /// today" means the same thing whatever zone the phone is set to.
+  static DateTime _karachiDay(DateTime value) {
+    final local = value.toUtc().add(const Duration(hours: 5));
+    return DateTime(local.year, local.month, local.day);
+  }
+
+  /// Leaving today first, by time; then upcoming, by time; full departures
+  /// last — still shown, because their detail page holds the waitlist.
+  List<LiveTourPackage> get _shown {
+    final today = _karachiDay(DateTime.now());
+    int rank(LiveTourPackage p) {
+      if (p.bookableSeats <= 0) return 2;
+      return _karachiDay(p.departureAt) == today ? 0 : 1;
+    }
+
+    final list = _all
+        .where(_passesQuery)
+        .where(_passesFilter)
+        .toList();
+    list.sort((a, b) {
+      final byRank = rank(a).compareTo(rank(b));
+      if (byRank != 0) return byRank;
+      return a.departureAt.compareTo(b.departureAt);
+    });
+    return List<LiveTourPackage>.unmodifiable(list);
+  }
 
   Future<void> _open(LiveTourPackage package) async {
     await Navigator.of(context).push(
@@ -462,11 +483,16 @@ class _TourCard extends StatelessWidget {
     final wholeOnly = p.pricePerSeat <= 0;
     final free = seats >= p.totalSeats;
     final today = _isToday(p.departureAt);
+    final full = seats <= 0;
 
     final String tag;
     final Color tagBg;
     final Color tagInk;
-    if (wholeOnly) {
+    if (full) {
+      tag = 'Full';
+      tagBg = AppTint.danger;
+      tagInk = AppTint.dangerText;
+    } else if (wholeOnly) {
       tag = 'Full vehicle';
       tagBg = AppColors.surfaceAlt;
       tagInk = AppText.primary;
@@ -483,7 +509,9 @@ class _TourCard extends StatelessWidget {
     final when = today
         ? 'Today ${DateFormat('h:mm a').format(p.departureAt)}'
         : DateFormat('EEE d MMM, h:mm a').format(p.departureAt);
-    final seatLine = wholeOnly
+    final seatLine = full
+        ? 'Full · waitlist open'
+        : wholeOnly
         ? '${p.totalSeats} seats'
         : '$seats of ${p.totalSeats} seats free';
     final pickup = [p.pickupPoint, p.startingCity]
@@ -491,7 +519,9 @@ class _TourCard extends StatelessWidget {
         .join(', ');
     final rating = p.driverRatingOrNull;
 
-    return Material(
+    return Opacity(
+      opacity: full ? 0.55 : 1,
+      child: Material(
       color: AppColors.background,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadii.all(18),
@@ -657,7 +687,11 @@ class _TourCard extends StatelessWidget {
                                   const EdgeInsets.symmetric(horizontal: 14),
                               alignment: Alignment.center,
                               child: Text(
-                                wholeOnly ? 'Book' : 'Seats',
+                                full
+                                    ? 'Waitlist'
+                                    : wholeOnly
+                                        ? 'Book'
+                                        : 'Seats',
                                 style: AppType.small.copyWith(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w800,
@@ -675,6 +709,7 @@ class _TourCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

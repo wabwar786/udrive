@@ -109,6 +109,7 @@ const groups = [
       ['/destinations', 'Destinations', Compass],
       ['/hotels', 'Hotels & approvals', Building2],
       ['/businesses', 'Near me businesses', Store],
+      ['/listings', 'Vehicle listings', Car],
       ['/routes', 'Routes', Route],
       ['/advisories', 'Road advisories', TriangleAlert],
     ],

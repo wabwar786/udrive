@@ -354,7 +354,7 @@ public sealed class PackageMarketplaceService(
             NOT EXISTS (
                 SELECT 1 FROM udrive.rental_bookings rb
                 WHERE rb.vehicle_id = tp.vehicle_id
-                  AND rb.status IN ('Confirmed', 'HandedOver')
+                  AND rb.status IN ('PendingOwner', 'Confirmed', 'HandedOver')
                   AND daterange(rb.start_date, rb.end_date, '[]') && daterange(
                         (tp.departure_at AT TIME ZONE 'Asia/Karachi')::date,
                         (COALESCE(tp.return_at, tp.departure_at)
@@ -1389,7 +1389,10 @@ public sealed class PackageMarketplaceService(
                    tp.passenger_policy, tp.luggage_allowance,
                    tp.route_stops, tp.inclusions, tp.exclusions,
                    tp.itinerary_json::text,
-                   u.full_name, dp.average_rating, dp.safety_score,
+                   -- The owner's driver on this departure, when one was named.
+                   COALESCE((SELECT fd.full_name FROM udrive.fleet_drivers fd
+                             WHERE fd.id = tp.fleet_driver_id), u.full_name),
+                   dp.average_rating, dp.safety_score,
                    concat_ws(' ', v.make, v.model, v.year::text),
                    v.registration_number, v.mountain_readiness_score,
                    tp.cover_image_url, tp.review_notes, tp.created_at,

@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/demo_tag.dart';
 import '../../core/widgets/ud_kit.dart';
+import 'rental_waiting_screen.dart';
 
 /// C-32 to C-35 — taking one car for a set of days.
 ///
@@ -273,7 +274,7 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
       _error = null;
     });
     try {
-      await _repository.book(
+      final booking = await _repository.book(
         vehicleId: widget.vehicle.vehicleId,
         from: dates.start,
         to: dates.end,
@@ -282,7 +283,14 @@ class _RentalBookingScreenState extends State<RentalBookingScreen> {
         disclaimerVersion: _terms.version,
       );
       if (!mounted) return;
-      Navigator.pop(context, true);
+      // The owner now has a fixed time to confirm. The waiting screen takes
+      // this one's place, so Back from it lands on the rental list.
+      await Navigator.pushReplacement<void, void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => RentalWaitingScreen(booking: booking),
+        ),
+      );
     } on RentalRefused catch (refusal) {
       if (!mounted) return;
       setState(() {
