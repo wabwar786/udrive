@@ -26,7 +26,8 @@ public sealed class VerificationHubService(
 
     // ─────────────────────────────────────────────────────── summary
 
-    public async Task<ServiceResult<VerificationSummaryDto>> SummaryAsync(string? area, CancellationToken ct)
+    public async Task<ServiceResult<VerificationSummaryDto>> SummaryAsync(
+        string? area, CancellationToken ct, IReadOnlyList<Guid>? allowed = null)
     {
         await using var connection = await OpenAsync(ct);
         await RentalService.ExpireOverdueAsync(connection, ct);
@@ -65,7 +66,7 @@ public sealed class VerificationHubService(
                 LEFT JOIN udrive.territories t ON t.id = b.territory_id
                 WHERE b.approval_status = 'Pending' AND {AreaSql("t", "b.territory_id")});
             """, connection);
-        BindArea(command, areaId, unassigned);
+        BindArea(command, areaId, unassigned, allowed);
         await using var reader = await command.ExecuteReaderAsync(ct);
         await reader.ReadAsync(ct);
         return ServiceResult<VerificationSummaryDto>.Ok(new VerificationSummaryDto(
@@ -78,16 +79,16 @@ public sealed class VerificationHubService(
     /// <param name="status">Waiting (default), Approved, Rejected, Info or All.</param>
     /// <param name="area">A district or tehsil id, "none" for unassigned, or empty for all.</param>
     public async Task<ServiceResult<IReadOnlyList<VerificationRowDto>>> QueueAsync(
-        string tab, string? status, string? area, string? search, CancellationToken ct)
+        string tab, string? status, string? area, string? search, CancellationToken ct, IReadOnlyList<Guid>? allowed = null)
     {
         await using var connection = await OpenAsync(ct);
         var areaId = ParseArea(area, out var unassigned);
         var want = NormaliseStatus(status);
         var rows = tab switch
         {
-            "tour" or "rent" => await VehicleRowsAsync(connection, tab, want, areaId, unassigned, search, null, ct),
-            "hotels" => await HotelRowsAsync(connection, want, areaId, unassigned, search, null, ct),
-            "businesses" => await BusinessRowsAsync(connection, want, areaId, unassigned, search, null, ct),
+            "tour" or "rent" => await VehicleRowsAsync(connection, tab, want, areaId, unassigned, search, null, ct, allowed),
+            "hotels" => await HotelRowsAsync(connection, want, areaId, unassigned, search, null, ct, allowed),
+            "businesses" => await BusinessRowsAsync(connection, want, areaId, unassigned, search, null, ct, allowed),
             _ => null,
         };
         return rows is null
@@ -290,7 +291,7 @@ public sealed class VerificationHubService(
 
     private static async Task<IReadOnlyList<VerificationRowDto>> VehicleRowsAsync(
         NpgsqlConnection connection, string purpose, string want, Guid? area, bool unassigned,
-        string? search, Guid? id, CancellationToken ct)
+        string? search, Guid? id, CancellationToken ct, IReadOnlyList<Guid>? allowed = null)
     {
         var p = purpose == "rent" ? "rent" : "tour";
         var statusFilter = want switch
@@ -333,7 +334,7 @@ public sealed class VerificationHubService(
             ORDER BY (v.{p}_review_status = 'Pending') DESC, v.listing_submitted_at NULLS LAST, v.created_at
             LIMIT 300;
             """, connection);
-        BindArea(command, area, unassigned);
+        BindArea(command, area, unassigned, allowed);
         BindSearch(command, search, id);
 
         var raw = new List<VerificationRowDto>();
@@ -364,7 +365,8 @@ public sealed class VerificationHubService(
     }
 
     private static async Task<IReadOnlyList<VerificationRowDto>> HotelRowsAsync(
-        NpgsqlConnection connection, string want, Guid? area, bool unassigned, string? search, Guid? id, CancellationToken ct)
+        NpgsqlConnection connection, string want, Guid? area, bool unassigned, string? search, Guid? id, CancellationToken ct,
+        IReadOnlyList<Guid>? allowed = null)
     {
         await using var command = new NpgsqlCommand(
             $"""
@@ -388,13 +390,14 @@ public sealed class VerificationHubService(
             ORDER BY (h.approval_status = 'Pending') DESC, h.created_at
             LIMIT 300;
             """, connection);
-        BindArea(command, area, unassigned);
+        BindArea(command, area, unassigned, allowed);
         BindSearch(command, search, id);
         return await SimpleRowsAsync(command, "hotels", 4, ct);
     }
 
     private static async Task<IReadOnlyList<VerificationRowDto>> BusinessRowsAsync(
-        NpgsqlConnection connection, string want, Guid? area, bool unassigned, string? search, Guid? id, CancellationToken ct)
+        NpgsqlConnection connection, string want, Guid? area, bool unassigned, string? search, Guid? id, CancellationToken ct,
+        IReadOnlyList<Guid>? allowed = null)
     {
         await using var command = new NpgsqlCommand(
             $"""
@@ -419,7 +422,7 @@ public sealed class VerificationHubService(
             ORDER BY (b.approval_status = 'Pending') DESC, b.created_at
             LIMIT 300;
             """, connection);
-        BindArea(command, area, unassigned);
+        BindArea(command, area, unassigned, allowed);
         BindSearch(command, search, id);
         return await SimpleRowsAsync(command, "businesses", 4, ct);
     }
@@ -637,12 +640,18 @@ public sealed class VerificationHubService(
         $"""
         (@unassigned AND {territoryExpression} IS NULL
          OR NOT @unassigned AND (@area::uuid IS NULL OR {t}.id = @area::uuid OR {t}.parent_id = @area::uuid))
+        AND (@allowed::uuid[] IS NULL OR {t}.id = ANY(@allowed::uuid[]) OR {t}.parent_id = ANY(@allowed::uuid[]))
         """;
 
-    private static void BindArea(NpgsqlCommand command, Guid? area, bool unassigned)
+    /// <param name="allowed">A team user's districts / tehsils; null = every area.</param>
+    private static void BindArea(NpgsqlCommand command, Guid? area, bool unassigned, IReadOnlyList<Guid>? allowed = null)
     {
         command.Parameters.Add(new NpgsqlParameter("area", NpgsqlDbType.Uuid) { Value = (object?)area ?? DBNull.Value });
         command.Parameters.AddWithValue("unassigned", unassigned);
+        command.Parameters.Add(new NpgsqlParameter("allowed", NpgsqlDbType.Array | NpgsqlDbType.Uuid)
+        {
+            Value = allowed is null ? DBNull.Value : allowed.ToArray(),
+        });
     }
 
     private static void BindSearch(NpgsqlCommand command, string? search, Guid? id)

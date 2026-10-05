@@ -56,12 +56,12 @@ public sealed class VerificationHubController(
 {
     [HttpGet("summary")]
     public async Task<IActionResult> Summary([FromQuery] string? area, CancellationToken ct) =>
-        HubResults.From(this, await service.SummaryAsync(area, ct));
+        HubResults.From(this, await service.SummaryAsync(area, ct, TeamAccess.AllowedAreas(HttpContext)));
 
     [HttpGet("{tab}")]
     public async Task<IActionResult> Queue(
         string tab, [FromQuery] string? status, [FromQuery] string? area, [FromQuery] string? q, CancellationToken ct) =>
-        HubResults.From(this, await service.QueueAsync(tab.ToLowerInvariant(), status, area, q, ct));
+        HubResults.From(this, await service.QueueAsync(tab.ToLowerInvariant(), status, area, q, ct, TeamAccess.AllowedAreas(HttpContext)));
 
     [HttpGet("{tab}/{id:guid}")]
     public async Task<IActionResult> Detail(string tab, Guid id, CancellationToken ct) =>

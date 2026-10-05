@@ -224,7 +224,9 @@ public sealed class AuthService(
     private static readonly string[] PortalRoles =
     [
         "SuperAdmin", "Admin", "Manager", "Operations", "VerificationOfficer",
-        "SupportAgent", "FinanceOfficer", "SafetyOfficer", "TourismManager"
+        "SupportAgent", "FinanceOfficer", "SafetyOfficer", "TourismManager",
+        // Team users: what they may open is set per module and area (TeamAccess).
+        "Staff"
     ];
 
     public async Task<ServiceResult<AuthTokensDto>> AdminLoginAsync(

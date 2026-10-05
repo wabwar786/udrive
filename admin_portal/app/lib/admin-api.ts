@@ -25,7 +25,14 @@ type Envelope<T> = {
 
 function friendlyApiError(status: number, body: Record<string, unknown>): string {
   if (status === 401) return 'Your session has expired. Please sign in again.';
-  if (status === 403) return 'You do not have permission to open this section.';
+  if (status === 403) {
+    // Team permissions refuse with a reason worth reading ("This is outside
+    // your areas.", "Ask an admin to give you access."); show it when present.
+    const message = typeof body.message === 'string' ? body.message : '';
+    return message && !/traceid|request could not be completed/i.test(message)
+      ? message
+      : 'You do not have permission to open this section.';
+  }
   if (status === 404) {
     // Show the API's own message when it has one.
     //
@@ -61,6 +68,33 @@ export const ADMIN_PORTAL_BUILD = 'verification-list-v2';
 
 export const PORTAL_ROLES = ['SuperAdmin', 'Admin', 'Manager'] as const;
 export type PortalRole = (typeof PORTAL_ROLES)[number];
+
+/**
+ * Roles that see the whole portal, as before team permissions existed.
+ *
+ * A `Staff` user (a team user) is the only portal role whose menu and buttons
+ * depend on the modules and areas given on the Team page.
+ */
+export const FULL_ACCESS_ROLES = [
+  'SuperAdmin',
+  'Admin',
+  'Manager',
+  'Operations',
+  'VerificationOfficer',
+  'SupportAgent',
+  'FinanceOfficer',
+  'SafetyOfficer',
+  'TourismManager',
+] as const;
+
+/** Every role that may sign in to the portal. */
+export const SIGN_IN_ROLES: readonly string[] = [...FULL_ACCESS_ROLES, 'Staff'];
+
+export function hasFullAccessRole(roles: readonly string[] | undefined) {
+  return (roles ?? []).some((role) =>
+    (FULL_ACCESS_ROLES as readonly string[]).includes(role),
+  );
+}
 
 export function hasRole(role: string) {
   return readSession()?.user.roles.includes(role) ?? false;
@@ -280,21 +314,7 @@ export async function login(username: string, password: string) {
 
   const session = body.data as AdminSession;
 
-  if (
-    !session.user.roles.some((role) =>
-      [
-        'SuperAdmin',
-        'Admin',
-        'Manager',
-        'Operations',
-        'VerificationOfficer',
-        'SupportAgent',
-        'FinanceOfficer',
-        'SafetyOfficer',
-        'TourismManager',
-      ].includes(role),
-    )
-  ) {
+  if (!session.user.roles.some((role) => SIGN_IN_ROLES.includes(role))) {
     throw new Error('This account has no Admin permission.');
   }
 

@@ -28,6 +28,7 @@ import {
   when,
   readSession,
 } from '../lib/admin-api';
+import { usePermissions } from '../lib/permissions';
 import { LocationModal, areaLabel } from './area-select';
 import styles from './verification.module.css';
 
@@ -211,10 +212,19 @@ export function CityRidesWorkspace({ area }: { area: string }) {
   // see that a file is corrupt or is the wrong document, but cannot remove it,
   // has to find a SuperAdmin to press one button — and that is where
   // applications sit for days.
-  const canDelete =
+  //
+  // Full-access users keep that rule. A team user's buttons follow the
+  // City rides boxes they were given on the Team page instead.
+  const { can, fullAccess } = usePermissions();
+  const roleCanDelete =
     readSession()?.user.roles.some((role) =>
       role === 'SuperAdmin' || role === 'Admin',
     ) ?? false;
+  const canDelete = fullAccess
+    ? roleCanDelete
+    : can('verification.city', 'delete');
+  const canApprove = can('verification.city', 'approve');
+  const canEdit = can('verification.city', 'edit');
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -494,6 +504,7 @@ export function CityRidesWorkspace({ area }: { area: string }) {
                           <small>{driver.cnicMasked ?? 'CNIC not added'}</small>
                         </td>
                         <AreaCell
+                          canChange={canEdit}
                           districtName={driver.districtName}
                           tehsilName={driver.tehsilName}
                           onChange={() =>
@@ -619,6 +630,7 @@ export function CityRidesWorkspace({ area }: { area: string }) {
                       <td>{vehicle.vehicle}</td>
                       <td>{vehicle.driverName}</td>
                       <AreaCell
+                        canChange={canEdit}
                         districtName={vehicle.districtName}
                         tehsilName={vehicle.tehsilName}
                         onChange={() =>
@@ -677,6 +689,8 @@ export function CityRidesWorkspace({ area }: { area: string }) {
           onClose={() => setSelection(null)}
           onChanged={load}
           canDelete={canDelete}
+          canApprove={canApprove}
+          canEdit={canEdit}
         />
       )}
 
@@ -698,28 +712,32 @@ function AreaCell({
   districtName,
   tehsilName,
   onChange,
+  canChange,
 }: {
   districtName?: string | null;
   tehsilName?: string | null;
   onChange: () => void;
+  canChange: boolean;
 }) {
   return (
     <td>
       <span style={{ display: 'block' }}>
         {areaLabel(districtName, tehsilName)}
       </span>
-      <button
-        type="button"
-        className={styles.reviewButton}
-        style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }}
-        onClick={(event) => {
-          event.stopPropagation();
-          onChange();
-        }}
-        onKeyDown={(event) => event.stopPropagation()}
-      >
-        Change
-      </button>
+      {canChange && (
+        <button
+          type="button"
+          className={styles.reviewButton}
+          style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }}
+          onClick={(event) => {
+            event.stopPropagation();
+            onChange();
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          Change
+        </button>
+      )}
     </td>
   );
 }
@@ -773,11 +791,15 @@ function VerificationDetail({
   onClose,
   onChanged,
   canDelete,
+  canApprove,
+  canEdit,
 }: {
   selection: Selection;
   onClose: () => void;
   onChanged: () => Promise<void>;
   canDelete: boolean;
+  canApprove: boolean;
+  canEdit: boolean;
 }) {
   const [driverDetail, setDriverDetail] =
     useState<DriverDetail | null>(null);
@@ -1027,6 +1049,7 @@ function VerificationDetail({
                     await Promise.all([loadDetail(), onChanged()]);
                   }}
                   canDelete={canDelete}
+                  canEdit={canEdit}
                 />
               </DetailSection>
 
@@ -1088,6 +1111,8 @@ function VerificationDetail({
                           await Promise.all([loadDetail(), onChanged()]);
                         }}
                         canDelete={canDelete}
+                        canApprove={canApprove}
+                        canEdit={canEdit}
                       />
                     ))}
                   </div>
@@ -1095,81 +1120,87 @@ function VerificationDetail({
               </DetailSection>
             </div>
 
-            <footer className={styles.decisionFooter}>
-              <label>
-                <span>Driver review notes</span>
-                <textarea
-                  rows={3}
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Add reasons, missing information or approval notes…"
-                />
-              </label>
+            {(canApprove || canDelete) && (
+              <footer className={styles.decisionFooter}>
+                <label>
+                  <span>Driver review notes</span>
+                  <textarea
+                    rows={3}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    placeholder="Add reasons, missing information or approval notes…"
+                  />
+                </label>
 
-              {canDelete && (
-                <div className={styles.rejectNotice}>
-                  SuperAdmin rejection permanently deletes all uploaded Driver and vehicle attachments.
-                </div>
-              )}
-
-              {/*
-                Says why Approve will refuse, before it is pressed.
-
-                A driver can only be approved once all four of their documents
-                are uploaded and at least one of their vehicles is Verified.
-                Neither rule was visible anywhere, so a reviewer looking at a
-                full set of documents pressed Approve, got a refusal, and had
-                nothing to act on. The ordering — vehicle first, then driver —
-                is the part nobody guesses.
-              */}
-              {driverDetail && approvalBlockers(driverDetail).length > 0 && (
-                <div className={styles.decisionNote}>
-                  Approve is not available yet:{' '}
-                  {approvalBlockers(driverDetail).join('; ')}.
-                </div>
-              )}
-
-              <div className={styles.decisionButtons}>
-                <button
-                  className="primaryButton"
-                  disabled={
-                    acting ||
-                    (driverDetail !== null &&
-                      approvalBlockers(driverDetail).length > 0)
-                  }
-                  onClick={() => void decideDriver('Approved')}
-                >
-                  <CheckCircle2 size={17} />
-                  Approve Driver
-                </button>
-                <button
-                  className="secondaryButton"
-                  disabled={acting}
-                  onClick={() => void decideDriver('ChangesRequired')}
-                >
-                  <AlertTriangle size={17} />
-                  Request changes
-                </button>
-                <button
-                  className="dangerButton"
-                  disabled={acting}
-                  onClick={() => void decideDriver('Rejected')}
-                >
-                  {canDelete && <Trash2 size={16} />}
-                  {canDelete ? 'Reject & delete files' : 'Reject Driver'}
-                </button>
-                {canDelete && (
-                  <button
-                    className={styles.permanentDeleteButton}
-                    disabled={acting}
-                    onClick={() => void deleteDriver()}
-                  >
-                    <Trash2 size={16} />
-                    Delete Driver
-                  </button>
+                {canDelete && canApprove && (
+                  <div className={styles.rejectNotice}>
+                    SuperAdmin rejection permanently deletes all uploaded Driver and vehicle attachments.
+                  </div>
                 )}
-              </div>
-            </footer>
+
+                {/*
+                  Says why Approve will refuse, before it is pressed.
+
+                  A driver can only be approved once all four of their documents
+                  are uploaded and at least one of their vehicles is Verified.
+                  Neither rule was visible anywhere, so a reviewer looking at a
+                  full set of documents pressed Approve, got a refusal, and had
+                  nothing to act on. The ordering — vehicle first, then driver —
+                  is the part nobody guesses.
+                */}
+                {canApprove && driverDetail && approvalBlockers(driverDetail).length > 0 && (
+                  <div className={styles.decisionNote}>
+                    Approve is not available yet:{' '}
+                    {approvalBlockers(driverDetail).join('; ')}.
+                  </div>
+                )}
+
+                <div className={styles.decisionButtons}>
+                  {canApprove && (
+                    <>
+                      <button
+                        className="primaryButton"
+                        disabled={
+                          acting ||
+                          (driverDetail !== null &&
+                            approvalBlockers(driverDetail).length > 0)
+                        }
+                        onClick={() => void decideDriver('Approved')}
+                      >
+                        <CheckCircle2 size={17} />
+                        Approve Driver
+                      </button>
+                      <button
+                        className="secondaryButton"
+                        disabled={acting}
+                        onClick={() => void decideDriver('ChangesRequired')}
+                      >
+                        <AlertTriangle size={17} />
+                        Request changes
+                      </button>
+                      <button
+                        className="dangerButton"
+                        disabled={acting}
+                        onClick={() => void decideDriver('Rejected')}
+                      >
+                        {canDelete && <Trash2 size={16} />}
+                        {canDelete ? 'Reject & delete files' : 'Reject Driver'}
+                      </button>
+                    </>
+                  )}
+                  {canDelete && (
+                    <button
+                      className={styles.permanentDeleteButton}
+                      disabled={acting}
+                      onClick={() => void deleteDriver()}
+                    >
+                      <Trash2 size={16} />
+                      Delete Driver
+                    </button>
+                  )}
+                </div>
+              </footer>
+            )}
           </>
         ) : vehicleDetail ? (
           <div className={styles.detailContent}>
@@ -1184,6 +1215,8 @@ function VerificationDetail({
                 await onChanged();
               }}
               canDelete={canDelete}
+              canApprove={canApprove}
+              canEdit={canEdit}
               expanded
             />
           </div>
@@ -1320,6 +1353,7 @@ function DocumentGrid({
   ownerId,
   onChanged,
   canDelete,
+  canEdit,
 }: {
   documents: VerificationDocument[];
   expected: string[];
@@ -1327,6 +1361,7 @@ function DocumentGrid({
   ownerId: string;
   onChanged: () => Promise<void>;
   canDelete: boolean;
+  canEdit: boolean;
 }) {
   const byType = new Map(
     documents.map((document) => [document.documentType, document]),
@@ -1354,9 +1389,13 @@ function DocumentGrid({
             deletePath={`/api/v1/admin/verification/${
               ownerType === 'driver' ? 'drivers' : 'vehicles'
             }/${ownerId}/documents/${document.id}`}
-            reuploadPath={`/api/v1/admin/verification/${
-              ownerType === 'driver' ? 'drivers' : 'vehicles'
-            }/${ownerId}/documents/${document.id}/request-reupload`}
+            reuploadPath={
+              canEdit
+                ? `/api/v1/admin/verification/${
+                    ownerType === 'driver' ? 'drivers' : 'vehicles'
+                  }/${ownerId}/documents/${document.id}/request-reupload`
+                : ''
+            }
             onChanged={onChanged}
             canDelete={canDelete}
           />
@@ -1642,12 +1681,16 @@ function VehicleReviewCard({
   onChanged,
   onDeleted,
   canDelete,
+  canApprove,
+  canEdit,
   expanded = false,
 }: {
   detail: VehicleDetail;
   onChanged: () => Promise<void>;
   onDeleted: () => Promise<void>;
   canDelete: boolean;
+  canApprove: boolean;
+  canEdit: boolean;
   expanded?: boolean;
 }) {
   const [notes, setNotes] = useState('');
@@ -1767,52 +1810,59 @@ function VehicleReviewCard({
         ownerId={detail.vehicle.vehicleId}
         onChanged={onChanged}
         canDelete={canDelete}
+        canEdit={canEdit}
       />
 
       {error && <ErrorBox message={error} />}
 
-      <div className={styles.vehicleDecision}>
-        <textarea
-          rows={2}
-          value={notes}
-          onChange={(event) => setNotes(event.target.value)}
-          placeholder="Vehicle review notes…"
-        />
-        <div>
-          <button
-            className="primaryButton"
-            disabled={acting}
-            onClick={() => void decide('Verified')}
-          >
-            <CheckCircle2 size={16} />
-            Verify vehicle
-          </button>
-          <button
-            className="secondaryButton"
-            disabled={acting}
-            onClick={() => void decide('ChangesRequired')}
-          >
-            Request changes
-          </button>
-          <button
-            className="dangerButton"
-            disabled={acting}
-            onClick={() => void decide('Suspended')}
-          >
-            Suspend
-          </button>
-          {canDelete && (
-            <button
-              className={styles.permanentDeleteButton}
-              disabled={acting}
-              onClick={() => void deleteVehicle()}
-            >
-              <Trash2 size={15} />
-              Delete vehicle
-            </button>
-          )}
+      {(canApprove || canDelete) && (
+        <div className={styles.vehicleDecision}>
+          <textarea
+            rows={2}
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Vehicle review notes…"
+          />
+          <div>
+            {canApprove && (
+              <>
+                <button
+                  className="primaryButton"
+                  disabled={acting}
+                  onClick={() => void decide('Verified')}
+                >
+                  <CheckCircle2 size={16} />
+                  Verify vehicle
+                </button>
+                <button
+                  className="secondaryButton"
+                  disabled={acting}
+                  onClick={() => void decide('ChangesRequired')}
+                >
+                  Request changes
+                </button>
+                <button
+                  className="dangerButton"
+                  disabled={acting}
+                  onClick={() => void decide('Suspended')}
+                >
+                  Suspend
+                </button>
+              </>
+            )}
+            {canDelete && (
+              <button
+                className={styles.permanentDeleteButton}
+                disabled={acting}
+                onClick={() => void deleteVehicle()}
+              >
+                <Trash2 size={15} />
+                Delete vehicle
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </article>
   );
 }

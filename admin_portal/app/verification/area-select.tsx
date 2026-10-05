@@ -1,10 +1,11 @@
 'use client';
 
 import { CheckCircle2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { ErrorBox, Field, Modal } from '../components/ui';
 import { apiFetch } from '../lib/admin-api';
+import { usePermissions, type TeamArea } from '../lib/permissions';
 
 export type CatalogTehsil = {
   id: string;
@@ -47,6 +48,46 @@ export function useCatalogAreas() {
   }, []);
 
   return { districts, error };
+}
+
+/**
+ * The district → tehsil list cut down to a team user's areas.
+ *
+ * A District area keeps that district with all its tehsils; a Tehsil area
+ * keeps its district with only the tehsils given. With `allAreas` the list is
+ * returned as it is.
+ */
+export function limitDistricts(
+  districts: CatalogDistrict[],
+  areas: TeamArea[],
+  allAreas: boolean,
+): CatalogDistrict[] {
+  if (allAreas) return districts;
+  const districtIds = new Set(
+    areas.filter((area) => area.kind === 'District').map((area) => area.id),
+  );
+  const tehsilIds = new Set(
+    areas.filter((area) => area.kind === 'Tehsil').map((area) => area.id),
+  );
+  return districts
+    .map((district) =>
+      districtIds.has(district.id)
+        ? district
+        : {
+            ...district,
+            tehsils: district.tehsils.filter((tehsil) => tehsilIds.has(tehsil.id)),
+          },
+    )
+    .filter(
+      (district) => districtIds.has(district.id) || district.tehsils.length > 0,
+    );
+}
+
+/** Chip text for one of a team user's areas. */
+export function teamAreaLabel(area: TeamArea) {
+  return area.kind === 'District'
+    ? `${area.name} district (all)`
+    : `${area.districtName ? `${area.districtName} · ` : ''}${area.name} tehsil`;
 }
 
 /** "District · Tehsil", or "Unassigned" when the record has no area yet. */
@@ -110,7 +151,12 @@ export function LocationModal({
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 }) {
-  const { districts, error: areasError } = useCatalogAreas();
+  const { districts: allDistricts, error: areasError } = useCatalogAreas();
+  const { areas, allAreas } = usePermissions();
+  const districts = useMemo(
+    () => limitDistricts(allDistricts, areas, allAreas),
+    [allDistricts, areas, allAreas],
+  );
   const [tehsilId, setTehsilId] = useState(currentTehsilId ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');

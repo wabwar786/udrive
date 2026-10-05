@@ -37,7 +37,8 @@ public sealed class AdminVerificationService(
     public async Task<ServiceResult<IReadOnlyList<DriverReviewListItemDto>>> GetDriversAsync(
         string? status,
         CancellationToken cancellationToken,
-        string? area = null)
+        string? area = null,
+        IReadOnlyList<Guid>? allowed = null)
     {
         const string sql = """
             SELECT dp.id, u.id, u.full_name, u.phone_number,
@@ -55,6 +56,7 @@ public sealed class AdminVerificationService(
               AND (@status IS NULL OR dp.verification_status = @status)
               AND (@unassigned AND dp.territory_id IS NULL
                    OR NOT @unassigned AND (@area::uuid IS NULL OR t.id = @area::uuid OR t.parent_id = @area::uuid))
+              AND (@allowed::uuid[] IS NULL OR t.id = ANY(@allowed::uuid[]) OR t.parent_id = ANY(@allowed::uuid[]))
             ORDER BY dp.submitted_at NULLS LAST, dp.created_at DESC;
             """;
 
@@ -64,7 +66,7 @@ public sealed class AdminVerificationService(
         await using var command = new NpgsqlCommand(sql, connection);
         var statusParameter = command.Parameters.Add("status", NpgsqlDbType.Varchar);
         statusParameter.Value = string.IsNullOrWhiteSpace(status) ? DBNull.Value : status.Trim();
-        BindArea(command, area);
+        BindArea(command, area, allowed);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -681,7 +683,8 @@ public sealed class AdminVerificationService(
     public async Task<ServiceResult<IReadOnlyList<VehicleReviewListItemDto>>> GetVehiclesAsync(
         string? status,
         CancellationToken cancellationToken,
-        string? area = null)
+        string? area = null,
+        IReadOnlyList<Guid>? allowed = null)
     {
         const string sql = """
             SELECT v.id, v.driver_profile_id, u.full_name,
@@ -699,6 +702,7 @@ public sealed class AdminVerificationService(
               AND (@status IS NULL OR v.status = @status)
               AND (@unassigned AND COALESCE(v.territory_id, dp.territory_id) IS NULL
                    OR NOT @unassigned AND (@area::uuid IS NULL OR t.id = @area::uuid OR t.parent_id = @area::uuid))
+              AND (@allowed::uuid[] IS NULL OR t.id = ANY(@allowed::uuid[]) OR t.parent_id = ANY(@allowed::uuid[]))
             ORDER BY v.created_at DESC;
             """;
         var result = new List<VehicleReviewListItemDto>();
@@ -707,7 +711,7 @@ public sealed class AdminVerificationService(
         await using var command = new NpgsqlCommand(sql, connection);
         var statusParameter = command.Parameters.Add("status", NpgsqlDbType.Varchar);
         statusParameter.Value = string.IsNullOrWhiteSpace(status) ? DBNull.Value : status.Trim();
-        BindArea(command, area);
+        BindArea(command, area, allowed);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -1195,8 +1199,12 @@ public sealed class AdminVerificationService(
     }
 
     /// <summary>A district or tehsil id, "none" for no area yet, or nothing for all.</summary>
-    private static void BindArea(NpgsqlCommand command, string? area)
+    private static void BindArea(NpgsqlCommand command, string? area, IReadOnlyList<Guid>? allowed)
     {
+        command.Parameters.Add(new NpgsqlParameter("allowed", NpgsqlDbType.Array | NpgsqlDbType.Uuid)
+        {
+            Value = allowed is null ? DBNull.Value : allowed.ToArray(),
+        });
         var unassigned = string.Equals(area?.Trim(), "none", StringComparison.OrdinalIgnoreCase);
         command.Parameters.Add(new NpgsqlParameter("area", NpgsqlDbType.Uuid)
         {

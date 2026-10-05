@@ -21,6 +21,7 @@ import {
   readSession,
   when,
 } from '../lib/admin-api';
+import { usePermissions } from '../lib/permissions';
 import {
   LocationModal,
   TehsilSelect,
@@ -323,6 +324,10 @@ export function HubQueue({
 }) {
   const copy = TAB_COPY[tab];
   const vehicleTab = tab === 'tour' || tab === 'rent';
+  const { can } = usePermissions();
+  const tabModule = `verification.${tab}`;
+  const canApprove = can(tabModule, 'approve');
+  const canEdit = can(tabModule, 'edit');
 
   const [rows, setRows] = useState<VerificationRow[]>([]);
   const [status, setStatus] = useState('Waiting');
@@ -617,7 +622,7 @@ export function HubQueue({
                 {vehicleTab && <option value="Info">Info asked</option>}
                 <option value="All">All</option>
               </select>
-              {vehicleTab && (
+              {vehicleTab && canEdit && (
                 <button type="button" className="primaryButton" onClick={openAdd}>
                   <Plus size={16} /> Add vehicle for an owner
                 </button>
@@ -763,9 +768,11 @@ export function HubQueue({
                     </strong>
                     <small style={{ color: '#66796f' }}>{copy.whereFrom}</small>
                   </div>
-                  <button type="button" className="secondaryButton" onClick={() => setMoving(true)}>
-                    Change
-                  </button>
+                  {canEdit && (
+                    <button type="button" className="secondaryButton" onClick={() => setMoving(true)}>
+                      Change
+                    </button>
+                  )}
                 </div>
 
                 <div>
@@ -846,7 +853,7 @@ export function HubQueue({
                               </div>
                               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                                 <Badge value={driver.status} />
-                                {driver.status !== 'Approved' && (
+                                {canApprove && driver.status !== 'Approved' && (
                                   <button
                                     type="button"
                                     className="primaryButton"
@@ -856,7 +863,7 @@ export function HubQueue({
                                     Approve
                                   </button>
                                 )}
-                                {driver.status !== 'Rejected' && (
+                                {canApprove && driver.status !== 'Rejected' && (
                                   <button
                                     type="button"
                                     className="dangerButton"
@@ -890,52 +897,56 @@ export function HubQueue({
                   </div>
                 )}
 
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 750, color: '#465b53' }}>
-                    Note to the applicant (needed for Reject{detail.canAskInfo ? ' or Ask for info' : ''})
-                  </span>
-                  <textarea
-                    rows={2}
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                    placeholder="e.g. Registration book back photo is blurred"
-                    style={{ border: '1px solid #d9e5e0', background: '#fbfdfc', borderRadius: 12, padding: 10, resize: 'vertical' }}
-                  />
-                </label>
+                {canApprove && (
+                  <>
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 750, color: '#465b53' }}>
+                        Note to the applicant (needed for Reject{detail.canAskInfo ? ' or Ask for info' : ''})
+                      </span>
+                      <textarea
+                        rows={2}
+                        value={note}
+                        onChange={(event) => setNote(event.target.value)}
+                        placeholder="e.g. Registration book back photo is blurred"
+                        style={{ border: '1px solid #d9e5e0', background: '#fbfdfc', borderRadius: 12, padding: 10, resize: 'vertical' }}
+                      />
+                    </label>
 
-                {!detail.canApprove && detail.blockReason && (
-                  <small style={{ ...redText, marginTop: 0 }}>Approve is not available yet: {detail.blockReason}</small>
+                    {!detail.canApprove && detail.blockReason && (
+                      <small style={{ ...redText, marginTop: 0 }}>Approve is not available yet: {detail.blockReason}</small>
+                    )}
+
+                    <div className="hotelApprovalActions" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
+                      <button
+                        type="button"
+                        className="primaryButton"
+                        disabled={acting || !detail.canApprove}
+                        onClick={approve}
+                      >
+                        {acting ? <RefreshCw size={16} className="spin" /> : <CheckCircle2 size={16} />} {copy.approveLabel}
+                      </button>
+                      {detail.canAskInfo && (
+                        <button
+                          type="button"
+                          className="secondaryButton"
+                          disabled={acting || !note.trim()}
+                          onClick={askInfo}
+                        >
+                          <MessageSquareText size={16} /> Ask for info
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="dangerButton"
+                        disabled={acting || !note.trim()}
+                        onClick={reject}
+                      >
+                        <XCircle size={16} /> Reject
+                      </button>
+                    </div>
+                    <p style={{ margin: 0, color: '#66796f', fontSize: 12 }}>{copy.after}</p>
+                  </>
                 )}
-
-                <div className="hotelApprovalActions" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
-                  <button
-                    type="button"
-                    className="primaryButton"
-                    disabled={acting || !detail.canApprove}
-                    onClick={approve}
-                  >
-                    {acting ? <RefreshCw size={16} className="spin" /> : <CheckCircle2 size={16} />} {copy.approveLabel}
-                  </button>
-                  {detail.canAskInfo && (
-                    <button
-                      type="button"
-                      className="secondaryButton"
-                      disabled={acting || !note.trim()}
-                      onClick={askInfo}
-                    >
-                      <MessageSquareText size={16} /> Ask for info
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="dangerButton"
-                    disabled={acting || !note.trim()}
-                    onClick={reject}
-                  >
-                    <XCircle size={16} /> Reject
-                  </button>
-                </div>
-                <p style={{ margin: 0, color: '#66796f', fontSize: 12 }}>{copy.after}</p>
               </div>
             </>
           )}

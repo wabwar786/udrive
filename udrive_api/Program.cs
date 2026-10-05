@@ -198,6 +198,12 @@ builder.Services.AddScoped<BusinessService>(_ => new BusinessService(connectionS
 // rent requests that wait for the owner, and daily departures.
 builder.Services.AddScoped<ListingService>(sp =>
     new ListingService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
+// Operations → Team (migration 072).
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<TeamService>(sp => new TeamService(
+    connectionString,
+    sp.GetRequiredService<AuthService>(),
+    sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
 // Districts / tehsils and the one Verification page (migration 071).
 builder.Services.AddScoped<AreaService>(_ => new AreaService(connectionString));
 builder.Services.AddScoped<VerificationHubService>(sp => new VerificationHubService(
@@ -462,6 +468,8 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseCors("UDriveClients");
 app.UseRateLimiter();
 app.UseAuthentication();
+// Team users (role Staff): module and area permissions, before [Authorize] runs.
+app.UseMiddleware<TeamAccessMiddleware>(connectionString);
 app.UseAuthorization();
 
 // Swagger UI has no authorization gate, so publishing it hands an anonymous

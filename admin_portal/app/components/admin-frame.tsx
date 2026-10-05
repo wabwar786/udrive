@@ -47,6 +47,7 @@ import {
   TowerControl,
   TrendingUp,
   TriangleAlert,
+  UserCog,
   Users,
   UsersRound,
   Wallet,
@@ -58,6 +59,7 @@ import {
   saveSession,
   type AdminSession,
 } from '../lib/admin-api';
+import { clearPermissions, usePermissions } from '../lib/permissions';
 import { BrandMark, BrandWordmark } from './brand';
 import { GuideButton } from './guide-button';
 
@@ -92,6 +94,7 @@ const groups = [
       ['/verification', 'Verification', BadgeCheck],
       ['/rentals', 'Car rentals', KeyRound],
       ['/wallet-topups', 'Driver top-ups', Wallet],
+      ['/team', 'Team', UserCog],
     ],
   },
   {
@@ -167,6 +170,8 @@ const groups = [
   },
 ] as const;
 
+type NavItem = readonly [href: string, label: string, icon: typeof LayoutDashboard];
+
 const FOLDED_KEY = 'udrive.nav.folded';
 
 export function AdminFrame({
@@ -186,6 +191,33 @@ export function AdminFrame({
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [folded, setFolded] = useState<string[]>([]);
+  const permissions = usePermissions();
+  const { canRoute } = permissions;
+
+  // The menu without the pages this person cannot open. A group left empty
+  // is dropped rather than shown as a heading with nothing under it.
+  const visibleGroups = useMemo(
+    () =>
+      groups
+        .map((group) => ({
+          label: group.label,
+          items: (group.items as readonly NavItem[]).filter(([href]) =>
+            canRoute(href),
+          ),
+        }))
+        .filter((group) => group.items.length > 0),
+    [canRoute],
+  );
+
+  const firstAllowed = visibleGroups[0]?.items[0]?.[0] ?? '/help';
+  const pageAllowed = permissions.loaded && canRoute(path);
+
+  // Overview is the operations dashboard; somebody without operations lands on
+  // their own first page instead of a "no access" panel on sign-in.
+  useEffect(() => {
+    if (!permissions.loaded || pageAllowed || path !== '/') return;
+    router.replace(firstAllowed);
+  }, [permissions.loaded, pageAllowed, path, router, firstAllowed]);
 
   useEffect(() => {
     const value = readSession();
@@ -276,7 +308,7 @@ export function AdminFrame({
     );
   }, [session]);
 
-  if (!session) {
+  if (!session || !permissions.loaded || (path === '/' && !pageAllowed)) {
     return <div className="boot">Securing operations workspace…</div>;
   }
 
@@ -297,7 +329,7 @@ export function AdminFrame({
           </button>
         </div>
         <nav>
-          {groups.map((group) => {
+          {visibleGroups.map((group) => {
             // Never fold anything while the rail is collapsed to icons: there
             // the headings are hidden, so a folded group would be a menu with
             // rows missing and nothing on screen to explain why. Otherwise the
@@ -371,6 +403,7 @@ export function AdminFrame({
               title="Sign out"
               onClick={() => {
                 saveSession(null);
+                clearPermissions();
                 router.replace('/login');
               }}
             >
@@ -378,7 +411,24 @@ export function AdminFrame({
             </button>
           </div>
         </header>
-        <main className="content">{children}</main>
+        <main className="content">
+          {pageAllowed ? (
+            children
+          ) : (
+            <section className="panel">
+              <div className="empty">
+                <div className="emptyIcon">◇</div>
+                <h3>You do not have access to this page</h3>
+                <p>Ask an admin to give you access on the Team page.</p>
+                <p style={{ marginTop: 16 }}>
+                  <Link className="primaryButton" href={firstAllowed}>
+                    Go to your first page
+                  </Link>
+                </p>
+              </div>
+            </section>
+          )}
+        </main>
       </div>
       {open && <button className="drawerShade" onClick={() => setOpen(false)} />}
     </div>

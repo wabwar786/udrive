@@ -18,7 +18,7 @@ public sealed class AdminVerificationController(
         [FromQuery] string? status,
         [FromQuery] string? area,
         CancellationToken cancellationToken) =>
-        ToActionResult(await adminService.GetDriversAsync(status, cancellationToken, area));
+        ToActionResult(await adminService.GetDriversAsync(status, cancellationToken, area, TeamAccess.AllowedAreas(HttpContext)));
 
     [HttpGet("drivers/{driverProfileId:guid}")]
     public async Task<IActionResult> GetDriver(
@@ -111,7 +111,7 @@ public sealed class AdminVerificationController(
         [FromQuery] string? status,
         [FromQuery] string? area,
         CancellationToken cancellationToken) =>
-        ToActionResult(await adminService.GetVehiclesAsync(status, cancellationToken, area));
+        ToActionResult(await adminService.GetVehiclesAsync(status, cancellationToken, area, TeamAccess.AllowedAreas(HttpContext)));
 
     [HttpGet("vehicles/{vehicleId:guid}")]
     public async Task<IActionResult> GetVehicle(
