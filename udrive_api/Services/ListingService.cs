@@ -1893,10 +1893,8 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         var withDriver = Rate(request.WithDriverDaily);
         var selfDrive = Rate(request.SelfDriveDaily);
         if (withDriver > 1_000_000 || selfDrive > 1_000_000) return ("rate_invalid", "That daily rate is too high.");
-        if (request.WantsRent && withDriver is null && selfDrive is null)
-        {
-            return ("listing_rent_rate_required", "Give a daily rent rate — with driver, self-drive, or both.");
-        }
+        // No rate check here: step 1 saves a draft before the owner reaches the
+        // prices on step 2. SubmitAsync refuses a rent listing without a rate.
 
         var drivesSelf = (request.Drivers ?? "Self").Trim().ToLowerInvariant() is "self" or "both";
         var kit = request.Kit ?? new ListingKitDto(false, false, false, false, false, false, false);
