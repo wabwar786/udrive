@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../booking/trip_completion_queue.dart';
 import '../booking/trip_operations_repository.dart';
 import '../services/trip_location_service.dart';
 import 'driver_tracking_suspension.dart';
@@ -124,6 +125,10 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
   Future<void> _syncActiveTrip() async {
     if (!widget.enabled || _syncing || _repository == null) return;
 
+    // A trip completed while the phone had no internet goes out now, if the
+    // connection is back — even when the app was closed in between.
+    unawaited(TripCompletionQueue.sendAll(_repository!));
+
     // Stand down while the live screen is publishing. The timer keeps ticking,
     // so tracking picks itself back up within one interval of that screen
     // closing — no listener, nothing to forget to call.
@@ -140,7 +145,8 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
       // only compile by accident.
       dynamic active;
       for (final trip in trips) {
-        if (_trackableStatuses.contains(trip.tripStatus)) {
+        if (_trackableStatuses.contains(trip.tripStatus) &&
+            !await TripCompletionQueue.isPending('${trip.bookingId}')) {
           active = trip;
           break;
         }

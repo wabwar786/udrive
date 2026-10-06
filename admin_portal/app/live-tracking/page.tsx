@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  CheckCircle2,
   Copy,
   Crosshair,
   ExternalLink,
@@ -44,6 +45,7 @@ export default function LiveTrackingPage() {
   const [stale, setStale] = useState(false);
   const [notice, setNotice] = useState('');
   const [sharing, setSharing] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const { can } = usePermissions();
   const canShare = can('operations', 'edit');
 
@@ -163,6 +165,9 @@ export default function LiveTrackingPage() {
                   {canShare && (
                     <button className="primaryButton" onClick={() => setSharing(true)}><Share2 size={16} />Share live</button>
                   )}
+                  {canShare && COMPLETABLE.includes(tracking.tripStatus) && (
+                    <button className="secondaryButton" onClick={() => setCompleting(true)}><CheckCircle2 size={16} />Complete trip (driver offline)</button>
+                  )}
                   <span className={`badge badge-${tracking.tripStatus.toLowerCase()}`}>{tracking.tripStatus}</span>
                 </div>
               </div>
@@ -214,6 +219,22 @@ export default function LiveTrackingPage() {
         </section>
       </div>
 
+      {completing && tracking && (
+        <CompleteModal
+          bookingId={tracking.bookingId}
+          reference={tracking.bookingReference}
+          lastUpdate={location?.serverTimestamp}
+          onClose={() => setCompleting(false)}
+          onDone={() => {
+            setCompleting(false);
+            setSelected('');
+            setTracking(null);
+            flash(`${tracking.bookingReference} completed. The driver is free for the next ride.`);
+            void loadList();
+          }}
+        />
+      )}
+
       {sharing && tracking && (
         <ShareModal
           bookingId={tracking.bookingId}
@@ -223,6 +244,56 @@ export default function LiveTrackingPage() {
         />
       )}
     </AdminFrame>
+  );
+}
+
+/** Trip states UDrive can complete for a driver whose phone is offline. */
+const COMPLETABLE = ['TripStarted', 'Emergency', 'Disputed'];
+
+/**
+ * Completes a started trip for a driver who cannot — usually no signal. Until it
+ * is completed the driver counts as busy and gets no further rides. A reason is
+ * required and is saved in the trip's history with the admin's name.
+ */
+function CompleteModal({ bookingId, reference, lastUpdate, onClose, onDone }: { bookingId: string; reference: string; lastUpdate?: string; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function complete() {
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/api/v1/admin/trip-operations/${bookingId}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The trip could not be completed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`Complete trip · ${reference}`} onClose={onClose}>
+      <div className="detailStack">
+        <p style={{ margin: 0, color: '#5d716a' }}>
+          Use this when the ride has ended but the driver cannot complete it (for example, no internet). The customer is asked to rate the ride,
+          the driver becomes free for the next ride, and the platform share is taken as for a normal completion.
+          {lastUpdate ? ` Last location from the driver: ${when(lastUpdate)} (${ago(lastUpdate)}).` : ' No location has been received from the driver.'}
+        </p>
+        {error && <div className="errorBox">{error}</div>}
+        <Field label="Reason (saved in the trip history)">
+          <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Driver's phone offline — customer confirmed the drop-off by phone" />
+        </Field>
+        <div className="buttonRow" style={{ padding: 0 }}>
+          <button className="primaryButton" disabled={busy || reason.trim().length < 5} onClick={() => void complete()}><CheckCircle2 size={16} />Complete trip</button>
+          <button className="secondaryButton" disabled={busy} onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/booking/trip_completion_queue.dart';
 import '../../core/booking/trip_operations_repository.dart';
 import '../../core/media/alert_sound.dart';
 import '../../core/booking/trip_chat_repository.dart';
@@ -31,6 +32,7 @@ import '../../core/state/app_controller.dart';
 import '../customer/driver_offers_screen.dart';
 import 'trip_chat_screen.dart';
 import 'trip_rating_screen.dart';
+import '../../models/auth_models.dart' show ApiException;
 import '../../models/booking_models.dart';
 import '../../models/trip_operations_models.dart';
 
@@ -156,6 +158,14 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
   /// The Google Maps warning is shown once per ride.
   bool _warnedAboutExternalNav = false;
 
+  /// The driver completed the trip with no internet. It is kept on the phone
+  /// (TripCompletionQueue) and sent as soon as the connection is back.
+  bool _completionPending = false;
+
+  /// Set once this screen is closing because the trip is over, so a refresh
+  /// that lands at the same moment does not close it twice.
+  bool _closing = false;
+
   @override
   void initState() {
     super.initState();
@@ -178,6 +188,9 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
     });
     _startGps();
     _begin();
+    TripCompletionQueue.isPending(widget.trip.bookingId).then((pending) {
+      if (pending && mounted) setState(() => _completionPending = true);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPassenger();
       _pollMessages();
@@ -215,7 +228,9 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
           );
           _currentStatus = 'DriverEnRoute';
         } catch (error) {
-          if (mounted) setState(() => _error = error.toString());
+          if (mounted && !_isNoConnection(error)) {
+            setState(() => _error = error.toString());
+          }
         }
       }
     } finally {
@@ -275,13 +290,36 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
   /// seconds. The map does not wait for this any more; it moves with the GPS
   /// stream in [_onGps].
   Future<void> _refresh() async {
-    if (_refreshing) return;
+    if (_refreshing || _closing) return;
     _refreshing = true;
     try {
+      // A completion saved offline goes out first, now that there may be a
+      // signal again.
+      if (_completionPending) {
+        final sent = await TripCompletionQueue.sendAll(widget.repository);
+        if (sent.contains(widget.trip.bookingId)) {
+          _finish('Trip completed.');
+          return;
+        }
+      }
       final tracking = await widget.repository
           .tracking(widget.trip.bookingId, path: false)
           .timeout(const Duration(seconds: 12));
       if (!mounted) return;
+
+      // Ended elsewhere — UDrive completed it from the admin panel while this
+      // phone had no signal, or it was cancelled. Location stops and the
+      // screen closes; the driver is free for the next ride.
+      if (tracking.tripStatus == 'TripCompleted' ||
+          tracking.tripStatus == 'Cancelled') {
+        await TripCompletionQueue.forget(widget.trip.bookingId);
+        _finish(tracking.tripStatus == 'Cancelled'
+            ? 'This trip was cancelled.'
+            : _completionPending
+                ? 'Trip completed.'
+                : 'UDrive has completed this trip. You are free for the next ride.');
+        return;
+      }
       setState(() {
         _tracking = tracking;
         _currentStatus = tracking.tripStatus;
@@ -307,12 +345,77 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
     } catch (error) {
       if (mounted) {
         setState(() {
-          _error = error.toString();
+          // No answer at all is shown by the weak-signal note, not as red
+          // text under the buttons.
+          _error = _isNoConnection(error) ? null : error.toString();
           _failedRefreshes++;
         });
       }
     } finally {
       _refreshing = false;
+    }
+  }
+
+  /// Closes the screen because the trip is over.
+  void _finish(String message) {
+    if (_closing || !mounted) return;
+    _closing = true;
+    _timer?.cancel();
+    _locationService.updateStatus('TripCompleted');
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.pop(context);
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Completes the trip — straight away when there is a signal, and on the
+  /// phone when there is not.
+  ///
+  /// With no signal this used to spin for 25 seconds, fail with a raw
+  /// exception, and leave the trip open: the driver stayed "busy" and got no
+  /// further rides until someone noticed.
+  Future<void> _completeTrip() async {
+    if (_actionBusy) return;
+    setState(() => _actionBusy = true);
+    try {
+      await widget.repository
+          .driverStatus(widget.trip.bookingId, 'TripCompleted')
+          .timeout(const Duration(seconds: 12));
+      await TripCompletionQueue.forget(widget.trip.bookingId);
+      _finish('Trip completed.');
+    } catch (error) {
+      if (_isNoConnection(error)) {
+        await TripCompletionQueue.keep(widget.trip.bookingId);
+        _locationService.updateStatus('TripCompleted');
+        if (mounted) {
+          setState(() {
+            _completionPending = true;
+            _error = null;
+          });
+        }
+      } else if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  /// "Send now" on the pending-completion banner.
+  Future<void> _sendPendingCompletion() async {
+    if (_actionBusy) return;
+    setState(() => _actionBusy = true);
+    try {
+      final sent = await TripCompletionQueue.sendAll(widget.repository);
+      if (sent.contains(widget.trip.bookingId)) {
+        _finish('Trip completed.');
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Still no internet. It will be sent automatically.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
     }
   }
 
@@ -867,6 +970,7 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
   }
 
   Future<void> _changeStatus(String status) async {
+    if (status == 'TripCompleted') return _completeTrip();
     if (_actionBusy) return;
     setState(() => _actionBusy = true);
     try {
@@ -1371,6 +1475,18 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
                       ),
                       const SizedBox(height: 10),
                     ],
+                    if (_completionPending) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: UdBanner(
+                          tone: UdTone.warn,
+                          icon: Icons.cloud_upload_outlined,
+                          text: 'Trip completed on your phone. It will be sent '
+                              'to UDrive as soon as the internet is back.',
+                          onTap: _sendPendingCompletion,
+                        ),
+                      ),
+                    ],
                     // Message, call, then the one action that moves the trip
                     // forward. All three within thumb reach at the bottom of
                     // the map, because that is where a Driver's hand already is
@@ -1395,18 +1511,24 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
                           child: UdButton.primary(
                             size: UdButtonSize.small,
                             busy: _actionBusy,
-                            icon: _currentStatus == 'DriverArrived'
+                            icon: _completionPending
+                                ? Icons.cloud_upload_outlined
+                                : _currentStatus == 'DriverArrived'
                                 ? Icons.play_arrow_rounded
                                 : _currentStatus == 'TripStarted'
                                     ? Icons.check_circle_outline_rounded
                                     : Icons.location_on_rounded,
-                            label: _currentStatus == 'DriverArrived'
+                            label: _completionPending
+                                ? 'Send completion now'
+                                : _currentStatus == 'DriverArrived'
                                 ? 'Start trip with OTP'
                                 : _currentStatus == 'TripStarted'
                                     ? 'Complete trip'
                                     : 'I have arrived',
                             onPressed: _starting || _actionBusy
                                 ? null
+                                : _completionPending
+                                ? _sendPendingCompletion
                                 : _currentStatus == 'DriverEnRoute'
                                     ? () => _changeStatus('DriverArrived')
                                     : _currentStatus == 'DriverArrived'
@@ -1778,7 +1900,10 @@ class _CustomerFullScreenTrackingScreenState
     } catch (error) {
       if (mounted) {
         setState(() {
-          _error = error.toString();
+          // No answer is shown by the weak-signal note, not as red text.
+          _error = _isNoConnection(error)
+              ? null
+              : error.toString();
           _failedPolls++;
         });
       }
@@ -3676,3 +3801,10 @@ class _WeakSignalNote extends StatelessWidget {
     );
   }
 }
+
+/// True when a request got no answer — no signal, too slow, or the server
+/// failing — as opposed to a refusal the person needs to read.
+bool _isNoConnection(Object error) =>
+    error is TimeoutException ||
+    (error is ApiException &&
+        (error.statusCode == null || error.statusCode! >= 500));

@@ -108,6 +108,31 @@ from udrive.bookings b join udrive.trip_operations o on o.booking_id=b.id cross 
         await ExecAsync(cn,tx,"update udrive.bookings set driver_profile_id=@driver,vehicle_id=@vehicle,status='DriverAssigned',updated_at=now(),version=version+1 where id=@booking",ct,("driver",driver),("vehicle",vehicle),("booking",booking));await ExecAsync(cn,tx,"update udrive.trip_operations set operational_status='DriverAccepted',trip_status='DriverAccepted',driver_accepted_at=now(),last_activity_at=now(),updated_at=now(),version=version+1 where booking_id=@booking",ct,("booking",booking));await HistoryAsync(cn,tx,booking,"DriverAssigned","DriverAccepted",actor,"Driver",null,ct);await NotifyBookingPartiesAsync(cn,tx,booking,"DriverAccepted","Driver accepted","Your assigned driver accepted the trip.",ct);await AuditAsync(cn,tx,actor,"trip.offer.accepted","DriverBookingOffer",offerId.ToString(),request,ct);await tx.CommitAsync(ct);return ServiceResult<bool>.Ok(true);
     }
 
+    /// <summary>
+    /// Completes a live trip from the admin panel when the driver cannot — most
+    /// often because their phone has no signal. Until a trip is completed the
+    /// driver counts as busy and is offered no further rides.
+    /// </summary>
+    /// <remarks>
+    /// Only a trip that has started (or is in Emergency or Disputed) can be
+    /// completed this way; one that never started is cancelled instead. A reason
+    /// is required and goes into the trip's history with the admin's name. The
+    /// completion itself runs through <see cref="ChangeStatusAsync"/>, so the
+    /// platform share, the notifications and the audit entry are exactly those of
+    /// a driver completing it.
+    /// </remarks>
+    public async Task<ServiceResult<TripOperationsDetailDto>> AdminCompleteAsync(Guid actor,Guid bookingId,AdminCompleteTripRequest request,CancellationToken ct)
+    {
+        var reason=(request.Reason??string.Empty).Trim();
+        if(reason.Length<5)return ServiceResult<TripOperationsDetailDto>.Fail(400,"reason_required","Write why the trip is being completed (at least 5 characters).");
+        string? status;
+        await using(var cn=Open()){await cn.OpenAsync(ct);status=await ScalarStringAsync(cn,"select trip_status from udrive.trip_operations where booking_id=@id",ct,null,("id",bookingId));}
+        if(status is null)return ServiceResult<TripOperationsDetailDto>.Fail(404,"booking_not_found","Booking not found.");
+        if(status=="TripCompleted")return await ChangeStatusAsync(actor,"Admin",true,bookingId,new ChangeTripStatusRequest("TripCompleted",reason),ct);
+        if(status is not ("TripStarted" or "Emergency" or "Disputed"))return ServiceResult<TripOperationsDetailDto>.Fail(409,"trip_not_started",$"This trip has not started ({status}). Cancel it instead of completing it.");
+        return await ChangeStatusAsync(actor,"Admin",true,bookingId,new ChangeTripStatusRequest("TripCompleted","Completed by UDrive (driver could not): "+reason,null,true),ct);
+    }
+
     public async Task<ServiceResult<TripOperationsDetailDto>> ChangeStatusAsync(Guid actor,string source,bool superAdmin,Guid bookingId,ChangeTripStatusRequest request,CancellationToken ct)
     {
         await using var cn=Open();await cn.OpenAsync(ct);await using var tx=await cn.BeginTransactionAsync(ct);var current=await CurrentStateAsync(cn,tx,bookingId,ct);if(current is null)return ServiceResult<TripOperationsDetailDto>.Fail(404,"booking_not_found","Booking not found.");
@@ -115,6 +140,11 @@ from udrive.bookings b join udrive.trip_operations o on o.booking_id=b.id cross 
         if(!CanTransition(current.Value.Status,request.Status,request.Override&&superAdmin))return ServiceResult<TripOperationsDetailDto>.Fail(409,"invalid_transition",$"Trip cannot change from {current.Value.Status} to {request.Status}.");
         if(source=="Driver"&&!await DriverOwnsBookingAsync(cn,tx,actor,bookingId,ct))return ServiceResult<TripOperationsDetailDto>.Fail(403,"not_assigned","You are not the assigned driver.");
         if(source=="Customer"&&!await CustomerOwnsBookingAsync(cn,tx,actor,bookingId,ct))return ServiceResult<TripOperationsDetailDto>.Fail(403,"not_owner","You do not own this booking.");
+        // Completing a trip that is already complete is a success, not a second
+        // completion. The driver's phone sends a completion it saved while it had
+        // no signal; by the time it arrives UDrive may already have completed the
+        // trip from the admin panel. Nothing is charged, notified or logged twice.
+        if(request.Status=="TripCompleted"&&current.Value.Status=="TripCompleted"){await tx.CommitAsync(ct);return ServiceResult<TripOperationsDetailDto>.Ok((await LoadDetailAsync(cn,bookingId,ct))!,"Trip was already completed.");}
         if(request.Status=="TripStarted"&&!await HasAcceptedAssignmentAsync(cn,tx,bookingId,ct))return ServiceResult<TripOperationsDetailDto>.Fail(409,"driver_not_accepted","Trip cannot start until the assigned verified driver accepts.");
         if(source=="Driver"&&request.Status=="TripStarted")
         {

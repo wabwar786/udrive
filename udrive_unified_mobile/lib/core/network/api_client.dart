@@ -164,22 +164,47 @@ class ApiClient {
     final uri = ApiConfig.uri(path);
     late http.Response response;
 
-    if (method == 'GET') {
-      response = await _client
-          .get(uri, headers: headers)
-          .timeout(const Duration(seconds: 25));
-    } else if (method == 'PUT') {
-      response = await _client
-          .put(uri, headers: headers, body: jsonEncode(body))
-          .timeout(const Duration(seconds: 25));
-    } else {
-      response = await _client
-          .post(
-            uri,
-            headers: headers,
-            body: body == null ? null : jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 25));
+    // No signal and a slow signal used to reach the screen as the raw Dart
+    // text — "ClientException with SocketException: Failed host lookup ..."
+    // and "TimeoutException after 0:00:25.000000: Future not completed" —
+    // printed in red under the driver's Complete trip button. They become one
+    // readable sentence each. statusCode stays null: no answer arrived, which
+    // is how callers tell "try again later" apart from a refusal.
+    try {
+      if (method == 'GET') {
+        response = await _client
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 25));
+      } else if (method == 'PUT') {
+        response = await _client
+            .put(uri, headers: headers, body: jsonEncode(body))
+            .timeout(const Duration(seconds: 25));
+      } else {
+        response = await _client
+            .post(
+              uri,
+              headers: headers,
+              body: body == null ? null : jsonEncode(body),
+            )
+            .timeout(const Duration(seconds: 25));
+      }
+    } on TimeoutException {
+      throw const ApiException(
+        'The connection is slow — please try again.',
+        code: 'network_slow',
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        'No internet connection — please try again.',
+        code: 'network_offline',
+      );
+    } on Exception {
+      // SocketException, HandshakeException and the like, when they arrive
+      // unwrapped: still no answer from the server.
+      throw const ApiException(
+        'No internet connection — please try again.',
+        code: 'network_offline',
+      );
     }
 
     if (authenticated &&

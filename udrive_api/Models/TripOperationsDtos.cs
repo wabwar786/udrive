@@ -17,6 +17,8 @@ public sealed record SuitableDriverDto(Guid DriverProfileId,Guid UserId,string D
 public sealed record AssignTripRequest([Required] Guid DriverProfileId,[Required] Guid VehicleId,[StringLength(1000)] string? Notes,bool EmergencyReplacement=false);
 public sealed record SendDriverBookingOfferRequest([Required] Guid DriverProfileId,[Required] Guid VehicleId,[Range(1,1440)] int ExpiresInMinutes=15,[StringLength(1000)] string? Notes=null);
 public sealed record RespondDriverBookingOfferRequest([Required,RegularExpression("Accept|Reject")] string Decision,[StringLength(500)] string? RejectionReason);
+/// <summary>Admin completing a live trip for a driver who cannot (no signal). Reason is required.</summary>
+public sealed record AdminCompleteTripRequest([Required,StringLength(1000)] string Reason);
 public sealed record ChangeTripStatusRequest([Required,StringLength(40)] string Status,[StringLength(1000)] string? Reason,int? ExpectedVersion=null,bool Override=false,[StringLength(8)] string? TripOtp=null);
 public sealed record AddTripNoteRequest([Required,StringLength(2000)] string Note,[StringLength(32)] string NoteType="Operational",bool IsCustomerVisible=false);
 public sealed record RescheduleTripRequest([Required] DateTimeOffset PickupAt,DateTimeOffset? ReturnAt,[Required,StringLength(1000)] string Reason);

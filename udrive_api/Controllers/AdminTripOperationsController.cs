@@ -17,6 +17,9 @@ public sealed class AdminTripOperationsController(TripOperationsService service)
     [HttpGet("{bookingId:guid}/suitable-drivers")] public async Task<IActionResult> Drivers(Guid bookingId,CancellationToken ct)=>Result(await service.SuitableDriversAsync(bookingId,ct));
     [HttpPost("{bookingId:guid}/assign")] public async Task<IActionResult> Assign(Guid bookingId,AssignTripRequest request,CancellationToken ct)=>Result(await service.AssignAsync(User.GetRequiredUserId(),bookingId,request,User.IsInRole("SuperAdmin"),ct));
     [HttpPost("{bookingId:guid}/offers")] public async Task<IActionResult> Offer(Guid bookingId,SendDriverBookingOfferRequest request,CancellationToken ct)=>Result(await service.SendOfferAsync(User.GetRequiredUserId(),bookingId,request,ct));
+    // The driver's phone is offline and the trip has ended: complete it here so
+    // the driver is free for the next ride. Reason required; see AdminCompleteAsync.
+    [HttpPost("{bookingId:guid}/complete")] public async Task<IActionResult> Complete(Guid bookingId,AdminCompleteTripRequest request,CancellationToken ct)=>Result(await service.AdminCompleteAsync(User.GetRequiredUserId(),bookingId,request,ct));
     [HttpPut("{bookingId:guid}/status")] public async Task<IActionResult> Status(Guid bookingId,ChangeTripStatusRequest request,CancellationToken ct)=>Result(await service.ChangeStatusAsync(User.GetRequiredUserId(),"Admin",User.IsInRole("SuperAdmin"),bookingId,request,ct));
     [HttpPost("{bookingId:guid}/notes")] public async Task<IActionResult> Note(Guid bookingId,AddTripNoteRequest request,CancellationToken ct)=>Result(await service.AddNoteAsync(User.GetRequiredUserId(),bookingId,request,ct));
     [HttpPut("{bookingId:guid}/schedule")] public async Task<IActionResult> Schedule(Guid bookingId,RescheduleTripRequest request,CancellationToken ct)=>Result(await service.RescheduleAsync(User.GetRequiredUserId(),bookingId,request,ct));
