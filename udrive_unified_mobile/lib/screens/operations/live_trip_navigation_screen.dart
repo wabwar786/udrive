@@ -22,6 +22,7 @@ import '../../core/navigation/smooth_position.dart';
 import '../../core/navigation/turn_guide.dart';
 import '../../core/network/api_config.dart';
 import '../../core/vehicles/vehicle_image_repository.dart';
+import '../../core/services/screen_awake.dart';
 import '../../core/services/trip_location_service.dart';
 import '../../core/widgets/collapsible_map_sheet.dart';
 import '../../core/widgets/driver_tracking_suspension.dart';
@@ -49,7 +50,7 @@ class DriverLiveNavigationScreen extends StatefulWidget {
 }
 
 class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final TripLocationService _locationService;
   final UdMapController _map = UdMapController();
   Timer? _timer;
@@ -97,9 +98,14 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
   DateTime _nextRouteAttempt = DateTime.fromMillisecondsSinceEpoch(0);
   static const Duration _routeRetryGap = Duration(seconds: 20);
 
+  // A driver who takes another road sees it highlighted within a few
+  // seconds: six seconds off the line (was ten) and a GPS fix within fifty
+  // metres (was thirty — under these hills a phone rarely reports better, so
+  // the check almost never passed and the old road stayed on screen).
   static const double _offRouteMeters = 40;
-  static const Duration _offRouteFor = Duration(seconds: 10);
-  static const Duration _rerouteGap = Duration(seconds: 30);
+  static const Duration _offRouteFor = Duration(seconds: 6);
+  static const Duration _rerouteGap = Duration(seconds: 20);
+  static const double _rerouteAccuracyMeters = 50;
 
   /// The bearing the camera last turned to, kept while the car stands still.
   double _cameraBearing = 0;
@@ -124,9 +130,43 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
   /// reason a Driver would touch it while driving.
   bool _cameraHeld = false;
 
+  /// Where and how the camera was last pointed, so a car standing still does
+  /// not send the map a new camera every second. Each move made Google start
+  /// fetching tiles again; on a weak signal they never finished and the map
+  /// stayed blank.
+  LatLng? _lastCameraAt;
+  double _lastCameraBearing = 0;
+  double _lastCameraZoom = 0;
+
+  /// True while a status refresh is out, so a slow one is not joined by the
+  /// next — they piled up on a weak signal and competed with the map tiles.
+  bool _refreshing = false;
+
+  /// Refreshes in a row that failed. Three or more: the weak-signal note.
+  int _failedRefreshes = 0;
+
+  /// The phone's last known position, read once at start without the network,
+  /// so the map opens where the driver is rather than on a default city.
+  LatLng? _lastKnown;
+
+  /// False until the map has somewhere real to open: a GPS fix, the last
+  /// known position, the trip, or 1.5 seconds without any of them.
+  bool _mapCanOpen = false;
+
+  /// The Google Maps warning is shown once per ride.
+  bool _warnedAboutExternalNav = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // The screen stays on while the ride is open. A screen that switched off
+    // paused the app, and with it the location the customer is watching.
+    unawaited(ScreenAwake.hold());
+    unawaited(_readLastKnown());
+    Timer(const Duration(milliseconds: 1500), () {
+      if (mounted && !_mapCanOpen) setState(() => _mapCanOpen = true);
+    });
     // This screen publishes the position itself, so the app-wide coordinator
     // steps aside while it is open rather than both of them sending the same
     // fixes.
@@ -164,24 +204,62 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
       _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
 
       if (_currentStatus == 'DriverAccepted') {
-        await widget.repository.driverStatus(
-          widget.trip.bookingId,
-          'DriverEnRoute',
-          reason: 'Driver started travelling to the pickup location.',
-        );
-        _currentStatus = 'DriverEnRoute';
+        // On its own: when this failed (a weak signal), the location service
+        // below never started, and the customer saw no car for the whole
+        // ride. The next refresh still shows the right status.
+        try {
+          await widget.repository.driverStatus(
+            widget.trip.bookingId,
+            'DriverEnRoute',
+            reason: 'Driver started travelling to the pickup location.',
+          );
+          _currentStatus = 'DriverEnRoute';
+        } catch (error) {
+          if (mounted) setState(() => _error = error.toString());
+        }
       }
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+    if (!mounted) return;
+    try {
       await _locationService.start(
         widget.trip.bookingId,
         _currentStatus,
         intervalSeconds: TripLocationService.activeTripPingSeconds,
       );
-      unawaited(_ensureRoute());
-    } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
-    } finally {
-      if (mounted) setState(() => _starting = false);
+    } catch (_) {
+      // capture() swallows its own failures; nothing here should stop the
+      // screen. The timer is already running.
     }
+    unawaited(_ensureRoute());
+  }
+
+  /// Reads the phone's last known position. No network, a few milliseconds —
+  /// enough to open the map where the driver is.
+  Future<void> _readLastKnown() async {
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      if (!mounted || last == null) return;
+      setState(() => _lastKnown = LatLng(last.latitude, last.longitude));
+    } catch (_) {
+      // None stored, or no permission yet: the map opens on the trip instead.
+    }
+  }
+
+  /// Back from another app or a locked screen.
+  ///
+  /// Android stops the GPS stream while the app is behind another one, and the
+  /// customer's map stops with it. On return the position goes out at once —
+  /// not on the next tick — the stream is reopened, and the status refreshed.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    unawaited(ScreenAwake.reapply());
+    unawaited(_startGps());
+    unawaited(_locationService.capture(force: true));
+    unawaited(_locationService.flushQueue());
+    unawaited(_refresh());
   }
 
   /// Clears the blocking overlay as soon as there is a map to look at.
@@ -197,13 +275,18 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
   /// seconds. The map does not wait for this any more; it moves with the GPS
   /// stream in [_onGps].
   Future<void> _refresh() async {
+    if (_refreshing) return;
+    _refreshing = true;
     try {
-      final tracking = await widget.repository.tracking(widget.trip.bookingId);
+      final tracking = await widget.repository
+          .tracking(widget.trip.bookingId, path: false)
+          .timeout(const Duration(seconds: 12));
       if (!mounted) return;
       setState(() {
         _tracking = tracking;
         _currentStatus = tracking.tripStatus;
         _error = null;
+        _failedRefreshes = 0;
       });
 
       // The customer is aboard: the stored road was to the pickup, and the
@@ -219,10 +302,17 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
       // position the server has, so the screen is not a map of nowhere.
       if (_position == null && !_cameraHeld) {
         final at = _currentPoint ?? _targetPoint;
-        if (at != null) _map.moveTo(at, zoom: 16);
+        if (at != null) _map.moveTo(at, zoom: 17.5);
       }
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() {
+          _error = error.toString();
+          _failedRefreshes++;
+        });
+      }
+    } finally {
+      _refreshing = false;
     }
   }
 
@@ -306,26 +396,41 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
     _car.moveTo(display, heading: heading);
 
     if (heading != null) _cameraBearing = heading;
-    if (!_cameraHeld) {
-      _map.follow(
-        display,
-        zoom: _zoomForSpeed(speed),
-        bearing: _cameraBearing,
-        tilt: 45,
-      );
-    }
+    if (!_cameraHeld) _followCamera(display, _zoomForSpeed(speed));
 
     setState(() {});
   }
 
-  /// Close in at walking pace, further out on an open road — so the next
-  /// junction is always on screen at the speed it will be reached.
+  /// Moves the camera with the car — but not for a car standing still.
+  ///
+  /// A move under three metres with the same heading and zoom is skipped:
+  /// at a junction or in traffic the camera used to be re-sent every second,
+  /// and each time Google began loading tiles again.
+  void _followCamera(LatLng at, double zoom) {
+    final last = _lastCameraAt;
+    if (last != null) {
+      final moved = const Distance().as(LengthUnit.Meter, last, at);
+      final turned = ((_cameraBearing - _lastCameraBearing + 540) % 360 - 180).abs();
+      if (moved < 3 && turned < 8 && zoom == _lastCameraZoom) return;
+    }
+    _lastCameraAt = at;
+    _lastCameraBearing = _cameraBearing;
+    _lastCameraZoom = zoom;
+    _map.follow(at, zoom: zoom, bearing: _cameraBearing, tilt: 30);
+  }
+
+  /// Close — the street the car is on and the next junction. Slightly wider
+  /// on an open road so a turn is on screen before it is reached.
+  ///
+  /// All at 17 or above: Google's map data stops at about that level and is
+  /// scaled beyond it, so changing between these never downloads new tiles.
+  /// The old 15.6–17.5 range did, every time the speed changed.
   static double _zoomForSpeed(double metresPerSecond) {
     final kph = metresPerSecond * 3.6;
-    if (kph < 15) return 17.5;
-    if (kph < 40) return 17;
-    if (kph < 70) return 16.3;
-    return 15.6;
+    if (kph < 15) return 18.5;
+    if (kph < 40) return 18;
+    if (kph < 70) return 17.5;
+    return 17;
   }
 
   // ───────────────────────────────────────────────────────────── route
@@ -388,8 +493,16 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
     }
 
     try {
+      final position = _position;
+      final heading = position != null &&
+              position.speed.isFinite &&
+              position.speed > 1.5 &&
+              position.heading.isFinite &&
+              position.heading >= 0
+          ? position.heading
+          : null;
       final result = await LiveRouteRepository(widget.repository.client)
-          .ensure(widget.trip.bookingId, from, reroute: reroute);
+          .ensure(widget.trip.bookingId, from, reroute: reroute, heading: heading);
       if (!mounted) return;
 
       final route = result.route;
@@ -419,7 +532,7 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
   /// server repeats the check before it spends anything.
   void _watchForDetour(RouteFix fix, double accuracy) {
     if (_routeCapped || _routeBusy) return;
-    final trustworthy = accuracy.isFinite && accuracy <= 30;
+    final trustworthy = accuracy.isFinite && accuracy <= _rerouteAccuracyMeters;
     if (fix.offRouteMeters <= _offRouteMeters || !trustworthy) {
       _offRouteSince = null;
       return;
@@ -440,6 +553,45 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
   Future<void> _openExternalNavigation() async {
     final target = _targetPoint;
     if (target == null) return;
+
+    // While another app is in front, Android stops UDrive's GPS — there is no
+    // background location — and the customer's map stops with it. Said once
+    // per ride, before it happens, rather than discovered by the customer.
+    if (!_warnedAboutExternalNav) {
+      final go = await showUdSheet<bool>(
+        context: context,
+        builder: (sheetContext) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              'Your customer stops seeing the car',
+              style: AppType.h2.copyWith(color: AppText.primary),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'While Google Maps is open, UDrive cannot share your location. '
+              'The car stops moving on your customer\'s map until you come '
+              'back to UDrive.',
+              style: AppType.body2.copyWith(color: AppText.secondary),
+            ),
+            const SizedBox(height: 18),
+            UdButton(
+              label: 'Stay in UDrive',
+              onPressed: () => Navigator.pop(sheetContext, false),
+            ),
+            const SizedBox(height: 10),
+            UdButton.ghost(
+              label: 'Open Google Maps anyway',
+              onPressed: () => Navigator.pop(sheetContext, true),
+            ),
+          ],
+        ),
+      );
+      if (go != true || !mounted) return;
+      _warnedAboutExternalNav = true;
+    }
 
     final lat = target.latitude;
     final lng = target.longitude;
@@ -746,12 +898,8 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
     final at = _car.value ?? _currentPoint;
     if (at == null) return;
     final speed = _position?.speed ?? 0;
-    _map.follow(
-      at,
-      zoom: _zoomForSpeed(speed.isFinite ? speed : 0),
-      bearing: _cameraBearing,
-      tilt: 45,
-    );
+    _lastCameraAt = null;
+    _followCamera(at, _zoomForSpeed(speed.isFinite ? speed : 0));
   }
 
   LatLng? get _currentPoint {
@@ -832,6 +980,8 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
     _map.dispose();
     unawaited(UrduVoice.instance.stop());
     _locationService.stop();
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(ScreenAwake.release());
     // Hands tracking back to the shell-wide coordinator, which picks it up on
     // its next tick — leaving the ride tracked after the driver closes this
     // screen, which is the whole reason the coordinator exists.
@@ -878,7 +1028,12 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
     final pickup = _pickupPoint;
     final destination = _destinationPoint;
     final target = _targetPoint;
-    final center = current ?? target ?? const LatLng(33.6844, 73.0479);
+    final anchor = current ?? _lastKnown ?? target;
+    // The map opens once it has somewhere real to open (see initState's
+    // timer). Opening it on a default city first meant a weak signal spent
+    // itself loading tiles nobody would look at, then had to start again.
+    if (anchor != null) _mapCanOpen = true;
+    final center = anchor ?? _defaultCentre;
     // The road still ahead when it is known, a straight line until then. An
     // approximate line for the first second or two is better than an empty
     // map.
@@ -905,12 +1060,13 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
             child: AnimatedBuilder(
               animation: _car,
               builder: (context, _) {
+                if (!_mapCanOpen) return const _MapOpening();
                 final car = _car.value ?? current;
                 return UdMap(
                   controller: _map,
                   initialCenter: center,
                   // Close enough to recognise the street the car is on.
-                  zoom: 17,
+                  zoom: 17.5,
                   keepGoogleOffline: true,
                   showMyLocation: false,
                   // The car sits about two thirds of the way down, with the
@@ -972,6 +1128,12 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
                 child: const Icon(Icons.my_location_rounded,
                     size: 22, color: AppColors.navy),
               ),
+            ),
+          if (_failedRefreshes >= 3)
+            const Positioned(
+              left: 14,
+              bottom: 112,
+              child: _WeakSignalNote(),
             ),
 
           // The next turn, in Urdu, under the top bar.
@@ -1291,7 +1453,31 @@ class CustomerFullScreenTrackingScreen extends StatefulWidget {
 
 class _CustomerFullScreenTrackingScreenState
     extends State<CustomerFullScreenTrackingScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  /// The last answer for each trip, kept for this app session. Reopening the
+  /// screen draws the map and the status at once instead of a blank screen
+  /// while a weak signal fetches them again.
+  static final Map<String, TripTracking> _lastSeen = <String, TripTracking>{};
+
+  /// True while a poll is out. Polls used to start every five seconds whether
+  /// or not the last had answered; on a weak signal four or five waited at
+  /// once, took the bandwidth the map's tiles needed, and the status on screen
+  /// stayed whatever the last success said — "Ride in progress".
+  bool _loading = false;
+
+  /// Polls in a row that failed. Three or more shows the weak-signal note, so
+  /// an old status is never presented as current without a word.
+  int _failedPolls = 0;
+
+  /// The phone's last known position (no network), for opening the map.
+  LatLng? _lastKnown;
+
+  /// False until the map has somewhere real to open.
+  bool _mapCanOpen = false;
+
+  /// True while the chat is open over this screen.
+  bool _chatOpen = false;
+
   final UdMapController _map = UdMapController();
   Timer? _timer;
   TripTracking? _tracking;
@@ -1390,6 +1576,12 @@ class _CustomerFullScreenTrackingScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _tracking = _lastSeen[widget.trip.bookingId];
+    unawaited(_readLastKnown());
+    Timer(const Duration(milliseconds: 1500), () {
+      if (mounted && !_mapCanOpen) setState(() => _mapCanOpen = true);
+    });
     _car.addListener(_followCar);
     _load();
     // The same rate the driver publishes at during a ride. Polling slower
@@ -1407,13 +1599,70 @@ class _CustomerFullScreenTrackingScreenState
         Timer.periodic(const Duration(seconds: 10), (_) => _pollMessages());
   }
 
-  Future<void> _load() async {
+  Future<void> _readLastKnown() async {
     try {
-      final tracking = await widget.repository.tracking(widget.trip.bookingId);
+      final last = await Geolocator.getLastKnownPosition();
+      if (!mounted || last == null) return;
+      setState(() => _lastKnown = LatLng(last.latitude, last.longitude));
+    } catch (_) {
+      // None stored or no permission: the map opens on the trip instead.
+    }
+  }
+
+  /// Polling stops while the app is in the background and catches up the
+  /// moment it is back — a ride that ended meanwhile goes straight to the
+  /// rating instead of showing "Ride in progress" for another tick.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted || _ratingShown || _returningToSearch) return;
+    if (state == AppLifecycleState.resumed) {
+      _startPolling(chat: _chatOpen);
+      unawaited(_load());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _timer?.cancel();
+      _messagePoll?.cancel();
+    }
+  }
+
+  /// The status poll, and the message poll unless the chat is open (the chat
+  /// reads its own messages). While the chat is open the status is still
+  /// checked every ten seconds, so a ride that ends then is not missed.
+  void _startPolling({required bool chat}) {
+    _timer?.cancel();
+    _messagePoll?.cancel();
+    _timer = Timer.periodic(
+      Duration(seconds: chat ? 10 : _trackingSeconds),
+      (_) => _load(),
+    );
+    if (!chat) {
+      _messagePoll =
+          Timer.periodic(const Duration(seconds: 10), (_) => _pollMessages());
+    }
+  }
+
+  /// Closes whatever is open above this screen (the chat), so the screen
+  /// that replaces this one does not land under it.
+  void _surface() {
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      Navigator.of(context).popUntil((r) => r == route);
+    }
+  }
+
+  Future<void> _load() async {
+    if (_loading) return;
+    _loading = true;
+    try {
+      final tracking = await widget.repository
+          .tracking(widget.trip.bookingId, path: false)
+          .timeout(const Duration(seconds: 10));
       if (!mounted) return;
+      _lastSeen[widget.trip.bookingId] = tracking;
       setState(() {
         _tracking = tracking;
         _error = null;
+        _failedPolls = 0;
       });
 
       // The trip is over: the map has nothing left to say, so hand the screen
@@ -1423,6 +1672,8 @@ class _CustomerFullScreenTrackingScreenState
         _ratingShown = true;
         _timer?.cancel();
         _messagePoll?.cancel();
+        _lastSeen.remove(widget.trip.bookingId);
+        _surface();
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => TripRatingScreen(
@@ -1454,6 +1705,8 @@ class _CustomerFullScreenTrackingScreenState
         _returningToSearch = true;
         _timer?.cancel();
         _messagePoll?.cancel();
+        _lastSeen.remove(widget.trip.bookingId);
+        _surface();
         await _returnToDriverSearch();
         return;
       }
@@ -1487,8 +1740,11 @@ class _CustomerFullScreenTrackingScreenState
       final leg = tracking.tripStatus == 'TripStarted' ? 'destination' : 'pickup';
       final sinceCheck = DateTime.now().difference(_routeCheckedAt);
       final missing = _route == null || _route!.leg != leg;
+      // Fifteen seconds, not thirty: a driver who takes another road should
+      // see it on the customer's map soon. The check sends the id of the road
+      // already held, so an unchanged answer is a few bytes.
       if ((missing && sinceCheck > const Duration(seconds: 8)) ||
-          sinceCheck > const Duration(seconds: 30)) {
+          sinceCheck > const Duration(seconds: 15)) {
         unawaited(_refreshRoute());
       }
 
@@ -1520,7 +1776,14 @@ class _CustomerFullScreenTrackingScreenState
       _lastFixAt = location.deviceTimestamp;
       _placeCar(LatLng(location.latitude, location.longitude), location);
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() {
+          _error = error.toString();
+          _failedPolls++;
+        });
+      }
+    } finally {
+      _loading = false;
     }
   }
 
@@ -1557,9 +1820,12 @@ class _CustomerFullScreenTrackingScreenState
     _routeCheckedAt = DateTime.now();
     try {
       final controller = AppControllerScope.of(context);
-      final result =
-          await LiveRouteRepository(controller.apiClient).current(widget.trip.bookingId);
-      if (!mounted) return;
+      final held = _route;
+      final result = await LiveRouteRepository(controller.apiClient).current(
+        widget.trip.bookingId,
+        known: held != null && held.leg == _legFor(_tracking) ? held.id : null,
+      );
+      if (!mounted || result.unchanged) return;
       final route = result.route;
       if (route == null) {
         // The leg changed and the driver's phone has not fetched the new road
@@ -1604,6 +1870,9 @@ class _CustomerFullScreenTrackingScreenState
     _followDriver(car, _targetFor(_tracking));
   }
 
+  String _legFor(TripTracking? tracking) =>
+      tracking?.tripStatus == 'TripStarted' ? 'destination' : 'pickup';
+
   LatLng? _targetFor(TripTracking? tracking) {
     if (tracking == null) return null;
     final headingToPickup = tracking.tripStatus != 'TripStarted';
@@ -1614,6 +1883,7 @@ class _CustomerFullScreenTrackingScreenState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _messagePoll?.cancel();
     _timer?.cancel();
     _car.removeListener(_followCar);
@@ -1773,14 +2043,17 @@ class _CustomerFullScreenTrackingScreenState
         ? 0.0
         : const Distance().as(LengthUnit.Meter, driver, target);
 
+    // Closer than before. Aboard, the customer wants the street they are on;
+    // waiting, the last kilometre is street level too, and only a car still
+    // far off zooms out enough to show the road between.
     final zoom = aboard
-        ? 17.0
+        ? 18.0
         : switch (metres) {
-            < 400 => 17.0,
-            < 1200 => 16.0,
-            < 3000 => 15.0,
-            < 8000 => 13.5,
-            _ => 12.0,
+            < 400 => 18.0,
+            < 1200 => 17.0,
+            < 3000 => 16.0,
+            < 8000 => 14.5,
+            _ => 13.0,
           };
 
     _map.follow(driver, zoom: zoom);
@@ -1882,9 +2155,14 @@ class _CustomerFullScreenTrackingScreenState
   /// Same reasoning as the driver's side, and it matters more here: this
   /// screen polls tracking every two seconds, which is thirty requests a
   /// minute that buy nothing at all while a chat window covers the map.
+  ///
+  /// The status is still checked every ten seconds while the chat is open:
+  /// it used to stop altogether, so a ride completed during a conversation
+  /// went unnoticed until the customer closed the chat. Now the chat closes
+  /// and the rating opens.
   Future<void> _openChat() async {
-    _timer?.cancel();
-    _messagePoll?.cancel();
+    _chatOpen = true;
+    _startPolling(chat: true);
 
     await Navigator.push(
       context,
@@ -1897,16 +2175,12 @@ class _CustomerFullScreenTrackingScreenState
         ),
       ),
     );
-    if (!mounted) return;
+    _chatOpen = false;
+    if (!mounted || _ratingShown || _returningToSearch) return;
 
     await _load();
-    if (!mounted) return;
-    _timer = Timer.periodic(
-      Duration(seconds: _trackingSeconds),
-      (_) => _load(),
-    );
-    _messagePoll =
-        Timer.periodic(const Duration(seconds: 10), (_) => _pollMessages());
+    if (!mounted || _ratingShown || _returningToSearch) return;
+    _startPolling(chat: false);
   }
 
   Future<void> _callDriver() async {
@@ -2102,7 +2376,9 @@ class _CustomerFullScreenTrackingScreenState
         t?.tripStatus == 'DriverAccepted' ||
         t?.tripStatus == 'Emergency';
     final target = headingToPickup ? pickup : destination;
-    final center = driver ?? target ?? const LatLng(33.6844, 73.0479);
+    final anchor = driver ?? target ?? _lastKnown;
+    if (anchor != null) _mapCanOpen = true;
+    final center = anchor ?? _defaultCentre;
     final distanceKm = driver != null && target != null
         ? Distance().as(LengthUnit.Kilometer, driver, target)
         : null;
@@ -2135,13 +2411,14 @@ class _CustomerFullScreenTrackingScreenState
             child: AnimatedBuilder(
               animation: _car,
               builder: (context, _) {
+                if (!_mapCanOpen) return const _MapOpening();
                 final car = _car.value ?? driver;
                 return UdMap(
                   controller: _map,
                   initialCenter: center,
                   // Close, for the same reason as the driver's map: the first
                   // frame should show a street, not a district.
-                  zoom: 16,
+                  zoom: 17,
                   keepGoogleOffline: true,
                   showMyLocation: false,
                   polylines: [
@@ -2247,6 +2524,12 @@ class _CustomerFullScreenTrackingScreenState
             ),
           // Back to following the car, for the same reason as on the driver's
           // map: one accidental swipe should not end live tracking.
+          if (_failedPolls >= 3)
+            const Positioned(
+              left: 14,
+              bottom: 112,
+              child: _WeakSignalNote(),
+            ),
           if (_cameraHeld)
             Positioned(
               right: 14,
@@ -3331,6 +3614,62 @@ class _ArrivedBanner extends StatelessWidget {
           Text(
             'Your driver is here',
             style: AppType.h3.copyWith(color: AppText.onBrand),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Where a map opens when nothing better is known: Muzaffarabad, not a city
+/// outside the area UDrive serves.
+const LatLng _defaultCentre = LatLng(34.3700, 73.4711);
+
+/// Shown for the second or so before the map has a real place to open.
+class _MapOpening extends StatelessWidget {
+  const _MapOpening();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      color: AppTint.mapBackdrop,
+      child: Center(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(strokeWidth: 3),
+        ),
+      ),
+    );
+  }
+}
+
+/// Said when the last few updates did not arrive, so a status or a car
+/// position that is no longer current is never shown without a word.
+class _WeakSignalNote extends StatelessWidget {
+  const _WeakSignalNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTint.warning,
+        borderRadius: AppRadii.all(AppRadii.field),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.signal_cellular_connected_no_internet_4_bar_rounded,
+              size: 14, color: AppTint.warningText),
+          SizedBox(width: 6),
+          Text(
+            'Weak internet — updating…',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: AppTint.warningText,
+            ),
           ),
         ],
       ),

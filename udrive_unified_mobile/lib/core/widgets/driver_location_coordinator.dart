@@ -72,7 +72,10 @@ class _DriverLocationCoordinatorState extends State<DriverLocationCoordinator>
     super.didChangeDependencies();
     _controller = AppControllerScope.of(context);
     _repository ??= TripOperationsRepository(_controller!.apiClient);
-    _locationService ??= TripLocationService(_repository!);
+    // Yields at once when the live-ride screen takes over, rather than on the
+    // next sync tick — see TripLocationService.yieldToLiveScreen.
+    _locationService ??=
+        TripLocationService(_repository!, yieldToLiveScreen: true);
 
     // Once, not on every rebuild.
     //

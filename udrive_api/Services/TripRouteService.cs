@@ -49,13 +49,19 @@ public sealed class TripRouteService(
     private const string MaxReroutesSetting = "routing.max_reroutes_per_leg";
 
     private const int DefaultDailyCap = 300;
-    private const int DefaultMaxReroutes = 6;
+    /// <summary>
+    /// Ten, not six. A driver who chooses another road through the hills can
+    /// leave the line several times on one intercity leg, and with six the
+    /// highlighted road stopped following them halfway. Every reroute is still
+    /// one Essentials call, and only after the guards below.
+    /// </summary>
+    private const int DefaultMaxReroutes = 10;
 
     /// <summary>A reroute closer than this to the stored road is not a reroute.</summary>
     private const double OnRouteMeters = 40;
 
     /// <summary>Minimum gap between two roads for the same leg.</summary>
-    private static readonly TimeSpan RerouteCooldown = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RerouteCooldown = TimeSpan.FromSeconds(20);
 
     /// <summary>
     /// A stored road whose end is further than this from the leg's target was
@@ -95,7 +101,8 @@ public sealed class TripRouteService(
         Guid userId,
         bool privileged,
         Guid bookingId,
-        CancellationToken ct)
+        CancellationToken ct,
+        Guid? known = null)
     {
         await using var cn = new NpgsqlConnection(connectionString);
         await cn.OpenAsync(ct);
@@ -113,6 +120,19 @@ public sealed class TripRouteService(
         var stored = await LatestAsync(cn, null, bookingId, context, ct);
         var maxReroutes = await ReadIntSettingAsync(cn, null, MaxReroutesSetting, DefaultMaxReroutes, ct);
         var used = stored is null ? 0 : await RerouteCountAsync(cn, null, bookingId, context.Leg, ct);
+
+        // The phone already has this road: say so without sending it again.
+        // The customer's screen asks every fifteen seconds so a reroute shows
+        // quickly, and an intercity road is tens of kilobytes each time.
+        if (stored is not null && known is Guid have && have == stored.Id)
+        {
+            return ServiceResult<TripRouteDto>.Ok(
+                ToDto(context, stored, "unchanged", used, maxReroutes) with
+                {
+                    Polyline = string.Empty,
+                    Steps = []
+                });
+        }
 
         return ServiceResult<TripRouteDto>.Ok(
             ToDto(context, stored, stored is null ? "no_route_yet" : null, used, maxReroutes));
@@ -225,6 +245,7 @@ public sealed class TripRouteService(
             request.Longitude,
             context.TargetLatitude.Value,
             context.TargetLongitude.Value,
+            request.Heading,
             ct);
 
         if (computed is null)
@@ -250,11 +271,25 @@ public sealed class TripRouteService(
         double originLongitude,
         double targetLatitude,
         double targetLongitude,
+        double? heading,
         CancellationToken ct)
     {
+        // The way the car is pointing. Without it Google plans from a standing
+        // start and, when the driver has just turned off onto another road,
+        // usually sends them back with a U-turn to the old one — so the
+        // highlighted road "did not change". With it the road starts the way
+        // the car is already going.
+        object originLocation = heading is double h && double.IsFinite(h) && h >= 0
+            ? new
+            {
+                latLng = new { latitude = originLatitude, longitude = originLongitude },
+                heading = (int)Math.Round(h) % 360
+            }
+            : new { latLng = new { latitude = originLatitude, longitude = originLongitude } };
+
         var payload = new
         {
-            origin = new { location = new { latLng = new { latitude = originLatitude, longitude = originLongitude } } },
+            origin = new { location = originLocation },
             destination = new { location = new { latLng = new { latitude = targetLatitude, longitude = targetLongitude } } },
             travelMode = "DRIVE",
             // Essentials. TRAFFIC_AWARE is what moves a call to Pro.

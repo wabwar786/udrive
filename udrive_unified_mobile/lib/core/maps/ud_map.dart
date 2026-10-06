@@ -503,7 +503,9 @@ class _UdMapState extends State<UdMap> {
   }
 
   Set<gmap.Polyline> _buildGooglePolylines() {
-    if (identical(_polylineSource, widget.polylines)) return _googlePolylines;
+    if (_samePolylines(_polylineSource, widget.polylines)) {
+      return _googlePolylines;
+    }
     _polylineSource = widget.polylines;
     _googlePolylines = widget.polylines
         .map(
@@ -516,13 +518,97 @@ class _UdMapState extends State<UdMap> {
             jointType: gmap.JointType.round,
             consumeTapEvents: line.onTap != null,
             onTap: line.onTap,
-            points: line.points
+            points: _thin(line.points)
                 .map((point) => gmap.LatLng(point.latitude, point.longitude))
                 .toList(growable: false),
           ),
         )
         .toSet();
     return _googlePolylines;
+  }
+
+  /// Whether two polyline lists draw the same thing.
+  ///
+  /// The live screens hand over a new list literal on every frame of the car's
+  /// glide, so the old `identical` check on the list never matched and an
+  /// intercity road of thousands of points was converted — and diffed by the
+  /// map plugin — ten to twenty times a second. Comparing each line's own
+  /// point list by identity matches whenever the road itself has not changed.
+  static bool _samePolylines(List<UdPolyline>? a, List<UdPolyline> b) {
+    if (a == null) return false;
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final x = a[i];
+      final y = b[i];
+      if (x.id != y.id ||
+          !identical(x.points, y.points) ||
+          x.color != y.color ||
+          x.width != y.width ||
+          !identical(x.onTap, y.onTap)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// A long road with points closer together than the eye can tell apart
+  /// removed (Douglas–Peucker, two metres). A mountain road from Google's
+  /// high-quality line can carry thousands of points; the map draws the same
+  /// shape from a few hundred, with far less work on a cheap phone.
+  static List<LatLng> _thin(List<LatLng> points) {
+    if (points.length <= 400) return points;
+    const toleranceMetres = 2.0;
+    final keep = List<bool>.filled(points.length, false);
+    keep[0] = true;
+    keep[points.length - 1] = true;
+
+    final cos = math.cos(points.first.latitude * math.pi / 180);
+    const metresPerDegree = 111320.0;
+    double x(LatLng p) => p.longitude * metresPerDegree * cos;
+    double y(LatLng p) => p.latitude * metresPerDegree;
+
+    final stack = <List<int>>[
+      [0, points.length - 1]
+    ];
+    while (stack.isNotEmpty) {
+      final range = stack.removeLast();
+      final first = range[0];
+      final last = range[1];
+      if (last - first < 2) continue;
+      final ax = x(points[first]), ay = y(points[first]);
+      final bx = x(points[last]), by = y(points[last]);
+      final dx = bx - ax, dy = by - ay;
+      final lengthSquared = dx * dx + dy * dy;
+      var worst = -1.0;
+      var worstIndex = -1;
+      for (var i = first + 1; i < last; i++) {
+        final px = x(points[i]) - ax, py = y(points[i]) - ay;
+        double distance;
+        if (lengthSquared == 0) {
+          distance = math.sqrt(px * px + py * py);
+        } else {
+          final t = ((px * dx + py * dy) / lengthSquared).clamp(0.0, 1.0);
+          final ex = px - t * dx, ey = py - t * dy;
+          distance = math.sqrt(ex * ex + ey * ey);
+        }
+        if (distance > worst) {
+          worst = distance;
+          worstIndex = i;
+        }
+      }
+      if (worst > toleranceMetres && worstIndex > 0) {
+        keep[worstIndex] = true;
+        stack
+          ..add([first, worstIndex])
+          ..add([worstIndex, last]);
+      }
+    }
+
+    return [
+      for (var i = 0; i < points.length; i++)
+        if (keep[i]) points[i]
+    ];
   }
 
   /// Frames a set of points by computing the camera directly.

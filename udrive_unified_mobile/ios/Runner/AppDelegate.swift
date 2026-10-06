@@ -15,6 +15,21 @@ import GoogleMaps
       GMSServices.provideAPIKey(key)
     }
     GeneratedPluginRegistrant.register(with: self)
+
+    // Keeps the screen on while a live ride is open (lib/core/services/screen_awake.dart).
+    // A locked phone suspends the app, and with it the driver's live location.
+    if let controller = window?.rootViewController as? FlutterViewController {
+      FlutterMethodChannel(name: "udrive/screen", binaryMessenger: controller.binaryMessenger)
+        .setMethodCallHandler { call, result in
+          if call.method == "keepOn" {
+            let args = call.arguments as? [String: Any]
+            UIApplication.shared.isIdleTimerDisabled = (args?["on"] as? Bool) ?? false
+            result(nil)
+          } else {
+            result(FlutterMethodNotImplemented)
+          }
+        }
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

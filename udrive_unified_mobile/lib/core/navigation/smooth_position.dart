@@ -30,7 +30,11 @@ class SmoothPosition extends ChangeNotifier {
   Duration _duration = const Duration(seconds: 1);
   Duration _lastNotified = Duration.zero;
 
-  static const Duration _frameGap = Duration(milliseconds: 50);
+  /// Ten redraws a second. Each one rebuilds the map's markers, which the
+  /// Google plugin sends across to the native map; at twenty a second a cheap
+  /// phone fell behind and the map visibly stalled. The glide still looks
+  /// continuous at ten.
+  static const Duration _frameGap = Duration(milliseconds: 100);
 
   /// A jump further than this is a teleport (a GPS fix after a tunnel, the
   /// first fix after a cold start) and is drawn as one rather than as a car

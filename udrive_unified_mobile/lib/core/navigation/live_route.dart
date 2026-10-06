@@ -81,6 +81,10 @@ class LiveRouteResult {
   /// True when Google will not be asked again today, so the screen should stop
   /// asking and say so once.
   bool get capped => reason == 'daily_cap' || reason == 'no_key';
+
+  /// The road the caller already holds is still the current one; nothing was
+  /// sent with it. Only returned to [LiveRouteRepository.current] with known.
+  bool get unchanged => reason == 'unchanged';
 }
 
 /// Reads and requests the live-ride road from the UDrive API.
@@ -94,20 +98,31 @@ class LiveRouteRepository {
 
   final ApiClient client;
 
-  Future<LiveRouteResult> current(String bookingId) async {
-    final response = await client.getJson('/api/v1/trips/$bookingId/route');
+  /// [known] is the id of the road already on screen. When it is still the
+  /// current one the server answers "unchanged" without resending the road,
+  /// so checking every few seconds for a reroute costs a few bytes.
+  Future<LiveRouteResult> current(String bookingId, {String? known}) async {
+    final query = known == null || known.isEmpty ? '' : '?known=$known';
+    final response =
+        await client.getJson('/api/v1/trips/$bookingId/route$query');
     return _parse(response);
   }
 
+  /// [heading] is the way the car is moving. A reroute then continues along
+  /// the road the driver has chosen instead of sending them back to the old
+  /// one with a U-turn.
   Future<LiveRouteResult> ensure(
     String bookingId,
     LatLng from, {
     bool reroute = false,
+    double? heading,
   }) async {
     final response = await client.postJson('/api/v1/trips/$bookingId/route', {
       'latitude': from.latitude,
       'longitude': from.longitude,
       'reroute': reroute,
+      if (heading != null && heading.isFinite && heading >= 0)
+        'heading': heading % 360,
     });
     return _parse(response);
   }
@@ -121,6 +136,9 @@ class LiveRouteRepository {
     final json = Map<String, dynamic>.from(data);
     final leg = '${json['leg'] ?? 'pickup'}';
     final reason = json['reason']?.toString();
+    if (reason == 'unchanged') {
+      return LiveRouteResult(leg: leg, reason: reason);
+    }
     final points = TripRoute.decodePolyline('${json['polyline'] ?? ''}');
 
     if (json['available'] != true || points.length < 2) {

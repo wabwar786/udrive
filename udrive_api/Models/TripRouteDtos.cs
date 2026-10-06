@@ -10,7 +10,12 @@ namespace UDrive.Api.Models;
 /// returns the stored road whenever one exists, so opening the screen twice
 /// never costs a second paid call.
 /// </param>
-public sealed record TripRouteRequest(double Latitude, double Longitude, bool Reroute);
+/// <param name="Heading">
+/// Compass direction the car is moving in (0–359), when it is moving. Lets a
+/// reroute continue along the road the driver has chosen instead of turning
+/// them back.
+/// </param>
+public sealed record TripRouteRequest(double Latitude, double Longitude, bool Reroute, double? Heading = null);
 
 /// <summary>One turn: what to do, where it starts and how long the stretch is.</summary>
 /// <param name="Maneuver">
@@ -30,7 +35,8 @@ public sealed record TripRouteStepDto(
 /// <param name="Available">False when there is no road to show yet.</param>
 /// <param name="Reason">
 /// Why there is no road, or why a reroute was not made: no_route_yet, no_key,
-/// daily_cap, reroute_limit, cooldown, on_route, upstream_error, no_target.
+/// daily_cap, reroute_limit, cooldown, on_route, upstream_error, no_target —
+/// or "unchanged" when the caller already holds this road (no polyline sent).
 /// Null when a new road was just computed or the stored one was returned as
 /// asked.
 /// </param>

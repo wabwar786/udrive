@@ -5,17 +5,29 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../models/auth_models.dart' show ApiException;
 import '../booking/trip_operations_repository.dart';
+import '../widgets/driver_tracking_suspension.dart';
 import 'service_availability_repository.dart';
 
 class TripLocationService {
-  TripLocationService(this.repository);
+  /// [yieldToLiveScreen] is set by the app-wide coordinator: its pings stop
+  /// the moment the live-ride screen takes over, instead of on the
+  /// coordinator's next twenty-second tick. Both used to publish together for
+  /// those seconds, two fixes under two seconds apart were refused, and the
+  /// refused ones were queued and sent again and again.
+  TripLocationService(this.repository, {this.yieldToLiveScreen = false});
   final TripOperationsRepository repository;
+  final bool yieldToLiveScreen;
   final Battery _battery = Battery();
   Timer? _timer;
   String? _bookingId;
   String? _status;
-  static const _queueKey = 'phase12_location_queue_v1';
+
+  /// v2: the v1 queue held points the server would never take (finished
+  /// trips, out-of-order fixes) and is abandoned rather than replayed.
+  static const _queueKey = 'phase12_location_queue_v2';
+  static const _oldQueueKey = 'phase12_location_queue_v1';
 
   /// How often the live-ride screen publishes, whatever the admin setting.
   ///
@@ -31,6 +43,23 @@ class TripLocationService {
   /// alive. The server applies the same rule and would discard it anyway.
   static const Duration _stationaryGap = Duration(seconds: 30);
 
+  /// Points kept while there is no signal: the last few minutes of the
+  /// current trip only, so the trip's history has no gap. Older points and
+  /// other trips' points are dropped — the live position is what matters.
+  static const int _queueLimit = 30;
+  static const Duration _queueMaxAge = Duration(minutes: 10);
+
+  /// Queued points sent per attempt. The old queue was replayed in full —
+  /// up to 150 requests — behind every new fix, which used up the per-minute
+  /// allowance and got the new fixes refused too.
+  static const int _flushBatch = 5;
+
+  static const Set<String> _endedStatuses = {
+    'TripCompleted',
+    'Cancelled',
+    'NoShow',
+  };
+
   /// Interval chosen by the caller, kept across status changes.
   int? _overrideSeconds;
 
@@ -41,6 +70,8 @@ class TripLocationService {
   double? _lastSentLat;
   double? _lastSentLng;
   DateTime? _lastSentAt;
+
+  bool _flushing = false;
 
   Future<bool> ensurePermission() async {
     if (!await Geolocator.isLocationServiceEnabled()) return false;
@@ -54,24 +85,50 @@ class TripLocationService {
   /// The interval comes from the server, so an admin can turn it without a
   /// release — unless [intervalSeconds] is given, which the live-ride screen
   /// does with [activeTripPingSeconds]. It stops the moment the trip ends.
+  ///
+  /// The first fix goes out before anything queued: the queue used to be
+  /// replayed first, request by request, and on a weak signal the live
+  /// position did not start for minutes.
   Future<void> start(
     String bookingId,
     String status, {
     int? intervalSeconds,
   }) async {
+    if (_endedStatuses.contains(status)) {
+      stop();
+      await clearQueue();
+      return;
+    }
     _bookingId = bookingId;
     _status = status;
     if (intervalSeconds != null) _overrideSeconds = intervalSeconds;
     _timer?.cancel();
-    await flushQueue();
-    final seconds = _overrideSeconds ??
-        await ServiceAvailabilityRepository(repository.client)
+    int? seconds = _overrideSeconds;
+    if (seconds == null) {
+      try {
+        seconds = await ServiceAvailabilityRepository(repository.client)
             .trackingPingSeconds();
-    _timer = Timer.periodic(Duration(seconds: seconds), (_) => capture());
+      } catch (_) {
+        seconds = null;
+      }
+    }
+    final interval = seconds ?? 10;
+    // stop() may have run while the interval was being fetched.
+    if (_bookingId != bookingId) return;
+    _timer = Timer.periodic(Duration(seconds: interval), (_) => capture());
     await capture(force: true);
+    unawaited(flushQueue());
   }
 
+  /// A finished or cancelled trip stops publishing and forgets its queue —
+  /// the server refuses those points (409), and a refused point used to stay
+  /// queued and be sent again behind every fix of every later ride.
   void updateStatus(String status) {
+    if (_endedStatuses.contains(status)) {
+      stop();
+      unawaited(clearQueue());
+      return;
+    }
     if (_bookingId != null && _status != status) start(_bookingId!, status);
   }
 
@@ -101,6 +158,7 @@ class TripLocationService {
   Future<void> capture({bool force = false}) async {
     final booking = _bookingId;
     if (booking == null) return;
+    if (yieldToLiveScreen && DriverTrackingSuspension.isSuspended) return;
     try {
       Position position;
       final latest = _latest;
@@ -122,14 +180,21 @@ class TripLocationService {
 
       if (!force && _isStationary(position)) return;
 
-      final battery = await _battery.batteryLevel;
+      int? battery;
+      try {
+        battery = await _battery.batteryLevel;
+      } catch (_) {
+        battery = null;
+      }
       final point = <String, dynamic>{
         'clientEventId': _eventId(),
         'tripId': booking,
         'latitude': position.latitude,
         'longitude': position.longitude,
         'accuracy': position.accuracy,
-        'heading': position.heading.isFinite ? position.heading : null,
+        'heading': position.heading.isFinite && position.heading >= 0
+            ? position.heading
+            : null,
         'speedKph':
             position.speed.isFinite ? max(0, position.speed * 3.6) : null,
         'deviceTimestamp': DateTime.now().toUtc().toIso8601String(),
@@ -155,6 +220,18 @@ class TripLocationService {
     return moved < _stationaryMeters;
   }
 
+  /// True when the point should be kept for later: no answer at all (no
+  /// signal, timeout) or the server failing. Any answer in the 4xx range —
+  /// the trip is over, the point is malformed, the allowance is used up — is
+  /// final; keeping it only meant sending it again forever.
+  static bool _worthRetrying(Object error) {
+    if (error is ApiException) {
+      final code = error.statusCode ?? 0;
+      return code == 0 || code >= 500;
+    }
+    return true;
+  }
+
   Future<void> _sendOrQueue(Map<String, dynamic> point) async {
     final connectivity = await Connectivity().checkConnectivity();
     if (connectivity.every((x) => x == ConnectivityResult.none)) {
@@ -163,36 +240,83 @@ class TripLocationService {
     }
     try {
       await repository.sendLocation(point);
-      await flushQueue();
-    } catch (_) {
-      await _enqueue(point);
+      unawaited(flushQueue());
+    } catch (error) {
+      if (_worthRetrying(error)) await _enqueue(point);
     }
   }
 
   Future<void> _enqueue(Map<String, dynamic> point) async {
     final prefs = await SharedPreferences.getInstance();
-    final current = (prefs.getStringList(_queueKey) ?? <String>[]);
+    final current = _fresh(prefs.getStringList(_queueKey) ?? <String>[]);
     current.add(jsonEncode(point));
-    while (current.length > 150) {
+    while (current.length > _queueLimit) {
       current.removeAt(0);
     }
     await prefs.setStringList(_queueKey, current);
   }
 
-  Future<void> flushQueue() async {
-    final prefs = await SharedPreferences.getInstance();
-    final queue = List<String>.from(prefs.getStringList(_queueKey) ?? const []);
-    if (queue.isEmpty) return;
-    final remaining = <String>[];
-    for (final raw in queue) {
+  /// Queued points still worth sending: this trip's, from the last few
+  /// minutes. With no trip running, nothing is.
+  List<String> _fresh(List<String> raw) {
+    final booking = _bookingId;
+    if (booking == null) return <String>[];
+    final cutoff = DateTime.now().toUtc().subtract(_queueMaxAge);
+    final kept = <String>[];
+    for (final item in raw) {
       try {
-        final point = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-        await repository.sendLocation(point);
+        final point = Map<String, dynamic>.from(jsonDecode(item) as Map);
+        final at = DateTime.tryParse('${point['deviceTimestamp']}');
+        if (point['tripId'] == booking && at != null && at.isAfter(cutoff)) {
+          kept.add(item);
+        }
       } catch (_) {
-        remaining.add(raw);
+        // Unreadable: dropped.
       }
     }
-    await prefs.setStringList(_queueKey, remaining);
+    return kept;
+  }
+
+  /// Sends a few queued points, oldest first, and stops at the first one that
+  /// gets no answer — the signal is gone again, and the rest can wait.
+  Future<void> flushQueue() async {
+    if (_flushing) return;
+    _flushing = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_oldQueueKey)) await prefs.remove(_oldQueueKey);
+      final queue = _fresh(prefs.getStringList(_queueKey) ?? const []);
+      if (queue.isEmpty) {
+        await prefs.remove(_queueKey);
+        return;
+      }
+      var sent = 0;
+      while (queue.isNotEmpty && sent < _flushBatch) {
+        final raw = queue.first;
+        try {
+          final point = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+          await repository.sendLocation(point);
+          queue.removeAt(0);
+          sent++;
+        } catch (error) {
+          if (_worthRetrying(error)) break;
+          queue.removeAt(0);
+        }
+      }
+      await prefs.setStringList(_queueKey, queue);
+    } catch (_) {
+      // Storage unavailable: nothing queued is lost that matters.
+    } finally {
+      _flushing = false;
+    }
+  }
+
+  Future<void> clearQueue() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_queueKey);
+      await prefs.remove(_oldQueueKey);
+    } catch (_) {}
   }
 
   String _eventId() {

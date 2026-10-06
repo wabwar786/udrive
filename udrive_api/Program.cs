@@ -282,19 +282,58 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
+// The rate-limit key for a caller: a hash of their bearer token when they
+// send one, otherwise their IP address. See the global limiter below.
+static string CallerKey(HttpContext context)
+{
+    var header = context.Request.Headers.Authorization.ToString();
+    if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) && header.Length > 27)
+    {
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(header[7..].Trim()));
+        return "t:" + Convert.ToHexString(hash, 0, 12);
+    }
+    return "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+}
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 300,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0,
-                AutoReplenishment = true
-            }));
+    // Signed-in callers are counted per session, not per IP address.
+    //
+    // Jazz, Zong and Telenor put thousands of phones behind one public address
+    // (carrier-grade NAT). Counted by IP, a few drivers and customers on the
+    // same network shared one allowance: three or four drivers used up the
+    // location limit together, every later ping was refused, and customers
+    // watched the car stop on the map. A customer's own polls were refused the
+    // same way, which is how a finished ride kept showing "in progress".
+    //
+    // The key is a hash of the bearer token, not a claim read from it: the
+    // token is not validated yet at this point, and only its holder can send
+    // that exact token, so nobody can spend another person's allowance. A
+    // made-up token buys a fresh bucket, so a per-IP ceiling sits on top
+    // (chained), high enough for a whole carrier NAT and low enough to stop
+    // one machine flooding the API.
+    options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
+        PartitionedRateLimiter.Create<HttpContext, string>(context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 3000,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                })),
+        PartitionedRateLimiter.Create<HttpContext, string>(context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                CallerKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 300,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                })));
     options.OnRejected = async (context, cancellationToken) =>
     {
         context.HttpContext.Response.ContentType = "application/problem+json";
@@ -340,7 +379,20 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true
             });
 
-    options.AddPolicy("location", context => PerCaller(context, 40));
+    // Per signed-in session (see CallerKey): one driver's pings, route asks and
+    // heartbeat, not every driver behind the same mobile network.
+    static RateLimitPartition<string> PerSession(HttpContext context, int permitLimit) =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            CallerKey(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = permitLimit,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+
+    options.AddPolicy("location", context => PerSession(context, 40));
     options.AddPolicy("public-tracking", context => PerCaller(context, 60));
     options.AddPolicy("otp", context => PerCaller(context, 8));
 
