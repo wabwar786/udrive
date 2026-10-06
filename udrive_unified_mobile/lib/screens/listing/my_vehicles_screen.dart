@@ -273,14 +273,8 @@ class _MyVehiclesScreenState extends State<MyVehiclesScreen> {
         UdEmptyState(
           icon: Icons.directions_car_rounded,
           tone: UdTone.lime,
-          title: 'Earn with your vehicle',
-          text: 'Rent it out or run tours. List it in 3 quick steps — UDrive '
-              'checks it once, then it goes live.',
-          action: UdButton.primary(
-            label: 'List your vehicle',
-            icon: Icons.add_rounded,
-            onPressed: () => _open(const ListingWizardScreen()),
-          ),
+          title: 'Koi listed gaari nahi',
+          text: 'Nayi gaari Driver mode → Vehicles se register karein.',
         ),
       );
       return out;
@@ -329,20 +323,9 @@ class _MyVehiclesScreenState extends State<MyVehiclesScreen> {
         onInvite: _invite,
         onRemove: _remove,
       ),
-      const SizedBox(height: 14),
-      _AddVehicleButton(onTap: () => _open(const ListingWizardScreen())),
-      if (home.owner.identityDone) ...[
-        const SizedBox(height: 8),
-        Text(
-          'Next vehicle: 2 steps — your CNIC is already on file.',
-          textAlign: TextAlign.center,
-          style: AppType.small.copyWith(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-            color: AppText.secondary,
-          ),
-        ),
-      ],
+      // No "add another vehicle" here any more: every new vehicle is
+      // registered from Driver mode → Vehicles, where it is asked what it is
+      // for. This screen keeps the vehicles listed the old way.
     ]);
     return out;
   }
@@ -1088,40 +1071,6 @@ class _DriversCard extends StatelessWidget {
                     color: AppText.secondary, size: 20),
               ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AddVehicleButton extends StatelessWidget {
-  const _AddVehicleButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.background,
-      borderRadius: AppRadii.all(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: AppRadii.all(18),
-        child: CustomPaint(
-          painter: _DashedBorderPainter(),
-          child: SizedBox(
-            height: 56,
-            child: Center(
-              child: Text(
-                '+ Add another vehicle',
-                style: AppType.button.copyWith(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.brandInk,
-                ),
-              ),
-            ),
-          ),
         ),
       ),
     );

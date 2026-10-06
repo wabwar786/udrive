@@ -31,6 +31,7 @@ import 'driver/live_driver_requests_screen.dart';
 import 'customer/tourism_booking_screen.dart';
 import 'driver/driver_home_screen.dart';
 import 'driver/driver_missions_screen.dart';
+import 'listing/my_vehicles_screen.dart';
 import 'driver/driver_earnings_screen.dart';
 import 'feedback/feedback_center_screen.dart';
 import 'driver/driver_pages.dart';
@@ -673,6 +674,14 @@ class _MainShellState extends State<MainShell> {
       );
       return;
     }
+    // The old listing hub ships its own Scaffold, so it is pushed.
+    if (page == 'listedVehicles') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const MyVehiclesScreen()),
+      );
+      return;
+    }
     // Lands on Vehicles, where the third way in to documents lives.
     if (page == 'driverDocuments' || page == 'documents') {
       _goToDriver('vehicles');
@@ -931,6 +940,11 @@ class _PremiumDrawer extends StatelessWidget {
         ('driverRewards', Icons.star_outline_rounded, 'Rewards & missions'),
         ('earnings', Icons.payments_outlined, 'Earnings & reviews'),
         ('vehicles', Icons.directions_car_outlined, 'Vehicles'),
+        // Owners who listed vehicles through the old customer-side "Earn with
+        // your vehicle" keep managing them here; new vehicles go through
+        // Vehicles.
+        if (AppControllerScope.of(context).driverProfile?.hasListedVehicles ?? false)
+          ('listedVehicles', Icons.car_rental_rounded, 'Listed vehicles'),
         ('driverDocuments', Icons.badge_outlined, 'My documents'),
         ('driverPackages', Icons.luggage_outlined, 'My routes & tours'),
         ('settings', Icons.settings_outlined, 'Settings'),

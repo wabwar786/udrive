@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/ud_kit.dart';
 import '../../../models/auth_models.dart';
+import 'vehicle_use_picker.dart';
 
 /// D-08 — register a vehicle against the live backend.
 ///
@@ -47,6 +48,9 @@ class _LiveVehicleRegistrationScreenState
   String? _error;
   LiveVehicle? _created;
   final Set<String> _uploaded = {};
+
+  /// What the vehicle is being registered for — asked first.
+  final _uses = VehicleUses();
 
   static const _requiredDocuments = <(String, String)>[
     ('REGISTRATION_BOOK', 'Registration certificate (front)'),
@@ -117,6 +121,7 @@ class _LiveVehicleRegistrationScreenState
     for (final c in [_make, _model, _year, _registration, _colour]) {
       c.dispose();
     }
+    _uses.dispose();
     super.dispose();
   }
 
@@ -181,6 +186,12 @@ class _LiveVehicleRegistrationScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              VehicleUsePicker(
+                uses: _uses,
+                enabled: !_busy,
+                onChanged: () => setState(() {}),
+              ),
+              const SizedBox(height: 22),
               Text(
                 'Vehicle details and safety equipment',
                 style: AppType.h2.copyWith(color: AppText.primary),
@@ -426,6 +437,11 @@ class _LiveVehicleRegistrationScreenState
       setState(() => _error = 'Enter a valid vehicle year.');
       return;
     }
+    final usesProblem = _uses.problem();
+    if (usesProblem != null) {
+      setState(() => _error = usesProblem);
+      return;
+    }
     await _run(() async {
       _created = await AppControllerScope.of(context).createLiveVehicle({
         'category': _category,
@@ -444,6 +460,7 @@ class _LiveVehicleRegistrationScreenState
         'hasSpareTyre': _spareTyre,
         'hasSnowChains': _snowChains,
         'hasChildSeat': _childSeat,
+        ..._uses.toJson(),
       });
     });
   }

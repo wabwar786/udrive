@@ -64,7 +64,10 @@ export default function Page() {
    * never sends the completion, and the platform was carrying rides it was not
    * paid for.
    */
-  const [commission, setCommission] = useState(10);
+  const [, setCommission] = useState(10);
+
+  /** Commission per kind of work, as text while it is being typed. */
+  const [rates, setRates] = useState({ city: '10', intercity: '10', tour: '10', rent: '10' });
 
   /**
    * The welcome credit, and where drivers send top-ups.
@@ -107,12 +110,20 @@ export default function Page() {
         requestRadiusKm: number;
         nearbyRadiusKm: number;
         commissionPercentage: number;
+        commissionRates?: { city: number; intercity: number; tour: number; rent: number };
         offerCard: Record<string, boolean>;
       }>('/api/v1/settings/operations');
       setPing(ops.pingSeconds);
       setRequestKm(ops.requestRadiusKm);
       setNearbyKm(ops.nearbyRadiusKm);
       setCommission(ops.commissionPercentage);
+      const r = ops.commissionRates;
+      setRates({
+        city: String(r?.city ?? ops.commissionPercentage),
+        intercity: String(r?.intercity ?? ops.commissionPercentage),
+        tour: String(r?.tour ?? ops.commissionPercentage),
+        rent: String(r?.rent ?? ops.commissionPercentage),
+      });
       if (ops.offerCard) setCard(ops.offerCard);
 
       const wallet = await apiFetch<{
@@ -199,16 +210,33 @@ export default function Page() {
     }
   }
 
-  async function saveCommission(percentage: number) {
-    setCommission(percentage);
+  async function saveCommission() {
     setError('');
     setSaved('');
+    const parsed = {
+      city: Number(rates.city),
+      intercity: Number(rates.intercity),
+      tour: Number(rates.tour),
+      rent: Number(rates.rent),
+    };
+    if (Object.values(parsed).some((v) => !Number.isFinite(v) || v < 0 || v > 40)) {
+      setError('Har commission 0 se 40% ke beech honi chahiye.');
+      return;
+    }
     try {
       await apiFetch('/api/v1/admin/settings/commission', {
         method: 'PUT',
-        body: JSON.stringify({ percentage }),
+        body: JSON.stringify({
+          percentage: parsed.city,
+          intercityPercentage: parsed.intercity,
+          tourPercentage: parsed.tour,
+          rentPercentage: parsed.rent,
+        }),
       });
-      setSaved(`Commission is now ${percentage}% of each fare.`);
+      setCommission(parsed.city);
+      setSaved(
+        `Commission saved — city ${parsed.city}%, city to city ${parsed.intercity}%, tours ${parsed.tour}%, rent ${parsed.rent}%.`,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save that.');
     }
@@ -351,31 +379,53 @@ export default function Page() {
           <div>
             <h2>Commission</h2>
             <p>
-              The platform&apos;s cut of each fare, taken from the
-              driver&apos;s prepaid balance the moment a trip starts — when the
-              passenger is in the vehicle and has read out the code. Not at the
-              end: a driver who loses signal after a drop-off never sends the
-              completion, and that ride would go uncharged.
+              Har kaam ka apna %. Sab driver ke prepaid wallet se katta hai. Pehle se kati hui commission
+              nahi badalti.
             </p>
           </div>
         </header>
-        <div className="pingRow">
-          {[0, 5, 8, 10, 12, 15, 20, 25].map((pct) => (
-            <button
-              key={pct}
-              type="button"
-              className={pct === commission ? 'pingOn' : 'pingOff'}
-              onClick={() => void saveCommission(pct)}
+        <div style={{ padding: '4px 20px 18px', display: 'grid', gap: 10, maxWidth: 760 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 2fr', gap: 12, fontSize: 12, fontWeight: 800, color: '#5D7068' }}>
+            <span>KAAM</span>
+            <span>COMMISSION %</span>
+            <span>KAB KATEGA (WALLET SE)</span>
+          </div>
+          {(
+            [
+              ['city', 'City rides', 'Ride shuru hone par'],
+              ['intercity', 'City to city', 'Ride shuru hone par'],
+              ['tour', 'Tours', 'Tour shuru hone par'],
+              ['rent', 'Rent a car', 'Driver ke accept karne par (customer cancel kare to wapas)'],
+            ] as const
+          ).map(([key, label, when]) => (
+            <div
+              key={key}
+              style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 2fr', gap: 12, alignItems: 'center', borderTop: '1px solid #EDF2F0', paddingTop: 10 }}
             >
-              {pct}%
-            </button>
+              <strong>{label}</strong>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="number"
+                  min={0}
+                  max={40}
+                  step={0.5}
+                  aria-label={`${label} commission percent`}
+                  value={rates[key]}
+                  onChange={(e) => setRates((current) => ({ ...current, [key]: e.target.value }))}
+                  style={{ width: 80, height: 38, borderRadius: 10, border: '1px solid #D3DFDA', textAlign: 'center', fontWeight: 700 }}
+                />
+                %
+              </label>
+              <span style={{ color: '#5D7068', fontSize: 13 }}>{when}</span>
+            </div>
           ))}
+          <div>
+            <button className="primaryButton" onClick={() => void saveCommission()}>
+              <Save size={15} />
+              Save commission
+            </button>
+          </div>
         </div>
-        <p className="pingNote">
-          Currently {commission}% of each fare. Drivers see every charge in
-          their wallet, with the ride it came from — changing this does not
-          alter what was already taken.
-        </p>
       </section>
 
       <section className="panel">

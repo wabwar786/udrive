@@ -61,6 +61,15 @@ public sealed record DriverOnboardingDto(
     public Guid? DistrictId { get; init; }
 
     public string? DistrictName { get; init; }
+
+    /// <summary>
+    /// Has vehicles listed through the old "Earn with your vehicle" path.
+    /// </summary>
+    /// <remarks>
+    /// That entry is gone from the customer side; the app shows these owners
+    /// their listings from the Driver mode menu instead.
+    /// </remarks>
+    public bool HasListedVehicles { get; init; }
 }
 
 public sealed record DriverDocumentDto(
@@ -87,7 +96,19 @@ public sealed record VehicleUpsertRequest(
     bool HasFireExtinguisher,
     bool HasSpareTyre,
     bool HasSnowChains,
-    bool HasChildSeat);
+    bool HasChildSeat,
+
+    // What the vehicle is registered FOR, asked in Driver mode at
+    // registration. All optional: an older app sends none of them and the
+    // vehicle is treated exactly as before.
+    bool? WantsCity = null,
+    bool? WantsIntercity = null,
+    bool? WantsTour = null,
+    bool? WantsRent = null,
+    [Range(0, 1000000)] decimal? RentWithDriverDaily = null,
+    [Range(0, 1000000)] decimal? RentSelfDriveDaily = null,
+    [StringLength(160)] string? RentPickupPoint = null,
+    [StringLength(16)] string? DrivenBy = null);
 
 public sealed record VehicleDto(
     Guid Id,
@@ -294,7 +315,11 @@ public sealed record VehicleUsageDto(
     /// otherwise show is a stock photograph of the model, which is a different
     /// car in a different colour.
     /// </remarks>
-    string? PhotoUrl = null)
+    string? PhotoUrl = null,
+
+    /// <summary>Takes city-to-city requests (pickup and drop in different districts).</summary>
+    /// <remarks>On for every vehicle that existed before; off while on rent.</remarks>
+    bool AvailableForIntercity = true)
 {
     /// <summary>Whether tour could be switched on right now.</summary>
     public bool CanCarryTour =>
@@ -315,7 +340,8 @@ public sealed record VehicleUsageDto(
 public sealed record VehicleUsageRequest(
     bool? AvailableForCity = null,
     bool? AvailableForTour = null,
-    bool? AvailableForRent = null);
+    bool? AvailableForRent = null,
+    bool? AvailableForIntercity = null);
 
 /// <summary>What renting this vehicle costs and requires.</summary>
 /// <param name="WithDriverDaily">

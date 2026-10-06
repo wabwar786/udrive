@@ -139,7 +139,8 @@ public sealed class VehicleUsageService(
                                (s.value_json #>> '{}')::int))
                              FROM udrive.system_settings s
                              WHERE s.key = 'tour.minimum_readiness'), @readiness),
-                   NULLIF(v.image_url, '')
+                   NULLIF(v.image_url, ''),
+                   COALESCE(v.available_for_intercity, true)
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             WHERE dp.user_id = @userId
@@ -193,7 +194,8 @@ public sealed class VehicleUsageService(
                 reader.IsDBNull(21) ? null : reader.GetInt32(21),
                 reader.GetBoolean(22),
                 reader.IsDBNull(23) ? null : reader.GetString(23),
-                reader.IsDBNull(25) ? null : reader.GetString(25)));
+                reader.IsDBNull(25) ? null : reader.GetString(25),
+                reader.GetBoolean(26)));
         }
 
         return ServiceResult<IReadOnlyList<VehicleUsageDto>>.Ok(list);
@@ -236,6 +238,7 @@ public sealed class VehicleUsageService(
         }
 
         var city = request.AvailableForCity ?? current.AvailableForCity;
+        var intercity = request.AvailableForIntercity ?? current.Dto.AvailableForIntercity;
         var tour = request.AvailableForTour ?? current.AvailableForTour;
         var rent = request.AvailableForRent ?? current.AvailableForRent;
 
@@ -244,8 +247,15 @@ public sealed class VehicleUsageService(
         // pick anyone up. Turning rent on therefore turns city off — the app
         // confirms this with the Driver before sending the request, so by the
         // time it arrives here it is what they asked for.
-        if (rent && request.AvailableForRent == true) city = false;
+        // City to city follows the same rule as city rides.
+        if (rent && request.AvailableForRent == true)
+        {
+            city = false;
+            intercity = false;
+        }
+
         if (city && request.AvailableForCity == true) rent = false;
+        if (intercity && request.AvailableForIntercity == true) rent = false;
 
         if (tour && !current.MeetsReadiness)
         {
@@ -287,6 +297,7 @@ public sealed class VehicleUsageService(
         const string sql = """
             UPDATE udrive.vehicles v
             SET available_for_city = @city,
+                available_for_intercity = @intercity,
                 available_for_tour = @tour,
                 available_for_rent = @rent,
                 updated_at = now()
@@ -301,6 +312,7 @@ public sealed class VehicleUsageService(
             command.Parameters.AddWithValue("vehicleId", vehicleId);
             command.Parameters.AddWithValue("userId", userId);
             command.Parameters.AddWithValue("city", city);
+            command.Parameters.AddWithValue("intercity", intercity);
             command.Parameters.AddWithValue("tour", tour);
             command.Parameters.AddWithValue("rent", rent);
             await command.ExecuteNonQueryAsync(cancellationToken);

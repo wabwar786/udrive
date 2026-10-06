@@ -50,6 +50,7 @@ class VehicleUsage {
     required this.rentFuelIncluded,
     required this.rentPickupPoint,
     required this.photoUrl,
+    this.availableForIntercity = true,
   });
 
   final String vehicleId;
@@ -58,6 +59,9 @@ class VehicleUsage {
   final String status;
 
   final bool availableForCity;
+
+  /// Takes city-to-city requests (pickup and drop in different districts).
+  final bool availableForIntercity;
   final bool availableForTour;
   final bool availableForRent;
 
@@ -100,6 +104,7 @@ class VehicleUsage {
         registrationNumber: '${json['registrationNumber'] ?? ''}',
         status: '${json['status'] ?? ''}',
         availableForCity: json['availableForCity'] == true,
+        availableForIntercity: json['availableForIntercity'] != false,
         availableForTour: json['availableForTour'] == true,
         availableForRent: json['availableForRent'] == true,
         tourReadinessScore: (json['tourReadinessScore'] as num?)?.toInt() ?? 0,
@@ -181,11 +186,13 @@ class VehicleUsageRepository {
   Future<VehicleUsage> setUsage(
     String vehicleId, {
     bool? city,
+    bool? intercity,
     bool? tour,
     bool? rent,
   }) =>
       _write('/api/v1/driver/vehicles/$vehicleId/usage', {
         if (city != null) 'availableForCity': city,
+        if (intercity != null) 'availableForIntercity': intercity,
         if (tour != null) 'availableForTour': tour,
         if (rent != null) 'availableForRent': rent,
       });

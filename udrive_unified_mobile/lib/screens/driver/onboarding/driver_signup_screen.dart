@@ -8,6 +8,7 @@ import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/ud_kit.dart';
+import 'vehicle_use_picker.dart';
 
 /// Driver sign-up, in four steps.
 ///
@@ -64,6 +65,10 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
   final _plate = TextEditingController();
   final _year = TextEditingController();
 
+  /// What the vehicle is being registered for (city rides, city to city,
+  /// tours, rent) — asked at the top of step 4.
+  final _uses = VehicleUses();
+
   /// Photographs taken so far, by document type.
   ///
   /// Held in memory until the last step rather than uploaded as they are
@@ -80,6 +85,7 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
     ]) {
       controller.dispose();
     }
+    _uses.dispose();
     super.dispose();
   }
 
@@ -120,7 +126,8 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
             // The back is required too: an Admin cannot verify the vehicle
             // without it, and an application that can never be verified is
             // worse than one more photograph now.
-            _files.containsKey('REGISTRATION_BOOK_BACK'),
+            _files.containsKey('REGISTRATION_BOOK_BACK') &&
+            _uses.problem() == null,
       };
 
   Future<void> _pick(String type) async {
@@ -246,6 +253,7 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
         'hasSpareTyre': false,
         'hasSnowChains': false,
         'hasChildSeat': false,
+        ..._uses.toJson(),
       });
       final vehicleId = vehicle.id;
 
@@ -589,6 +597,12 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
               'the number plate.',
         ),
         const SizedBox(height: 20),
+        VehicleUsePicker(
+          uses: _uses,
+          enabled: !_busy,
+          onChanged: () => setState(() {}),
+        ),
+        const SizedBox(height: 22),
         Row(
           children: [
             Expanded(

@@ -368,6 +368,19 @@ public sealed class BookingService(
                               AND b.status = 'Completed'
                               AND b.updated_at > asked.since) >= 2
                   )
+              -- Only work this driver registered a vehicle for: city rides,
+              -- or city to city (pickup and drop in different districts). A
+              -- vehicle out on rent takes neither.
+              AND EXISTS (
+                    SELECT 1
+                    FROM udrive.vehicles fv
+                    WHERE fv.driver_profile_id = @driverProfileId
+                      AND lower(fv.status) IN ('verified', 'approved')
+                      AND NOT COALESCE(fv.available_for_rent, false)
+                      AND CASE WHEN rr.is_intercity
+                               THEN COALESCE(fv.available_for_intercity, true)
+                               ELSE COALESCE(fv.available_for_city, true) END
+                  )
               AND ST_DWithin(dpl.location, rr.pickup_location, @requestRadiusMetres)
               AND rr.pickup_at > now() - interval '15 minutes'
               AND (rr.expires_at IS NULL OR rr.expires_at > now())
@@ -666,38 +679,48 @@ public sealed class BookingService(
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
 
-        // A vehicle out on rent cannot answer a ride request.
+        // A vehicle out on rent cannot answer a ride request (it is with
+        // somebody else). A tour vehicle can: publishing a package is not a
+        // declaration that the vehicle only goes where the package goes. Both
+        // rules are applied just below, together with the city / city-to-city
+        // registration.
+        // The vehicle has to be registered for this kind of ride.
         //
-        // This is the one exclusion the three usages create, and it is physical
-        // rather than a policy: the car is parked at somebody else's house with
-        // somebody else's hand on the key. Nothing can be dispatched to it.
-        //
-        // A **tour** vehicle is deliberately not excluded here, and that is the
-        // whole point of keeping the two usages compatible. A Driver whose
-        // vehicle carries a Neelum package is still a Driver with a car, and a
-        // Customer asking to go to Islamabad should reach them and be able to
-        // book them. Publishing a package is not a declaration that the vehicle
-        // only ever goes where the package goes — the destination on the package
-        // has no bearing on which requests the vehicle may answer. Treating it
-        // otherwise would punish exactly the Drivers who did the most work on
-        // the platform.
-        await using (var usageCommand = new NpgsqlCommand(
+        // The app offers the driver's first verified vehicle, which for a
+        // driver with two may be the one registered for the other kind (city
+        // rides vs city to city). Rather than refuse, the driver's own vehicle
+        // that does fit is used; only when none fits is the offer refused.
+        var vehicleId = request.VehicleId;
+        await using (var kindCommand = new NpgsqlCommand(
             """
-            SELECT COALESCE(available_for_rent, false)
-            FROM udrive.vehicles
-            WHERE id = @vehicleId;
+            SELECT v.id, rr.is_intercity
+            FROM udrive.ride_requests rr
+            JOIN udrive.vehicles v ON v.id = ANY(@vehicleIds)
+            WHERE rr.id = @rideRequestId
+              AND NOT COALESCE(v.available_for_rent, false)
+              AND CASE WHEN rr.is_intercity
+                       THEN COALESCE(v.available_for_intercity, true)
+                       ELSE COALESCE(v.available_for_city, true) END
+            ORDER BY (v.id = @vehicleId) DESC
+            LIMIT 1;
             """,
             connection))
         {
-            usageCommand.Parameters.AddWithValue("vehicleId", request.VehicleId);
-            if (await usageCommand.ExecuteScalarAsync(cancellationToken) is true)
+            kindCommand.Parameters.AddWithValue("vehicleId", request.VehicleId);
+            kindCommand.Parameters.AddWithValue("vehicleIds", driver.VehicleIds.ToArray());
+            kindCommand.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            await using var kindReader = await kindCommand.ExecuteReaderAsync(cancellationToken);
+            if (await kindReader.ReadAsync(cancellationToken))
+            {
+                vehicleId = kindReader.GetGuid(0);
+            }
+            else
             {
                 return ServiceResult<DriverOfferDto>.Fail(
                     StatusCodes.Status409Conflict,
-                    "vehicle_on_rent",
-                    "This vehicle is set to go out on rent, so it does not take "
-                    + "ride requests. Change it to city rides first, or offer a "
-                    + "different vehicle.");
+                    "vehicle_not_for_this_ride",
+                    "Aap ki koi gaari is qisam ki ride ke liye register nahi (city rides / city to city), ya rent par hai. "
+                    + "Vehicles mein gaari ka kaam badlein.");
             }
         }
 
@@ -904,7 +927,7 @@ public sealed class BookingService(
             command.Parameters.AddWithValue("id", offerId);
             command.Parameters.AddWithValue("rideRequestId", rideRequestId);
             command.Parameters.AddWithValue("driverProfileId", driver.DriverProfileId);
-            command.Parameters.AddWithValue("vehicleId", request.VehicleId);
+            command.Parameters.AddWithValue("vehicleId", vehicleId);
             command.Parameters.AddWithValue("amount", request.Amount);
             command.Parameters.AddWithValue("eta", calculatedEtaMinutes);
             command.Parameters.Add(new NpgsqlParameter("message", NpgsqlDbType.Varchar) { Value = (object?)request.Message?.Trim() ?? DBNull.Value });

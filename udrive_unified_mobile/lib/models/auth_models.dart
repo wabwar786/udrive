@@ -123,6 +123,7 @@ class DriverProfileLive {
     this.tehsilName,
     this.districtId,
     this.districtName,
+    this.hasListedVehicles = false,
   });
 
   final String driverProfileId;
@@ -136,6 +137,10 @@ class DriverProfileLive {
   final String? tehsilName;
   final String? districtId;
   final String? districtName;
+
+  /// Has vehicles listed the old way ("Earn with your vehicle"). Driver mode
+  /// shows these owners a "Listed vehicles" entry for them.
+  final bool hasListedVehicles;
 
   static String? _optional(Object? value) {
     final text = value?.toString().trim() ?? '';
@@ -154,6 +159,7 @@ class DriverProfileLive {
         tehsilName: _optional(json['tehsilName']),
         districtId: _optional(json['districtId']),
         districtName: _optional(json['districtName']),
+        hasListedVehicles: json['hasListedVehicles'] == true,
       );
 }
 

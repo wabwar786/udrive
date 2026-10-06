@@ -422,6 +422,13 @@ public sealed class DriverVerificationService(
                 "Complete driver registration before adding a vehicle.");
         }
 
+        var usesProblem = ValidateUses(request);
+        if (usesProblem is not null)
+        {
+            return ServiceResult<VehicleDto>.Fail(
+                StatusCodes.Status400BadRequest, "vehicle_uses_invalid", usesProblem);
+        }
+
         var id = Guid.NewGuid();
         var readiness = CalculateMountainReadiness(request);
         const string sql = """
@@ -456,6 +463,8 @@ public sealed class DriverVerificationService(
                 "This registration number belongs to another active vehicle on "
                 + "the platform. If it is yours, ask support to release it.");
         }
+
+        await SaveUsesAsync(connection, id, request, cancellationToken);
 
         return ServiceResult<VehicleDto>.Created(
             await GetVehicleAsync(userId, id, cancellationToken)
@@ -499,6 +508,13 @@ public sealed class DriverVerificationService(
             }
         }
 
+        var usesProblem = ValidateUses(request);
+        if (usesProblem is not null)
+        {
+            return ServiceResult<VehicleDto>.Fail(
+                StatusCodes.Status400BadRequest, "vehicle_uses_invalid", usesProblem);
+        }
+
         var readiness = CalculateMountainReadiness(request);
         const string sql = """
             UPDATE udrive.vehicles v
@@ -530,6 +546,13 @@ public sealed class DriverVerificationService(
                     StatusCodes.Status404NotFound,
                     "vehicle_not_found",
                     "Vehicle not found.");
+            }
+
+            // Only before verification: once verified, what the vehicle does
+            // is changed on the usage screen.
+            if (existing.Status is not ("Verified" or "Suspended"))
+            {
+                await SaveUsesAsync(connection, vehicleId, request, cancellationToken);
             }
         }
         catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
@@ -721,7 +744,11 @@ public sealed class DriverVerificationService(
                    emergency_contact_phone, bank_account_title,
                    payout_method, payout_account_masked, languages,
                    service_areas, submitted_at, reviewed_at, review_notes,
-                   t.id, t.name, d.id, d.name
+                   t.id, t.name, d.id, d.name,
+                   EXISTS (SELECT 1 FROM udrive.vehicles lv
+                           WHERE lv.driver_profile_id = dp.id
+                             AND lv.listed_via IN ('Listing', 'Staff')
+                             AND lv.status <> 'Deleted')
             FROM udrive.driver_profiles dp
             LEFT JOIN udrive.territories t ON t.id = dp.territory_id
             LEFT JOIN udrive.territories d ON d.id = t.parent_id
@@ -761,6 +788,7 @@ public sealed class DriverVerificationService(
             TehsilName = reader.IsDBNull(17) ? null : reader.GetString(17),
             DistrictId = reader.IsDBNull(18) ? null : reader.GetGuid(18),
             DistrictName = reader.IsDBNull(19) ? null : reader.GetString(19),
+            HasListedVehicles = reader.GetBoolean(20),
         };
     }
 
@@ -1013,6 +1041,95 @@ public sealed class DriverVerificationService(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(maximum)
             .ToArray();
+    }
+
+    /// <summary>Checks what the vehicle is registered for, when the app sent it.</summary>
+    /// <returns>A sentence for the driver, or null when it is fine.</returns>
+    private static string? ValidateUses(VehicleUpsertRequest request)
+    {
+        var any = request.WantsCity is not null || request.WantsIntercity is not null
+                  || request.WantsTour is not null || request.WantsRent is not null;
+        if (!any) return null;
+
+        var city = request.WantsCity == true;
+        var intercity = request.WantsIntercity == true;
+        var tour = request.WantsTour == true;
+        var rent = request.WantsRent == true;
+        if (!city && !intercity && !tour && !rent)
+        {
+            return "Batayein yeh gaari kis ke liye register kar rahe hain.";
+        }
+
+        // A car out on rent is with somebody else; it cannot pick anyone up.
+        if (rent && (city || intercity))
+        {
+            return "Rent wali gaari city rides ya city to city nahi le sakti. Aik chunein.";
+        }
+
+        if (rent && !(request.RentWithDriverDaily is > 0 || request.RentSelfDriveDaily is > 0))
+        {
+            return "Rent ke liye din ka kiraya likhein — driver ke saath, self-drive, ya dono.";
+        }
+
+        if (request.DrivenBy is not (null or "Self" or "Drivers" or "Both"))
+        {
+            return "Gaari kaun chalayega: Self, Drivers ya Both.";
+        }
+
+        return null;
+    }
+
+    /// <summary>Stores what the vehicle is registered for. Applied when an Admin verifies it.</summary>
+    private static async Task SaveUsesAsync(
+        NpgsqlConnection connection,
+        Guid vehicleId,
+        VehicleUpsertRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.WantsCity is null && request.WantsIntercity is null
+            && request.WantsTour is null && request.WantsRent is null)
+        {
+            return;
+        }
+
+        const string sql = """
+            UPDATE udrive.vehicles
+            SET wants_city = @city,
+                wants_intercity = @intercity,
+                listing_wants_tour = @tour,
+                listing_wants_rent = @rent,
+                rent_with_driver_daily = CASE WHEN @rent THEN @withDriver ELSE rent_with_driver_daily END,
+                rent_self_drive_daily = CASE WHEN @rent THEN @selfDrive ELSE rent_self_drive_daily END,
+                rent_pickup_point = CASE WHEN @rent THEN @pickup ELSE rent_pickup_point END,
+                driven_by = @drivenBy,
+                updated_at = now()
+            WHERE id = @id;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("id", vehicleId);
+        command.Parameters.AddWithValue("city", request.WantsCity == true);
+        command.Parameters.AddWithValue("intercity", request.WantsIntercity == true);
+        command.Parameters.AddWithValue("tour", request.WantsTour == true);
+        command.Parameters.AddWithValue("rent", request.WantsRent == true);
+        command.Parameters.Add(new NpgsqlParameter("withDriver", NpgsqlTypes.NpgsqlDbType.Numeric)
+        {
+            Value = request.RentWithDriverDaily is > 0 ? request.RentWithDriverDaily.Value : DBNull.Value,
+        });
+        command.Parameters.Add(new NpgsqlParameter("selfDrive", NpgsqlTypes.NpgsqlDbType.Numeric)
+        {
+            Value = request.RentSelfDriveDaily is > 0 ? request.RentSelfDriveDaily.Value : DBNull.Value,
+        });
+        command.Parameters.Add(new NpgsqlParameter("pickup", NpgsqlTypes.NpgsqlDbType.Varchar)
+        {
+            Value = string.IsNullOrWhiteSpace(request.RentPickupPoint)
+                ? DBNull.Value
+                : request.RentPickupPoint.Trim(),
+        });
+        command.Parameters.Add(new NpgsqlParameter("drivenBy", NpgsqlTypes.NpgsqlDbType.Varchar)
+        {
+            Value = (object?)request.DrivenBy ?? DBNull.Value,
+        });
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>True when this document is missing or an Admin has asked for it again.</summary>

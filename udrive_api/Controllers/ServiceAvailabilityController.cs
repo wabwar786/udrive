@@ -46,6 +46,7 @@ public sealed class PublicServiceAvailabilityController(
             requestRadiusKm = await service.RequestRadiusKmAsync(ct),
             nearbyRadiusKm = await service.NearbyRadiusKmAsync(ct),
             commissionPercentage = await service.CommissionPercentageAsync(ct),
+            commissionRates = await service.CommissionRatesAsync(ct),
             welcomeBonus = await service.WelcomeBonusAsync(ct),
             offerCard = await service.OfferCardFieldsAsync(ct),
             driverDecisionSeconds = await service.DriverDecisionSecondsAsync(ct),
@@ -97,8 +98,8 @@ public sealed class AdminServiceAvailabilityController(
         SetCommissionRequest request,
         CancellationToken ct)
     {
-        await service.SetCommissionPercentageAsync(
-            User.GetRequiredUserId(), request.Percentage, ct);
+        await service.SetCommissionRatesAsync(
+            User.GetRequiredUserId(), request, ct);
         return Ok(ApiResponse<bool>.Ok(true));
     }
 

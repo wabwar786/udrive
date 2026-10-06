@@ -482,17 +482,21 @@ public sealed class DriverWalletService(
         const string sql = """
             SELECT e.created_at,
                    abs(e.amount),
-                   b.booking_reference,
-                   b.total_amount,
-                   b.pickup_address,
-                   b.destination_address,
+                   COALESCE(b.booking_reference, e.reference),
+                   COALESCE(b.total_amount, rb.subtotal),
+                   COALESCE(b.pickup_label, CASE WHEN rb.id IS NOT NULL THEN 'Rent a car' END),
+                   b.destination_label,
                    e.entry_type
             FROM udrive.driver_wallet_entries e
             JOIN udrive.driver_wallets w ON w.id = e.wallet_id
             JOIN udrive.driver_profiles dp ON dp.id = w.driver_profile_id
             LEFT JOIN udrive.bookings b ON b.id = e.booking_id
+            -- A rent commission has no booking row; its rental is in the key.
+            LEFT JOIN udrive.rental_bookings rb
+                   ON e.entry_type = 'RentCommission'
+                  AND e.idempotency_key = 'rent:' || rb.id::text
             WHERE dp.user_id = @user
-              AND e.entry_type IN ('CommissionCharge', 'CancellationCharge')
+              AND e.entry_type IN ('CommissionCharge', 'CancellationCharge', 'RentCommission')
             ORDER BY e.created_at DESC
             LIMIT @take;
             """;
@@ -723,16 +727,33 @@ public sealed class DriverWalletService(
         await EnsureWalletForBookingAsync(
             connection, transaction, bookingId, cancellationToken);
 
+        // The rate depends on the kind of work: a tour, a city-to-city ride
+        // (pickup and drop in different districts), or an ordinary city ride.
+        // Each has its own Admin setting; a kind with no setting falls back to
+        // the city rate.
         const string sql = """
             WITH booking AS (
-                SELECT b.id, b.driver_profile_id, b.total_amount
+                SELECT b.id, b.driver_profile_id, b.total_amount,
+                       CASE WHEN b.tour_package_id IS NOT NULL THEN 'tour'
+                            WHEN COALESCE(rr.is_intercity, false) THEN 'intercity'
+                            ELSE 'city' END AS kind
                 FROM udrive.bookings b
+                LEFT JOIN udrive.ride_requests rr ON rr.id = b.ride_request_id
                 WHERE b.id = @booking AND b.driver_profile_id IS NOT NULL
-            ), rate AS (
+            ), city_rate AS (
                 SELECT COALESCE(
                     (SELECT (value_json #>> '{}')::numeric
                        FROM udrive.system_settings
                       WHERE key = 'driver.commission.percentage'), 10) AS pct
+            ), rate AS (
+                SELECT COALESCE(
+                    (SELECT (s.value_json #>> '{}')::numeric
+                       FROM udrive.system_settings s, booking
+                      WHERE s.key = CASE booking.kind
+                                WHEN 'tour' THEN 'driver.commission.tour_percentage'
+                                WHEN 'intercity' THEN 'driver.commission.intercity_percentage'
+                                ELSE 'driver.commission.percentage' END),
+                    (SELECT pct FROM city_rate)) AS pct
             ), charged AS (
                 UPDATE udrive.driver_wallets w
                 SET commission_balance =
@@ -755,7 +776,11 @@ public sealed class DriverWalletService(
                  description, idempotency_key, created_at)
             SELECT gen_random_uuid(), charged.wallet_id, @booking,
                    'CommissionCharge', -charged.charge, 'Commission',
-                   'Platform commission ' || charged.pct || '% on completed trip',
+                   CASE (SELECT kind FROM booking)
+                        WHEN 'tour' THEN 'Tour commission '
+                        WHEN 'intercity' THEN 'City-to-city commission '
+                        ELSE 'Platform commission ' END
+                   || trim(to_char(charged.pct, 'FM990.##')) || '% on trip start',
                    'commission:' || @booking, now()
             FROM charged
             -- Keyed on the booking. A completion that is retried, or a status
@@ -781,6 +806,155 @@ public sealed class DriverWalletService(
         }
 
         return charged;
+    }
+
+    /// <summary>The commission a rent booking costs its driver, in rupees.</summary>
+    /// <remarks>
+    /// <c>driver.commission.rent_percentage</c> of the rental subtotal, falling
+    /// back to the city rate. Asked before the driver accepts, so the app can
+    /// say what will be taken and the server can refuse when the wallet does
+    /// not cover it.
+    /// </remarks>
+    internal static async Task<(decimal Commission, decimal Balance)> RentCommissionAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid rentalBookingId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT round(rb.subtotal * COALESCE(
+                       (SELECT (value_json #>> '{}')::numeric FROM udrive.system_settings
+                         WHERE key = 'driver.commission.rent_percentage'),
+                       (SELECT (value_json #>> '{}')::numeric FROM udrive.system_settings
+                         WHERE key = 'driver.commission.percentage'),
+                       10) / 100, 2),
+                   COALESCE((SELECT w.commission_balance FROM udrive.driver_wallets w
+                              WHERE w.driver_profile_id = rb.driver_profile_id), 0)
+            FROM udrive.rental_bookings rb
+            WHERE rb.id = @rental;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("rental", rentalBookingId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? (reader.GetDecimal(0), reader.GetDecimal(1))
+            : (0m, 0m);
+    }
+
+    /// <summary>Takes the rent commission when the driver accepts a rental.</summary>
+    /// <remarks>Keyed on the rental, so a retried accept cannot charge twice.</remarks>
+    internal static async Task ChargeRentCommissionAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid rentalBookingId,
+        decimal commission,
+        CancellationToken cancellationToken)
+    {
+        if (commission <= 0) return;
+
+        Guid driverProfileId;
+        string reference;
+        await using (var load = new NpgsqlCommand(
+            "SELECT driver_profile_id, booking_reference FROM udrive.rental_bookings WHERE id = @rental;",
+            connection,
+            transaction))
+        {
+            load.Parameters.AddWithValue("rental", rentalBookingId);
+            await using var reader = await load.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken)) return;
+            driverProfileId = reader.GetGuid(0);
+            reference = reader.GetString(1);
+        }
+
+        await EnsureWalletForDriverAsync(connection, transaction, driverProfileId, cancellationToken);
+        await MoveCommissionAsync(
+            connection, transaction, driverProfileId, -commission, "RentCommission",
+            $"Rent commission · {reference}", reference, $"rent:{rentalBookingId}", cancellationToken);
+        await CheckLowBalanceAsync(connection, transaction, driverProfileId, cancellationToken);
+    }
+
+    /// <summary>Gives the rent commission back when the customer cancels.</summary>
+    /// <remarks>
+    /// Only what was actually taken, found by its key; nothing when nothing
+    /// was charged. Keyed on the rental, so it is returned once.
+    /// </remarks>
+    internal static async Task RefundRentCommissionAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid rentalBookingId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT w.driver_profile_id, -e.amount, e.reference
+            FROM udrive.driver_wallet_entries e
+            JOIN udrive.driver_wallets w ON w.id = e.wallet_id
+            WHERE e.idempotency_key = 'rent:' || @rental;
+            """;
+        Guid driverProfileId;
+        decimal amount;
+        string? reference;
+        await using (var command = new NpgsqlCommand(sql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("rental", rentalBookingId.ToString());
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken)) return;
+            driverProfileId = reader.GetGuid(0);
+            amount = reader.GetDecimal(1);
+            reference = reader.IsDBNull(2) ? null : reader.GetString(2);
+        }
+
+        if (amount <= 0) return;
+        await MoveCommissionAsync(
+            connection, transaction, driverProfileId, amount, "RentCommissionRefund",
+            $"Rent cancelled by customer · {reference} · commission returned", reference,
+            $"rentrefund:{rentalBookingId}", cancellationToken);
+        await CheckLowBalanceAsync(connection, transaction, driverProfileId, cancellationToken);
+    }
+
+    /// <summary>Moves the commission balance and writes its ledger row, once per key.</summary>
+    private static async Task MoveCommissionAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid driverProfileId,
+        decimal amount,
+        string entryType,
+        string description,
+        string? reference,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            WITH moved AS (
+                UPDATE udrive.driver_wallets w
+                SET commission_balance = w.commission_balance + @amount,
+                    version = w.version + 1,
+                    updated_at = now()
+                WHERE w.driver_profile_id = @driver
+                  AND NOT EXISTS (
+                      SELECT 1 FROM udrive.driver_wallet_entries e
+                      WHERE e.idempotency_key = @key)
+                RETURNING w.id AS wallet_id
+            )
+            INSERT INTO udrive.driver_wallet_entries
+                (id, wallet_id, entry_type, amount, balance_bucket,
+                 description, reference, idempotency_key, created_at)
+            SELECT gen_random_uuid(), moved.wallet_id, @type, @amount, 'Commission',
+                   @description, @reference, @key, now()
+            FROM moved
+            ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
+            DO NOTHING;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("driver", driverProfileId);
+        command.Parameters.AddWithValue("amount", amount);
+        command.Parameters.AddWithValue("type", entryType);
+        command.Parameters.AddWithValue("description", description);
+        command.Parameters.Add(new NpgsqlParameter("reference", NpgsqlDbType.Varchar)
+        {
+            Value = (object?)reference ?? DBNull.Value,
+        });
+        command.Parameters.AddWithValue("key", key);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>

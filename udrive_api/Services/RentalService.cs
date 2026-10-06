@@ -464,6 +464,17 @@ public sealed class RentalService(
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // The customer called off a rental the driver had accepted: the
+        // commission taken on accept goes back to the driver's wallet. An
+        // owner who cancels their own confirmed booking does not get it back.
+        if (isCustomer && status == "Confirmed")
+        {
+            await using var refund = await connection.BeginTransactionAsync(cancellationToken);
+            await DriverWalletService.RefundRentCommissionAsync(
+                connection, refund, bookingId, cancellationToken);
+            await refund.CommitAsync(cancellationToken);
+        }
+
         var freeCancelHours = await SettingAsync(
             connection, null, "rental.free_cancel_hours", DefaultFreeCancelHours, cancellationToken);
         // A request the owner had not yet accepted always refunds: the customer
@@ -866,6 +877,25 @@ public sealed class RentalService(
             }
         }
 
+        // UDrive's commission on a rental is taken from the driver's wallet
+        // the moment they accept, so the wallet has to cover it first.
+        var rentCommission = 0m;
+        if (request.Accept)
+        {
+            var (commission, balance) = await DriverWalletService.RentCommissionAsync(
+                connection, transaction, bookingId, cancellationToken);
+            if (commission > 0 && balance < commission)
+            {
+                return ServiceResult<RentalBookingDto>.Fail(
+                    StatusCodes.Status409Conflict,
+                    "wallet_too_low",
+                    $"Is rent ki UDrive commission PKR {commission:N0} hai, aur aap ka wallet "
+                    + $"PKR {balance:N0} hai. Pehle wallet top-up karein, phir accept karein.");
+            }
+
+            rentCommission = commission;
+        }
+
         const string acceptSql = """
             UPDATE udrive.rental_bookings
             SET status = 'Confirmed', owner_responded_at = now(),
@@ -902,6 +932,12 @@ public sealed class RentalService(
             }
 
             await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        if (request.Accept)
+        {
+            await DriverWalletService.ChargeRentCommissionAsync(
+                connection, transaction, bookingId, rentCommission, cancellationToken);
         }
 
         await using (var notify = new NpgsqlCommand(

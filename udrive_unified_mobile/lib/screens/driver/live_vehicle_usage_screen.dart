@@ -139,6 +139,31 @@ class _LiveVehicleUsageScreenState extends State<LiveVehicleUsageScreen> {
     await _apply(() => _repository.setUsage(vehicle.vehicleId, city: value));
   }
 
+  /// City to city: the same rule as city rides — it cannot run while the
+  /// vehicle is out on rent.
+  Future<void> _toggleIntercity(bool value) async {
+    final vehicle = _vehicle;
+    if (vehicle == null) return;
+
+    if (value && vehicle.availableForRent) {
+      final go = await _confirm(
+        title: _t('This vehicle will come off rent',
+            'یہ گاڑی کرائے سے ہٹ جائے گی'),
+        body: _t(
+          'A car cannot be out on rent and taking city-to-city rides at the '
+          'same time. Turning this on takes the vehicle off the rental list.',
+          'ایک گاڑی بیک وقت کرائے پر اور شہر سے شہر رائیڈز پر نہیں ہو سکتی۔ '
+              'یہ چالو کرنے سے گاڑی کرائے کی فہرست سے ہٹ جائے گی۔',
+        ),
+        confirm: _t('Yes, city to city', 'ہاں، شہر سے شہر'),
+      );
+      if (go != true) return;
+    }
+
+    await _apply(
+        () => _repository.setUsage(vehicle.vehicleId, intercity: value));
+  }
+
   Future<void> _toggleTour(bool value) async {
     final vehicle = _vehicle;
     if (vehicle == null) return;
@@ -327,6 +352,18 @@ class _LiveVehicleUsageScreenState extends State<LiveVehicleUsageScreen> {
             : _t('Off — no ride requests', 'بند — کوئی رائیڈ ریکوئسٹ نہیں'),
         on: vehicle.availableForCity,
         onChanged: _saving ? null : _toggleCity,
+      ),
+      const SizedBox(height: 12),
+
+      // ── city to city
+      _Usage(
+        icon: Icons.alt_route_rounded,
+        title: _t('City to city', 'شہر سے شہر'),
+        state: vehicle.availableForIntercity
+            ? _t('On — longer trips reach you', 'چالو — لمبے سفر کی ریکوئسٹ آ رہی ہیں')
+            : _t('Off — no city-to-city requests', 'بند — شہر سے شہر ریکوئسٹ نہیں'),
+        on: vehicle.availableForIntercity,
+        onChanged: _saving ? null : _toggleIntercity,
       ),
       const SizedBox(height: 12),
 

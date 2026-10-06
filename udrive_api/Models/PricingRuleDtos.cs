@@ -311,7 +311,18 @@ public sealed record SetRadiusRequest(
     [Range(0.2, 25)] double NearbyRadiusKm);
 
 /// <summary>The platform's cut of each fare, as a percentage.</summary>
-public sealed record SetCommissionRequest([Range(0, 40)] double Percentage);
+public sealed record SetCommissionRequest(
+    [Range(0, 40)] double Percentage,
+    [Range(0, 40)] double? IntercityPercentage = null,
+    [Range(0, 40)] double? TourPercentage = null,
+    [Range(0, 40)] double? RentPercentage = null);
+
+/// <summary>Commission per kind of work, in percent.</summary>
+public sealed record CommissionRatesDto(
+    double City,
+    double Intercity,
+    double Tour,
+    double Rent);
 
 /// <summary>One commission or cancellation charge, as the driver sees it.</summary>
 /// <param name="Percentage">

@@ -158,7 +158,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                          has_air_conditioning, has_heating, is_four_by_four, has_first_aid_kit,
                          has_fire_extinguisher, has_spare_tyre, has_snow_chains, has_child_seat,
                          mountain_readiness_score, status, booking_mode,
-                         available_for_city, available_for_tour, available_for_rent,
+                         available_for_city, available_for_intercity, available_for_tour, available_for_rent,
                          rent_with_driver_daily, rent_self_drive_daily, rent_pickup_point, rent_minimum_days,
                          listed_via, listing_wants_rent, listing_wants_tour, territory_id, created_at, updated_at)
                     VALUES
@@ -167,7 +167,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
                          @ac, @heating, @fourByFour, @firstAid,
                          @extinguisher, @spare, @chains, false,
                          @readiness, 'Draft', @bookingMode,
-                         false, false, false,
+                         false, false, false, false,
                          @withDriver, @selfDrive, @pickup, 1,
                          'Listing', @wantsRent, @wantsTour, @tehsil, now(), now());
                     """, connection);
@@ -1356,7 +1356,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
 
             UPDATE udrive.vehicles v
             SET status = 'Verified', listing_review_note = NULL,
-                available_for_city = false,
+                available_for_city = false, available_for_intercity = false,
                 available_for_rent = v.rent_review_status = 'Approved'
                     AND NULLIF(v.image_url, '') IS NOT NULL
                     AND (COALESCE(v.rent_with_driver_daily, 0) > 0 OR COALESCE(v.rent_self_drive_daily, 0) > 0),
@@ -1547,7 +1547,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
 
             UPDATE udrive.vehicles v
             SET status = 'Verified', listed_via = 'Staff', listing_added_by = @admin,
-                listing_submitted_at = now(), available_for_city = false,
+                listing_submitted_at = now(), available_for_city = false, available_for_intercity = false,
                 rent_review_status = CASE WHEN v.listing_wants_rent THEN 'Approved' ELSE 'None' END,
                 tour_review_status = CASE WHEN v.listing_wants_tour THEN 'Approved' ELSE 'None' END,
                 available_for_rent = v.listing_wants_rent

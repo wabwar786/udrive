@@ -36,7 +36,6 @@ import '../../core/widgets/ud_kit.dart';
 import '../../data/models.dart';
 import '../../models/trip_operations_models.dart';
 import '../hotels/hotel_list_screen.dart';
-import '../listing/my_vehicles_screen.dart';
 import '../operations/live_trip_navigation_screen.dart';
 import 'place_search_screen.dart';
 import 'tour_map_screen.dart';
@@ -1476,15 +1475,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
               onClosed: _serviceClosed,
             ),
 
-            const SizedBox(height: 12),
-            _EarnRow(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const MyVehiclesScreen(),
-                ),
-              ),
-            ),
-
+            // "Earn with your vehicle" is gone from the customer side: every
+            // vehicle is registered from Driver mode, where it is asked what it
+            // is for (city rides, city to city, tours, rent).
             const SizedBox(height: 16),
             // `_shareApp` has been in this file all along with nothing calling
             // it — the invite row it belonged to was lost in an earlier pass.
@@ -3989,54 +3982,6 @@ class _ActiveTripBanner extends StatelessWidget {
 ///
 /// Wired to `_shareApp`, which has been in this file all along with nothing
 /// calling it.
-/// "Earn with your vehicle" — the way into listing a vehicle.
-class _EarnRow extends StatelessWidget {
-  const _EarnRow({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => UdCard(
-        tone: UdCardTone.navy,
-        onTap: onTap,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          children: [
-            const UdIconTile(
-              icon: Icons.directions_car_rounded,
-              tone: UdIconTone.lime,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Earn with your vehicle',
-                    style: AppType.listTitle.copyWith(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: AppText.onInk,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Rent it out or run tours · 3 quick steps',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppType.small.copyWith(color: AppText.onInkMuted),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded,
-                size: 22, color: AppColors.brand),
-          ],
-        ),
-      );
-}
-
 class _InviteRow extends StatelessWidget {
   const _InviteRow({required this.onTap});
 

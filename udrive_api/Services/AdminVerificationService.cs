@@ -880,6 +880,11 @@ public sealed class AdminVerificationService(
             await documentCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        if (string.Equals(request.Decision, "Verified", StringComparison.OrdinalIgnoreCase))
+        {
+            await ApplyRegisteredUsesAsync(connection, transaction, vehicleId, cancellationToken);
+        }
+
         await InsertAuditAsync(
             connection,
             transaction,
@@ -1163,6 +1168,67 @@ public sealed class AdminVerificationService(
     private static string NormalizeDecision(string decision, HashSet<string> allowed)
     {
         return allowed.First(value => string.Equals(value, decision, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Turns on what the driver registered the vehicle for, the first time it
+    /// is verified.
+    /// </summary>
+    /// <remarks>
+    /// Once only (<c>uses_applied_at</c>): after that the driver's own usage
+    /// switches are in charge, and re-verifying must not undo them. A vehicle
+    /// registered before the question existed (<c>wants_city</c> null) is not
+    /// touched. Tour waits for the readiness bar, and rent for a public photo
+    /// of the car; when rent cannot start yet the driver is told why.
+    /// </remarks>
+    private static async Task ApplyRegisteredUsesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid vehicleId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            WITH v AS (
+                SELECT v.id, v.driver_profile_id, v.wants_city, v.wants_intercity,
+                       COALESCE(v.listing_wants_tour, false) AS wants_tour,
+                       COALESCE(v.listing_wants_rent, false) AS wants_rent,
+                       (v.mountain_readiness_score >= COALESCE(
+                           (SELECT LEAST(100, GREATEST(0, (s.value_json #>> '{}')::int))
+                              FROM udrive.system_settings s
+                             WHERE s.key = 'tour.minimum_readiness'), 60)) AS tour_ready,
+                       ((COALESCE(v.rent_with_driver_daily, 0) > 0
+                         OR COALESCE(v.rent_self_drive_daily, 0) > 0)
+                        AND NULLIF(v.image_url, '') IS NOT NULL) AS rent_ready
+                FROM udrive.vehicles v
+                WHERE v.id = @vehicleId
+                  AND v.wants_city IS NOT NULL
+                  AND v.uses_applied_at IS NULL
+            ), applied AS (
+                UPDATE udrive.vehicles x
+                SET available_for_city = v.wants_city AND NOT (v.wants_rent AND v.rent_ready),
+                    available_for_intercity = COALESCE(v.wants_intercity, false) AND NOT (v.wants_rent AND v.rent_ready),
+                    available_for_tour = v.wants_tour AND v.tour_ready,
+                    available_for_rent = v.wants_rent AND v.rent_ready,
+                    uses_applied_at = now(),
+                    updated_at = now()
+                FROM v
+                WHERE x.id = v.id
+                RETURNING v.driver_profile_id, v.wants_rent, v.rent_ready, v.wants_tour, v.tour_ready
+            )
+            INSERT INTO udrive.notifications
+                (id, user_id, type, title, body, data_json, created_at, updated_at)
+            SELECT gen_random_uuid(), dp.user_id, 'VehicleUsesPending', 'Gaari verify ho gayi',
+                   CASE WHEN a.wants_rent AND NOT a.rent_ready
+                        THEN 'Rent shuru karne ke liye Vehicles mein gaari ki photo aur kiraya daalein.'
+                        ELSE 'Tours ke liye gaari ki readiness abhi kam hai — Vehicles mein dekhein kya chahiye.' END,
+                   jsonb_build_object('vehicleId', @vehicleId), now(), now()
+            FROM applied a
+            JOIN udrive.driver_profiles dp ON dp.id = a.driver_profile_id
+            WHERE (a.wants_rent AND NOT a.rent_ready) OR (a.wants_tour AND NOT a.tour_ready);
+            """;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("vehicleId", vehicleId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>The names reviewers use, matching the admin portal's labels.</summary>

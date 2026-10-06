@@ -146,6 +146,48 @@ public sealed class ServiceAvailabilityService(string connectionString)
             "The platform's cut of each fare, taken when a trip starts.",
             Math.Clamp(percentage, 0, 40), ct);
 
+    /// <summary>Commission on each kind of work, in percent.</summary>
+    /// <remarks>
+    /// City rides keep the original key. The other three fall back to the
+    /// city rate when an Admin has not set them, so a missing row never means
+    /// "free".
+    /// </remarks>
+    public async Task<CommissionRatesDto> CommissionRatesAsync(CancellationToken ct)
+    {
+        var city = await CommissionPercentageAsync(ct);
+        return new CommissionRatesDto(
+            city,
+            await ReadNumberAsync("driver.commission.intercity_percentage", city, 0, 40, ct),
+            await ReadNumberAsync("driver.commission.tour_percentage", city, 0, 40, ct),
+            await ReadNumberAsync("driver.commission.rent_percentage", city, 0, 40, ct));
+    }
+
+    public async Task SetCommissionRatesAsync(
+        Guid admin, SetCommissionRequest request, CancellationToken ct)
+    {
+        await SetCommissionPercentageAsync(admin, request.Percentage, ct);
+        if (request.IntercityPercentage is { } intercity)
+        {
+            await WriteNumberAsync(admin, "driver.commission.intercity_percentage",
+                "Commission on city-to-city rides, taken when the ride starts.",
+                Math.Clamp(intercity, 0, 40), ct);
+        }
+
+        if (request.TourPercentage is { } tour)
+        {
+            await WriteNumberAsync(admin, "driver.commission.tour_percentage",
+                "Commission on tour bookings, taken when the tour starts.",
+                Math.Clamp(tour, 0, 40), ct);
+        }
+
+        if (request.RentPercentage is { } rent)
+        {
+            await WriteNumberAsync(admin, "driver.commission.rent_percentage",
+                "Commission on rent-a-car bookings, taken when the driver accepts.",
+                Math.Clamp(rent, 0, 40), ct);
+        }
+    }
+
     /// <summary>What a newly approved Driver is credited, in rupees.</summary>
     /// <remarks>
     /// A settable number rather than a constant, because its purpose expires.
