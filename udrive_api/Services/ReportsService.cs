@@ -2316,8 +2316,12 @@ public sealed class ReportsService(string connectionString)
         NpgsqlCommand Cmd(string sql, DateTimeOffset a, DateTimeOffset b)
         {
             var cmd = new NpgsqlCommand(sql, cn) { CommandTimeout = 60 };
-            cmd.Parameters.AddWithValue("from", a);
-            cmd.Parameters.AddWithValue("to", b);
+            // UTC: Npgsql refuses a DateTimeOffset with any other offset for a
+            // timestamptz parameter ("only offset 0 (UTC) is supported"), which
+            // made every report fail with a server error. The Pakistan-day
+            // boundaries are worked out above; this only changes how they travel.
+            cmd.Parameters.AddWithValue("from", a.ToUniversalTime());
+            cmd.Parameters.AddWithValue("to", b.ToUniversalTime());
             cmd.Parameters.AddWithValue("all", all);
             cmd.Parameters.Add(new NpgsqlParameter("areas", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = areas.ToArray() });
             cmd.Parameters.AddWithValue("gb", group);
