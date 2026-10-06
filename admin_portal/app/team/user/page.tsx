@@ -14,6 +14,7 @@ import {
   type PermissionAction,
 } from '../../lib/permissions';
 import { useCatalogAreas, type CatalogDistrict } from '../../verification/area-select';
+import { ReportsAccess } from '../reports-access';
 import {
   ACTIONS,
   ACTION_LABELS,
@@ -649,6 +650,18 @@ function TeamUserScreen() {
                 </div>
               </section>
             </>
+          )}
+
+          {!isNew && user ? (
+            <ReportsAccess userId={user.id} readOnly={!canEditTeam} number={fullAccessUser ? undefined : 4} />
+          ) : (
+            <div className="permissionNote" style={{ margin: '0 0 20px' }}>
+              <ShieldCheck size={18} />
+              <div>
+                <strong>Reports</strong>
+                <span>Save the user first; then open them again to choose which reports they may see.</span>
+              </div>
+            </div>
           )}
 
           <div

@@ -94,7 +94,9 @@ export const MODULE_ROUTES: Record<ModuleKey, readonly string[]> = {
     '/fraud-flags',
   ],
   safety: ['/safety', '/disputes', '/support', '/notifications'],
-  reports: ['/executive-operations', '/reports', '/audit'],
+  // '/reports' (Reports Centre) is not a module route: it opens for everyone,
+  // and shows only the reports given to that person (checked by the server).
+  reports: ['/executive-operations', '/audit'],
   settings: ['/services', '/settings', '/areas'],
   team: ['/team'],
   data: ['/data-management'],

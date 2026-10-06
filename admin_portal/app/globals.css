@@ -218,3 +218,51 @@
 /* Live tracking: real map (Leaflet) */
 .leafletHolder{height:min(62vh,560px);min-height:360px;border-radius:16px;overflow:hidden;border:1px solid #dce7e2;z-index:0}.liveMap .leaflet-container{font:inherit}.mapTools{position:absolute;left:28px;bottom:28px;z-index:500;display:flex;gap:8px;flex-wrap:wrap}.mapTools button{box-shadow:0 6px 18px #0a3b2b26}.liveMap .staleOverlay{z-index:500}.carIcon{background:transparent;border:0}.routeLine{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.routeLine>span{flex:1;min-width:180px}.routeActions{display:flex;gap:6px;flex-wrap:wrap}.routeActions .secondaryButton{min-height:32px;padding:0 10px;font-size:11px}.routeActions svg{width:14px}.driverDot{width:11px;height:11px;border-radius:50%;background:#092f24;box-shadow:0 0 0 4px #c9eedd}
 @media(max-width:650px){.mapTools{left:22px;right:22px;bottom:22px}.leafletHolder{height:55vh}}
+/* Reports Centre */
+.reportsLayout{display:grid;grid-template-columns:250px minmax(0,1fr);gap:18px;align-items:start}
+.reportsCatalog{position:sticky;top:90px;max-height:calc(100vh - 110px);overflow:auto;background:#fff;border:1px solid #e0e9e5;border-radius:18px;padding:12px}
+.reportsCatalog .searchBox{margin-bottom:6px}.reportsCatalog .searchBox input{width:100%}
+.reportsCatalog h4{margin:14px 8px 6px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#71827b}
+.reportsCatalog button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:9px;color:#31564a;font-weight:650;font-size:12px;cursor:pointer;min-height:34px}
+.reportsCatalog button:hover{background:#eef8f4}.reportsCatalog button.active{background:#0b8b62;color:#fff}
+.reportsMuted{color:#6d7e77;font-size:12px;margin:6px 8px}
+.reportsMain{min-width:0}
+.reportsHead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px;flex-wrap:wrap}
+.reportsHead small{color:#0b8b62;font-weight:800;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.reportsHead h2{margin:3px 0 0;font-size:20px;letter-spacing:-.02em}.reportsHead p{margin:4px 0 0;color:#6d7e77;max-width:720px}
+.reportsActions{display:flex;gap:8px;flex-wrap:wrap}
+.reportsFilters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#fff;border:1px solid #e0e9e5;border-radius:16px;padding:10px 12px;margin-bottom:14px}
+.reportsChip{border:0;min-height:34px;padding:0 12px;border-radius:999px;background:#f2f7f5;font-weight:700;color:#456158;font-size:12px;cursor:pointer}
+.reportsChip.on{background:#dff6ec;color:#087650}
+.reportsDate{display:inline-flex;align-items:center;gap:6px}.reportsDate input,.reportsSelect{min-height:34px;padding:0 10px;border:1px solid #d9e5e0;border-radius:10px;background:#fbfdfc;font-size:12px;color:#12231e}
+.reportsScope{margin-left:auto;background:#e1edff;color:#255fa5;padding:7px 11px;border-radius:10px;font-weight:700;font-size:12px}
+.reportsBusy{opacity:.55;transition:opacity .2s}
+.reportsPeriod{margin:-6px 2px 14px}
+.reportTiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:14px}
+.reportTile{background:#fff;border:1px solid #e0e9e5;border-radius:15px;padding:13px 14px}
+.reportTile span{color:#6d7e77;font-size:11.5px;display:block}.reportTile strong{display:block;font-size:21px;margin:7px 0 4px;letter-spacing:-.03em;color:#12231e}
+.reportTile small{display:flex;align-items:center;gap:3px;color:#456158;font-size:11px;font-weight:750}.reportTile small em{font-style:normal;font-weight:500;color:#8a9a94}
+.reportTable th{cursor:pointer;user-select:none;white-space:nowrap}.reportTable th.n,.reportTable td.n{text-align:right;font-variant-numeric:tabular-nums}
+.reportTable td{padding:11px 16px;white-space:nowrap}.reportTile strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reportTable tfoot td{font-weight:800;background:#f6f9f8;border-top:2px solid #e0e9e5}
+.reportChart{padding:12px 16px 16px;position:relative}.reportChartEmpty{padding:40px;text-align:center;color:#6d7e77}
+.reportChartPlot{position:relative}.reportChartPlot svg{display:block;width:100%;height:260px}
+.reportLegend{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 6px 4px;color:#456158;font-size:12px;font-weight:650}
+.reportLegend span{display:inline-flex;align-items:center;gap:6px}.reportLegend i,.reportTooltip i,.reportDonut li i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.reportTooltip{position:absolute;top:8px;transform:translateX(-50%);background:#fff;border:1px solid #dfe9e5;box-shadow:0 10px 26px #0a3b2b1f;border-radius:10px;padding:8px 10px;font-size:12px;pointer-events:none;white-space:nowrap;z-index:2}
+.reportTooltip strong{display:block;margin-bottom:4px;color:#12231e}.reportTooltip span{display:flex;align-items:center;gap:6px;color:#456158}.reportTooltip b{color:#12231e}
+.reportHBars{padding:12px 16px 16px;display:grid;gap:8px}
+.reportHBar{display:grid;grid-template-columns:minmax(120px,240px) minmax(0,1fr) 120px;gap:10px;align-items:center;font-size:12px}
+.reportHBarLabel{color:#31564a;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reportHBarTrack{height:12px;background:#f2f7f5;border-radius:6px;overflow:hidden}.reportHBarTrack i{display:block;height:100%;border-radius:0 6px 6px 0}
+.reportHBarValue{text-align:right;font-weight:750;color:#12231e;font-variant-numeric:tabular-nums}
+.reportDonut{display:grid;grid-template-columns:240px minmax(0,1fr);gap:20px;align-items:center;padding:14px 18px}
+.reportDonut svg{width:220px;height:220px}.reportDonut ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.reportDonut li{display:grid;grid-template-columns:14px minmax(0,1fr) auto 56px;gap:8px;align-items:center;padding:6px 8px;border-radius:9px;font-size:12.5px;cursor:default}
+.reportDonut li:hover{background:#f3faf7}.reportDonut li b{font-variant-numeric:tabular-nums}.reportDonut li small{color:#6d7e77;text-align:right}
+.reportHeatmap{padding:14px 18px;overflow:auto}
+.reportHeatHours,.reportHeatRow{display:grid;grid-template-columns:42px repeat(24,minmax(18px,1fr));gap:3px;align-items:center}
+.reportHeatHours span{font-size:10px;color:#71827b;text-align:center}.reportHeatRow span{font-size:11px;color:#456158;font-weight:700}
+.reportHeatRow i{display:block;height:22px;border-radius:4px}.reportHeatRow{margin-top:3px}
+.reportHeatScale{display:flex;align-items:center;gap:4px;justify-content:flex-end;margin-top:10px;font-size:11px;color:#71827b}.reportHeatScale i{width:22px;height:10px;border-radius:3px;display:inline-block}
+@media(max-width:1000px){.reportsLayout{grid-template-columns:1fr}.reportsCatalog{position:static;max-height:260px}.reportDonut{grid-template-columns:1fr}.reportHBar{grid-template-columns:110px minmax(0,1fr) 90px}.reportsScope{margin-left:0}}
+@media print{.sidebar,.topbar,.reportsCatalog,.reportsFilters,.reportsActions,.pager,.reportsLayout .searchBox{display:none!important}.reportsLayout{display:block}.adminShell{display:block}.content{padding:0}.reportTile,.panel{break-inside:avoid}}

@@ -149,7 +149,7 @@ const groups = [
     label: 'REPORTS',
     items: [
       ['/executive-operations', 'Executive operations', Radar],
-      ['/reports', 'Reports & reconciliation', BarChart3],
+      ['/reports', 'Reports Centre', BarChart3],
       ['/audit', 'Audit log', ListChecks],
     ],
   },

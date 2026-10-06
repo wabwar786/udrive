@@ -84,6 +84,7 @@ builder.Services.AddScoped<FareEngine>(serviceProvider =>
         serviceProvider.GetRequiredService<PricingSettingsService>(),
         serviceProvider.GetRequiredService<QuoteTokenService>()));
 builder.Services.AddScoped<TripChatService>(_ => new TripChatService(connectionString));
+builder.Services.AddScoped<ReportsService>(_ => new ReportsService(connectionString));
 builder.Services.AddScoped<ServiceAvailabilityService>(_ =>
     new ServiceAvailabilityService(connectionString));
 builder.Services.AddScoped<DriverWalletService>(serviceProvider =>

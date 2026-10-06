@@ -93,9 +93,11 @@ public static class TeamAccess
             ["/api/v1/admin/safety", "/api/v1/admin/operations/safety-incidents", "/api/v1/admin/disputes",
              "/api/v1/admin/operations/tickets", "/api/v1/admin/operations/notifications"],
             ["/safety", "/disputes", "/support", "/notifications"]),
-        new("reports", "Reports & audit", "Reports", ["view"],
+        // The Reports Centre (/reports) is not here: each report is given on its
+        // own on the Team page (staff_report_access), not through a module.
+        new("reports", "Executive operations & audit log", "Reports", ["view"],
             ["/api/v1/admin/executive", "/api/v1/admin/operations/audit-logs"],
-            ["/executive-operations", "/reports", "/audit"]),
+            ["/executive-operations", "/audit"]),
         new("settings", "Settings & areas", "Setup", ["view", "edit"],
             ["/api/v1/admin/services", "/api/v1/admin/settings", "/api/v1/admin/operations/settings",
              "/api/v1/admin/areas", "/api/v1/admin/vehicle-images"],
@@ -162,6 +164,13 @@ public static class TeamAccess
     public static (string? Module, string Action, bool AnyVerification)? Resolve(string path, string method)
     {
         var p = path.TrimEnd('/');
+
+        // The Reports Centre checks each report and area itself (ReportsService):
+        // a team user needs no module grant to reach it, only reports given to them.
+        if (p.StartsWith("/api/v1/admin/reports", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
 
         // Sharing a trip's live location from the Live tracking page.
         if (System.Text.RegularExpressions.Regex.IsMatch(p, "^/api/v1/tracking/[0-9a-fA-F-]{36}/link$"))
