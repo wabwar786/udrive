@@ -29,11 +29,14 @@ public sealed class TrackingController(TrackingService service):ControllerBase
     /// safe to send to a family group.
     /// </remarks>
     [HttpPost("{bookingId:guid}/link")]
-    public async Task<IActionResult> CreateLink(Guid bookingId,CreateTrackingLinkRequest request,CancellationToken ct)=>Result(await service.CreateLinkAsync(User.GetRequiredUserId(),bookingId,request,ct));
+    public async Task<IActionResult> CreateLink(Guid bookingId,CreateTrackingLinkRequest request,CancellationToken ct)=>Result(await service.CreateLinkAsync(User.GetRequiredUserId(),bookingId,request,ct,OpsAccess()));
 
     /// <summary>Kills every share link for this trip.</summary>
     [HttpDelete("{bookingId:guid}/link")]
-    public async Task<IActionResult> RevokeLinks(Guid bookingId,CancellationToken ct)=>Result(await service.RevokeLinksAsync(User.GetRequiredUserId(),bookingId,ct));
+    public async Task<IActionResult> RevokeLinks(Guid bookingId,CancellationToken ct)=>Result(await service.RevokeLinksAsync(User.GetRequiredUserId(),bookingId,ct,OpsAccess()));
+
+    /// <summary>Admin-portal staff allowed to follow any trip (a team user gets Admin for this request only when they hold Operations · Edit).</summary>
+    private bool OpsAccess()=>User.IsInRole("SuperAdmin")||User.IsInRole("Admin")||User.IsInRole("Manager")||User.IsInRole("Operations");
     private IActionResult Result<T>(ServiceResult<T> result)=>result.Success?Ok(ApiResponse<T>.Ok(result.Data!,result.Message)):StatusCode(result.StatusCode,new{success=false,error=result.ErrorCode,message=result.Message,traceId=HttpContext.TraceIdentifier});
 }
 

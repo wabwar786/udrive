@@ -215,3 +215,6 @@
   .partnerContent{padding:18px 16px 40px}
   .captureGrid{grid-template-columns:1fr}
 }
+/* Live tracking: real map (Leaflet) */
+.leafletHolder{height:min(62vh,560px);min-height:360px;border-radius:16px;overflow:hidden;border:1px solid #dce7e2;z-index:0}.liveMap .leaflet-container{font:inherit}.mapTools{position:absolute;left:28px;bottom:28px;z-index:500;display:flex;gap:8px;flex-wrap:wrap}.mapTools button{box-shadow:0 6px 18px #0a3b2b26}.liveMap .staleOverlay{z-index:500}.carIcon{background:transparent;border:0}.routeLine{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.routeLine>span{flex:1;min-width:180px}.routeActions{display:flex;gap:6px;flex-wrap:wrap}.routeActions .secondaryButton{min-height:32px;padding:0 10px;font-size:11px}.routeActions svg{width:14px}.driverDot{width:11px;height:11px;border-radius:50%;background:#092f24;box-shadow:0 0 0 4px #c9eedd}
+@media(max-width:650px){.mapTools{left:22px;right:22px;bottom:22px}.leafletHolder{height:55vh}}

@@ -162,6 +162,13 @@ public static class TeamAccess
     public static (string? Module, string Action, bool AnyVerification)? Resolve(string path, string method)
     {
         var p = path.TrimEnd('/');
+
+        // Sharing a trip's live location from the Live tracking page.
+        if (System.Text.RegularExpressions.Regex.IsMatch(p, "^/api/v1/tracking/[0-9a-fA-F-]{36}/link$"))
+        {
+            return ("operations", "edit", false);
+        }
+
         if (!(p.StartsWith("/api/v1/admin", StringComparison.OrdinalIgnoreCase)
               || p.StartsWith("/api/v1/hotels/admin", StringComparison.OrdinalIgnoreCase)
               || p.StartsWith("/api/v1/tracking/admin", StringComparison.OrdinalIgnoreCase)
