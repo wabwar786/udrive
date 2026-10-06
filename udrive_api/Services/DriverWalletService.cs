@@ -433,6 +433,12 @@ public sealed class DriverWalletService(
             }
         }
 
+        if (approve)
+        {
+            // Back above the line re-arms the warning for the next drop.
+            await CheckLowBalanceAsync(connection, transaction, profileId, cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<bool>.Ok(true);
     }
@@ -644,7 +650,13 @@ public sealed class DriverWalletService(
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("booking", bookingId);
         var result = await command.ExecuteScalarAsync(cancellationToken);
-        return result is not null and not DBNull;
+        var charged = result is not null and not DBNull;
+        if (charged)
+        {
+            await CheckLowBalanceForBookingAsync(connection, transaction, bookingId, cancellationToken);
+        }
+
+        return charged;
     }
 
     /// <summary>
@@ -762,6 +774,93 @@ public sealed class DriverWalletService(
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("booking", bookingId);
         var result = await command.ExecuteScalarAsync(cancellationToken);
-        return result is not null and not DBNull;
+        var charged = result is not null and not DBNull;
+        if (charged)
+        {
+            await CheckLowBalanceForBookingAsync(connection, transaction, bookingId, cancellationToken);
+        }
+
+        return charged;
+    }
+
+    /// <summary>
+    /// Tells the Driver once when their wallet drops below the warning line.
+    /// </summary>
+    /// <remarks>
+    /// One in-app notification per drop, not one per ride: the wallet row
+    /// remembers that the warning went out, and the mark is cleared when the
+    /// balance is back at or above the line (a top-up), so the next drop warns
+    /// again. The line is <c>driver.wallet.low_balance_alert</c> (PKR 50 by
+    /// default); zero turns the warning off.
+    /// </remarks>
+    internal static async Task CheckLowBalanceAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid driverProfileId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            WITH line AS (
+                SELECT COALESCE(
+                    (SELECT (value_json #>> '{}')::numeric
+                       FROM udrive.system_settings
+                      WHERE key = 'driver.wallet.low_balance_alert'), 50) AS value
+            ), cleared AS (
+                UPDATE udrive.driver_wallets w
+                SET low_balance_notified_at = NULL
+                FROM line
+                WHERE w.driver_profile_id = @driver
+                  AND w.low_balance_notified_at IS NOT NULL
+                  AND w.commission_balance >= line.value
+                RETURNING w.id
+            ), flagged AS (
+                UPDATE udrive.driver_wallets w
+                SET low_balance_notified_at = now()
+                FROM line
+                WHERE w.driver_profile_id = @driver
+                  AND w.low_balance_notified_at IS NULL
+                  AND line.value > 0
+                  AND w.commission_balance < line.value
+                RETURNING w.commission_balance AS balance, line.value AS line_value
+            )
+            INSERT INTO udrive.notifications
+                (id, user_id, type, title, body, data_json, created_at, updated_at)
+            SELECT gen_random_uuid(), dp.user_id, 'WalletLow', 'Wallet top-up karein',
+                   'Aap ka wallet PKR ' || trim(to_char(flagged.balance, 'FM999999990'))
+                   || ' hai — ' || trim(to_char(flagged.line_value, 'FM999999990'))
+                   || ' se kam. Top-up karein taa ke rides milti rahein.',
+                   jsonb_build_object('balance', flagged.balance, 'line', flagged.line_value),
+                   now(), now()
+            FROM flagged
+            JOIN udrive.driver_profiles dp ON dp.id = @driver;
+            """;
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("driver", driverProfileId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task CheckLowBalanceForBookingAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid bookingId,
+        CancellationToken cancellationToken)
+    {
+        Guid driverProfileId;
+        await using (var command = new NpgsqlCommand(
+            "SELECT driver_profile_id FROM udrive.bookings WHERE id = @booking;",
+            connection,
+            transaction))
+        {
+            command.Parameters.AddWithValue("booking", bookingId);
+            if (await command.ExecuteScalarAsync(cancellationToken) is not Guid id)
+            {
+                return;
+            }
+
+            driverProfileId = id;
+        }
+
+        await CheckLowBalanceAsync(connection, transaction, driverProfileId, cancellationToken);
     }
 }

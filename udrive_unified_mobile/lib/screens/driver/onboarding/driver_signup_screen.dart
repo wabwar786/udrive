@@ -116,7 +116,11 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
             _plate.text.trim().isNotEmpty &&
             (int.tryParse(_year.text.trim()) ?? 0) >= 1980 &&
             _files.containsKey('VEHICLE_FRONT') &&
-            _files.containsKey('REGISTRATION_BOOK'),
+            _files.containsKey('REGISTRATION_BOOK') &&
+            // The back is required too: an Admin cannot verify the vehicle
+            // without it, and an application that can never be verified is
+            // worse than one more photograph now.
+            _files.containsKey('REGISTRATION_BOOK_BACK'),
       };
 
   Future<void> _pick(String type) async {
@@ -598,7 +602,7 @@ class _DriverSignUpScreenState extends State<DriverSignUpScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: _PhotoSlot(
-                label: 'Registration certificate',
+                label: 'Registration (front)',
                 file: _files['REGISTRATION_BOOK'],
                 onTap: () => _pick('REGISTRATION_BOOK'),
                 onClear: () =>

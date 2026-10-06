@@ -8,6 +8,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/ud_kit.dart';
 import '../../../models/auth_models.dart';
+import 'document_checklist.dart';
 import 'live_vehicle_registration_screen.dart';
 
 class DriverVerificationScreen extends StatefulWidget {
@@ -31,6 +32,50 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
 
   /// The tehsil picked in the form; null until the driver picks one.
   AreaSelection? _area;
+
+  /// The driver's own documents as the server has them, with each one's
+  /// status and any note from the reviewer. Empty until the first load.
+  List<Map<String, dynamic>> _driverDocs = const [];
+
+  /// The six papers a driver sends, in the order the sign-up asks for them.
+  static const _driverDocuments = <(String, String)>[
+    ('SELFIE', 'Personal picture'),
+    ('DRIVING_LICENCE', 'Driving licence (front)'),
+    ('DRIVING_LICENCE_BACK', 'Driving licence (back)'),
+    ('CNIC_FRONT', 'CNIC (front)'),
+    ('CNIC_BACK', 'CNIC (back)'),
+    ('SELFIE_WITH_CNIC', 'Selfie holding CNIC'),
+  ];
+
+  /// What every vehicle needs before UDrive can verify it.
+  static const _vehicleDocuments = <(String, String)>[
+    ('VEHICLE_FRONT', 'Vehicle photograph'),
+    ('REGISTRATION_BOOK', 'Registration certificate (front)'),
+    ('REGISTRATION_BOOK_BACK', 'Registration certificate (back)'),
+    ('VEHICLE_REAR', 'Vehicle rear'),
+    ('VEHICLE_INTERIOR', 'Vehicle interior'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDocuments());
+  }
+
+  Future<void> _loadDocuments() async {
+    try {
+      final docs = await AppControllerScope.of(context).driverDocuments();
+      if (mounted) setState(() => _driverDocs = docs);
+    } catch (_) {
+      // The list still shows every document as "not sent"; pulling down
+      // refreshes it.
+    }
+  }
+
+  Future<void> _refreshAll() async {
+    await AppControllerScope.of(context).refreshAccount();
+    await _loadDocuments();
+  }
 
   @override
   void didChangeDependencies() {
@@ -56,7 +101,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
 
     // Rendered inside `main_shell`, which draws the bar — no Scaffold here.
     return RefreshIndicator(
-      onRefresh: controller.refreshAccount,
+      onRefresh: _refreshAll,
       color: AppColors.navy,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -145,7 +190,7 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
           UdButton.outline(
             label: urdu ? 'حالت دوبارہ چیک کریں' : 'Refresh approval status',
             icon: Icons.refresh_rounded,
-            onPressed: _busy ? null : controller.refreshAccount,
+            onPressed: _busy ? null : _refreshAll,
           ),
         ],
       ),
@@ -279,18 +324,17 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
   }
 
   Widget _documentsSection(bool urdu) {
-    const documents = <(String, String, IconData)>[
-      ('CNIC_FRONT', 'CNIC front', Icons.credit_card_rounded),
-      ('CNIC_BACK', 'CNIC back', Icons.credit_card_rounded),
-      ('DRIVING_LICENCE', 'Driving licence', Icons.badge_rounded),
-      ('SELFIE', 'Live selfie/profile photo', Icons.face_rounded),
-    ];
+    final profileStatus =
+        AppControllerScope.of(context).driverProfile?.verificationStatus;
+    final lines = DocStatusLine.fromServer(_driverDocuments, _driverDocs);
+    final needing = documentsNeedingYou(lines);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         UdSectionHeader(
-          title: urdu ? 'ضروری دستاویزات' : 'Required driver documents',
+          title: urdu ? 'آپ کی دستاویزات' : 'Your documents',
+          caption: needing,
         ),
         const SizedBox(height: 6),
         Text(
@@ -300,19 +344,12 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
           style: AppType.small.copyWith(color: AppText.secondary),
         ),
         const SizedBox(height: 14),
-        UdListGroup(
-          children: [
-            for (final item in documents)
-              UdListRow(
-                title: item.$2,
-                leading: UdIconTile(icon: item.$3),
-                trailing: const Icon(Icons.upload_file_rounded,
-                    size: 22, color: AppText.secondary),
-                onTap: _busy
-                    ? null
-                    : () => _pickAndUploadDriverDocument(item.$1),
-              ),
-          ],
+        DocumentChecklist(
+          lines: lines,
+          busy: _busy,
+          canReplace:
+              profileStatus != 'Approved' && profileStatus != 'Suspended',
+          onUpload: _pickAndUploadDriverDocument,
         ),
       ],
     );
@@ -342,25 +379,10 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
                 : 'No live vehicle is registered yet.',
           )
         else
-          UdListGroup(
-            children: [
-              for (final vehicle in vehicles)
-                UdListRow(
-                  title: '${vehicle.make} ${vehicle.model} ${vehicle.year}',
-                  subtitle: '${vehicle.registrationNumber} · '
-                      '${vehicle.passengerCapacity} seats · '
-                      'readiness ${vehicle.mountainReadinessScore}%',
-                  leading: const UdIconTile(
-                    icon: Icons.directions_car_filled_rounded,
-                    tone: UdIconTone.soft,
-                  ),
-                  trailing: UdBadge(
-                    label: vehicle.status,
-                    tone: _vehicleTone(vehicle.status),
-                  ),
-                ),
-            ],
-          ),
+          for (final vehicle in vehicles) ...[
+            _vehicleCard(vehicle),
+            const SizedBox(height: 14),
+          ],
         const SizedBox(height: 14),
         UdButton.outline(
           label: urdu ? 'نئی گاڑی رجسٹر کریں' : 'Register another vehicle',
@@ -371,8 +393,69 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
     );
   }
 
+  /// One vehicle, and every document it needs with where each one stands.
+  Widget _vehicleCard(LiveVehicle vehicle) {
+    final lines = DocStatusLine.fromServer(_vehicleDocuments, vehicle.documents);
+    final needing = documentsNeedingYou(lines);
+    return UdCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const UdIconTile(
+                icon: Icons.directions_car_filled_rounded,
+                tone: UdIconTone.soft,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${vehicle.make} ${vehicle.model} ${vehicle.year}',
+                      style: AppType.listTitle,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${vehicle.registrationNumber} · '
+                      '${vehicle.passengerCapacity} seats',
+                      style: AppType.small.copyWith(color: AppText.secondary),
+                    ),
+                  ],
+                ),
+              ),
+              UdBadge(
+                label: vehicle.status,
+                tone: _vehicleTone(vehicle.status),
+              ),
+            ],
+          ),
+          if (needing != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              needing,
+              style: AppType.small.copyWith(
+                color: documentsCaptionColour(lines),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          DocumentChecklist(
+            lines: lines,
+            busy: _busy,
+            canReplace:
+                vehicle.status != 'Verified' && vehicle.status != 'Suspended',
+            onUpload: (type) => _pickAndUploadVehicleDocument(vehicle, type),
+          ),
+        ],
+      ),
+    );
+  }
+
   static UdTone _vehicleTone(String status) => switch (status) {
-        'Approved' || 'Active' => UdTone.ok,
+        'Verified' || 'Approved' || 'Active' => UdTone.ok,
         'Rejected' || 'Suspended' => UdTone.err,
         _ => UdTone.warn,
       };
@@ -443,6 +526,44 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
       if (!mounted) return;
       await AppControllerScope.of(context).uploadDriverDocument(type, file);
       _message('${file.name} uploaded securely.');
+      await _loadDocuments();
+    });
+  }
+
+  /// Sends one vehicle document, then puts the vehicle back in the review
+  /// queue once everything it needs is there.
+  ///
+  /// A verified vehicle stays verified — it keeps taking rides while UDrive
+  /// looks at the new photograph. Anything else goes back to "in review", so
+  /// a driver who fixes the one thing that was missing does not also have to
+  /// find a separate button to say so.
+  Future<void> _pickAndUploadVehicleDocument(
+      LiveVehicle vehicle, String type) async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    await _run(() async {
+      final file = await ImageCompressor.shrink(result.files.single);
+      if (!mounted) return;
+      final controller = AppControllerScope.of(context);
+      await controller.uploadLiveVehicleDocument(vehicle.id, type, file);
+      var ready = false;
+      for (final item in controller.liveVehicles) {
+        if (item.id != vehicle.id) continue;
+        ready = item.status != 'Verified' &&
+            item.status != 'Suspended' &&
+            DocStatusLine.fromServer(_vehicleDocuments, item.documents)
+                .every((line) => line.state != DocStatus.missing);
+      }
+      if (ready) {
+        await controller.submitLiveVehicle(vehicle.id);
+        _message('Upload ho gaya — gaari dobara review mein chali gayi.');
+      } else {
+        _message('${file.name} upload ho gaya.');
+      }
     });
   }
 

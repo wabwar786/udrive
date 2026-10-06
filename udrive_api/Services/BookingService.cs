@@ -769,6 +769,22 @@ public sealed class BookingService(
             }
         }
 
+        // One ride at a time.
+        //
+        // The feed already hides requests from a Driver with a trip running,
+        // but a request seen a moment before they were booked elsewhere could
+        // still be answered. The same two ways out apply as in the feed: close
+        // to the drop-off, or the running trip ends soon and this pickup is
+        // after it plus the turnaround.
+        if (await DriverIsBusyAsync(connection, transaction, driver.DriverProfileId,
+                rideRequestId, pickupAt, cancellationToken))
+        {
+            return ServiceResult<DriverOfferDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "driver_busy",
+                "Aap ke paas pehle se aik ride hai — usay mukammal kar ke naya offer dein.");
+        }
+
         // The driver is held to the same floor as the customer.
         //
         // This is the one place UDrive parts company with the model it is
@@ -807,7 +823,7 @@ public sealed class BookingService(
         var offerId = Guid.NewGuid();
         var instantLike = pickupAt <= DateTimeOffset.UtcNow.AddMinutes(1);
 
-        // Two minutes, not thirty-five seconds.
+        // Minutes, not thirty-five seconds.
         //
         // Thirty-five was shorter than the round trip the offer actually has to
         // survive: the Driver's own decision window, the poll that carries the
@@ -818,11 +834,14 @@ public sealed class BookingService(
         //
         // Still bounded by the request's own expiry, so this can lengthen an
         // offer but never outlive the request it answers.
+        // The length is a setting now (dispatch.offer_valid_seconds, three
+        // minutes by default) so it can be tuned without a release.
+        var offerValidSeconds = await settings.OfferValidSecondsAsync(cancellationToken);
         var offerExpiresAt = instantLike
             ? new[]
             {
-                DateTimeOffset.UtcNow.AddSeconds(120),
-                requestExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(120)
+                DateTimeOffset.UtcNow.AddSeconds(offerValidSeconds),
+                requestExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(offerValidSeconds)
             }.Min()
             : new[]
             {
@@ -1281,6 +1300,42 @@ public sealed class BookingService(
                 "The selected Driver offer has expired.");
         }
 
+        // One ride per Driver at a time.
+        //
+        // Two Customers could each accept the same Driver within a second of
+        // each other: every check above is about *this* request, so both
+        // passed and the Driver ended up with two live rides. Locking the
+        // Driver's row makes the second selection wait for the first; it then
+        // sees the first booking and is turned away. The offer it tried is
+        // closed, so the Customer's list stops showing it.
+        await using (var driverLock = new NpgsqlCommand(
+            "SELECT 1 FROM udrive.driver_profiles WHERE id = @driverProfileId FOR NO KEY UPDATE;",
+            connection,
+            transaction))
+        {
+            driverLock.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            await driverLock.ExecuteScalarAsync(cancellationToken);
+        }
+
+        if (await DriverIsBusyAsync(connection, transaction, driverProfileId,
+                rideRequestId, pickupAt, cancellationToken))
+        {
+            await using (var closeOffer = new NpgsqlCommand(
+                "UPDATE udrive.driver_offers SET status='Expired', responded_at=now(), version=version+1, updated_at=now() WHERE id=@offerId;",
+                connection,
+                transaction))
+            {
+                closeOffer.Parameters.AddWithValue("offerId", offerId);
+                await closeOffer.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return ServiceResult<BookingDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "driver_busy",
+                "Yeh driver abhi doosri ride le chuka hai — doosra offer chunein.");
+        }
+
         // Booking-type rules belong here, not only in the app. The client can be
         // out of date, modified, or bypassed entirely, so the vehicle's own
         // capacity and configuration decide what is allowed.
@@ -1535,6 +1590,25 @@ public sealed class BookingService(
             await updateOffers.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // The Driver is booked, so their open offers on other requests are
+        // withdrawn. Left open, another Customer could accept one a minute
+        // later and the Driver would have two rides.
+        await using (var withdrawOffers = new NpgsqlCommand(
+            """
+            UPDATE udrive.driver_offers
+            SET status='Expired', responded_at=now(), version=version+1, updated_at=now()
+            WHERE driver_profile_id=@driverProfileId
+              AND ride_request_id<>@rideRequestId
+              AND status IN ('Pending','Countered','Accepted');
+            """,
+            connection,
+            transaction))
+        {
+            withdrawOffers.Parameters.AddWithValue("driverProfileId", driverProfileId);
+            withdrawOffers.Parameters.AddWithValue("rideRequestId", rideRequestId);
+            await withdrawOffers.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await AddHistoryAsync(
             connection,
             transaction,
@@ -1550,6 +1624,60 @@ public sealed class BookingService(
 
         await transaction.CommitAsync(cancellationToken);
         return await GetBookingByIdAsync(customerUserId, bookingId, tripOtp, cancellationToken);
+    }
+
+    /// <summary>Whether a Driver already has a ride that this one would clash with.</summary>
+    /// <remarks>
+    /// The feed's rule, asked about one Driver and one pickup time. A running
+    /// trip (accepted through started) counts unless the Driver is close to its
+    /// drop-off, or it ends inside the lead window and <paramref name="pickupAt"/>
+    /// is after its end plus the turnaround. A booking for the same ride request
+    /// does not count against itself.
+    /// </remarks>
+    private static async Task<bool> DriverIsBusyAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid driverProfileId,
+        Guid rideRequestId,
+        DateTimeOffset pickupAt,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM udrive.bookings active_b
+                JOIN udrive.trip_operations active_o ON active_o.booking_id = active_b.id
+                LEFT JOIN udrive.ride_requests active_rr ON active_rr.id = active_b.ride_request_id
+                LEFT JOIN udrive.driver_presence_locations dpl
+                       ON dpl.driver_profile_id = @driverProfileId
+                      AND dpl.server_timestamp > now() - interval '2 minutes'
+                CROSS JOIN LATERAL (
+                    SELECT COALESCE(
+                               active_o.return_at,
+                               active_o.pickup_at + (@assumedTripMinutes * interval '1 minute')
+                           ) AS ends_at
+                ) AS active_end
+                WHERE active_b.driver_profile_id = @driverProfileId
+                  AND active_b.ride_request_id IS DISTINCT FROM @rideRequestId
+                  AND active_o.trip_status IN ('DriverAccepted','DriverEnRoute','DriverArrived','TripStarted','Emergency')
+                  AND NOT (
+                    (active_o.trip_status = 'TripStarted'
+                     AND active_rr.destination_location IS NOT NULL
+                     AND dpl.location IS NOT NULL
+                     AND ST_DWithin(dpl.location, active_rr.destination_location, @nearDestinationMetres))
+                    OR (active_end.ends_at <= now() + (@leadWindowMinutes * interval '1 minute')
+                        AND @pickupAt >= active_end.ends_at + (@turnaroundMinutes * interval '1 minute'))
+                  )
+            );
+            """;
+
+        var timing = await FleetTiming.LoadAsync(connection, transaction, cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("driverProfileId", driverProfileId);
+        command.Parameters.AddWithValue("rideRequestId", rideRequestId);
+        command.Parameters.AddWithValue("pickupAt", pickupAt.ToUniversalTime());
+        timing.AddFeedTo(command);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
     }
 
     public async Task<ServiceResult<IReadOnlyList<BookingDto>>> GetMyBookingsAsync(

@@ -9,7 +9,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/booking/trip_chat_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
-import '../../core/config/app_config.dart';
+import '../../core/services/service_availability_repository.dart';
 import '../../core/media/alert_sound.dart';
 import '../../core/growth/driver_growth_repository.dart';
 import '../../models/driver_growth_models.dart';
@@ -24,6 +24,7 @@ import 'driver_founding_screen.dart';
 import 'driver_mission_detail_screen.dart';
 import 'driver_missions_screen.dart';
 import 'driver_welcome_bonus_screen.dart';
+import 'wallet_topup_guide_screen.dart';
 
 /// D-10 / D-11 — the driver's dashboard, offline and online.
 ///
@@ -109,6 +110,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // The countdown length and the low-wallet line are admin settings.
+      unawaited(ServiceAvailabilityRepository(
+              AppControllerScope.of(context).apiClient)
+          .refreshDispatchSettings());
       await _publishPresence();
       if (!mounted) return;
       await _refresh();
@@ -297,6 +302,63 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       _pendingDocuments = pending;
       if (growth != null) _growth = growth;
     });
+    _maybeShowLowWalletPopup();
+  }
+
+  /// Whether the low-wallet popup has been shown since the app was opened.
+  ///
+  /// Static, so it is once per launch rather than once per visit to this tab:
+  /// the red banner stays on the dashboard for as long as the wallet is low,
+  /// and a popup on every return to the tab would be nagging.
+  static bool _lowWalletPopupShown = false;
+
+  /// The wallet, when it is under the warning line; null otherwise.
+  double? get _lowWalletBalance {
+    final growth = _growth;
+    if (growth == null) return null;
+    final line = ServiceAvailabilityRepository.lowBalanceAlert;
+    if (line <= 0) return null;
+    return growth.walletBalance < line ? growth.walletBalance : null;
+  }
+
+  void _maybeShowLowWalletPopup() {
+    final balance = _lowWalletBalance;
+    if (balance == null || _lowWalletPopupShown) return;
+    _lowWalletPopupShown = true;
+    final line = ServiceAvailabilityRepository.lowBalanceAlert.round();
+    showUdDialog<void>(
+      context: context,
+      title: 'Wallet top-up karein',
+      message: 'Aap ka wallet PKR ${balance.round()} hai — $line se kam. '
+          'Top-up karein taa ke rides milti rahein.',
+      actions: [
+        Builder(
+          builder: (dialogContext) => UdButton.primary(
+            label: 'Top-up kaise karein',
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _openTopupGuide();
+            },
+          ),
+        ),
+        Builder(
+          builder: (dialogContext) => UdButton.outline(
+            label: 'Baad mein',
+            onPressed: () => Navigator.pop(dialogContext),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openTopupGuide() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WalletTopupGuideScreen(balance: _lowWalletBalance),
+      ),
+    );
+    if (mounted) await _loadDashboard();
   }
 
   Future<void> _refresh() async {
@@ -376,6 +438,29 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final activeTrip = _acceptedTrips.isEmpty ? null : _acceptedTrips.first;
     final name = controller.currentUserName.trim();
     final firstName = name.isEmpty ? 'Driver' : name.split(' ').first;
+    final lowWallet = _lowWalletBalance;
+
+    // Every request, on one screen, at the top.
+    //
+    // They used to sit below the takings, the mission card and the demand
+    // block, each one a tall card — so a driver saw one request per screen
+    // and scrolled for the next. Now they come straight after the online
+    // card, compact, the one about to run out first.
+    final showRequests = activeTrip == null &&
+        _isOnline &&
+        controller.driverApproved &&
+        verifiedVehicles.isNotEmpty &&
+        requests.isNotEmpty;
+    final incoming = showRequests ? _liveRequests(requests) : const <LiveRideRequest>[];
+    if (incoming.isNotEmpty) {
+      // After the frame, not during it: playing a sound inside build would
+      // fire again on every unrelated rebuild.
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _announceRequests(incoming),
+      );
+    }
+    final sorted = [...incoming]
+      ..sort((a, b) => _secondsLeft(a).compareTo(_secondsLeft(b)));
 
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -402,6 +487,41 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             onGoOnline: () => controller.toggleDriverOnline(true),
           ),
           const SizedBox(height: 14),
+
+          // The wallet is under the line: say so in red, with the way out.
+          if (lowWallet != null) ...[
+            _LowWalletBanner(
+              balance: lowWallet,
+              line: ServiceAvailabilityRepository.lowBalanceAlert,
+              onHowTo: _openTopupGuide,
+            ),
+            const SizedBox(height: 14),
+          ],
+
+          if (sorted.isNotEmpty) ...[
+            UdSectionHeader(
+              title: 'Incoming requests (${sorted.length})',
+              caption: 'Tap for route',
+            ),
+            const SizedBox(height: 10),
+            for (final request in sorted)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _DashboardRequestCard(
+                  request: request,
+                  secondsLeft: _secondsLeft(request),
+                  totalSeconds:
+                      ServiceAvailabilityRepository.driverDecisionSeconds,
+                  driverLocation: _myLocation,
+                  enabled: verifiedVehicles.isNotEmpty &&
+                      !controller.marketplaceBusy,
+                  onAccept: () => _showOffer(request, verifiedVehicles),
+                  onMap: () => _openRequestMap(request),
+                  onReject: () => _rejectRequest(request),
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
 
           // Today's three figures. Earnings first, because that is the one
           // being asked.
@@ -488,12 +608,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               );
             }),
           ],
-          if (activeTrip == null) ...[
+          if (activeTrip == null && sorted.isEmpty) ...[
             UdSectionHeader(
               title: 'Nearby rides',
-              // A count, not a link: `actionLabel` renders in lime and looks
-              // pressable, and there is nothing here to press.
-              caption: requests.isEmpty ? null : '${requests.length} live',
             ),
             const SizedBox(height: 4),
             Text(
@@ -538,7 +655,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 title: 'Verified vehicle required',
                 text: 'Verify at least one vehicle before sending fares.',
               )
-            else if (requests.isEmpty)
+            else if (sorted.isEmpty)
               // Never just "no rides available".
               //
               // During launch this is the screen a driver sees most, and an
@@ -546,34 +663,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               // screen that tells them to stop opening the app. This one answers
               // the three questions they actually have: when does it get busy,
               // where is it busy now, and what am I earning in the meantime.
-              _NoRideState(growth: _growth)
-            else
-              ...(() {
-                final live = _liveRequests(requests);
-                // After the frame, not during it: playing a sound inside build
-                // would fire again on every unrelated rebuild.
-                if (live.isNotEmpty) {
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => _announceRequests(live),
-                  );
-                }
-                return live;
-              })().map(
-                (request) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _DashboardRequestCard(
-                    request: request,
-                    secondsLeft: _secondsLeft(request),
-                    driverLocation: _myLocation,
-                    commissionPercentage: _growth?.commissionPercentage,
-                    enabled:
-                        verifiedVehicles.isNotEmpty && !controller.marketplaceBusy,
-                    onAccept: () => _showOffer(request, verifiedVehicles),
-                    onMap: () => _openRequestMap(request),
-                    onReject: () => _rejectRequest(request),
-                  ),
-                ),
-              ),
+              _NoRideState(growth: _growth),
           // Below the work, not above it. A driver opening this screen is
           // looking for a ride; the wallet and the launch card are what they
           // read while there is not one.
@@ -681,7 +771,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     for (final request in requests) {
       var deadline = _requestDeadline[request.id];
       if (deadline == null || !deadline.isAfter(now)) {
-        deadline = now.add(const Duration(seconds: AppConfig.decisionSeconds));
+        deadline = now.add(Duration(
+            seconds: ServiceAvailabilityRepository.driverDecisionSeconds));
         _requestDeadline[request.id] = deadline;
         // A fresh countdown is a fresh chance to notice it.
         _announcedRequests.remove(request.id);
@@ -700,9 +791,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   int _secondsLeft(LiveRideRequest request) {
     final deadline = _requestDeadline[request.id];
-    if (deadline == null) return AppConfig.decisionSeconds;
+    final total = ServiceAvailabilityRepository.driverDecisionSeconds;
+    if (deadline == null) return total;
     final seconds = deadline.difference(DateTime.now()).inSeconds + 1;
-    return seconds.clamp(0, AppConfig.decisionSeconds);
+    return seconds.clamp(0, total);
   }
 
   Future<void> _openRequestMap(LiveRideRequest request) async {
@@ -1429,12 +1521,20 @@ class _DriverRequestRouteMap extends StatelessWidget {
 /// how far the pickup is from where the Driver is standing, how long the trip
 /// itself runs, and how much time is left to answer — so those are what this
 /// shows, in that order.
+/// One incoming request, compact enough that several fit on a screen.
+///
+/// Fare, pickup → drop, the distances, seats or whole vehicle, the countdown,
+/// and Reject / Accept. Tapping anywhere else on the card opens the route map.
+///
+/// The driver sees the customer's fare and nothing else about money: the
+/// commission breakdown that used to sit here is gone. What UDrive takes is on
+/// the wallet screen, where it is charged.
 class _DashboardRequestCard extends StatelessWidget {
   const _DashboardRequestCard({
     required this.request,
     required this.secondsLeft,
+    required this.totalSeconds,
     required this.driverLocation,
-    required this.commissionPercentage,
     required this.enabled,
     required this.onAccept,
     required this.onMap,
@@ -1444,16 +1544,11 @@ class _DashboardRequestCard extends StatelessWidget {
   final LiveRideRequest request;
   final int secondsLeft;
 
-  /// The platform's cut, so the card can show what the driver keeps.
-  ///
-  /// Null until the growth endpoint has answered. The breakdown is then left
-  /// out entirely rather than computed from a guessed rate — a net figure that
-  /// turns out to be wrong at settlement costs more trust than no net figure.
-  final double? commissionPercentage;
+  /// The full decision window, for the progress bar.
+  final int totalSeconds;
 
-  /// Null until presence has reported once. The distance line is then omitted
-  /// rather than guessed — a wrong number here would send a Driver towards a
-  /// pickup they cannot reach in time.
+  /// Null until presence has reported once. The distance to the pickup is then
+  /// omitted rather than guessed.
   final LatLng? driverLocation;
 
   final bool enabled;
@@ -1461,10 +1556,8 @@ class _DashboardRequestCard extends StatelessWidget {
   final VoidCallback onMap;
   final VoidCallback onReject;
 
-  /// Road distance is not known without a Directions call, and one per card per
-  /// refresh would be an expensive way to fill in a subtitle. Straight line
-  /// with a road factor is close enough to answer "is this near me or not",
-  /// which is the only question being asked of it.
+  /// Straight line with a road factor — close enough to answer "is this near
+  /// me or not" without a Directions call per card per refresh.
   static double _roadish(LatLng from, LatLng to) =>
       const Distance().as(LengthUnit.Kilometer, from, to) * 1.25;
 
@@ -1476,45 +1569,52 @@ class _DashboardRequestCard extends StatelessWidget {
     final pickup = LatLng(request.pickupLatitude, request.pickupLongitude);
     final destination =
         LatLng(request.destinationLatitude, request.destinationLongitude);
-
     final tripKm = _roadish(pickup, destination);
     final toPickupKm =
         driverLocation == null ? null : _roadish(driverLocation!, pickup);
 
     final wholeVehicle = request.bookingType.toLowerCase().contains('whole');
-    final expiring = secondsLeft <= 5;
+    final expiring = secondsLeft <= 10;
+    final later = request.pickupAt.isAfter(
+        DateTime.now().add(const Duration(minutes: 10)));
+
+    final facts = <String>[
+      wholeVehicle
+          ? 'Whole vehicle'
+          : '${request.seatsRequested} seat${request.seatsRequested == 1 ? '' : 's'}',
+      '${_km(tripKm)} trip',
+      if (toPickupKm != null) '${_km(toPickupKm)} from you',
+      if (later) DateFormat('d MMM · h:mm a').format(request.pickupAt),
+    ];
 
     return UdCard(
       padding: EdgeInsets.zero,
+      onTap: onMap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // The time left, across the top. A Driver reading the card needs to
-          // know how much of it they can afford to read.
           ClipRRect(
-            borderRadius: BorderRadius.vertical(
-                top: Radius.circular(AppRadii.card)),
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(AppRadii.card)),
             child: LinearProgressIndicator(
-              value: secondsLeft / AppConfig.decisionSeconds,
-              minHeight: 5,
+              value: totalSeconds <= 0 ? 0 : secondsLeft / totalSeconds,
+              minHeight: 4,
               backgroundColor: AppColors.border,
               color: expiring ? AppTint.dangerText : AppColors.brand,
             ),
           ),
-
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Money first. It is the number the Driver is deciding on.
                 Row(
                   children: [
                     Expanded(
                       child: Text(
                         'PKR ${NumberFormat('#,###').format(request.customerOffer)}',
                         maxLines: 1,
-                        style: AppType.price.copyWith(color: AppText.primary),
+                        style: AppType.h2.copyWith(color: AppText.primary),
                       ),
                     ),
                     UdBadge(
@@ -1524,81 +1624,26 @@ class _DashboardRequestCard extends StatelessWidget {
                     ),
                   ],
                 ),
-
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
+                _CompactLeg(
+                  icon: Icons.trip_origin_rounded,
+                  label: request.pickupLabel,
+                ),
+                const SizedBox(height: 3),
+                _CompactLeg(
+                  icon: Icons.place_rounded,
+                  label: request.destinationLabel,
+                ),
+                const SizedBox(height: 6),
                 Text(
-                  wholeVehicle
-                      ? 'Whole vehicle  ·  ${_km(tripKm)} trip'
-                      : '${request.seatsRequested} seat'
-                          '${request.seatsRequested == 1 ? '' : 's'}'
-                          '  ·  ${_km(tripKm)} trip',
-                  // Ordinary weight. The fare above is the only bold thing on
-                  // the card; when everything is bold, nothing is read first.
+                  facts.join('  ·  '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: AppType.small.copyWith(color: AppText.secondary),
                 ),
-
-                const SizedBox(height: 14),
-
-                // Pickup, with how far it is from here. A label alone does not
-                // tell a Driver whether answering means a two minute drive or
-                // a twenty minute one, and that is most of the decision.
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const UdRouteRail(),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _RequestLeg(
-                              label: request.pickupLabel,
-                              detail: toPickupKm == null
-                                  ? null
-                                  : '${_km(toPickupKm)} from you',
-                            ),
-                            const SizedBox(height: 12),
-                            _RequestLeg(
-                              label: request.destinationLabel,
-                              detail: DateFormat('d MMM · h:mm a')
-                                  .format(request.pickupAt),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // What the fare is actually worth to this driver.
-                //
-                // The card showed the customer's offer and nothing else, so a
-                // driver compared a gross figure against a trip they would be
-                // paid the net of. The recommended minimum is the server's own
-                // quote — shown only when there is one, since older requests
-                // have none and a floor of zero is not a floor.
-                if (commissionPercentage != null) ...[
-                  const SizedBox(height: 14),
-                  _FareBreakdown(
-                    offer: request.customerOffer,
-                    recommended: request.quotedMinimum,
-                    commissionPercentage: commissionPercentage!,
-                  ),
-                ],
-
-                const SizedBox(height: 16),
-
+                const SizedBox(height: 10),
                 Row(
                   children: [
-                    UdIconButton(
-                      icon: Icons.route_rounded,
-                      variant: UdIconButtonVariant.soft,
-                      tooltip: 'Route',
-                      onPressed: onMap,
-                    ),
-                    const SizedBox(width: 10),
                     Expanded(
                       child: UdButton.outline(
                         label: 'Reject',
@@ -1611,7 +1656,7 @@ class _DashboardRequestCard extends StatelessWidget {
                     Expanded(
                       flex: 2,
                       child: UdButton.primary(
-                        label: 'Accept & send fare',
+                        label: 'Accept',
                         size: UdButtonSize.small,
                         onPressed:
                             enabled && secondsLeft > 0 ? onAccept : null,
@@ -1628,42 +1673,75 @@ class _DashboardRequestCard extends StatelessWidget {
   }
 }
 
-/// One end of the trip: a place, and the fact that matters about it.
-///
-/// The dot it used to carry is now [UdRouteRail] beside the pair, which tells
-/// the two ends apart by shape rather than by hue.
-class _RequestLeg extends StatelessWidget {
-  const _RequestLeg({required this.label, required this.detail});
+/// Pickup or drop, on one line.
+class _CompactLeg extends StatelessWidget {
+  const _CompactLeg({required this.icon, required this.label});
 
+  final IconData icon;
   final String label;
-  final String? detail;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: AppType.listTitle.copyWith(
-            fontSize: 15.5,
-            height: 1.35,
-            color: AppText.primary,
-          ),
-        ),
-        if (detail != null) ...[
-          const SizedBox(height: 3),
-          Text(
-            detail!,
-            style: AppType.small.copyWith(color: AppText.secondary),
+  Widget build(BuildContext context) => Row(
+        children: [
+          Icon(icon, size: 15, color: AppText.secondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppType.listTitle.copyWith(
+                fontSize: 14.5,
+                color: AppText.primary,
+              ),
+            ),
           ),
         ],
-      ],
-    );
-  }
+      );
+}
+
+/// The red line on the dashboard while the wallet is under the warning line.
+class _LowWalletBanner extends StatelessWidget {
+  const _LowWalletBanner({
+    required this.balance,
+    required this.line,
+    required this.onHowTo,
+  });
+
+  final double balance;
+  final double line;
+  final VoidCallback onHowTo;
+
+  @override
+  Widget build(BuildContext context) => UdBanner(
+        tone: UdTone.err,
+        icon: Icons.account_balance_wallet_rounded,
+        onTap: onHowTo,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Aap ka wallet PKR ${balance.round()} hai — ${line.round()} se '
+              'kam. Top-up karein taa ke rides milti rahein.',
+              style: AppType.listTitle.copyWith(
+                fontSize: 14.5,
+                height: 1.4,
+                color: AppTint.dangerText,
+              ),
+            ),
+            const SizedBox(height: 10),
+            UdButton(
+              label: 'Top-up kaise karein',
+              variant: UdButtonVariant.dark,
+              size: UdButtonSize.xs,
+              expand: false,
+              trailingIcon: Icons.chevron_right_rounded,
+              onPressed: onHowTo,
+            ),
+          ],
+        ),
+      );
 }
 
 // ──────────────────────────────────────────────── the growth blocks
@@ -2752,116 +2830,5 @@ class _FoundingRow extends StatelessWidget {
             ),
           ],
         ),
-      );
-}
-
-/// Offer, floor, commission and what is left.
-///
-/// Four lines rather than one net figure, because a driver who is only told
-/// "you keep 1,100" cannot tell whether the cut was the commission they agreed
-/// to or something else. Showing the arithmetic is what makes the number
-/// believable, and settlement disputes are almost always about a number nobody
-/// could check at the time.
-class _FareBreakdown extends StatelessWidget {
-  const _FareBreakdown({
-    required this.offer,
-    required this.recommended,
-    required this.commissionPercentage,
-  });
-
-  final double offer;
-  final double? recommended;
-  final double commissionPercentage;
-
-  @override
-  Widget build(BuildContext context) {
-    final commission = offer * commissionPercentage / 100;
-    final net = offer - commission;
-    final belowFloor = recommended != null && offer < recommended!;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadii.all(AppRadii.row),
-      ),
-      child: Column(
-        children: [
-          _FareLine(label: 'Customer offered', value: _rupees(offer)),
-          if (recommended != null) ...[
-            const SizedBox(height: 7),
-            _FareLine(
-              label: 'Recommended minimum',
-              value: _rupees(recommended!),
-              // Only coloured when the offer is under it. A floor the offer
-              // already clears is information, not a warning.
-              valueColor: belowFloor ? AppTint.warningText : null,
-            ),
-          ],
-          const SizedBox(height: 7),
-          _FareLine(
-            label: 'UDrive commission '
-                '(${commissionPercentage.toStringAsFixed(
-              commissionPercentage % 1 == 0 ? 0 : 1,
-            )}%)',
-            value: '− ${_rupees(commission)}',
-            valueColor: AppTint.dangerText,
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 9),
-            child: Divider(height: 1, color: AppColors.border),
-          ),
-          _FareLine(
-            label: 'You keep',
-            value: _rupees(net),
-            strong: true,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FareLine extends StatelessWidget {
-  const _FareLine({
-    required this.label,
-    required this.value,
-    this.valueColor,
-    this.strong = false,
-  });
-
-  final String label;
-  final String value;
-  final Color? valueColor;
-  final bool strong;
-
-  @override
-  Widget build(BuildContext context) => Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppType.caption.copyWith(
-                fontWeight: strong ? FontWeight.w800 : FontWeight.w600,
-                color: strong ? AppText.primary : AppText.secondary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            value,
-            style: strong
-                ? AppType.listTitle.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: valueColor ?? AppText.primary,
-                  )
-                : AppType.caption.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: valueColor ?? AppText.primary,
-                  ),
-          ),
-        ],
       );
 }

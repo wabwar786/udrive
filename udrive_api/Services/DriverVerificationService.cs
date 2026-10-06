@@ -21,7 +21,7 @@ public sealed class DriverVerificationService(
     /// CNIC is what ties the person to the card. Reviewers had been asking for
     /// both by hand.
     /// </remarks>
-    private static readonly HashSet<string> RequiredDriverDocuments =
+    internal static readonly HashSet<string> RequiredDriverDocuments =
         new(StringComparer.OrdinalIgnoreCase)
         {
             "DRIVING_LICENCE_BACK",
@@ -42,7 +42,7 @@ public sealed class DriverVerificationService(
             "VEHICLE_INTERIOR"
         };
 
-    private static readonly HashSet<string> AllowedVehicleDocuments =
+    internal static readonly HashSet<string> AllowedVehicleDocuments =
         new(RequiredVehicleDocuments, StringComparer.OrdinalIgnoreCase)
         {
             "INSURANCE",
@@ -265,15 +265,6 @@ public sealed class DriverVerificationService(
                 "Complete driver registration before uploading documents.");
         }
 
-        var profile = await GetDriverProfileAsync(userId, cancellationToken);
-        if (profile?.VerificationStatus is "Approved" or "Suspended")
-        {
-            return ServiceResult<DriverDocumentDto>.Fail(
-                StatusCodes.Status409Conflict,
-                "approved_profile_locked",
-                "Approved or suspended Driver documents cannot be replaced until an Admin requests changes.");
-        }
-
         var normalizedType = NormalizeDocumentType(documentType);
         if (!RequiredDriverDocuments.Contains(normalizedType))
         {
@@ -281,6 +272,22 @@ public sealed class DriverVerificationService(
                 StatusCodes.Status400BadRequest,
                 "invalid_driver_document_type",
                 $"Document type must be one of: {string.Join(", ", RequiredDriverDocuments)}.");
+        }
+
+        // An approved profile is locked — except for a document an Admin has
+        // asked for again, or one that was never sent. Those are exactly what
+        // the Verification status screen offers an Upload button for; refusing
+        // them left the Driver with a request they had no way to answer.
+        var profile = await GetDriverProfileAsync(userId, cancellationToken);
+        if (profile?.VerificationStatus is "Approved" or "Suspended"
+            && !await DocumentOpenForUploadAsync(
+                "udrive.driver_documents", "driver_profile_id",
+                driverProfileId.Value, normalizedType, cancellationToken))
+        {
+            return ServiceResult<DriverDocumentDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "approved_profile_locked",
+                "Approved or suspended Driver documents cannot be replaced until an Admin requests changes.");
         }
         var stored = await fileStorage.SaveAsync(file, "driver-documents", driverProfileId.Value, cancellationToken);
         var id = Guid.NewGuid();
@@ -598,15 +605,6 @@ public sealed class DriverVerificationService(
                 "Vehicle not found.");
         }
 
-        var existing = await GetVehicleAsync(userId, vehicleId, cancellationToken);
-        if (existing?.Status is "Verified" or "Suspended")
-        {
-            return ServiceResult<VehicleDocumentDto>.Fail(
-                StatusCodes.Status409Conflict,
-                "verified_vehicle_locked",
-                "Verified or suspended vehicle documents cannot be replaced until an Admin requests changes.");
-        }
-
         var normalizedType = NormalizeDocumentType(documentType);
         if (!AllowedVehicleDocuments.Contains(normalizedType))
         {
@@ -614,6 +612,20 @@ public sealed class DriverVerificationService(
                 StatusCodes.Status400BadRequest,
                 "invalid_vehicle_document_type",
                 $"Document type must be one of: {string.Join(", ", AllowedVehicleDocuments)}.");
+        }
+
+        // Same rule as the Driver's own documents: a verified vehicle still
+        // takes a document an Admin asked for again, or one never sent.
+        var existing = await GetVehicleAsync(userId, vehicleId, cancellationToken);
+        if (existing?.Status is "Verified" or "Suspended"
+            && !await DocumentOpenForUploadAsync(
+                "udrive.vehicle_documents", "vehicle_id",
+                vehicleId, normalizedType, cancellationToken))
+        {
+            return ServiceResult<VehicleDocumentDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "verified_vehicle_locked",
+                "Verified or suspended vehicle documents cannot be replaced until an Admin requests changes.");
         }
         var stored = await fileStorage.SaveAsync(file, "vehicle-documents", vehicleId, cancellationToken);
         var id = Guid.NewGuid();
@@ -1003,7 +1015,29 @@ public sealed class DriverVerificationService(
             .ToArray();
     }
 
-    private static string NormalizeDocumentType(string type)
+    /// <summary>True when this document is missing or an Admin has asked for it again.</summary>
+    private async Task<bool> DocumentOpenForUploadAsync(
+        string table,
+        string ownerColumn,
+        Guid ownerId,
+        string documentType,
+        CancellationToken cancellationToken)
+    {
+        var sql = $"""
+            SELECT status FROM {table}
+            WHERE {ownerColumn} = @ownerId AND document_type = @type
+            LIMIT 1;
+            """;
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ownerId", ownerId);
+        command.Parameters.AddWithValue("type", documentType);
+        var status = await command.ExecuteScalarAsync(cancellationToken) as string;
+        return status is null || string.Equals(status, "Rejected", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static string NormalizeDocumentType(string type)
     {
         return new string(type.Trim().ToUpperInvariant()
             .Select(character => char.IsLetterOrDigit(character) ? character : '_')

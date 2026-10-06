@@ -48,6 +48,9 @@ public sealed class PublicServiceAvailabilityController(
             commissionPercentage = await service.CommissionPercentageAsync(ct),
             welcomeBonus = await service.WelcomeBonusAsync(ct),
             offerCard = await service.OfferCardFieldsAsync(ct),
+            driverDecisionSeconds = await service.DriverDecisionSecondsAsync(ct),
+            offerValidSeconds = await service.OfferValidSecondsAsync(ct),
+            lowBalanceAlert = await service.LowBalanceAlertAsync(ct),
         }));
 }
 

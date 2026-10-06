@@ -49,7 +49,8 @@ class _LiveVehicleRegistrationScreenState
   final Set<String> _uploaded = {};
 
   static const _requiredDocuments = <(String, String)>[
-    ('REGISTRATION_BOOK', 'Registration book/document'),
+    ('REGISTRATION_BOOK', 'Registration certificate (front)'),
+    ('REGISTRATION_BOOK_BACK', 'Registration certificate (back)'),
     ('VEHICLE_FRONT', 'Vehicle front photograph'),
     ('VEHICLE_REAR', 'Vehicle rear photograph'),
     ('VEHICLE_INTERIOR', 'Vehicle interior photograph'),

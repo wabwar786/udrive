@@ -16,29 +16,11 @@ class AppConfig {
   /// carrying them had not reached the server. Visible under Notifications.
   static const String buildLabel = 'rev 145 · 2026-09-25';
 
-  /// How long each side has to answer the other.
-  ///
-  /// One constant for both. A Driver seeing a request and a Customer seeing
-  /// that Driver's offer are two halves of the same decision, and giving them
-  /// different windows means one is always waiting on someone who has already
-  /// been timed out.
-  ///
-  /// Kept short on purpose: a stale request answered four minutes late reaches
-  /// a Customer who has already booked, and a Driver who has already driven
-  /// away.
-  ///
-  /// Thirty, not fifteen. Fifteen seconds is enough to *read* a request and not
-  /// enough to answer one: the driver has to take in the pickup, the drop and
-  /// the customer's figure, decide whether their own number is different, and
-  /// type it — often one-handed, often while parked badly. The countdown ran out
-  /// mid-typing and the card went back to the queue.
-  ///
-  /// Comfortably inside what the server allows. An offer is valid for 120
-  /// seconds from the moment it is sent (BookingService), and the ride request
-  /// itself lives an hour, so neither side of this window is the binding
-  /// constraint — this number is purely about how long a person is given to
-  /// think.
-  static const int decisionSeconds = 30;
+  // The driver's and the customer's countdowns used to be one constant here
+  // (decisionSeconds = 30). They are server settings now —
+  // ServiceAvailabilityRepository.driverDecisionSeconds (60 by default) and
+  // .offerValidSeconds (180) — so they can be changed without a release.
+
   static const String referralShareUrl = 'https://udrive.pk/app';
 
   // ------------------------------------------------------------- tour policy

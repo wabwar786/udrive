@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/network/api_config.dart';
 import '../../core/services/offer_card_fields.dart';
+import '../../core/services/service_availability_repository.dart';
 import '../../core/vehicles/vehicle_image_repository.dart';
 import '../../core/booking/booking_repository.dart';
 import '../../core/booking/trip_operations_repository.dart';
@@ -163,10 +164,13 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
 
   /// Length of the Customer's decision window, in seconds.
   ///
-  /// Read from [AppConfig] so it matches the window the Driver got to send the
-  /// offer in the first place. Two different numbers meant one side was always
-  /// waiting on someone the other side had already timed out.
-  static const int _decisionSeconds = AppConfig.decisionSeconds;
+  /// How long a driver's offer stays open — an admin setting
+  /// (`dispatch.offer_valid_seconds`, three minutes by default) rather than
+  /// the driver's own thirty seconds, which used to run the offer out while
+  /// the customer was still reading it. Never past the server's expiry for the
+  /// offer either way (see where the deadline is set).
+  static int get _decisionSeconds =>
+      ServiceAvailabilityRepository.offerValidSeconds;
 
   @override
   void initState() {
@@ -176,6 +180,9 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
       _refresh();
       _frameRoute();
       _loadCardMedia();
+      unawaited(ServiceAvailabilityRepository(
+              AppControllerScope.of(context).apiClient)
+          .refreshDispatchSettings());
     });
     unawaited(_loadNearby());
     _scheduleNextPoll();
@@ -546,7 +553,7 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
       // the offer — and a button that fails when pressed is worse than one
       // that has gone.
       _firstSeen.putIfAbsent(offer.revision, () => now);
-      final localDeadline = now.add(const Duration(seconds: _decisionSeconds));
+      final localDeadline = now.add(Duration(seconds: _decisionSeconds));
       final serverDeadline = offer.expiresAt.toLocal();
       _customerDecisionDeadline.putIfAbsent(
         offer.revision,

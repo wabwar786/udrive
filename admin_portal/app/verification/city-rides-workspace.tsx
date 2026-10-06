@@ -16,6 +16,7 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  Upload,
   UserRound,
   X,
 } from 'lucide-react';
@@ -1245,7 +1246,7 @@ function approvalBlockers(detail: DriverDetail): string[] {
 
   const blockers: string[] = [];
   if (missing.length > 0) {
-    blockers.push(`these documents are missing: ${missing.join(', ')}`);
+    blockers.push(`${missing.map(pretty).join(', ')} abhi nahi aaya`);
   }
   if (verified === 0) {
     blockers.push(
@@ -1367,6 +1368,12 @@ function DocumentGrid({
     documents.map((document) => [document.documentType, document]),
   );
 
+  // Where an Admin sends a file on the driver's behalf. The endpoint writes
+  // the same row the driver's own upload does.
+  const uploadPath = `/api/v1/admin/verification/${
+    ownerType === 'driver' ? 'drivers' : 'vehicles'
+  }/${ownerId}/documents`;
+
   const allTypes = [
     ...expected,
     ...documents
@@ -1396,6 +1403,7 @@ function DocumentGrid({
                   }/${ownerId}/documents/${document.id}/request-reupload`
                 : ''
             }
+            uploadPath={canEdit ? uploadPath : ''}
             onChanged={onChanged}
             canDelete={canDelete}
           />
@@ -1404,6 +1412,13 @@ function DocumentGrid({
             <FileText size={25} />
             <strong>{pretty(type)}</strong>
             <span>Not uploaded</span>
+            {canEdit && (
+              <UploadForDriver
+                path={uploadPath}
+                documentType={type}
+                onChanged={onChanged}
+              />
+            )}
           </div>
         );
       })}
@@ -1416,6 +1431,7 @@ function ProtectedDocument({
   previewPath,
   deletePath,
   reuploadPath,
+  uploadPath,
   onChanged,
   canDelete,
 }: {
@@ -1423,6 +1439,7 @@ function ProtectedDocument({
   previewPath: string;
   deletePath: string;
   reuploadPath: string;
+  uploadPath: string;
   onChanged: () => Promise<void>;
   canDelete: boolean;
 }) {
@@ -1659,6 +1676,19 @@ function ProtectedDocument({
             </button>
           )}
 
+          {/*
+            A document the driver was asked for again can also be replaced
+            here — for the driver who sends the photograph on WhatsApp or
+            brings the paper to the office.
+          */}
+          {uploadPath && document.status === 'Rejected' && (
+            <UploadForDriver
+              path={uploadPath}
+              documentType={document.documentType}
+              onChanged={onChanged}
+            />
+          )}
+
           {canDelete && (
             <button
               type="button"
@@ -1673,6 +1703,73 @@ function ProtectedDocument({
         </div>
       </div>
     </article>
+  );
+}
+
+/**
+ * "Upload for driver": an Admin sends one document on the driver's behalf.
+ *
+ * The file goes in exactly as if the driver had sent it — waiting for review —
+ * and the server writes an audit log entry naming who uploaded it.
+ */
+function UploadForDriver({
+  path,
+  documentType,
+  onChanged,
+}: {
+  path: string;
+  documentType: string;
+  onChanged: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function send(file: File | undefined) {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError('File 10 MB se bari hai.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const body = new FormData();
+      body.append('documentType', documentType);
+      body.append('file', file);
+      await apiFetch(path, { method: 'POST', body });
+      await onChanged();
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error ? uploadError.message : 'Upload nahi ho saka.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <label
+        className="secondaryButton"
+        style={{ cursor: busy ? 'wait' : 'pointer', minHeight: 35, padding: '0 11px', fontSize: 11 }}
+        title={`Upload ${pretty(documentType)} for the driver`}
+      >
+        <Upload size={15} />
+        {busy ? 'Uploading…' : 'Upload for driver'}
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          style={{ display: 'none' }}
+          disabled={busy}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            void send(file);
+          }}
+        />
+      </label>
+      {error && <small style={{ color: '#b42318', fontWeight: 700 }}>{error}</small>}
+    </>
   );
 }
 
@@ -1805,7 +1902,7 @@ function VehicleReviewCard({
           detail.documents,
           vehicleDocumentOrder,
         )}
-        expected={vehicleDocumentOrder.slice(0, 4)}
+        expected={vehicleDocumentOrder.slice(0, 5)}
         ownerType="vehicle"
         ownerId={detail.vehicle.vehicleId}
         onChanged={onChanged}

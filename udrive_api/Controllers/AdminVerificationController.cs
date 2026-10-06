@@ -93,6 +93,36 @@ public sealed class AdminVerificationController(
             User.GetRequiredUserId(), true, vehicleId, documentId,
             request.Reason, cancellationToken));
 
+    /// <summary>Uploads one of the Driver's own documents on their behalf.</summary>
+    [Authorize(Roles = "SuperAdmin,Admin,VerificationOfficer")]
+    [HttpPost("drivers/{driverProfileId:guid}/documents")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> UploadDriverDocumentForDriver(
+        Guid driverProfileId,
+        [FromForm] string documentType,
+        [FromForm] DateOnly? expiryDate,
+        IFormFile file,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await adminService.UploadDriverDocumentForDriverAsync(
+            User.GetRequiredUserId(), driverProfileId, documentType, expiryDate, file,
+            HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
+
+    /// <summary>The same, for a vehicle's paper or photograph.</summary>
+    [Authorize(Roles = "SuperAdmin,Admin,VerificationOfficer")]
+    [HttpPost("vehicles/{vehicleId:guid}/documents")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> UploadVehicleDocumentForDriver(
+        Guid vehicleId,
+        [FromForm] string documentType,
+        [FromForm] DateOnly? expiryDate,
+        IFormFile file,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await adminService.UploadVehicleDocumentForDriverAsync(
+            User.GetRequiredUserId(), vehicleId, documentType, expiryDate, file,
+            HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
+
     [Authorize(Roles = "SuperAdmin,Admin")]
     [HttpDelete("drivers/{driverProfileId:guid}/documents/{documentId:guid}")]
     public async Task<IActionResult> DeleteDriverDocument(

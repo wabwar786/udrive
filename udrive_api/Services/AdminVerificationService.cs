@@ -296,7 +296,7 @@ public sealed class AdminVerificationService(
             var problems = new List<string>();
             if (missingDocuments is not null)
             {
-                problems.Add($"these driver documents have not been uploaded: {missingDocuments}");
+                problems.Add($"{DocumentLabels(missingDocuments)} abhi nahi aaya");
             }
 
             if (verifiedVehicles == 0)
@@ -843,8 +843,8 @@ public sealed class AdminVerificationService(
                 return ServiceResult<bool>.Fail(
                     StatusCodes.Status400BadRequest,
                     "vehicle_not_ready_for_verification",
-                    "This vehicle cannot be verified yet — these documents have "
-                    + $"not been uploaded: {missingVehicleDocuments}.");
+                    $"{DocumentLabels(missingVehicleDocuments)} abhi nahi aaya. "
+                    + "Driver se mangwayein, ya “Upload for driver” se khud upload karein.");
             }
         }
 
@@ -1163,6 +1163,172 @@ public sealed class AdminVerificationService(
     private static string NormalizeDecision(string decision, HashSet<string> allowed)
     {
         return allowed.First(value => string.Equals(value, decision, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>The names reviewers use, matching the admin portal's labels.</summary>
+    internal static string DocumentLabel(string documentType) =>
+        documentType.Trim().ToUpperInvariant() switch
+        {
+            "SELFIE" => "Personal picture",
+            "DRIVING_LICENCE" => "Driver licence (front)",
+            "DRIVING_LICENCE_BACK" => "Driver licence (back)",
+            "CNIC_FRONT" => "CNIC (front)",
+            "CNIC_BACK" => "CNIC (back)",
+            "SELFIE_WITH_CNIC" => "Selfie holding CNIC",
+            "VEHICLE_FRONT" => "Vehicle photograph",
+            "REGISTRATION_BOOK" => "Registration certificate (front)",
+            "REGISTRATION_BOOK_BACK" => "Registration certificate (back)",
+            "VEHICLE_REAR" => "Vehicle rear",
+            "VEHICLE_INTERIOR" => "Vehicle interior",
+            "INSURANCE" => "Insurance",
+            "FITNESS_CERTIFICATE" => "Fitness certificate",
+            var other => other.Replace('_', ' ').ToLowerInvariant(),
+        };
+
+    /// <summary>"A, B aur C" from the comma list the readiness queries return.</summary>
+    private static string DocumentLabels(string commaList)
+    {
+        var labels = commaList
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(DocumentLabel)
+            .ToArray();
+        return labels.Length <= 1
+            ? string.Join(string.Empty, labels)
+            : string.Join(", ", labels[..^1]) + " aur " + labels[^1];
+    }
+
+    /// <summary>An Admin uploads one of a Driver's own documents for them.</summary>
+    /// <remarks>
+    /// For the Driver who sent a photograph on WhatsApp, or brought the paper to
+    /// the office. The file goes in exactly as if the Driver had sent it —
+    /// waiting for review, any earlier "please re-upload" note cleared — and
+    /// the audit log records who put it there. Locks that stop a Driver
+    /// replacing an approved document do not apply to an Admin.
+    /// </remarks>
+    public async Task<ServiceResult<bool>> UploadDriverDocumentForDriverAsync(
+        Guid adminUserId,
+        Guid driverProfileId,
+        string documentType,
+        DateOnly? expiryDate,
+        IFormFile file,
+        string? ipAddress,
+        CancellationToken cancellationToken)
+    {
+        var type = DriverVerificationService.NormalizeDocumentType(documentType);
+        if (!DriverVerificationService.RequiredDriverDocuments.Contains(type))
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status400BadRequest,
+                "invalid_driver_document_type",
+                "That is not a driver document.");
+        }
+
+        return await UploadForDriverAsync(
+            adminUserId, "udrive.driver_documents", "driver_profile_id", "driver-documents",
+            "Submitted", "DriverDocument", driverProfileId, type, expiryDate, file, ipAddress,
+            "SELECT 1 FROM udrive.driver_profiles WHERE id = @ownerId;",
+            cancellationToken);
+    }
+
+    /// <summary>The same, for a vehicle's paper or photograph.</summary>
+    public async Task<ServiceResult<bool>> UploadVehicleDocumentForDriverAsync(
+        Guid adminUserId,
+        Guid vehicleId,
+        string documentType,
+        DateOnly? expiryDate,
+        IFormFile file,
+        string? ipAddress,
+        CancellationToken cancellationToken)
+    {
+        var type = DriverVerificationService.NormalizeDocumentType(documentType);
+        if (!DriverVerificationService.AllowedVehicleDocuments.Contains(type))
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status400BadRequest,
+                "invalid_vehicle_document_type",
+                "That is not a vehicle document.");
+        }
+
+        return await UploadForDriverAsync(
+            adminUserId, "udrive.vehicle_documents", "vehicle_id", "vehicle-documents",
+            "PendingReview", "VehicleDocument", vehicleId, type, expiryDate, file, ipAddress,
+            "SELECT 1 FROM udrive.vehicles WHERE id = @ownerId AND status <> 'Deleted';",
+            cancellationToken);
+    }
+
+    private async Task<ServiceResult<bool>> UploadForDriverAsync(
+        Guid adminUserId,
+        string table,
+        string ownerColumn,
+        string storageCategory,
+        string waitingStatus,
+        string auditEntity,
+        Guid ownerId,
+        string documentType,
+        DateOnly? expiryDate,
+        IFormFile file,
+        string? ipAddress,
+        string ownerExistsSql,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using (var exists = new NpgsqlCommand(ownerExistsSql, connection))
+        {
+            exists.Parameters.AddWithValue("ownerId", ownerId);
+            if (await exists.ExecuteScalarAsync(cancellationToken) is null)
+            {
+                return ServiceResult<bool>.Fail(
+                    StatusCodes.Status404NotFound,
+                    "owner_not_found",
+                    "That driver or vehicle was not found.");
+            }
+        }
+
+        StoredFile stored;
+        try
+        {
+            stored = await fileStorage.SaveAsync(file, storageCategory, ownerId, cancellationToken);
+        }
+        catch (InvalidDataException ex)
+        {
+            return ServiceResult<bool>.Fail(
+                StatusCodes.Status400BadRequest, "invalid_file", ex.Message);
+        }
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var sql = $"""
+            INSERT INTO {table}
+                (id, {ownerColumn}, document_type, file_url, expiry_date,
+                 status, created_at, updated_at)
+            VALUES
+                (@id, @ownerId, @type, @url, @expiry, @status, now(), now())
+            ON CONFLICT ({ownerColumn}, document_type) DO UPDATE SET
+                file_url = EXCLUDED.file_url,
+                expiry_date = EXCLUDED.expiry_date,
+                status = EXCLUDED.status,
+                review_notes = NULL,
+                updated_at = now()
+            RETURNING id;
+            """;
+        Guid documentId;
+        await using (var command = new NpgsqlCommand(sql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", Guid.NewGuid());
+            command.Parameters.AddWithValue("ownerId", ownerId);
+            command.Parameters.AddWithValue("type", documentType);
+            command.Parameters.AddWithValue("url", stored.RelativeUrl);
+            command.Parameters.AddWithValue("expiry", (object?)expiryDate ?? DBNull.Value);
+            command.Parameters.AddWithValue("status", waitingStatus);
+            documentId = (Guid)(await command.ExecuteScalarAsync(cancellationToken))!;
+        }
+
+        await InsertAuditAsync(
+            connection, transaction, adminUserId, "UploadForDriver", auditEntity, documentId,
+            "Uploaded", $"{DocumentLabel(documentType)} uploaded by admin for the driver.",
+            ipAddress, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return ServiceResult<bool>.Ok(true, $"{DocumentLabel(documentType)} upload ho gaya.");
     }
 
     private static async Task InsertAuditAsync(

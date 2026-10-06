@@ -163,6 +163,27 @@ public sealed class ServiceAvailabilityService(string connectionString)
             "Credited once to a driver's wallet when they are approved.",
             Math.Clamp(amount, 0, 20000), ct);
 
+    /// <summary>How long a Driver has to answer a ride request, in seconds.</summary>
+    /// <remarks>
+    /// The countdown on the request card. Sixty by default: thirty was too
+    /// short to read the route, look at the fare and decide on a phone held
+    /// in one hand at a stop. Clamped 15–300.
+    /// </remarks>
+    public async Task<int> DriverDecisionSecondsAsync(CancellationToken ct) =>
+        (int)await ReadNumberAsync("dispatch.driver_decision_seconds", 60, 15, 300, ct);
+
+    /// <summary>How long a Driver's offer stays open to the Customer, in seconds.</summary>
+    /// <remarks>
+    /// For a ride wanted now. Never longer than the request itself; a
+    /// booking for later keeps its own rule. Clamped 30–900.
+    /// </remarks>
+    public async Task<int> OfferValidSecondsAsync(CancellationToken ct) =>
+        (int)await ReadNumberAsync("dispatch.offer_valid_seconds", 180, 30, 900, ct);
+
+    /// <summary>Below this commission balance a Driver is told to top up, in rupees.</summary>
+    public Task<double> LowBalanceAlertAsync(CancellationToken ct) =>
+        ReadNumberAsync("driver.wallet.low_balance_alert", 50, 0, 100000, ct);
+
     /// <summary>The EasyPaisa account Drivers top up to.</summary>
     /// <remarks>
     /// Held here rather than printed in the app, because the number changes —

@@ -99,6 +99,32 @@ class ServiceAvailabilityRepository {
 
   static const double defaultNearbyRadiusKm = 1;
 
+  /// How long a driver has to answer a ride request, in seconds.
+  ///
+  /// An admin setting (`dispatch.driver_decision_seconds`), read on the same
+  /// call as everything else here. Sixty until the server has answered.
+  static int _driverDecisionSeconds = 60;
+  static int get driverDecisionSeconds => _driverDecisionSeconds;
+
+  /// How long a driver's offer stays open to the customer, in seconds
+  /// (`dispatch.offer_valid_seconds`). The customer's countdown never runs
+  /// past the server's own expiry for the offer either way.
+  static int _offerValidSeconds = 180;
+  static int get offerValidSeconds => _offerValidSeconds;
+
+  /// Below this wallet balance (PKR) the driver is asked to top up
+  /// (`driver.wallet.low_balance_alert`). Zero turns the warning off.
+  static double _lowBalanceAlert = 50;
+  static double get lowBalanceAlert => _lowBalanceAlert;
+
+  /// Reads the settings call just for the values above.
+  ///
+  /// The screens that need them call this when they open; failures leave the
+  /// defaults in place.
+  Future<void> refreshDispatchSettings() async {
+    await trackingPingSeconds();
+  }
+
   Future<int> trackingPingSeconds() async {
     try {
       final response = await api.getJson('/api/v1/settings/operations');
@@ -115,6 +141,13 @@ class ServiceAvailabilityRepository {
         OfferCardFields.current =
             OfferCardFields.fromJson(Map<String, dynamic>.from(card));
       }
+
+      final decision = (data['driverDecisionSeconds'] as num?)?.toInt();
+      if (decision != null) _driverDecisionSeconds = decision.clamp(15, 300);
+      final valid = (data['offerValidSeconds'] as num?)?.toInt();
+      if (valid != null) _offerValidSeconds = valid.clamp(30, 900);
+      final low = (data['lowBalanceAlert'] as num?)?.toDouble();
+      if (low != null) _lowBalanceAlert = low < 0 ? 0 : low;
 
       final seconds = (data['pingSeconds'] as num?)?.toInt();
       if (seconds == null) return defaultPingSeconds;
