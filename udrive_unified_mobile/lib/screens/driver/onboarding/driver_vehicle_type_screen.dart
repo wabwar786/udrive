@@ -6,6 +6,7 @@ import '../../../core/widgets/ud_kit.dart';
 import '../../../data/models.dart';
 import '../../hotel_owner/hotel_owner_shell.dart';
 import 'driver_signup_screen.dart';
+import 'vehicle_register_choice_screen.dart';
 
 /// D-01 — the first question: what are you offering?
 ///
@@ -73,9 +74,17 @@ class DriverVehicleTypeScreen extends StatelessWidget {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
+                    // A vehicle is first asked what it is for: city rides /
+                    // city to city go on to the driver sign-up, tours and
+                    // rent to the three-step vehicle form.
                     builder: (_) => name == 'Hotel'
                         ? const HotelOwnerShell()
-                        : DriverSignUpScreen(vehicleCategory: name),
+                        : VehicleRegisterChoiceScreen(
+                            ridesScreen: (choice) => DriverSignUpScreen(
+                              vehicleCategory: name,
+                              choice: choice,
+                            ),
+                          ),
                   ),
                 ),
               ),

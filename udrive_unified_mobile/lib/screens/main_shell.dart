@@ -940,11 +940,9 @@ class _PremiumDrawer extends StatelessWidget {
         ('driverRewards', Icons.star_outline_rounded, 'Rewards & missions'),
         ('earnings', Icons.payments_outlined, 'Earnings & reviews'),
         ('vehicles', Icons.directions_car_outlined, 'Vehicles'),
-        // Owners who listed vehicles through the old customer-side "Earn with
-        // your vehicle" keep managing them here; new vehicles go through
-        // Vehicles.
-        if (AppControllerScope.of(context).driverProfile?.hasListedVehicles ?? false)
-          ('listedVehicles', Icons.car_rental_rounded, 'Listed vehicles'),
+        // What "Earn with your vehicle" opened on the customer side: rent and
+        // tour vehicles, their requests, departures and drivers.
+        ('listedVehicles', Icons.car_rental_rounded, 'Rent / Tour gaariyan'),
         ('driverDocuments', Icons.badge_outlined, 'My documents'),
         ('driverPackages', Icons.luggage_outlined, 'My routes & tours'),
         ('settings', Icons.settings_outlined, 'Settings'),

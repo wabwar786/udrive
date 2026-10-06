@@ -10,6 +10,7 @@ import '../../../core/widgets/ud_kit.dart';
 import '../../../models/auth_models.dart';
 import 'document_checklist.dart';
 import 'live_vehicle_registration_screen.dart';
+import 'vehicle_register_choice_screen.dart';
 
 class DriverVerificationScreen extends StatefulWidget {
   const DriverVerificationScreen({super.key});
@@ -575,7 +576,14 @@ class _DriverVerificationScreenState extends State<DriverVerificationScreen> {
   }
 
   Future<void> _openVehicleRegistration() async {
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveVehicleRegistrationScreen()));
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VehicleRegisterChoiceScreen(
+          ridesScreen: (choice) => LiveVehicleRegistrationScreen(choice: choice),
+        ),
+      ),
+    );
     if (mounted) await AppControllerScope.of(context).refreshAccount();
   }
 

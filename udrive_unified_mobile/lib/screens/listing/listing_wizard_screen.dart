@@ -22,9 +22,19 @@ import 'my_vehicles_screen.dart';
 ///
 /// Opening it with [existing] continues a Draft or a Rejected vehicle.
 class ListingWizardScreen extends StatefulWidget {
-  const ListingWizardScreen({this.existing, super.key});
+  const ListingWizardScreen({
+    this.existing,
+    this.initialRent,
+    this.initialTour,
+    super.key,
+  });
 
   final ListingVehicle? existing;
+
+  /// What the driver chose on "Kis ke liye register karna chahte hain?",
+  /// so step 2 opens with it already ticked. Null keeps the old default.
+  final bool? initialRent;
+  final bool? initialTour;
 
   @override
   State<ListingWizardScreen> createState() => _ListingWizardScreenState();
@@ -126,6 +136,10 @@ class _ListingWizardScreenState extends State<ListingWizardScreen> {
       _tehsilId = existing.tehsilId;
     } else {
       _seats.text = '${_seatDefaults[_category]}';
+      if (widget.initialRent != null || widget.initialTour != null) {
+        _wantsRent = widget.initialRent ?? false;
+        _wantsTour = widget.initialTour ?? false;
+      }
     }
   }
 

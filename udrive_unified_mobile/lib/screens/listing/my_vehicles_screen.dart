@@ -15,6 +15,8 @@ import 'listing_owner_parts.dart';
 import 'listing_rent_screen.dart' show ListingRentScreen;
 import 'listing_rent_settings_screen.dart' show ListingRentSettingsScreen;
 import 'listing_wizard_screen.dart';
+import '../driver/onboarding/live_vehicle_registration_screen.dart';
+import '../driver/onboarding/vehicle_register_choice_screen.dart';
 
 /// My vehicles — every vehicle this account has listed, and its drivers.
 ///
@@ -273,8 +275,14 @@ class _MyVehiclesScreenState extends State<MyVehiclesScreen> {
         UdEmptyState(
           icon: Icons.directions_car_rounded,
           tone: UdTone.lime,
-          title: 'Koi listed gaari nahi',
-          text: 'Nayi gaari Driver mode → Vehicles se register karein.',
+          title: 'Earn with your vehicle',
+          text: 'Rent it out or run tours. List it in 3 quick steps — UDrive '
+              'checks it once, then it goes live.',
+          action: UdButton.primary(
+            label: 'List your vehicle',
+            icon: Icons.add_rounded,
+            onPressed: () => _open(_registerChoice()),
+          ),
         ),
       );
       return out;
@@ -323,13 +331,31 @@ class _MyVehiclesScreenState extends State<MyVehiclesScreen> {
         onInvite: _invite,
         onRemove: _remove,
       ),
-      // No "add another vehicle" here any more: every new vehicle is
-      // registered from Driver mode → Vehicles, where it is asked what it is
-      // for. This screen keeps the vehicles listed the old way.
+      const SizedBox(height: 14),
+      _AddVehicleButton(onTap: () => _open(_registerChoice())),
+      if (home.owner.identityDone) ...[
+        const SizedBox(height: 8),
+        Text(
+          'Next vehicle: 2 steps — your CNIC is already on file.',
+          textAlign: TextAlign.center,
+          style: AppType.small.copyWith(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: AppText.secondary,
+          ),
+        ),
+      ],
     ]);
     return out;
   }
 }
+
+/// Every new vehicle is first asked what it is for (Driver mode). City rides
+/// / city to city go to the driver's vehicle form; tours and rent to the
+/// three-step form below.
+Widget _registerChoice() => VehicleRegisterChoiceScreen(
+      ridesScreen: (choice) => LiveVehicleRegistrationScreen(choice: choice),
+    );
 
 class _ReviewBanner extends StatelessWidget {
   const _ReviewBanner({required this.vehicle});
@@ -1071,6 +1097,40 @@ class _DriversCard extends StatelessWidget {
                     color: AppText.secondary, size: 20),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddVehicleButton extends StatelessWidget {
+  const _AddVehicleButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.background,
+      borderRadius: AppRadii.all(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadii.all(18),
+        child: CustomPaint(
+          painter: _DashedBorderPainter(),
+          child: SizedBox(
+            height: 56,
+            child: Center(
+              child: Text(
+                '+ Add another vehicle',
+                style: AppType.button.copyWith(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.brandInk,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

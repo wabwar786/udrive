@@ -10,6 +10,7 @@ import 'driver_documents_screen.dart';
 import 'driver_rentals_screen.dart';
 import 'live_vehicle_usage_screen.dart';
 import 'onboarding/live_vehicle_registration_screen.dart';
+import 'onboarding/vehicle_register_choice_screen.dart';
 import 'tour_rate_screen.dart';
 
 /// D-44 — the vehicles on this driver's account.
@@ -81,7 +82,10 @@ class _LiveVehicleListScreenState extends State<LiveVehicleListScreen> {
               await Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const LiveVehicleRegistrationScreen()));
+                      builder: (_) => VehicleRegisterChoiceScreen(
+                            ridesScreen: (choice) =>
+                                LiveVehicleRegistrationScreen(choice: choice),
+                          )));
               if (mounted) await _refresh();
             },
           ),
