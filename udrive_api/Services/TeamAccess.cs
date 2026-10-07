@@ -57,7 +57,8 @@ public static class TeamAccess
     [
         new("verification.city", "City rides (drivers + vehicles)", "Verification", All4,
             ["/api/v1/admin/verification/drivers", "/api/v1/admin/verification/vehicles",
-             "/api/v1/admin/verification/driver-documents", "/api/v1/admin/verification/vehicle-documents"],
+             "/api/v1/admin/verification/driver-documents", "/api/v1/admin/verification/vehicle-documents",
+             "/api/v1/admin/verify/city"],
             ["/verification"]),
         new("verification.tour", "Tour vehicles", "Verification", ["view", "edit", "approve"],
             ["/api/v1/admin/verify/tour"], ["/verification"]),

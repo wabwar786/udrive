@@ -67,6 +67,9 @@ export default function VerificationHubPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [summaryError, setSummaryError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  // The older city screen still holds "Upload for driver" and per-document
+  // review; it opens from a button on the City tab.
+  const [cityClassic, setCityClassic] = useState(false);
 
   // A tehsil is the narrowest filter; a district (or "none") is next; empty is everything.
   const area = tehsilId || districtId;
@@ -196,7 +199,15 @@ export default function VerificationHubPage() {
         </div>
       </div>
 
-      {activeTab === null ? null : activeTab === 'city' ? (
+      {activeTab === 'city' && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <button type="button" className="secondaryButton" onClick={() => setCityClassic((value) => !value)}>
+            {cityClassic ? 'Wapas: approval list' : 'Documents upload / per-document review'}
+          </button>
+        </div>
+      )}
+
+      {activeTab === null ? null : activeTab === 'city' && cityClassic ? (
         <CityRidesWorkspace key={`city-${refreshKey}`} area={area} />
       ) : (
         <HubQueue

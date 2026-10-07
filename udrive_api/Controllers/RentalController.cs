@@ -92,6 +92,19 @@ public sealed class RentalController(RentalService service) : ControllerBase
         return Result(result);
     }
 
+    /// <summary>A request for a car already booked on these dates.</summary>
+    [Authorize]
+    [HttpPost("waitlist")]
+    public async Task<IActionResult> JoinWaitlist(
+        JoinRentalWaitlistRequest request,
+        CancellationToken ct) =>
+        Result(await service.JoinWaitlistAsync(User.GetRequiredUserId(), request, ct));
+
+    [Authorize]
+    [HttpGet("waitlist/my")]
+    public async Task<IActionResult> MyWaitlist(CancellationToken ct) =>
+        Result(await service.MyWaitlistAsync(User.GetRequiredUserId(), ct));
+
     [Authorize]
     [HttpGet("bookings")]
     public async Task<IActionResult> MyBookings(CancellationToken ct) =>

@@ -575,20 +575,48 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
 
   LiveTourPackage get package => widget.package;
 
+  /// The driver accepted this customer's waiting-list request: seats are held
+  /// for them and only the advance is left to pay.
+  LivePackageWaitlist? _accepted;
+
   @override
   void initState() {
     super.initState();
-    _bookingType =
-        'PerSeat';
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAccepted());
+    // A departure posted for the whole vehicle only has no seat price; it
+    // opened on "Per seat" at PKR 0 and could not be booked that way.
+    _bookingType = package.pricePerSeat <= 0 ? 'WholeVehicle' : 'PerSeat';
+  }
+
+  Future<void> _loadAccepted() async {
+    final controller = AppControllerScope.of(context);
+    await controller.refreshCustomerPackageWaitlist();
+    if (!mounted) return;
+    LivePackageWaitlist? found;
+    for (final entry in controller.liveCustomerPackageWaitlist) {
+      if (entry.tourPackageId == package.id && entry.acceptedAndHeld) {
+        found = entry;
+        break;
+      }
+    }
+    if (found == null) return;
+    final entry = found;
+    setState(() {
+      _accepted = entry;
+      _bookingType = entry.bookingType == 'WholeVehicle' ? 'WholeVehicle' : 'PerSeat';
+      if (_bookingType == 'PerSeat') _seats = entry.seatsRequested;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final accepted = _accepted;
     final whole = _bookingType == 'WholeVehicle';
     final total = whole ? package.wholeVehiclePrice : package.pricePerSeat * _seats;
-    final canHold = whole
-        ? package.bookableSeats == package.totalSeats
-        : package.bookableSeats >= _seats;
+    final canHold = accepted != null ||
+        (whole
+            ? package.bookableSeats == package.totalSeats
+            : package.bookableSeats >= _seats);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -609,6 +637,8 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
             ),
             const SizedBox(height: 14),
           ],
+          _PackagePhoto(package: package),
+          const SizedBox(height: 16),
           VehicleLiveMap(package: package),
           const SizedBox(height: 16),
           _DetailCard(package: package),
@@ -623,19 +653,19 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
+                if (package.pricePerSeat > 0) Expanded(
                   child: _Choice(
                     selected: !whole,
-                    title: 'Per seat',
+                    title: 'Single seat',
                     subtitle: _pkr(package.pricePerSeat),
                     onTap: () => setState(() => _bookingType = 'PerSeat'),
                   ),
                 ),
-                const SizedBox(width: 12),
+                if (package.pricePerSeat > 0) const SizedBox(width: 12),
                 Expanded(
                   child: _Choice(
                     selected: whole,
-                    title: 'Whole vehicle',
+                    title: 'Poori gaari',
                     subtitle: _pkr(package.wholeVehiclePrice),
                     onTap: () => setState(() => _bookingType = 'WholeVehicle'),
                   ),
@@ -643,6 +673,33 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
               ],
             ),
           ),
+          if (accepted != null) ...[
+            const SizedBox(height: 14),
+            UdBanner(
+              tone: UdTone.ok,
+              icon: Icons.check_circle_rounded,
+              child: Text(
+                'Driver ne aap ki request accept kar li. '
+                '${DateFormat('h:mm a').format(accepted.acceptExpiresAt!)} tak '
+                'advance de kar booking pakki karein.',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+          if (!canHold && !package.isDemo) ...[
+            const SizedBox(height: 14),
+            _BookedNotice(
+              title: whole
+                  ? package.bookableSeats == 0
+                      ? 'Poori gaari is din book ho chuki hai'
+                      : '${package.totalSeats - package.bookableSeats} seats book '
+                          'ho chuki — poori gaari ab nahi mil sakti'
+                  : package.bookableSeats == 0
+                      ? 'Is tour ki saari seats book ho chuki hain '
+                          '(${package.totalSeats}/${package.totalSeats})'
+                      : 'Sirf ${package.bookableSeats} seats khali hain',
+            ),
+          ],
           if (!whole) ...[
             const SizedBox(height: 14),
             UdStepper(
@@ -717,9 +774,11 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
                 child: UdButton.primary(
                   label: package.isDemo
                       ? 'Demo · not bookable'
-                      : canHold
-                          ? 'Hold & confirm'
-                          : 'Join waiting list',
+                      : accepted != null
+                          ? 'Advance de kar pakki karein'
+                          : canHold
+                              ? 'Hold & confirm'
+                              : 'Waiting list mein request bhejein',
                   busy: _busy,
                   onPressed: package.isDemo
                       ? null
@@ -741,11 +800,14 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
       final controller = AppControllerScope.of(context);
       final passengers = await _collectPassengers(controller);
       if (passengers == null) return;
-      final hold = await controller.acquireLivePackageHold(
-        packageId: package.id,
-        bookingType: _bookingType,
-        seats: _bookingType == 'WholeVehicle' ? package.totalSeats : _seats,
-      );
+      // An accepted waiting-list request already has its seats held.
+      final heldId = _accepted?.holdId ??
+          (await controller.acquireLivePackageHold(
+            packageId: package.id,
+            bookingType: _bookingType,
+            seats: _bookingType == 'WholeVehicle' ? package.totalSeats : _seats,
+          ))
+              .holdId;
       // The advance, not zero.
       //
       // This sent `advanceAmount: 0` while the rest of the app told the same
@@ -762,7 +824,7 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
 
       final booking = await controller.confirmLivePackageBooking(
         packageId: package.id,
-        holdId: hold.holdId,
+        holdId: heldId,
         advanceAmount:
             (tripTotal * AppConfig.tourAdvancePercent).roundToDouble(),
         passengers: passengers,
@@ -895,7 +957,7 @@ class _LivePackageDetailScreenState extends State<LivePackageDetailScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Waiting list registered for ${entry.packageTitle}.')),
+        SnackBar(content: Text('Request bhej di (${entry.packageTitle}). Driver accept kare to notification aayegi.')),
       );
       Navigator.pop(context);
     } catch (error) {
@@ -1389,4 +1451,78 @@ class _Choice extends StatelessWidget {
           ],
         ),
       );
+}
+
+
+/// The vehicle's photo across the top of the departure, with its name on it.
+class _PackagePhoto extends StatelessWidget {
+  const _PackagePhoto({required this.package});
+
+  final LiveTourPackage package;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: SizedBox(
+        height: 170,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            VehicleBanner(
+              vehicleText: package.vehicle,
+              imageUrl: package.coverImageUrl,
+            ),
+            Positioned(
+              left: 12,
+              bottom: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${package.vehicle} · ${package.totalSeats} seats',
+                  style: AppType.small.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when the chosen way of booking is already taken: says so plainly and
+/// explains that a waiting-list request is still possible.
+class _BookedNotice extends StatelessWidget {
+  const _BookedNotice({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return UdBanner(
+      tone: UdTone.warn,
+      icon: Icons.event_busy_rounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          const Text(
+            'Aap phir bhi request bhej sakte hain. Agar booked customer cancel '
+            'kare ya na aaye, to driver aap ki request accept kar sakta hai — '
+            'phir aap ko notification aayegi. Request par koi paisa nahi '
+            'katega; accept hone par advance dena hoga.',
+          ),
+        ],
+      ),
+    );
+  }
 }

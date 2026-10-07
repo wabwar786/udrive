@@ -24,12 +24,12 @@ import 'customer/near_me_screen.dart';
 import 'business_owner/business_owner_dashboard.dart';
 import 'customer/live_packages_screen.dart';
 import 'customer/live_tour_interest_screen.dart';
+import 'driver/tour_rent_home_screen.dart';
 import 'driver/live_create_package_screen.dart';
 import 'driver/live_driver_packages_screen.dart';
 import 'driver/tour_operations_screen.dart';
 import 'driver/live_driver_requests_screen.dart';
 import 'customer/tourism_booking_screen.dart';
-import 'driver/driver_home_screen.dart';
 import 'driver/driver_missions_screen.dart';
 import 'listing/my_vehicles_screen.dart';
 import 'driver/driver_earnings_screen.dart';
@@ -541,6 +541,7 @@ class _MainShellState extends State<MainShell> {
     if (key == 'help') {
       return AppControllerScope.of(context).locale.languageCode == 'ur' ? 'مدد / استعمال کا طریقہ' : 'Help / How to use';
     }
+    if (key == 'tourRent') return 'Tour & Rent';
     return context.tr(mapping[key] ?? (driver ? 'driverDashboard' : 'home'));
   }
 
@@ -609,7 +610,10 @@ class _MainShellState extends State<MainShell> {
 
   Widget _driverContent(String key) => switch (key) {
         'driverVerification' => const DriverVerificationScreen(),
-        'dashboard' => const DriverHomeScreen(),
+        // A driver whose vehicles only do tours or rent-a-car lands on the
+        // Tour & Rent home; everyone else on the city-rides dashboard.
+        'dashboard' => const DriverStartScreen(),
+        'tourRent' => const TourRentHomeScreen(),
         'requests' => const LiveDriverRequestsScreen(),
         'driverPackages' => const LiveDriverPackagesScreen(),
         'packageBookings' => const TourOperationsScreen(),
@@ -641,7 +645,7 @@ class _MainShellState extends State<MainShell> {
         'support' => const FeedbackCenterScreen(),
         'settings' => const SettingsScreen(),
         'driverProfile' => DriverProfileScreen(onNavigate: _driverNavigate),
-        _ => const DriverHomeScreen(),
+        _ => const DriverStartScreen(),
       };
 
   void _customerNavigate(String page) => _goToCustomer(page);
@@ -943,6 +947,8 @@ class _PremiumDrawer extends StatelessWidget {
         // What "Earn with your vehicle" opened on the customer side: rent and
         // tour vehicles, their requests, departures and drivers.
         ('listedVehicles', Icons.car_rental_rounded, 'Rent / Tour gaariyan'),
+        // Who booked the tour and rent vehicles, and who is waiting.
+        ('tourRent', Icons.event_available_rounded, 'Tour & Rent bookings'),
         ('driverDocuments', Icons.badge_outlined, 'My documents'),
         ('driverPackages', Icons.luggage_outlined, 'My routes & tours'),
         ('settings', Icons.settings_outlined, 'Settings'),

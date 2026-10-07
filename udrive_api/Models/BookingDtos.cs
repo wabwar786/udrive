@@ -406,7 +406,11 @@ public sealed record PackageWaitlistDto(
     string Status,
     string CustomerName,
     string? Notes,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    // Set once the driver accepts: the seats held for this customer, and
+    // until when they can pay the advance on them.
+    Guid? HoldId = null,
+    DateTimeOffset? AcceptExpiresAt = null);
 
 public sealed record PassengerManifestItemDto(
     Guid Id,

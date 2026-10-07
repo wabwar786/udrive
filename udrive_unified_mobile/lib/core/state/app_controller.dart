@@ -970,6 +970,18 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  /// Re-reads the customer's tour waiting list — e.g. to see that a driver
+  /// accepted a request and is holding seats for them.
+  Future<void> refreshCustomerPackageWaitlist() async {
+    try {
+      _liveCustomerPackageWaitlist =
+          await _bookingRepository.getCustomerPackageWaitlist();
+      notifyListeners();
+    } catch (_) {
+      // Keep the last list; the screen still works without it.
+    }
+  }
+
   Future<LivePackageWaitlist> joinLivePackageWaitlist({
     required String packageId,
     required String bookingType,

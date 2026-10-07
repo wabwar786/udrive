@@ -1,5 +1,6 @@
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
+import '../network/api_config.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -145,8 +146,10 @@ class VehicleBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = imageUrl?.trim();
-    if (url != null && url.isNotEmpty) {
+    // Server photos come back as `/api/v1/vehicle-images/...`; Image.network
+    // needs the full host, or the cover silently falls to the illustration.
+    final url = ApiConfig.absoluteUrl(imageUrl?.trim());
+    if (url.isNotEmpty) {
       return Image.network(
         url,
         cacheWidth: 600,

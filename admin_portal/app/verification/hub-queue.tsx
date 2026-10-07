@@ -28,7 +28,7 @@ import {
   type CatalogDistrict,
 } from './area-select';
 
-export type HubTab = 'tour' | 'rent' | 'hotels' | 'businesses';
+export type HubTab = 'city' | 'tour' | 'rent' | 'hotels' | 'businesses';
 
 type RowStatus = 'Waiting' | 'Approved' | 'Rejected' | 'Info';
 
@@ -151,6 +151,16 @@ const TAB_COPY: Record<
     search: string;
   }
 > = {
+  city: {
+    title: 'City rides — driver + gaari',
+    hint: 'Driver aur us ki gaari aik saath. City rides aur city to city ke liye.',
+    col1: 'Gaari',
+    col2: 'Driver',
+    approveLabel: 'Approve for city rides',
+    after: 'Approve: driver aur gaari dono aik saath approve, wallet mein welcome credit, driver ko notification.',
+    whereFrom: 'Driver ne registration mein chuna; GPS pin se match hua.',
+    search: 'Naam, phone, number plate',
+  },
   tour: {
     title: 'Tour vehicles',
     hint: 'Owner, vehicle and the people who will drive it. Needs mountain score and an approved driver.',
@@ -324,6 +334,7 @@ export function HubQueue({
 }) {
   const copy = TAB_COPY[tab];
   const vehicleTab = tab === 'tour' || tab === 'rent';
+  const infoTab = vehicleTab || tab === 'city';
   const { can } = usePermissions();
   const tabModule = `verification.${tab}`;
   const canApprove = can(tabModule, 'approve');
@@ -619,7 +630,7 @@ export function HubQueue({
                 <option value="Waiting">Waiting</option>
                 <option value="Approved">Approved</option>
                 <option value="Rejected">Rejected</option>
-                {vehicleTab && <option value="Info">Info asked</option>}
+                {infoTab && <option value="Info">Info asked</option>}
                 <option value="All">All</option>
               </select>
               {vehicleTab && canEdit && (

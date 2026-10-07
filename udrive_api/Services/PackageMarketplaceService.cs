@@ -984,6 +984,31 @@ public sealed class PackageMarketplaceService(
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        await using (var notifyDriver = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.notifications
+                (id, user_id, type, title, body, data_json, action_path, created_at, updated_at)
+            SELECT gen_random_uuid(), dp.user_id, 'TourWaitlist', 'Waiting list mein nayi request',
+                   COALESCE(NULLIF(cu.full_name, ''), 'Customer') || ' · ' || tp.title || ' · '
+                     || CASE WHEN @bookingType = 'WholeVehicle' THEN 'poori gaari'
+                             ELSE @seats::text || ' seat' END,
+                   jsonb_build_object('packageWaitlistId', @id), '/driver/tour-rent', now(), now()
+            FROM udrive.tour_packages tp
+            JOIN udrive.driver_profiles dp ON dp.id = tp.driver_profile_id
+            JOIN udrive.users cu ON cu.id = @userId
+            WHERE tp.id = @packageId;
+            """,
+            connection,
+            transaction))
+        {
+            notifyDriver.Parameters.AddWithValue("bookingType", request.BookingType.ToString());
+            notifyDriver.Parameters.AddWithValue("seats", requestedSeats);
+            notifyDriver.Parameters.AddWithValue("id", id);
+            notifyDriver.Parameters.AddWithValue("userId", customerUserId);
+            notifyDriver.Parameters.AddWithValue("packageId", packageId);
+            await notifyDriver.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         var result = await GetWaitlistByIdAsync(connectionString, id, cancellationToken);
         return result is null
@@ -993,7 +1018,7 @@ public sealed class PackageMarketplaceService(
                 "The waiting list entry was created but could not be read.")
             : ServiceResult<PackageWaitlistDto>.Created(
                 result,
-                "You are on the waiting list. Phase 11 notifications can alert you when seats become available.");
+                "Request bhej di. Driver accept kare to aap ko notification aayegi, phir advance de kar booking pakki karein.");
     }
 
     public async Task<ServiceResult<IReadOnlyList<PackageWaitlistDto>>> GetCustomerWaitlistAsync(
@@ -1003,7 +1028,10 @@ public sealed class PackageMarketplaceService(
         const string sql = """
             SELECT w.id, w.tour_package_id, tp.title, d.name_en,
                    tp.departure_at, w.booking_type, w.seats_requested,
-                   w.status, u.full_name, w.notes, w.created_at
+                   CASE WHEN w.status='Notified' AND w.accept_expires_at<=now()
+                        THEN 'Expired' ELSE w.status END,
+                   u.full_name, w.notes, w.created_at,
+                   w.hold_id, w.accept_expires_at
             FROM udrive.package_waitlist w
             JOIN udrive.tour_packages tp ON tp.id=w.tour_package_id
             JOIN udrive.destinations d ON d.id=tp.destination_id
@@ -1025,7 +1053,10 @@ public sealed class PackageMarketplaceService(
         const string sql = """
             SELECT w.id, w.tour_package_id, tp.title, d.name_en,
                    tp.departure_at, w.booking_type, w.seats_requested,
-                   w.status, u.full_name, w.notes, w.created_at
+                   CASE WHEN w.status='Notified' AND w.accept_expires_at<=now()
+                        THEN 'Expired' ELSE w.status END,
+                   u.full_name, w.notes, w.created_at,
+                   w.hold_id, w.accept_expires_at
             FROM udrive.package_waitlist w
             JOIN udrive.tour_packages tp ON tp.id=w.tour_package_id
             JOIN udrive.destinations d ON d.id=tp.destination_id
@@ -1255,6 +1286,42 @@ public sealed class PackageMarketplaceService(
             updateHold.Parameters.AddWithValue("bookingId", bookingId);
             updateHold.Parameters.AddWithValue("holdId", holdId.Value);
             await updateHold.ExecuteNonQueryAsync(cancellationToken);
+
+            // A waiting-list customer the driver accepted has now paid.
+            await using var waitlistBooked = new NpgsqlCommand(
+                "UPDATE udrive.package_waitlist SET status='Booked', updated_at=now() WHERE hold_id=@holdId;",
+                connection,
+                transaction);
+            waitlistBooked.Parameters.AddWithValue("holdId", holdId.Value);
+            await waitlistBooked.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // The driver hears about every booking on his departure in the app;
+        // there is nothing for him to accept.
+        await using (var notifyDriver = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.notifications
+                (id, user_id, type, title, body, data_json, action_path, created_at, updated_at)
+            SELECT gen_random_uuid(), dp.user_id, 'TourBooked',
+                   'Nayi tour booking — confirm ho chuki',
+                   COALESCE(NULLIF(cu.full_name, ''), 'Customer') || ' · ' || tp.title || ' · '
+                     || CASE WHEN @bookingType = 'WholeVehicle' THEN 'poori gaari'
+                             ELSE @seats::text || ' seat' END,
+                   jsonb_build_object('bookingId', @bookingId), '/driver/tour-rent', now(), now()
+            FROM udrive.tour_packages tp
+            JOIN udrive.driver_profiles dp ON dp.id = tp.driver_profile_id
+            JOIN udrive.users cu ON cu.id = @userId
+            WHERE tp.id = @packageId;
+            """,
+            connection,
+            transaction))
+        {
+            notifyDriver.Parameters.AddWithValue("bookingType", bookingType);
+            notifyDriver.Parameters.AddWithValue("seats", seats);
+            notifyDriver.Parameters.AddWithValue("bookingId", bookingId);
+            notifyDriver.Parameters.AddWithValue("userId", customerUserId);
+            notifyDriver.Parameters.AddWithValue("packageId", package.Id);
+            await notifyDriver.ExecuteNonQueryAsync(cancellationToken);
         }
         if (offerId is not null)
         {
@@ -1395,7 +1462,10 @@ public sealed class PackageMarketplaceService(
                    dp.average_rating, dp.safety_score,
                    concat_ws(' ', v.make, v.model, v.year::text),
                    v.registration_number, v.mountain_readiness_score,
-                   tp.cover_image_url, tp.review_notes, tp.created_at,
+                   -- Daily departures carry no cover of their own: fall back
+                   -- to the vehicle's front photo so the tour list shows it.
+                   COALESCE(NULLIF(tp.cover_image_url, ''), NULLIF(v.image_url, '')),
+                   tp.review_notes, tp.created_at,
                    COALESCE(u.email LIKE 'demo.%@udrive.local', false)
             FROM udrive.tour_packages tp
             JOIN udrive.driver_profiles dp ON dp.id=tp.driver_profile_id
@@ -1427,7 +1497,10 @@ public sealed class PackageMarketplaceService(
         const string sql = """
             SELECT w.id, w.tour_package_id, tp.title, d.name_en,
                    tp.departure_at, w.booking_type, w.seats_requested,
-                   w.status, u.full_name, w.notes, w.created_at
+                   CASE WHEN w.status='Notified' AND w.accept_expires_at<=now()
+                        THEN 'Expired' ELSE w.status END,
+                   u.full_name, w.notes, w.created_at,
+                   w.hold_id, w.accept_expires_at
             FROM udrive.package_waitlist w
             JOIN udrive.tour_packages tp ON tp.id=w.tour_package_id
             JOIN udrive.destinations d ON d.id=tp.destination_id
@@ -1473,7 +1546,9 @@ public sealed class PackageMarketplaceService(
         reader.GetString(7),
         reader.GetString(8),
         reader.IsDBNull(9) ? null : reader.GetString(9),
-        reader.GetFieldValue<DateTimeOffset>(10));
+        reader.GetFieldValue<DateTimeOffset>(10),
+        reader.IsDBNull(11) ? null : reader.GetGuid(11),
+        reader.IsDBNull(12) ? null : reader.GetFieldValue<DateTimeOffset>(12));
 
     private static TourPackageLiveDto ReadPackage(NpgsqlDataReader reader)
     {

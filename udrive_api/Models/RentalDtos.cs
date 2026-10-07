@@ -32,7 +32,10 @@ public sealed record RentalVehicleDto(
     decimal OwnerRating,
     bool HasAirConditioning,
     bool IsFourByFour,
-    bool IsDemo = false);
+    bool IsDemo = false,
+    // Another customer has the whole car on some of these dates. Shown, not
+    // hidden, so the customer can send a waiting-list request instead.
+    bool BookedOnDates = false);
 
 /// <summary>A day this vehicle cannot be rented, and why.</summary>
 /// <param name="Reason">
@@ -270,3 +273,23 @@ public sealed record AdminRentalSettingsRequest(
     string? DisclaimerTextUr);
 
 public sealed record AdminCancelRentalRequest(string? Reason);
+
+/// <summary>A customer asks for a car that is already booked on their dates.</summary>
+public sealed record JoinRentalWaitlistRequest(
+    Guid VehicleId,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    string RentalMode,
+    [property: System.ComponentModel.DataAnnotations.StringLength(500)] string? Notes);
+
+/// <summary>One waiting-list request for a rent-a-car vehicle, as the customer sees it.</summary>
+public sealed record RentalWaitlistDto(
+    Guid Id,
+    Guid VehicleId,
+    string VehicleName,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    string RentalMode,
+    string Status,
+    DateTimeOffset? AcceptExpiresAt,
+    DateTimeOffset CreatedAt);

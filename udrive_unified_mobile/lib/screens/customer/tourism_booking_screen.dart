@@ -1,3 +1,4 @@
+import '../../core/network/api_config.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
@@ -1128,7 +1129,7 @@ class _SearchVehicleCard extends StatelessWidget {
                 decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
                 clipBehavior: Clip.antiAlias,
                 child: image != null && image.isNotEmpty
-                    ? Image.network(image, cacheWidth: 192, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark))
+                    ? Image.network(ApiConfig.absoluteUrl(image), cacheWidth: 192, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark))
                     : const Icon(Icons.directions_bus_rounded, color: AppColors.primaryDark),
               ),
               const SizedBox(width: 9),

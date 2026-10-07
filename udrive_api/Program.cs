@@ -164,6 +164,8 @@ builder.Services.AddScoped<VehicleUsageService>(sp =>
         sp.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<RentalService>(sp =>
     new RentalService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
+builder.Services.AddScoped<TourRentDriverService>(_ =>
+    new TourRentDriverService(connectionString));
 builder.Services.AddScoped<AdminRentalService>(_ =>
     new AdminRentalService(connectionString));
 builder.Services.AddScoped<CustomerDocumentsService>(sp =>
@@ -211,7 +213,8 @@ builder.Services.AddScoped<VerificationHubService>(sp => new VerificationHubServ
     connectionString,
     sp.GetRequiredService<ListingService>(),
     sp.GetRequiredService<HotelService>(),
-    sp.GetRequiredService<BusinessService>()));
+    sp.GetRequiredService<BusinessService>(),
+    sp.GetRequiredService<AdminVerificationService>()));
 builder.Services.AddHostedService(sp => new ListingSweepService(
     sp.GetRequiredService<IServiceScopeFactory>(),
     connectionString,

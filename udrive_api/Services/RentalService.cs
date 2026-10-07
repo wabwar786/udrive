@@ -89,7 +89,13 @@ public sealed class RentalService(
                    COALESCE(NULLIF(u.full_name, ''), 'Owner'),
                    COALESCE(dp.average_rating, 0),
                    v.has_air_conditioning, v.is_four_by_four,
-                   COALESCE(u.email LIKE 'demo.%@udrive.local', false)
+                   COALESCE(u.email LIKE 'demo.%@udrive.local', false),
+                   (@from::date IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM udrive.rental_bookings rb
+                        WHERE rb.vehicle_id = v.id
+                          AND rb.status = ANY(@liveStatuses)
+                          AND daterange(rb.start_date, rb.end_date, '[]')
+                              && daterange(@from::date, @to::date, '[]')))
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
@@ -109,13 +115,9 @@ public sealed class RentalService(
                  OR (@mode = 'SelfDrive' AND v.rent_self_drive_daily > 0)
                   )
               AND (@category = '' OR lower(v.category) = lower(@category))
-              -- Already taken over those days, by a rental or by its own work.
-              AND (@from::date IS NULL OR NOT EXISTS (
-                    SELECT 1 FROM udrive.rental_bookings rb
-                    WHERE rb.vehicle_id = v.id
-                      AND rb.status = ANY(@liveStatuses)
-                      AND daterange(rb.start_date, rb.end_date, '[]')
-                          && daterange(@from::date, @to::date, '[]')))
+              -- Taken over those days by its own work (a tour, a trip, a day
+              -- the owner closed) — hidden. Taken by another customer's rental
+              -- — shown as booked, so a waiting-list request can be sent.
               AND (@from::date IS NULL OR NOT EXISTS (
                     SELECT 1 FROM udrive.rental_blocked_days bd
                     WHERE bd.vehicle_id = v.id
@@ -140,7 +142,8 @@ public sealed class RentalService(
                             (COALESCE(o.return_at, o.pickup_at)
                                AT TIME ZONE 'Asia/Karachi')::date, '[]')
                           && daterange(@from::date, @to::date, '[]')))
-            ORDER BY COALESCE(v.rent_self_drive_daily, v.rent_with_driver_daily),
+            ORDER BY 22,
+                     COALESCE(v.rent_self_drive_daily, v.rent_with_driver_daily),
                      dp.average_rating DESC
             LIMIT 60;
             """;
@@ -179,7 +182,8 @@ public sealed class RentalService(
                 reader.GetDecimal(17),
                 reader.GetBoolean(18),
                 reader.GetBoolean(19),
-                reader.GetBoolean(20)));
+                reader.GetBoolean(20),
+                reader.GetBoolean(21)));
         }
 
         return ServiceResult<IReadOnlyList<RentalVehicleDto>>.Ok(list);
@@ -303,6 +307,19 @@ public sealed class RentalService(
                 + "before booking.");
         }
 
+        // A car a driver has promised to a waiting-list customer stays theirs
+        // until their time to book runs out.
+        if (await ReservedForOtherAsync(
+                connection, transaction, request.VehicleId, userId,
+                terms.StartDate, terms.EndDate, cancellationToken))
+        {
+            return ServiceResult<RentalBookingDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "rental_reserved",
+                "Yeh gaari in dinon ke liye waiting list ke ek customer ko di ja "
+                + "chuki hai. Doosri tareekhein ya doosri gaari chunein.");
+        }
+
         var respondBy = await OwnerRespondByAsync(
             connection, transaction, terms.StartDate, cancellationToken);
 
@@ -356,13 +373,369 @@ public sealed class RentalService(
                 + "Please choose different dates.");
         }
 
+        // Booked straight away — the driver does not accept or reject. Two
+        // cases still wait for the owner, exactly as before: an owner whose
+        // wallet cannot cover UDrive's commission (they top up, then accept),
+        // and a with-driver rental from a fleet owner with no approved driver
+        // to put on it.
+        var confirmed = await TryConfirmDirectAsync(
+            connection, transaction, bookingId, cancellationToken);
+
+        await using (var waitlist = new NpgsqlCommand(
+            """
+            UPDATE udrive.rental_waitlist
+            SET status = 'Booked', rental_booking_id = @booking, updated_at = now()
+            WHERE vehicle_id = @vehicle AND customer_user_id = @customer
+              AND status IN ('Waiting', 'Accepted');
+            """, connection, transaction))
+        {
+            waitlist.Parameters.AddWithValue("booking", bookingId);
+            waitlist.Parameters.AddWithValue("vehicle", request.VehicleId);
+            waitlist.Parameters.AddWithValue("customer", userId);
+            await waitlist.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await NotifyOwnerOfBookingAsync(
+            connection, transaction, bookingId, confirmed, cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
 
         var created = await LoadBookingAsync(connection, bookingId, userId, false, cancellationToken);
         return ServiceResult<RentalBookingDto>.Created(
             created!,
-            "Request sent. The owner will confirm by "
-            + $"{respondBy.ToOffset(Karachi):h:mm tt}. If they don't, your advance comes back.");
+            confirmed
+                ? "Booking confirm ho gayi. Owner ka number aap ki booking mein hai."
+                : "Request sent. The owner will confirm by "
+                  + $"{respondBy.ToOffset(Karachi):h:mm tt}. If they don't, your advance comes back.");
+    }
+
+    /// <summary>
+    /// Confirms a just-made rental without waiting for the owner, and takes
+    /// UDrive's commission from their wallet. False leaves it PendingOwner.
+    /// </summary>
+    private static async Task<bool> TryConfirmDirectAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid bookingId,
+        CancellationToken cancellationToken)
+    {
+        Guid profileId;
+        string mode;
+        DateOnly endDate;
+        string profileKind;
+        await using (var load = new NpgsqlCommand(
+            """
+            SELECT dp.id, rb.rental_mode, rb.end_date, COALESCE(dp.profile_kind, 'Driver')
+            FROM udrive.rental_bookings rb
+            JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id
+            WHERE rb.id = @id;
+            """, connection, transaction))
+        {
+            load.Parameters.AddWithValue("id", bookingId);
+            await using var reader = await load.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken)) return false;
+            profileId = reader.GetGuid(0);
+            mode = reader.GetString(1);
+            endDate = DateOnly.FromDateTime(reader.GetDateTime(2));
+            profileKind = reader.GetString(3);
+        }
+
+        // Who drives: a UDrive driver drives his own car. A fleet owner's
+        // rental goes to the owner himself if he is one of his approved
+        // drivers, otherwise his first approved driver whose licence lasts.
+        Guid? fleetDriverId = null;
+        if (mode == "WithDriver" && profileKind != "Driver")
+        {
+            var candidates = new List<Guid>();
+            await using (var pick = new NpgsqlCommand(
+                """
+                SELECT fd.id FROM udrive.fleet_drivers fd
+                WHERE fd.owner_profile_id = @profile AND fd.status = 'Approved'
+                ORDER BY fd.is_owner DESC, fd.created_at;
+                """, connection, transaction))
+            {
+                pick.Parameters.AddWithValue("profile", profileId);
+                await using var reader = await pick.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken)) candidates.Add(reader.GetGuid(0));
+            }
+
+            foreach (var candidate in candidates)
+            {
+                if (await ListingService.IsValidDriverAsync(
+                        connection, transaction, profileId, candidate, endDate, cancellationToken))
+                {
+                    fleetDriverId = candidate;
+                    break;
+                }
+            }
+
+            if (fleetDriverId is null) return false;
+        }
+
+        var (commission, balance) = await DriverWalletService.RentCommissionAsync(
+            connection, transaction, bookingId, cancellationToken);
+        if (commission > 0 && balance < commission) return false;
+
+        await using (var confirm = new NpgsqlCommand(
+            """
+            UPDATE udrive.rental_bookings
+            SET status = 'Confirmed', owner_responded_at = now(),
+                owner_respond_by = NULL, fleet_driver_id = @driver, updated_at = now()
+            WHERE id = @id AND status = 'PendingOwner';
+            """, connection, transaction))
+        {
+            confirm.Parameters.AddWithValue("id", bookingId);
+            confirm.Parameters.Add(new NpgsqlParameter("driver", NpgsqlDbType.Uuid)
+            {
+                Value = (object?)fleetDriverId ?? DBNull.Value,
+            });
+            await confirm.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await DriverWalletService.ChargeRentCommissionAsync(
+            connection, transaction, bookingId, commission, cancellationToken);
+        return true;
+    }
+
+    /// <summary>Tells the owner, in the app, that a customer booked their car.</summary>
+    private static async Task NotifyOwnerOfBookingAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid bookingId,
+        bool confirmed,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.notifications
+                (id, user_id, type, title, body, data_json, action_path, created_at, updated_at)
+            SELECT gen_random_uuid(), dp.user_id, @type, @title,
+                   COALESCE(NULLIF(cu.full_name, ''), 'Customer') || ' · '
+                     || trim(concat_ws(' ', v.make, v.model)) || ' · '
+                     || to_char(rb.start_date, 'DD Mon') || ' – ' || to_char(rb.end_date, 'DD Mon')
+                     || ' · PKR ' || to_char(rb.subtotal, 'FM999,999,990'),
+                   jsonb_build_object('rentalBookingId', rb.id), '/driver/tour-rent', now(), now()
+            FROM udrive.rental_bookings rb
+            JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id
+            JOIN udrive.vehicles v ON v.id = rb.vehicle_id
+            JOIN udrive.users cu ON cu.id = rb.customer_user_id
+            WHERE rb.id = @id;
+            """, connection, transaction);
+        command.Parameters.AddWithValue("id", bookingId);
+        command.Parameters.AddWithValue("type", confirmed ? "RentalBooked" : "RentalRequest");
+        command.Parameters.AddWithValue("title", confirmed
+            ? "Nayi rent booking — confirm ho chuki"
+            : "Nayi rent request — wallet top-up karke accept karein");
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// True when the driver has accepted another customer's waiting-list
+    /// request for this car on overlapping days, and that customer still has
+    /// time to book.
+    /// </summary>
+    private static async Task<bool> ReservedForOtherAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        Guid vehicleId,
+        Guid customerUserId,
+        DateOnly start,
+        DateOnly end,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM udrive.rental_waitlist w
+                WHERE w.vehicle_id = @vehicle
+                  AND w.customer_user_id <> @customer
+                  AND w.status = 'Accepted'
+                  AND w.accept_expires_at > now()
+                  AND daterange(w.start_date, w.end_date, '[]')
+                      && daterange(@start, @end, '[]'));
+            """, connection, transaction);
+        command.Parameters.AddWithValue("vehicle", vehicleId);
+        command.Parameters.AddWithValue("customer", customerUserId);
+        command.Parameters.Add(new NpgsqlParameter("start", NpgsqlDbType.Date) { Value = start });
+        command.Parameters.Add(new NpgsqlParameter("end", NpgsqlDbType.Date) { Value = end });
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+
+    // ─────────────────────────────────────────── rent waiting list
+
+    /// <summary>
+    /// A customer asks for a car that another customer has on their dates.
+    /// Nothing is paid; if the driver accepts, the customer books as usual.
+    /// </summary>
+    public async Task<ServiceResult<RentalWaitlistDto>> JoinWaitlistAsync(
+        Guid userId,
+        JoinRentalWaitlistRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.EndDate < request.StartDate)
+        {
+            return ServiceResult<RentalWaitlistDto>.Fail(
+                StatusCodes.Status400BadRequest, "rental_dates_invalid",
+                "The return date cannot be before the pick-up date.");
+        }
+
+        var mode = NormaliseMode(request.RentalMode);
+        if (mode is null)
+        {
+            return ServiceResult<RentalWaitlistDto>.Fail(
+                StatusCodes.Status400BadRequest, "rental_mode_invalid",
+                "Choose with driver or self-drive.");
+        }
+
+        if (await DemoListing.IsDemoVehicleAsync(connectionString, request.VehicleId, cancellationToken))
+        {
+            return ServiceResult<RentalWaitlistDto>.Fail(
+                StatusCodes.Status409Conflict, DemoListing.ErrorCode, DemoListing.Message);
+        }
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        Guid ownerProfileId;
+        Guid ownerUserId;
+        await using (var load = new NpgsqlCommand(
+            """
+            SELECT v.driver_profile_id, dp.user_id
+            FROM udrive.vehicles v
+            JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
+            WHERE v.id = @vehicle AND COALESCE(v.available_for_rent, false);
+            """, connection))
+        {
+            load.Parameters.AddWithValue("vehicle", request.VehicleId);
+            await using var reader = await load.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return ServiceResult<RentalWaitlistDto>.Fail(
+                    StatusCodes.Status404NotFound, "vehicle_not_found", "That vehicle was not found.");
+            }
+
+            ownerProfileId = reader.GetGuid(0);
+            ownerUserId = reader.GetGuid(1);
+        }
+
+        if (ownerUserId == userId)
+        {
+            return ServiceResult<RentalWaitlistDto>.Fail(
+                StatusCodes.Status409Conflict, "own_vehicle", "This is your own vehicle.");
+        }
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var cancelOld = new NpgsqlCommand(
+            """
+            UPDATE udrive.rental_waitlist SET status = 'Cancelled', updated_at = now()
+            WHERE vehicle_id = @vehicle AND customer_user_id = @customer
+              AND status IN ('Waiting', 'Accepted');
+            """, connection, transaction))
+        {
+            cancelOld.Parameters.AddWithValue("vehicle", request.VehicleId);
+            cancelOld.Parameters.AddWithValue("customer", userId);
+            await cancelOld.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        Guid id;
+        await using (var insert = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.rental_waitlist
+                (vehicle_id, driver_profile_id, customer_user_id, start_date, end_date,
+                 rental_mode, status, notes)
+            VALUES (@vehicle, @profile, @customer, @start, @end, @mode, 'Waiting', @notes)
+            RETURNING id;
+            """, connection, transaction))
+        {
+            insert.Parameters.AddWithValue("vehicle", request.VehicleId);
+            insert.Parameters.AddWithValue("profile", ownerProfileId);
+            insert.Parameters.AddWithValue("customer", userId);
+            insert.Parameters.Add(new NpgsqlParameter("start", NpgsqlDbType.Date) { Value = request.StartDate });
+            insert.Parameters.Add(new NpgsqlParameter("end", NpgsqlDbType.Date) { Value = request.EndDate });
+            insert.Parameters.AddWithValue("mode", mode);
+            insert.Parameters.Add(new NpgsqlParameter("notes", NpgsqlDbType.Varchar)
+            {
+                Value = string.IsNullOrWhiteSpace(request.Notes) ? DBNull.Value : request.Notes.Trim(),
+            });
+            id = (Guid)(await insert.ExecuteScalarAsync(cancellationToken))!;
+        }
+
+        await using (var notify = new NpgsqlCommand(
+            """
+            INSERT INTO udrive.notifications
+                (id, user_id, type, title, body, data_json, action_path, created_at, updated_at)
+            SELECT gen_random_uuid(), @owner, 'RentalWaitlist', 'Waiting list mein nayi request',
+                   COALESCE(NULLIF(u.full_name, ''), 'Customer') || ' ne ' || to_char(@start, 'DD Mon')
+                     || ' – ' || to_char(@end, 'DD Mon') || ' ke liye request bheji hai.',
+                   jsonb_build_object('rentalWaitlistId', @id), '/driver/tour-rent', now(), now()
+            FROM udrive.users u WHERE u.id = @customer;
+            """, connection, transaction))
+        {
+            notify.Parameters.AddWithValue("owner", ownerUserId);
+            notify.Parameters.AddWithValue("customer", userId);
+            notify.Parameters.AddWithValue("id", id);
+            notify.Parameters.Add(new NpgsqlParameter("start", NpgsqlDbType.Date) { Value = request.StartDate });
+            notify.Parameters.Add(new NpgsqlParameter("end", NpgsqlDbType.Date) { Value = request.EndDate });
+            await notify.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        var list = await ReadWaitlistAsync(connection, userId, id, cancellationToken);
+        return ServiceResult<RentalWaitlistDto>.Created(
+            list[0],
+            "Request bhej di. Driver accept kare to aap ko notification aayegi.");
+    }
+
+    /// <summary>The customer's own rent waiting-list requests.</summary>
+    public async Task<ServiceResult<IReadOnlyList<RentalWaitlistDto>>> MyWaitlistAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        return ServiceResult<IReadOnlyList<RentalWaitlistDto>>.Ok(
+            await ReadWaitlistAsync(connection, userId, null, cancellationToken));
+    }
+
+    private static async Task<IReadOnlyList<RentalWaitlistDto>> ReadWaitlistAsync(
+        NpgsqlConnection connection,
+        Guid userId,
+        Guid? id,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT w.id, w.vehicle_id, trim(concat_ws(' ', v.make, v.model)),
+                   w.start_date, w.end_date, w.rental_mode,
+                   CASE WHEN w.status = 'Accepted' AND w.accept_expires_at <= now()
+                        THEN 'Expired' ELSE w.status END,
+                   w.accept_expires_at, w.created_at
+            FROM udrive.rental_waitlist w
+            JOIN udrive.vehicles v ON v.id = w.vehicle_id
+            WHERE w.customer_user_id = @user
+              AND (@id::uuid IS NULL OR w.id = @id::uuid)
+            ORDER BY w.created_at DESC
+            LIMIT 50;
+            """, connection);
+        command.Parameters.AddWithValue("user", userId);
+        command.Parameters.Add(new NpgsqlParameter("id", NpgsqlDbType.Uuid) { Value = (object?)id ?? DBNull.Value });
+        var list = new List<RentalWaitlistDto>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            list.Add(new RentalWaitlistDto(
+                reader.GetGuid(0),
+                reader.GetGuid(1),
+                reader.GetString(2),
+                DateOnly.FromDateTime(reader.GetDateTime(3)),
+                DateOnly.FromDateTime(reader.GetDateTime(4)),
+                reader.GetString(5),
+                reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7),
+                reader.GetFieldValue<DateTimeOffset>(8)));
+        }
+
+        return list;
     }
 
     /// <summary>Calls a booking off, from either side.</summary>
@@ -748,15 +1121,18 @@ public sealed class RentalService(
             SELECT owner_u.phone_number,
                    trim(concat_ws(' ', v.make, v.model)), v.registration_number,
                    rb.start_date, rb.end_date, rb.days, rb.rental_mode,
-                   rb.subtotal, rb.advance_amount, rb.owner_respond_by, rb.booking_reference
+                   rb.subtotal, rb.advance_amount, rb.owner_respond_by, rb.booking_reference,
+                   rb.status
             FROM udrive.rental_bookings rb
             JOIN udrive.vehicles v ON v.id = rb.vehicle_id
             JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id
             JOIN udrive.users owner_u ON owner_u.id = dp.user_id
-            WHERE rb.id = @id AND rb.status = 'PendingOwner';
+            WHERE rb.id = @id
+              AND (rb.status = 'PendingOwner' OR (@first AND rb.status = 'Confirmed'));
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("first", !reminder);
         command.Parameters.AddWithValue("id", bookingId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken) || reader.IsDBNull(0)) return null;
@@ -772,9 +1148,17 @@ public sealed class RentalService(
         var advance = reader.GetDecimal(8);
         var respondBy = reader.IsDBNull(9) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(9);
         var reference = reader.GetString(10);
+        var direct = reader.GetString(11) == "Confirmed";
         var by = respondBy is null ? "soon" : respondBy.Value.ToOffset(Karachi).ToString("h:mm tt");
 
-        var message = reminder
+        var message = direct
+            ? $"UDrive: nayi rent booking {reference} — confirm ho chuki\n"
+              + $"Car: {car} ({plate})\n"
+              + $"Dates: {start:dd MMM} – {end:dd MMM} ({days} day{(days == 1 ? "" : "s")})\n"
+              + $"Type: {mode}\n"
+              + $"Total: Rs {total:N0} · advance paid: Rs {advance:N0}\n"
+              + "Customer ka number UDrive app mein hai: Driver mode → Tour & Rent."
+            : reminder
             ? $"UDrive reminder: the rental request {reference} for your {car} ({plate}) "
               + $"is still waiting. Please answer by {by}, or it will be cancelled and the customer refunded.\n"
               + "Open the UDrive app → My vehicles → Rent."

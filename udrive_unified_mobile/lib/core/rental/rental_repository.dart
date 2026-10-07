@@ -27,6 +27,7 @@ class RentalVehicle {
     required this.hasAirConditioning,
     required this.isFourByFour,
     this.isDemo = false,
+    this.bookedOnDates = false,
   });
 
   final String vehicleId;
@@ -57,6 +58,10 @@ class RentalVehicle {
   /// A sample car added from the admin portal. It is shown with a Demo label
   /// and the server refuses to book it.
   final bool isDemo;
+
+  /// Another customer has this car on some of the chosen dates. It is shown
+  /// anyway, so a waiting-list request can be sent.
+  final bool bookedOnDates;
 
   bool get offersWithDriver => (withDriverDaily ?? 0) > 0;
   bool get offersSelfDrive => (selfDriveDaily ?? 0) > 0;
@@ -93,6 +98,7 @@ class RentalVehicle {
         hasAirConditioning: json['hasAirConditioning'] == true,
         isFourByFour: json['isFourByFour'] == true,
         isDemo: json['isDemo'] == true,
+        bookedOnDates: json['bookedOnDates'] == true,
       );
 }
 
@@ -534,6 +540,26 @@ class RentalRepository {
         }),
         RentalBooking.fromJson,
       );
+
+  /// Asks for a car that is booked on these dates. Nothing is paid; if the
+  /// owner accepts, the customer is told and books as usual.
+  Future<void> joinWaitlist({
+    required String vehicleId,
+    required DateTime from,
+    required DateTime to,
+    required String mode,
+  }) async {
+    try {
+      await api.postJson('/api/v1/rentals/waitlist', {
+        'vehicleId': vehicleId,
+        'startDate': _day(from),
+        'endDate': _day(to),
+        'rentalMode': mode,
+      });
+    } on ApiException catch (error) {
+      throw RentalRefused(error.code ?? '', error.message);
+    }
+  }
 
   Future<List<RentalBooking>> myBookings() async {
     final response = await api.getJson('/api/v1/rentals/bookings');

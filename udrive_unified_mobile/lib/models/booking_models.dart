@@ -666,6 +666,8 @@ class LivePackageWaitlist {
     required this.customerName,
     required this.createdAt,
     this.notes,
+    this.holdId,
+    this.acceptExpiresAt,
   });
 
   final String id;
@@ -680,6 +682,19 @@ class LivePackageWaitlist {
   final String? notes;
   final DateTime createdAt;
 
+  /// Set once the driver accepts: the seats held for this customer.
+  final String? holdId;
+
+  /// Until when the customer can pay the advance on [holdId].
+  final DateTime? acceptExpiresAt;
+
+  /// The driver accepted and the seats are still held.
+  bool get acceptedAndHeld =>
+      status == 'Notified' &&
+      holdId != null &&
+      acceptExpiresAt != null &&
+      acceptExpiresAt!.isAfter(DateTime.now());
+
   factory LivePackageWaitlist.fromJson(Map<String, dynamic> json) =>
       LivePackageWaitlist(
         id: json['id'].toString(),
@@ -693,6 +708,10 @@ class LivePackageWaitlist {
         customerName: json['customerName']?.toString() ?? '',
         notes: json['notes']?.toString(),
         createdAt: DateTime.parse(json['createdAt'].toString()).toLocal(),
+        holdId: json['holdId']?.toString(),
+        acceptExpiresAt: json['acceptExpiresAt'] == null
+            ? null
+            : DateTime.tryParse(json['acceptExpiresAt'].toString())?.toLocal(),
       );
 }
 

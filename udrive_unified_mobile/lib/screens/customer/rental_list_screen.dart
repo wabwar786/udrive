@@ -118,6 +118,11 @@ class _RentalListScreenState extends State<RentalListScreen> {
       };
 
   Future<void> _open(RentalVehicle vehicle) async {
+    final dates = _dates;
+    if (vehicle.bookedOnDates && dates != null) {
+      await _askWaitlist(vehicle, dates);
+      return;
+    }
     final booked = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -132,6 +137,40 @@ class _RentalListScreenState extends State<RentalListScreen> {
     if (booked == true) {
       await _openMine();
       if (mounted) await _load();
+    }
+  }
+
+  /// The car is taken on these dates: say so plainly, and offer a
+  /// waiting-list request instead of a booking.
+  Future<void> _askWaitlist(RentalVehicle vehicle, DateTimeRange dates) async {
+    final rate = (_mode == 'WithDriver'
+            ? vehicle.withDriverDaily
+            : vehicle.selfDriveDaily) ??
+        vehicle.fromDaily;
+    final send = await showUdSheet<bool>(
+      context: context,
+      builder: (sheetContext) => _BookedSheet(
+        vehicle: vehicle,
+        dates: '${_day(dates.start)} — ${_day(dates.end)}',
+        total: Money.amount(rate * _days(dates)),
+        onSend: () => Navigator.pop(sheetContext, true),
+      ),
+    );
+    if (send != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _repository.joinWaitlist(
+        vehicleId: vehicle.vehicleId,
+        from: dates.start,
+        to: dates.end,
+        mode: _mode,
+      );
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Request bhej di. Driver accept kare to aap ko '
+            'notification aayegi.'),
+      ));
+    } on RentalRefused catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -169,8 +208,7 @@ class _RentalListScreenState extends State<RentalListScreen> {
                           'ڈرائیور کے ساتھ · کوئی بھی تاریخ')
                       : _t('Self drive · any dates',
                           'خود چلائیں · کوئی بھی تاریخ'))
-                  : _t('${_days(dates)} day(s) · only free cars shown',
-                      '${_days(dates)} دن · صرف خالی گاڑیاں'),
+                  : _t('${_days(dates)} day(s)', '${_days(dates)} دن'),
               action: dates == null
                   ? _t('Pick dates', 'تاریخ چنیں')
                   : _t('Change', 'بدلیں'),
@@ -583,21 +621,29 @@ class _RentCard extends StatelessWidget {
                       height: 24,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: minDays
-                            ? AppColors.surfaceAlt
-                            : AppColors.brandWash,
+                        color: v.bookedOnDates
+                            ? AppTint.warning
+                            : minDays
+                                ? AppColors.surfaceAlt
+                                : AppColors.brandWash,
                         borderRadius: AppRadii.all(8),
                       ),
                       child: Text(
-                        minDays
-                            ? t('Min ${v.minimumDays} days',
-                                'کم از کم ${v.minimumDays} دن')
-                            : t('From 1 day', 'ایک دن سے'),
+                        v.bookedOnDates
+                            ? 'Book ho chuki'
+                            : minDays
+                                ? t('Min ${v.minimumDays} days',
+                                    'کم از کم ${v.minimumDays} دن')
+                                : t('From 1 day', 'ایک دن سے'),
                         maxLines: 1,
                         style: AppType.caption.copyWith(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
-                          color: minDays ? AppText.primary : AppColors.brandInk,
+                          color: v.bookedOnDates
+                              ? AppTint.warningText
+                              : minDays
+                                  ? AppText.primary
+                                  : AppColors.brandInk,
                         ),
                       ),
                     ),
@@ -721,7 +767,7 @@ class _RentCard extends StatelessWidget {
                                   const EdgeInsets.symmetric(horizontal: 14),
                               alignment: Alignment.center,
                               child: Text(
-                                t('Rent', 'کرایہ'),
+                                v.bookedOnDates ? 'Request' : t('Rent', 'کرایہ'),
                                 style: AppType.small.copyWith(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w800,
@@ -1201,6 +1247,86 @@ class _BookingCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+
+/// The car is booked on the chosen dates. Matches the tour version: a clear
+/// "already booked" line, how the waiting list works, and one button.
+class _BookedSheet extends StatelessWidget {
+  const _BookedSheet({
+    required this.vehicle,
+    required this.dates,
+    required this.total,
+    required this.onSend,
+  });
+
+  final RentalVehicle vehicle;
+  final String dates;
+  final String total;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          vehicle.name,
+          style: AppType.h2.copyWith(fontSize: 20, color: AppText.primary),
+        ),
+        const SizedBox(height: 12),
+        UdBanner(
+          tone: UdTone.warn,
+          icon: Icons.event_busy_rounded,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Yeh gaari $dates book ho chuki hai',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Aap phir bhi request bhej sakte hain. Agar booked customer '
+                'cancel kare ya na aaye, to driver aap ki request accept kar '
+                'sakta hai — phir aap ko notification aayegi.',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Poori gaari · $dates',
+                style: AppType.small.copyWith(color: AppText.secondary),
+              ),
+            ),
+            Text(
+              total,
+              style: AppType.listTitle.copyWith(
+                fontWeight: FontWeight.w800,
+                color: AppText.primary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Request bhejne par koi paisa nahi katega. Accept hone par advance '
+          'dena hoga.',
+          style: AppType.caption.copyWith(color: AppText.secondary),
+        ),
+        const SizedBox(height: 16),
+        UdButton.dark(
+          label: 'Waiting list mein request bhejein',
+          onPressed: onSend,
+        ),
+      ],
     );
   }
 }
