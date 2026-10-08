@@ -72,7 +72,14 @@ void main() {
       });
 
       await live.step(tester, 'OTP daala → home', () async {
-        await tester.enterText(find.byType(TextField).first, otp);
+        // The code field is Offstage (the boxes above only draw it), so it is
+        // filled through its own controller and onChanged, as autofill does.
+        final input = find.byType(TextField, skipOffstage: false);
+        await waitFor(tester, input);
+        final field = tester.widget<TextField>(input.first);
+        field.controller?.text = otp;
+        field.onChanged?.call(otp);
+        await tester.pump();
         await settle(tester, const Duration(seconds: 1));
         if (verifyButton.evaluate().isNotEmpty && home.evaluate().isEmpty) {
           await tester.tap(verifyButton);
