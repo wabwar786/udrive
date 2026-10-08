@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
 
@@ -161,7 +160,7 @@ class LiveReporter {
   static Future<List<int>?> capture(WidgetTester tester) async {
     try {
       await tester.pump();
-      return await tester.runAsync(() async {
+      return await tester.runAsync<List<int>?>(() async {
         final view = tester.binding.renderViews.first;
         final layer = view.debugLayer;
         if (layer is! OffsetLayer) return null;
