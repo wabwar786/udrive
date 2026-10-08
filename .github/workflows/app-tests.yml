@@ -4,7 +4,8 @@ name: App tests
 # Admin → Live testing, where it can be watched as it runs.
 #
 # No secrets: the test signs in with the Google Play reviewer number and code
-# the app already carries (Setup → WhatsApp OTP in the portal). It searches
+# (Setup → WhatsApp OTP in the portal), typed into the Run workflow form, or
+# the ones the app carries when the form is left empty. It searches
 # and reads a fare, but never books a ride.
 on:
   workflow_dispatch:
@@ -13,6 +14,16 @@ on:
         description: "Manzil jo test search karega"
         required: false
         default: "Secretariat"
+        type: string
+      phone:
+        description: "Test number (Play reviewer wala). Khaali = app wala"
+        required: false
+        default: ""
+        type: string
+      otp:
+        description: "Us number ka OTP code. Khaali = app wala"
+        required: false
+        default: ""
         type: string
       api_url:
         description: "API (khaali = production)"
@@ -61,6 +72,8 @@ jobs:
         env:
           API_URL: ${{ inputs.api_url || 'https://udrive-api-production.up.railway.app' }}
           TEST_DESTINATION: ${{ inputs.destination }}
+          TEST_PHONE: ${{ inputs.phone }}
+          TEST_OTP: ${{ inputs.otp }}
         with:
           api-level: 34
           arch: x86_64
@@ -73,4 +86,4 @@ jobs:
           script: |
             adb emu geo fix 73.4711 34.3700
             (for i in $(seq 1 120); do adb shell pm grant com.wabwar.udrive android.permission.ACCESS_FINE_LOCATION >/dev/null 2>&1; adb shell pm grant com.wabwar.udrive android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1; adb shell pm grant com.wabwar.udrive android.permission.POST_NOTIFICATIONS >/dev/null 2>&1; sleep 3; done) &
-            flutter test integration_test/customer_flow_test.dart -d emulator-5554 --reporter expanded --dart-define=API_BASE_URL="$API_URL" --dart-define=TEST_DESTINATION="${TEST_DESTINATION:-Secretariat}" --dart-define=TEST_SOURCE="github #$GITHUB_RUN_NUMBER" --dart-define=TEST_COMMIT="$GITHUB_SHA" --dart-define=UDRIVE_FLAVOR=test --dart-define=DEFAULT_MODE=customer
+            flutter test integration_test/customer_flow_test.dart -d emulator-5554 --reporter expanded --dart-define=API_BASE_URL="$API_URL" --dart-define=TEST_DESTINATION="${TEST_DESTINATION:-Secretariat}" --dart-define=TEST_PHONE="$TEST_PHONE" --dart-define=TEST_OTP="$TEST_OTP" --dart-define=TEST_SOURCE="github #$GITHUB_RUN_NUMBER" --dart-define=TEST_COMMIT="$GITHUB_SHA" --dart-define=UDRIVE_FLAVOR=test --dart-define=DEFAULT_MODE=customer

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:udrive_mobile/core/state/app_controller.dart';
+import 'package:udrive_mobile/core/widgets/ud_input.dart';
 import 'package:udrive_mobile/main.dart' as app;
 
 import 'support/reporter.dart';
@@ -16,9 +17,12 @@ import 'support/reporter.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  // The Google Play reviewer account by default (Setup → WhatsApp OTP).
-  const phone = String.fromEnvironment('TEST_PHONE', defaultValue: AppController.demoPhoneNumber);
-  const otp = String.fromEnvironment('TEST_OTP', defaultValue: AppController.demoReviewerCode);
+  // The number and code typed into the Run workflow form; empty = the ones
+  // the app carries (AppController.demoPhoneNumber / demoReviewerCode).
+  const phoneDefine = String.fromEnvironment('TEST_PHONE');
+  const otpDefine = String.fromEnvironment('TEST_OTP');
+  final phone = phoneDefine.trim().isEmpty ? AppController.demoPhoneNumber : phoneDefine.trim();
+  final otp = otpDefine.trim().isEmpty ? AppController.demoReviewerCode : otpDefine.trim();
   const place = String.fromEnvironment('TEST_DESTINATION', defaultValue: 'Secretariat');
 
   testWidgets('City ride (app)', (tester) async {
@@ -53,12 +57,12 @@ void main() {
         if (field.evaluate().isEmpty) field = find.byType(TextField).last;
         await tester.enterText(field, phone);
         await tester.pump();
-        final agree = find.bySemanticsLabel('Agree to the terms and the privacy policy');
-        if (agree.evaluate().isNotEmpty) {
-          await tester.tap(agree.first);
-        } else {
-          await tester.tap(find.byType(Checkbox).first);
-        }
+        // The terms row (UdCheckboxRow): ticked through its own callback, so a
+        // tap landing on the Terms / Privacy links cannot open a document.
+        final agree = find.byType(UdCheckboxRow);
+        await waitFor(tester, agree);
+        final row = tester.widget<UdCheckboxRow>(agree.first);
+        if (!row.value) row.onChanged?.call(true);
         await settle(tester, const Duration(milliseconds: 600));
       });
 
