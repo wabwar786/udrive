@@ -350,6 +350,12 @@ public sealed class PackageMarketplaceService(
         // being offered for exactly as long as the rental lasts and comes back
         // by itself afterwards. Nothing is cancelled and the Driver is not
         // asked to remember anything.
+        // Nor one whose vehicle is on review or suspended from the Approved page.
+        predicates.Add("""
+            NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh
+                        WHERE lh.kind = 'tour' AND lh.entity_id = tp.vehicle_id AND lh.released_at IS NULL)
+            """);
+
         predicates.Add("""
             NOT EXISTS (
                 SELECT 1 FROM udrive.rental_bookings rb
@@ -1692,7 +1698,11 @@ public sealed class PackageMarketplaceService(
             SELECT tp.id, tp.driver_profile_id, tp.vehicle_id,
                    tp.total_seats, tp.available_seats,
                    tp.price_per_seat, tp.whole_vehicle_price,
-                   tp.status, tp.departure_at, tp.return_at,
+                   -- A vehicle on review or suspended (Approved page) sells nothing.
+                   CASE WHEN EXISTS (SELECT 1 FROM udrive.listing_holds lh
+                                     WHERE lh.kind = 'tour' AND lh.entity_id = tp.vehicle_id AND lh.released_at IS NULL)
+                        THEN 'OnHold' ELSE tp.status END,
+                   tp.departure_at, tp.return_at,
                    tp.pickup_point, d.name_en, u.full_name, u.phone_number,
                    concat_ws(' ', v.make, v.model, v.year::text),
                    v.registration_number

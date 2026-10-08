@@ -376,6 +376,8 @@ public sealed class BookingService(
                     FROM udrive.vehicles fv
                     WHERE fv.driver_profile_id = @driverProfileId
                       AND lower(fv.status) IN ('verified', 'approved')
+                      -- Not on review or suspended from the Approved page.
+                      AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.kind = 'city' AND lh.entity_id = fv.id AND lh.released_at IS NULL)
                       AND NOT COALESCE(fv.available_for_rent, false)
                       AND CASE WHEN rr.is_intercity
                                THEN COALESCE(fv.available_for_intercity, true)
@@ -2303,7 +2305,8 @@ public sealed class BookingService(
     {
         const string sql = """
             SELECT dp.id,
-                   COALESCE(array_agg(v.id) FILTER (WHERE lower(v.status) IN ('verified','approved')), '{}'::uuid[])
+                   COALESCE(array_agg(v.id) FILTER (WHERE lower(v.status) IN ('verified','approved')
+                       AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.kind = 'city' AND lh.entity_id = v.id AND lh.released_at IS NULL)), '{}'::uuid[])
             FROM udrive.driver_profiles dp
             LEFT JOIN udrive.vehicles v ON v.driver_profile_id=dp.id
             WHERE dp.user_id=@userId AND lower(dp.verification_status) IN ('approved','verified')

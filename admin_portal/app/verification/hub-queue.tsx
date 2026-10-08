@@ -341,8 +341,8 @@ export function HubQueue({
   const canEdit = can(tabModule, 'edit');
 
   const [rows, setRows] = useState<VerificationRow[]>([]);
-  // City rides opens on everyone — approved drivers too, waiting ones first —
-  // so the drivers approved before this page are always in sight.
+  // City rides opens on everything not yet approved, waiting ones first.
+  // Approved (live or suspended) things are on the Approved page.
   const [status, setStatus] = useState(tab === 'city' ? 'All' : 'Waiting');
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
@@ -630,10 +630,9 @@ export function HubQueue({
               </label>
               <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Status">
                 <option value="Waiting">Waiting</option>
-                <option value="Approved">Approved</option>
                 <option value="Rejected">Rejected</option>
                 {infoTab && <option value="Info">Info asked</option>}
-                <option value="All">All</option>
+                <option value="All">All (not approved)</option>
               </select>
               {vehicleTab && canEdit && (
                 <button type="button" className="primaryButton" onClick={openAdd}>

@@ -225,6 +225,7 @@ public sealed class MarketplacePricingService(string connectionString)
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
             WHERE v.status = 'Verified'
+              AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.entity_id = v.id AND lh.kind IN ('city', 'tour', 'rent') AND lh.released_at IS NULL)
               AND dp.verification_status = 'Approved'
               AND u.status = 'Approved'
               AND (
@@ -386,6 +387,7 @@ public sealed class MarketplacePricingService(string connectionString)
               AND dp.verification_status = 'Approved'
               AND u.status = 'Approved'
               AND v.status = 'Verified'
+              AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.entity_id = v.id AND lh.kind IN ('city', 'tour', 'rent') AND lh.released_at IS NULL)
               AND (@category = '' OR lower(v.category) = lower(@category))
               AND (@tourOnly = false OR COALESCE(v.available_for_tour, false) = true)
               -- A vehicle set to go out on rent is not on the map.

@@ -128,6 +128,60 @@ class ApiClient {
     return _decode(response);
   }
 
+  /// A multipart POST with any number of files under one field name (none
+  /// is fine — then it sends only [fields]).
+  Future<Map<String, dynamic>> uploadFiles(
+    String path, {
+    required String fieldName,
+    required List<PlatformFile> files,
+    required Map<String, String> fields,
+  }) async {
+    Future<http.MultipartRequest> build(String? token) async {
+      final request = http.MultipartRequest('POST', ApiConfig.uri(path));
+      request.fields.addAll(fields);
+      if (token != null && token.isNotEmpty) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+      for (final file in files) {
+        if (file.bytes != null) {
+          request.files.add(http.MultipartFile.fromBytes(
+              fieldName, file.bytes!,
+              filename: file.name));
+        } else if (file.path != null) {
+          request.files.add(await http.MultipartFile.fromPath(
+              fieldName, file.path!,
+              filename: file.name));
+        } else {
+          throw const ApiException('The selected file could not be read.');
+        }
+      }
+      return request;
+    }
+
+    Future<http.Response> send(http.MultipartRequest built) async {
+      try {
+        return await http.Response.fromStream(
+          await built.send().timeout(const Duration(seconds: 90)),
+        );
+      } on TimeoutException {
+        throw const ApiException(
+          'The upload timed out. Check your connection and try again.',
+        );
+      } on http.ClientException catch (error) {
+        throw ApiException(
+          'The upload could not reach the server (${error.message}). '
+          'Check your connection, then try again.',
+        );
+      }
+    }
+
+    var response = await send(await build(await sessionStore.readAccessToken()));
+    if (response.statusCode == 401 && await _tryRefresh()) {
+      response = await send(await build(await sessionStore.readAccessToken()));
+    }
+    return _decode(response);
+  }
+
   Future<Map<String, dynamic>> _jsonRequest(
     String method,
     String path, {

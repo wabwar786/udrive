@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/format/money.dart';
+import '../../core/holds/hold_repository.dart';
 import '../../core/listings/listing_repository.dart';
 import '../../core/network/api_config.dart';
 import '../../core/rental/rental_repository.dart';
@@ -12,6 +13,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/tour_rent/tour_rent_repository.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/auth_models.dart';
+import '../common/hold_notice.dart';
 import '../listing/listing_handover_screen.dart';
 import '../listing/listing_rent_calendar_screen.dart';
 import '../listing/listing_rent_settings_screen.dart';
@@ -59,10 +61,16 @@ class _DriverStartScreenState extends State<DriverStartScreen> {
         // No listing profile: tour/rent come only from the server's count.
         tour = home.vehicles.isNotEmpty;
       }
+      // A vehicle on review or suspended is not live, but its dashboard must
+      // still open so the driver sees why.
+      var held = <String>{};
+      try {
+        held = {for (final h in await HoldRepository(api).mine()) h.kind};
+      } catch (_) {}
       kinds = [
-        if (home.ridesVehicles > 0) 'city',
-        if (tour) 'tour',
-        if (rent) 'rent',
+        if (home.ridesVehicles > 0 || held.contains('city')) 'city',
+        if (tour || held.contains('tour')) 'tour',
+        if (rent || held.contains('rent')) 'rent',
       ];
       if (kinds.isEmpty) kinds = ['city'];
     } catch (_) {
@@ -85,18 +93,24 @@ class _DriverStartScreenState extends State<DriverStartScreen> {
     final body = selected == 'city'
         ? const DriverHomeScreen()
         : TourRentHomeScreen(kind: selected, key: ValueKey(selected));
-    if (kinds.length < 2) return body;
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-              AppSizes.sidePadding, 6, AppSizes.sidePadding, 0),
-          child: _Switch(
-            kinds: kinds,
-            selected: selected,
-            onChanged: (kind) => setState(() => _selected = kind),
+        if (kinds.length > 1)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSizes.sidePadding, 6, AppSizes.sidePadding, 0),
+            child: _Switch(
+              kinds: kinds,
+              selected: selected,
+              onChanged: (kind) => setState(() => _selected = kind),
+            ),
           ),
+        // Review / suspend from the Admin: why no ride or booking comes.
+        HoldNotice(
+          key: ValueKey('hold-$selected'),
+          kinds: {selected},
+          maxHeightFactor: 0.55,
         ),
         Expanded(child: body),
       ],

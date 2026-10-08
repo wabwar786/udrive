@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../models/business_models.dart';
+import '../common/hold_notice.dart';
 import 'business_owner_add_screen.dart';
 
 /// H-04 — everything this owner has submitted, with its approval state.
@@ -81,6 +82,11 @@ class _BusinessOwnerDashboardState extends State<BusinessOwnerDashboard> {
           Text(
             'My business',
             style: AppType.h1.copyWith(color: AppText.primary),
+          ),
+          // Review / suspend from the Admin, with the reason and re-claim.
+          const HoldNotice(
+            kinds: {'businesses'},
+            padding: EdgeInsets.only(top: 12),
           ),
           const SizedBox(height: 18),
 

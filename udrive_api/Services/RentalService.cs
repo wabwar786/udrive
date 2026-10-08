@@ -101,6 +101,9 @@ public sealed class RentalService(
             JOIN udrive.users u ON u.id = dp.user_id
             WHERE COALESCE(v.available_for_rent, false) = true
               AND lower(v.status) IN ('verified', 'approved')
+              -- Not on review or suspended from the Approved page.
+              AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh
+                              WHERE lh.kind = 'rent' AND lh.entity_id = v.id AND lh.released_at IS NULL)
               AND lower(dp.verification_status) IN ('approved', 'verified')
               AND u.status = 'Approved'
               -- No photograph, no listing. See the remarks above.
@@ -671,7 +674,9 @@ public sealed class RentalService(
             SELECT v.driver_profile_id, dp.user_id
             FROM udrive.vehicles v
             JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
-            WHERE v.id = @vehicle AND COALESCE(v.available_for_rent, false);
+            WHERE v.id = @vehicle AND COALESCE(v.available_for_rent, false)
+              AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh
+                              WHERE lh.kind = 'rent' AND lh.entity_id = v.id AND lh.released_at IS NULL);
             """, connection))
         {
             load.Parameters.AddWithValue("vehicle", request.VehicleId);
@@ -1718,7 +1723,9 @@ public sealed class RentalService(
         }
 
         const string sql = """
-            SELECT COALESCE(v.available_for_rent, false),
+            SELECT COALESCE(v.available_for_rent, false)
+                     AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh
+                                     WHERE lh.kind = 'rent' AND lh.entity_id = v.id AND lh.released_at IS NULL),
                    v.rent_with_driver_daily, v.rent_self_drive_daily,
                    COALESCE(v.rent_security_deposit, 0),
                    COALESCE(v.rent_minimum_days, 1),

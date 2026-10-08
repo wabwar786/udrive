@@ -87,6 +87,7 @@ public sealed class BusinessService(string connectionString)
                 FROM udrive.businesses b
                 JOIN udrive.users u ON u.id = b.owner_user_id
                 WHERE b.approval_status = 'Approved' AND b.is_active
+                  AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.kind = 'businesses' AND lh.entity_id = b.id AND lh.released_at IS NULL)
                   AND b.latitude  BETWEEN @lat - @dlat AND @lat + @dlat
                   AND b.longitude BETWEEN @lng - @dlng AND @lng + @dlng
                   AND (@category = '' OR b.category = @category)
@@ -129,7 +130,8 @@ public sealed class BusinessService(string connectionString)
             SELECT {Columns}
             FROM udrive.businesses b
             JOIN udrive.users u ON u.id = b.owner_user_id
-            WHERE b.id = @id AND b.approval_status = 'Approved' AND b.is_active;
+            WHERE b.id = @id AND b.approval_status = 'Approved' AND b.is_active
+              AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.kind = 'businesses' AND lh.entity_id = b.id AND lh.released_at IS NULL);
             """;
         command.Parameters.AddWithValue("id", id);
         await using var reader = await command.ExecuteReaderAsync(ct);

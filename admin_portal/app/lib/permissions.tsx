@@ -111,6 +111,8 @@ export const VERIFICATION_MODULES = [
 ] as const satisfies readonly ModuleKey[];
 
 const VERIFICATION_ROUTE = '/verification';
+/** The Approved page: same tabs and the same per-tab permissions as Verification. */
+const APPROVED_ROUTE = '/approved';
 
 /** The module that owns a path, or null when the path is open to everyone. */
 export function moduleForPath(pathname: string): ModuleKey | null {
@@ -252,7 +254,10 @@ export function buildPermissions(me: TeamMe | null, loaded: boolean): Permission
     if (!loaded || !me) return false;
     if (fullAccess) return true;
     const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
-    if (path === VERIFICATION_ROUTE || path.startsWith(`${VERIFICATION_ROUTE}/`)) {
+    if (
+      path === VERIFICATION_ROUTE || path.startsWith(`${VERIFICATION_ROUTE}/`)
+      || path === APPROVED_ROUTE || path.startsWith(`${APPROVED_ROUTE}/`)
+    ) {
       return VERIFICATION_MODULES.some((module) => can(module, 'view'));
     }
     const module = moduleForPath(path);

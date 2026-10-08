@@ -59,15 +59,15 @@ public static class TeamAccess
             ["/api/v1/admin/verification/drivers", "/api/v1/admin/verification/vehicles",
              "/api/v1/admin/verification/driver-documents", "/api/v1/admin/verification/vehicle-documents",
              "/api/v1/admin/verify/city"],
-            ["/verification"]),
+            ["/verification", "/approved"]),
         new("verification.tour", "Tour vehicles", "Verification", ["view", "edit", "approve"],
-            ["/api/v1/admin/verify/tour"], ["/verification"]),
+            ["/api/v1/admin/verify/tour"], ["/verification", "/approved"]),
         new("verification.rent", "Rent-a-car vehicles", "Verification", ["view", "edit", "approve"],
-            ["/api/v1/admin/verify/rent"], ["/verification"]),
+            ["/api/v1/admin/verify/rent"], ["/verification", "/approved"]),
         new("verification.hotels", "Hotels", "Verification", ["view", "edit", "approve"],
-            ["/api/v1/admin/verify/hotels", "/api/v1/hotels/admin"], ["/verification", "/hotels"]),
+            ["/api/v1/admin/verify/hotels", "/api/v1/hotels/admin"], ["/verification", "/approved", "/hotels"]),
         new("verification.businesses", "Businesses (Near me)", "Verification", ["view", "edit", "approve"],
-            ["/api/v1/admin/verify/businesses", "/api/v1/admin/businesses"], ["/verification", "/businesses"]),
+            ["/api/v1/admin/verify/businesses", "/api/v1/admin/businesses"], ["/verification", "/approved", "/businesses"]),
         new("operations", "Rides, bookings & dispatch", "Operations", ["view", "edit"],
             ["/api/v1/admin/operations/bookings", "/api/v1/admin/operations/ride-requests",
              "/api/v1/admin/operations/dashboard", "/api/v1/admin/operations/drivers",
@@ -197,6 +197,7 @@ public static class TeamAccess
 
         // Shared verification routes.
         if (p.Equals("/api/v1/admin/verify/summary", StringComparison.OrdinalIgnoreCase)
+            || p.Equals("/api/v1/admin/verify/approved-summary", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/v1/admin/verification/files", StringComparison.OrdinalIgnoreCase))
         {
             return (null, "view", true);
@@ -232,6 +233,10 @@ public static class TeamAccess
         || p.EndsWith("/review", StringComparison.OrdinalIgnoreCase)
         || p.EndsWith("/decision", StringComparison.OrdinalIgnoreCase)
         || p.EndsWith("/request-info", StringComparison.OrdinalIgnoreCase)
+        || p.EndsWith("/review-again", StringComparison.OrdinalIgnoreCase)
+        || p.EndsWith("/suspend", StringComparison.OrdinalIgnoreCase)
+        || p.EndsWith("/unsuspend", StringComparison.OrdinalIgnoreCase)
+        || p.EndsWith("/claim-reject", StringComparison.OrdinalIgnoreCase)
         || p.EndsWith("/confirm", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Loads a team user's grant; cached for 30 seconds so a change applies within half a minute.</summary>

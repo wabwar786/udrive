@@ -176,6 +176,7 @@ public sealed class TourRatesService(string connectionString)
               AND v.tour_per_day_rate IS NOT NULL
               AND v.tour_per_day_rate > 0
               AND v.status = 'Verified'
+              AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.entity_id = v.id AND lh.kind IN ('city', 'tour', 'rent') AND lh.released_at IS NULL)
               AND u.status = 'Approved'
               AND (
                     @lat IS NULL OR @lng IS NULL

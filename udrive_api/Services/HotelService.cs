@@ -45,6 +45,7 @@ public sealed class HotelService(string connectionString)
         FROM udrive.hotels h
         WHERE lower(h.approval_status)='approved'
           AND h.is_active=true
+          AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.kind='hotels' AND lh.entity_id=h.id AND lh.released_at IS NULL)
           AND (
                 @query=''
                 OR h.name ILIKE '%'||@query||'%'
@@ -81,7 +82,7 @@ public sealed class HotelService(string connectionString)
     public async Task<ServiceResult<object>> GetAsync(Guid id, DateOnly? checkIn, DateOnly? checkOut, CancellationToken ct)
     {
         await using var c=new NpgsqlConnection(connectionString); await c.OpenAsync(ct);
-        object? hotel=null; await using(var cmd=c.CreateCommand()) {cmd.CommandText="""SELECT h.id,h.name,h.address,h.city,h.district,h.latitude,h.longitude,h.contact_phone,h.rating,h.main_image_url,h.amenities,h.transport_available,h.description,0::numeric,0::bigint,COALESCE((SELECT o.email LIKE 'demo.%@udrive.local' FROM udrive.users o WHERE o.id=h.owner_user_id),false) AS is_demo FROM udrive.hotels h WHERE h.id=@id AND lower(h.approval_status)='approved' AND h.is_active""";cmd.Parameters.AddWithValue("id",id);await using var r=await cmd.ExecuteReaderAsync(ct);if(await r.ReadAsync(ct))hotel=MapHotel(r,true);} if(hotel is null)return ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");
+        object? hotel=null; await using(var cmd=c.CreateCommand()) {cmd.CommandText="""SELECT h.id,h.name,h.address,h.city,h.district,h.latitude,h.longitude,h.contact_phone,h.rating,h.main_image_url,h.amenities,h.transport_available,h.description,0::numeric,0::bigint,COALESCE((SELECT o.email LIKE 'demo.%@udrive.local' FROM udrive.users o WHERE o.id=h.owner_user_id),false) AS is_demo FROM udrive.hotels h WHERE h.id=@id AND lower(h.approval_status)='approved' AND h.is_active AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.kind='hotels' AND lh.entity_id=h.id AND lh.released_at IS NULL)""";cmd.Parameters.AddWithValue("id",id);await using var r=await cmd.ExecuteReaderAsync(ct);if(await r.ReadAsync(ct))hotel=MapHotel(r,true);} if(hotel is null)return ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");
         var rooms=new List<object>(); await using(var cmd=c.CreateCommand()){cmd.CommandText="""SELECT r.id,r.room_type,r.description,r.capacity,r.total_rooms,r.base_rate,r.image_url,r.amenities,COALESCE(i.available_rooms,r.total_rooms),COALESCE(i.rate,r.base_rate) FROM udrive.hotel_rooms r LEFT JOIN udrive.hotel_room_inventory i ON i.room_id=r.id AND i.inventory_date=@d WHERE r.hotel_id=@id AND r.is_active ORDER BY r.base_rate""";cmd.Parameters.AddWithValue("id",id);cmd.Parameters.AddWithValue("d",(object?)checkIn??DateOnly.FromDateTime(DateTime.UtcNow));await using var rr=await cmd.ExecuteReaderAsync(ct);while(await rr.ReadAsync(ct))rooms.Add(new{id=rr.GetGuid(0),roomType=rr.GetString(1),description=rr.GetString(2),capacity=rr.GetInt32(3),totalRooms=rr.GetInt32(4),baseRate=rr.GetDecimal(5),imageUrl=rr.GetString(6),amenities=JsonSerializer.Deserialize<string[]>(rr.GetFieldValue<string>(7))??[],availableRooms=rr.GetInt32(8),rate=rr.GetDecimal(9)});}
         return ServiceResult<object>.Ok(new {hotel,rooms});
     }
@@ -158,7 +159,7 @@ public sealed class HotelService(string connectionString)
             await using(var q=c.CreateCommand())
             {
                 q.Transaction=tx;
-                q.CommandText="""SELECT COALESCE(i.rate,r.base_rate),COALESCE(i.available_rooms,r.total_rooms) FROM udrive.hotel_rooms r JOIN udrive.hotels h ON h.id=r.hotel_id LEFT JOIN udrive.hotel_room_inventory i ON i.room_id=r.id AND i.inventory_date=@d WHERE r.id=@r AND h.id=@h AND lower(h.approval_status)='approved' AND h.is_active AND r.is_active FOR UPDATE OF r""";
+                q.CommandText="""SELECT COALESCE(i.rate,r.base_rate),COALESCE(i.available_rooms,r.total_rooms) FROM udrive.hotel_rooms r JOIN udrive.hotels h ON h.id=r.hotel_id LEFT JOIN udrive.hotel_room_inventory i ON i.room_id=r.id AND i.inventory_date=@d WHERE r.id=@r AND h.id=@h AND lower(h.approval_status)='approved' AND h.is_active AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.kind='hotels' AND lh.entity_id=h.id AND lh.released_at IS NULL) AND r.is_active FOR UPDATE OF r""";
                 q.Parameters.AddWithValue("d",x.CheckIn);q.Parameters.AddWithValue("r",x.RoomId);q.Parameters.AddWithValue("h",hotelId);
                 await using var rr=await q.ExecuteReaderAsync(ct);
                 if(!await rr.ReadAsync(ct))return ServiceResult<HotelBookingCreatedDto>.Fail(404,"room_not_found","Room is unavailable.");

@@ -54,6 +54,7 @@ import {
   Workflow,
   X,
   MessageCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   readSession,
@@ -93,6 +94,7 @@ const groups = [
       ['/operations', 'Operations & dispatch', Workflow],
       ['/live-tracking', 'Live tracking', Navigation],
       ['/verification', 'Verification', BadgeCheck],
+      ['/approved', 'Approved', ShieldCheck],
       ['/rentals', 'Car rentals', KeyRound],
       ['/wallet-topups', 'Driver top-ups', Wallet],
       ['/team', 'Team', UserCog],

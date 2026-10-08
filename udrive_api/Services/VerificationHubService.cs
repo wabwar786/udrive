@@ -87,9 +87,12 @@ public sealed class VerificationHubService(
             "businesses" => await BusinessRowsAsync(connection, want, areaId, unassigned, search, null, ct, allowed),
             _ => null,
         };
-        return rows is null
-            ? Fail<IReadOnlyList<VerificationRowDto>>(400, "tab_invalid", "Unknown verification tab.")
-            : ServiceResult<IReadOnlyList<VerificationRowDto>>.Ok(rows);
+        if (rows is null) return Fail<IReadOnlyList<VerificationRowDto>>(400, "tab_invalid", "Unknown verification tab.");
+
+        // Verification is for what still needs a decision. Approved things
+        // (live or suspended) are on the Approved page.
+        if (want == "All") rows = rows.Where(r => r.Status != "Approved").ToList();
+        return ServiceResult<IReadOnlyList<VerificationRowDto>>.Ok(rows);
     }
 
     public async Task<ServiceResult<VerificationDetailDto>> DetailAsync(string tab, Guid id, CancellationToken ct)
@@ -156,6 +159,28 @@ public sealed class VerificationHubService(
 
     public async Task<ServiceResult<Decision>> ApproveAsync(Guid adminId, string tab, Guid id, CancellationToken ct)
     {
+        var result = await ApproveCoreAsync(adminId, tab, id, ct);
+        if (result.Success) await CloseReviewHoldAsync(tab, id, adminId, "Approved", ct);
+        return result;
+    }
+
+    public async Task<ServiceResult<Decision>> RejectAsync(
+        Guid adminId, string tab, Guid id, string? reason, bool requestInfo, CancellationToken ct)
+    {
+        var result = await RejectCoreAsync(adminId, tab, id, reason, requestInfo, ct);
+        if (result.Success && !requestInfo) await CloseReviewHoldAsync(tab, id, adminId, "Rejected", ct);
+        return result;
+    }
+
+    /// <summary>A "Review again" hold ends when Verification decides it.</summary>
+    private async Task CloseReviewHoldAsync(string tab, Guid id, Guid adminId, string note, CancellationToken ct)
+    {
+        await using var connection = await OpenAsync(ct);
+        await ListingHolds.CloseReviewAsync(connection, null, tab, id, adminId, note, ct);
+    }
+
+    private async Task<ServiceResult<Decision>> ApproveCoreAsync(Guid adminId, string tab, Guid id, CancellationToken ct)
+    {
         switch (tab)
         {
             case "city":
@@ -193,7 +218,7 @@ public sealed class VerificationHubService(
         }
     }
 
-    public async Task<ServiceResult<Decision>> RejectAsync(
+    private async Task<ServiceResult<Decision>> RejectCoreAsync(
         Guid adminId, string tab, Guid id, string? reason, bool requestInfo, CancellationToken ct)
     {
         switch (tab)
@@ -350,7 +375,7 @@ public sealed class VerificationHubService(
                 WHERE x.driver_profile_id = dp.id AND lower(x.status) <> 'deleted'))
         """;
 
-    private static async Task<IReadOnlyList<VerificationRowDto>> CityRowsAsync(
+    internal static async Task<IReadOnlyList<VerificationRowDto>> CityRowsAsync(
         NpgsqlConnection connection, string want, Guid? area, bool unassigned,
         string? search, Guid? id, CancellationToken ct, IReadOnlyList<Guid>? allowed = null)
     {
@@ -368,7 +393,10 @@ public sealed class VerificationHubService(
                        (SELECT d.name FROM udrive.territories d WHERE d.id = t.parent_id) AS district,
                        COALESCE(dp.submitted_at, v.created_at, dp.created_at) AS since,
                        {CityStatusSql} AS row_status,
-                       NULLIF(COALESCE(dp.review_notes,
+                       NULLIF(COALESCE(
+                           (SELECT lh.reason FROM udrive.listing_holds lh
+                             WHERE lh.kind = 'city' AND lh.entity_id = v.id AND lh.released_at IS NULL),
+                           dp.review_notes,
                            (SELECT vd.review_notes FROM udrive.vehicle_documents vd
                              WHERE vd.vehicle_id = v.id AND NULLIF(vd.review_notes, '') IS NOT NULL
                              ORDER BY vd.updated_at DESC LIMIT 1)), '') AS note,
@@ -666,7 +694,7 @@ public sealed class VerificationHubService(
 
     // ─────────────────────────────────────────────────────── rows
 
-    private static async Task<IReadOnlyList<VerificationRowDto>> VehicleRowsAsync(
+    internal static async Task<IReadOnlyList<VerificationRowDto>> VehicleRowsAsync(
         NpgsqlConnection connection, string purpose, string want, Guid? area, bool unassigned,
         string? search, Guid? id, CancellationToken ct, IReadOnlyList<Guid>? allowed = null)
     {
@@ -741,7 +769,7 @@ public sealed class VerificationHubService(
         return list;
     }
 
-    private static async Task<IReadOnlyList<VerificationRowDto>> HotelRowsAsync(
+    internal static async Task<IReadOnlyList<VerificationRowDto>> HotelRowsAsync(
         NpgsqlConnection connection, string want, Guid? area, bool unassigned, string? search, Guid? id, CancellationToken ct,
         IReadOnlyList<Guid>? allowed = null)
     {
@@ -772,7 +800,7 @@ public sealed class VerificationHubService(
         return await SimpleRowsAsync(command, "hotels", 4, ct);
     }
 
-    private static async Task<IReadOnlyList<VerificationRowDto>> BusinessRowsAsync(
+    internal static async Task<IReadOnlyList<VerificationRowDto>> BusinessRowsAsync(
         NpgsqlConnection connection, string want, Guid? area, bool unassigned, string? search, Guid? id, CancellationToken ct,
         IReadOnlyList<Guid>? allowed = null)
     {
@@ -1013,7 +1041,7 @@ public sealed class VerificationHubService(
     /// Matches a tehsil row <paramref name="t"/> against the area filter: a
     /// tehsil id, its district's id, or "none" for things with no tehsil yet.
     /// </summary>
-    private static string AreaSql(string t, string territoryExpression) =>
+    internal static string AreaSql(string t, string territoryExpression) =>
         $"""
         (@unassigned AND {territoryExpression} IS NULL
          OR NOT @unassigned AND (@area::uuid IS NULL OR {t}.id = @area::uuid OR {t}.parent_id = @area::uuid))
@@ -1021,7 +1049,7 @@ public sealed class VerificationHubService(
         """;
 
     /// <param name="allowed">A team user's districts / tehsils; null = every area.</param>
-    private static void BindArea(NpgsqlCommand command, Guid? area, bool unassigned, IReadOnlyList<Guid>? allowed = null)
+    internal static void BindArea(NpgsqlCommand command, Guid? area, bool unassigned, IReadOnlyList<Guid>? allowed = null)
     {
         command.Parameters.Add(new NpgsqlParameter("area", NpgsqlDbType.Uuid) { Value = (object?)area ?? DBNull.Value });
         command.Parameters.AddWithValue("unassigned", unassigned);
@@ -1031,7 +1059,7 @@ public sealed class VerificationHubService(
         });
     }
 
-    private static void BindSearch(NpgsqlCommand command, string? search, Guid? id)
+    internal static void BindSearch(NpgsqlCommand command, string? search, Guid? id)
     {
         var q = search?.Trim() ?? string.Empty;
         if (q.Length > 80) q = q[..80];
@@ -1040,7 +1068,7 @@ public sealed class VerificationHubService(
         command.Parameters.Add(new NpgsqlParameter("id", NpgsqlDbType.Uuid) { Value = (object?)id ?? DBNull.Value });
     }
 
-    private static Guid? ParseArea(string? area, out bool unassigned)
+    internal static Guid? ParseArea(string? area, out bool unassigned)
     {
         unassigned = string.Equals(area?.Trim(), "none", StringComparison.OrdinalIgnoreCase);
         return Guid.TryParse(area, out var id) ? id : null;

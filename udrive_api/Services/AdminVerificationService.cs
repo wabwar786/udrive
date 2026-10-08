@@ -883,6 +883,9 @@ public sealed class AdminVerificationService(
         if (string.Equals(request.Decision, "Verified", StringComparison.OrdinalIgnoreCase))
         {
             await ApplyRegisteredUsesAsync(connection, transaction, vehicleId, cancellationToken);
+            // Sent back from the Approved page: approving it ends that review.
+            await ListingHolds.CloseReviewAsync(
+                connection, transaction, "city", vehicleId, adminUserId, "Approved", cancellationToken);
         }
 
         await InsertAuditAsync(

@@ -106,6 +106,35 @@ public sealed class DriverPresenceService(string connectionString)
                 "Your driver account is not approved yet, so you cannot go online.");
         }
 
+        // Every ride vehicle on review or suspended from the Approved page:
+        // there is nothing to go online with.
+        await using (var held = new NpgsqlCommand(
+            """
+            SELECT EXISTS (
+                       SELECT 1 FROM udrive.listing_holds lh
+                       JOIN udrive.vehicles v ON v.id = lh.entity_id
+                       WHERE lh.kind = 'city' AND lh.released_at IS NULL AND v.driver_profile_id = @driver)
+               AND NOT EXISTS (
+                       SELECT 1 FROM udrive.vehicles v
+                       WHERE v.driver_profile_id = @driver
+                         AND COALESCE(v.listed_via, 'Driver') = 'Driver'
+                         AND lower(v.status) IN ('verified', 'approved')
+                         AND NOT COALESCE(v.available_for_rent, false)
+                         AND (COALESCE(v.available_for_city, true) OR COALESCE(v.available_for_intercity, true))
+                         AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh
+                                         WHERE lh.kind = 'city' AND lh.entity_id = v.id AND lh.released_at IS NULL));
+            """, connection))
+        {
+            held.Parameters.AddWithValue("driver", driver.Value.ProfileId);
+            if (await held.ExecuteScalarAsync(cancellationToken) is true)
+            {
+                return ServiceResult<DriverPresenceDto>.Fail(
+                    StatusCodes.Status409Conflict,
+                    "vehicle_on_hold",
+                    "Aap ki gaari review / suspend mein hai. Jab tak review nahi hoti, aap ko koi ride nahi milegi.");
+            }
+        }
+
         await CloseStaleSessionsAsync(connection, cancellationToken);
 
         await using var transaction =
