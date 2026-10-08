@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
 import '../../core/maps/ud_map.dart';
+import '../../core/places/service_area.dart';
 import '../../core/pricing/fare_quote.dart';
 import '../../core/pricing/fare_quote_repository.dart';
 import '../../core/vehicles/nearby_repository.dart';
@@ -80,6 +81,19 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   late int _seats = widget.seats;
   int _fare = 0;
 
+  /// True once the customer moved the fare themselves (stepper or keypad).
+  /// Until then the server's recommendation is what the box shows, so the
+  /// figure does not jump between the local estimate and the quote.
+  bool _fareTouched = false;
+
+  /// Server quotes already fetched on this screen, by vehicle, seats and
+  /// route. Switching back to a vehicle shows the same fare it showed before
+  /// instead of asking again and getting a slightly different answer.
+  final Map<String, FareQuote> _quoteCache = <String, FareQuote>{};
+
+  String get _quoteKey =>
+      '${_selected?.category}|$_perSeat|${_perSeat ? _seats : 1}|$_routeIndex';
+
   /// Fixed per-seat fares for this route, keyed by vehicle category.
   ///
   /// A Coster running per seat charges a known fare for a known route. Where
@@ -128,6 +142,37 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   TripRoute? get _route => _routes.isEmpty
       ? widget.route
       : _routes[_routeIndex.clamp(0, _routes.length - 1)];
+
+  /// The trip's length, the same figure for the vehicle pills and for the
+  /// server quote: the road when Home fetched one, else the straight line
+  /// times a road factor of 1.3 (inside the band the server accepts).
+  /// The pills used 1.6 and the quote 1.0, so the two prices disagreed.
+  double get _tripKm {
+    final route = _route;
+    if (route != null && route.distanceMetres > 0) {
+      return (route.distanceMetres / 1000).clamp(0.1, 1500).toDouble();
+    }
+    final straight = const Distance().as(
+      LengthUnit.Kilometer,
+      widget.pickupPoint,
+      widget.destinationPoint,
+    );
+    return (straight * 1.3).clamp(0.1, 1500).toDouble();
+  }
+
+  double get _tripMinutes {
+    final route = _route;
+    if (route != null && route.durationSeconds > 0) {
+      return (route.durationSeconds / 60).clamp(1, 6000).toDouble();
+    }
+    return (_tripKm / 25 * 60).clamp(1, 6000).toDouble();
+  }
+
+  /// Both ends are real places in Pakistan (not the (0, 0) of an
+  /// unresolved search result).
+  bool get _pointsUsable =>
+      ServiceArea.isUsable(widget.pickupPoint) &&
+      ServiceArea.isUsable(widget.destinationPoint);
 
   /// Drivers within a short drive of the pickup.
   ///
@@ -300,10 +345,13 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     if (_fareIsFixed) return;
     final recommended = _recommended;
     if (recommended <= 0) return;
-    setState(() => _fare = recommended.clamp(
-          _minimum > 0 ? _minimum : recommended,
-          _maximum,
-        ));
+    setState(() {
+      _fare = recommended.clamp(
+        _minimum > 0 ? _minimum : recommended,
+        _maximum,
+      );
+      _fareTouched = false;
+    });
   }
 
   /// Reads the drivers around the pickup, and keeps reading.
@@ -327,17 +375,21 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     final controller = AppControllerScope.of(context);
     final repository = VehicleOptionsRepository(controller.apiClient);
 
-    final route = _route;
-    final distanceKm = route?.distanceKm ??
-        const Distance().as(
-              LengthUnit.Kilometer,
-              widget.pickupPoint,
-              widget.destinationPoint,
-            ) *
-            1.6;
-    final minutes = route == null
-        ? (distanceKm / 25 * 60).round()
-        : (route.durationSeconds / 60).round();
+    // A place without real coordinates cannot be priced; say so instead of
+    // showing a fare for a trip to the other side of the world.
+    if (!_pointsUsable) {
+      setState(() {
+        _loading = false;
+        _options = const [];
+        _selected = null;
+        _error = 'Pickup ya manzil ki jagah sahi nahi mili. '
+            'Wapas ja kar manzil dobara search karein aur list se chunein.';
+      });
+      return;
+    }
+
+    final distanceKm = _tripKm;
+    final minutes = _tripMinutes.round();
 
     final options = await repository.optionsFor(
       distanceKm: distanceKm,
@@ -393,6 +445,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         // hole the server cannot see, because the pickup and destination have
         // not moved.
         _quote = null;
+        _fareTouched = false;
         _fare = _recommended;
       }
     });
@@ -406,6 +459,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     final points = _route?.points ?? const <LatLng>[];
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (points.length <= 1 && !_pointsUsable) return;
       _mapController.fitBounds(
         points.length > 1
             ? points
@@ -456,8 +510,21 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
   /// rates.
   Future<void> _loadQuote() async {
     final option = _selected;
-    final route = _route;
-    if (option == null) return;
+    if (option == null || !_pointsUsable) return;
+
+    // Asked before on this screen and still valid: the same answer, no jump.
+    final key = _quoteKey;
+    final cached = _quoteCache[key];
+    if (cached != null && cached.isUsable) {
+      ++_quoteGeneration;
+      setState(() {
+        _quote = cached;
+        _quoting = false;
+        _quoteError = null;
+        _applyQuoteFare(cached);
+      });
+      return;
+    }
 
     final generation = ++_quoteGeneration;
     setState(() {
@@ -468,19 +535,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     final controller = AppControllerScope.of(context);
     final repository = FareQuoteRepository(controller.apiClient);
 
-    // Straight-line distance stands in when no route has been fetched. The
-    // server checks the claim against the same straight line, so an honest
-    // approximation is accepted and a wild one is not.
-    final metres = route?.distanceMetres ??
-        const Distance().as(
-          LengthUnit.Meter,
-          widget.pickupPoint,
-          widget.destinationPoint,
-        );
-    final distanceKm = (metres / 1000).clamp(0.1, 5000).toDouble();
-    final minutes = route == null
-        ? distanceKm / 25 * 60
-        : route.durationSeconds / 60;
+    // The same distance the pills were priced on (_tripKm): the road, or
+    // the straight line times 1.3 — which the server accepts.
+    final distanceKm = _tripKm;
+    final minutes = _tripMinutes;
 
     try {
       final quote = await repository.quote(
@@ -496,20 +554,15 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
         destinationLatitude: widget.destinationPoint.latitude,
         destinationLongitude: widget.destinationPoint.longitude,
         distanceKm: distanceKm,
-        durationMinutes: minutes.clamp(1, 6000).toDouble(),
+        durationMinutes: minutes,
       );
 
       if (!mounted || generation != _quoteGeneration) return;
+      _quoteCache[key] = quote;
       setState(() {
         _quote = quote;
         _quoting = false;
-        // The customer's own number is kept when it still sits inside the new
-        // band — they chose it, and a reprice that quietly resets it would
-        // undo a deliberate decision. Outside the band it has to move.
-        _fare = _fare <= 0
-            ? quote.recommended
-            : _fare.clamp(quote.minimum, quote.maximum);
-        if (!quote.negotiable) _fare = quote.recommended;
+        _applyQuoteFare(quote);
       });
     } catch (error) {
       if (!mounted || generation != _quoteGeneration) return;
@@ -520,6 +573,20 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
             ? error.message
             : 'The fare could not be checked. Try again.';
       });
+    }
+  }
+
+  /// Puts the quote's fare in the box.
+  ///
+  /// Untouched: the server's recommendation, always — the local estimate
+  /// shown while the quote was in flight is replaced, so the same trip shows
+  /// the same figure every time. Touched by the customer: their number is
+  /// kept while it sits inside the band, moved to the band's edge if not.
+  void _applyQuoteFare(FareQuote quote) {
+    if (!quote.negotiable || !_fareTouched || _fare <= 0) {
+      _fare = quote.recommended;
+    } else {
+      _fare = _fare.clamp(quote.minimum, quote.maximum);
     }
   }
 
@@ -587,6 +654,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
       // Reset to the recommendation for the new vehicle. Carrying a coaster
       // price onto a bike would be nonsense.
       _quote = null;
+      _fareTouched = false;
       _fare = _recommended;
     });
     unawaited(_loadQuote());
@@ -610,6 +678,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
       _bookingType = type;
       if (type == BookingType.perSeat && _seats < 1) _seats = 1;
       _quote = null;
+      _fareTouched = false;
       _fare = _recommended;
     });
     unawaited(_loadQuote());
@@ -622,6 +691,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
       // Recomputed either way: on a fixed route this is the listed fare times
       // the seats, and off one it is the recommendation for the new count.
       _quote = null;
+      _fareTouched = false;
       _fare = _recommended;
     });
     unawaited(_loadQuote());
@@ -637,6 +707,7 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
       // Never below the server's minimum for this trip, and never above its
       // ceiling. Both are the same figures the API will check.
       _fare = (_fare + direction * _step).clamp(_minimum, _maximum);
+      _fareTouched = true;
     });
   }
 
@@ -818,7 +889,10 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
       // next screen.
       final floor = _minimum > 0 ? _minimum : 50;
       final clamped = value.clamp(floor, _maximum);
-      setState(() => _fare = clamped);
+      setState(() {
+        _fare = clamped;
+        _fareTouched = true;
+      });
 
       // Said out loud. A figure outside the band used to be rewritten in
       // silence: the customer typed 300, closed the dialog, and found 500 on

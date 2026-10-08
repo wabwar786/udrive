@@ -61,6 +61,18 @@ public sealed class FareEngine(
     {
         var settings = await settingsService.GetAsync(cancellationToken);
 
+        // A place with no real coordinates arrives as (0, 0) — the sea off
+        // Africa — and priced as a trip of thousands of kilometres. Refused
+        // with a message the customer can act on.
+        if (!InServiceArea(request.PickupLatitude, request.PickupLongitude)
+            || !InServiceArea(request.DestinationLatitude, request.DestinationLongitude))
+        {
+            return ServiceResult<FareQuoteDto>.Fail(
+                StatusCodes.Status400BadRequest,
+                "location_invalid",
+                "Pickup ya manzil ki jagah sahi nahi mili. Manzil dobara search karein aur list se chunein.");
+        }
+
         var implausible = CheckDistance(request, settings);
         if (implausible is not null) return implausible;
 
@@ -326,6 +338,12 @@ public sealed class FareEngine(
 
         return null;
     }
+
+    /// <summary>Pakistan with a margin; catches (0, 0) and swapped latitude / longitude.</summary>
+    internal static bool InServiceArea(double latitude, double longitude) =>
+        double.IsFinite(latitude) && double.IsFinite(longitude)
+        && latitude is >= 23.0 and <= 37.5
+        && longitude is >= 60.5 and <= 78.0;
 
     public static decimal RoundUp(decimal value, decimal step) =>
         step <= 0m ? value : Math.Ceiling(value / step) * step;

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'service_area.dart';
+
 /// A destination the customer has used before.
 class RecentPlace {
   const RecentPlace({
@@ -31,6 +33,8 @@ class RecentPlace {
     final lng = (json['longitude'] as num?)?.toDouble();
     final title = '${json['title'] ?? ''}'.trim();
     if (lat == null || lng == null || title.isEmpty) return null;
+    // A place saved as (0, 0) by an older build is dropped, not reused.
+    if (!ServiceArea.isUsable(LatLng(lat, lng))) return null;
     return RecentPlace(
       title: title,
       subtitle: '${json['subtitle'] ?? ''}'.trim(),
@@ -75,6 +79,7 @@ class RecentPlacesStore {
 
   /// Adds a place, moving it to the front if it was already there.
   static Future<void> remember(RecentPlace place) async {
+    if (!ServiceArea.isUsable(place.point)) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final existing = await load();

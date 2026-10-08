@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../config/app_config.dart';
 import '../network/api_config.dart';
+import '../places/service_area.dart';
 
 /// A single autocomplete suggestion, renderer-agnostic.
 class PlaceSuggestion {
@@ -181,6 +182,7 @@ class PlaceSearchService {
       final lat = _toDouble(payload['latitude']);
       final lng = _toDouble(payload['longitude']);
       if (lat == null || lng == null) return null;
+      if (!ServiceArea.isUsable(LatLng(lat, lng))) return null;
 
       return PlaceSuggestion(
         title: suggestion.title,

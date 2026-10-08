@@ -20,6 +20,7 @@ import '../../core/booking/booking_options.dart';
 import '../../core/booking/vehicle_booking_mode.dart';
 import '../../core/config/app_config.dart';
 import '../../core/places/recent_places_store.dart';
+import '../../core/places/service_area.dart';
 import 'map_point_screen.dart';
 import '../../core/partner/partner_repository.dart';
 import '../../core/services/place_search_service.dart';
@@ -792,7 +793,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   /// result is not a dead end: the caller falls back to the full route screen
   /// with the text pre-filled so the trip can still be booked.
   Future<LatLng?> _resolveDestination() async {
-    if (_destinationPoint != null) return _destinationPoint;
+    if (ServiceArea.isUsable(_destinationPoint)) return _destinationPoint;
 
     final text = _destination.text.trim();
     if (text.isEmpty) return null;
@@ -800,10 +801,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     setState(() => _submitting = true);
     try {
       final matches = await _places.search(text, bias: _pickupPoint);
-      if (matches.isEmpty) return null;
-      final point = matches.first.point;
-      if (mounted) setState(() => _destinationPoint = point);
-      return point;
+      // A Google suggestion carries no coordinates until it is resolved; using
+      // it as it came gave (0, 0) — the sea off Africa — and a fare in lakhs.
+      for (final match in matches.take(3)) {
+        final resolved = await _places.resolve(match);
+        final point = ServiceArea.orNull(resolved?.point);
+        if (point == null) continue;
+        if (mounted) setState(() => _destinationPoint = point);
+        return point;
+      }
+      return null;
     } catch (_) {
       return null;
     } finally {
@@ -1651,7 +1658,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   Future<void> _useRecent(RecentPlace place) async {
     setState(() {
       _destination.text = place.title;
-      _destinationPoint = place.point;
+      _destinationPoint = ServiceArea.orNull(place.point);
     });
     await _refreshRoute();
     _liftSheet();
@@ -1860,13 +1867,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       if (wasPickup) {
         _pickup.text = result.label;
         _resolvedPlaceName = result.label;
-        if (result.point != null) _pickupPoint = result.point!;
+        final picked = ServiceArea.orNull(result.point);
+        if (picked != null) _pickupPoint = picked;
       } else {
         _destination.text = result.label;
         // Null means the customer used free text the geocoder could not place.
         // _resolveDestination() geocodes it when they press the button, and
         // falls back to the full route screen if that also fails.
-        _destinationPoint = result.point;
+        _destinationPoint = ServiceArea.orNull(result.point);
       }
     });
 
