@@ -16,6 +16,7 @@ class TourRentBooking {
     required this.seats,
     required this.rentalMode,
     required this.status,
+    required this.createdAt,
   });
 
   final String id;
@@ -39,6 +40,9 @@ class TourRentBooking {
   /// wallet was short) and waits for the driver in the rentals screen.
   final String status;
 
+  /// When the customer booked — "Nayi bookings" counts the last seven days.
+  final DateTime createdAt;
+
   bool get isTour => kind == 'tour';
   bool get needsAccept => status == 'PendingOwner';
 
@@ -56,6 +60,7 @@ class TourRentBooking {
         seats: (json['seats'] as num?)?.toInt() ?? 0,
         rentalMode: _text(json['rentalMode']),
         status: '${json['status'] ?? ''}',
+        createdAt: _time(json['createdAt']) ?? DateTime.now(),
       );
 }
 
