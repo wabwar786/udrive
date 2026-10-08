@@ -498,6 +498,14 @@ public sealed class PackageMarketplaceService(
                     "The whole vehicle is unavailable because seats are already booked or held.");
             }
         }
+        else if (package.PricePerSeat <= 0)
+        {
+            // No seat fare: this departure is sold whole only.
+            return ServiceResult<PackageSeatHoldDto>.Fail(
+                StatusCodes.Status409Conflict,
+                "per_seat_not_offered",
+                "Is departure par seat booking nahi — poori gaari book karein.");
+        }
         else if (seats > bookable)
         {
             return ServiceResult<PackageSeatHoldDto>.Fail(

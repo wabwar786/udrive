@@ -845,7 +845,7 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
             .FirstOrDefault();
 
         return ServiceResult<DepartureMonthDto>.Ok(
-            new DepartureMonthDto(days, template, capacity.Value, capacity.Value > 5));
+            new DepartureMonthDto(days, template, capacity.Value, capacity.Value > 1));
     }
 
     public async Task<ServiceResult<DepartureDayDto>> SaveDepartureAsync(
@@ -902,7 +902,8 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
         }
 
         var wholePrice = decimal.Round(request.WholeVehiclePrice, 0);
-        var seatPrice = capacity > 5 ? decimal.Round(Math.Max(0, request.PricePerSeat), 0) : 0m;
+        // Every vehicle can sell single seats now; 0 = whole vehicle only.
+        var seatPrice = capacity > 1 ? decimal.Round(Math.Max(0, request.PricePerSeat), 0) : 0m;
         if (wholePrice <= 0 || wholePrice > 2_000_000) return Fail<DepartureDayDto>(400, "departure_price_required", "Enter the price for the whole vehicle.");
         if (seatPrice > wholePrice) return Fail<DepartureDayDto>(400, "departure_price_invalid", "A seat cannot cost more than the whole vehicle.");
 

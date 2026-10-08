@@ -1401,8 +1401,8 @@ class _DepartureInput {
 }
 
 /// "+ Departure lagayein": where, when, and both fares — per seat and the
-/// whole vehicle. Per seat only for a vehicle with more than five seats; the
-/// server sells smaller cars whole.
+/// whole vehicle. Every vehicle can sell single seats; on a car of five
+/// seats or fewer the seat fare is optional (blank = whole vehicle only).
 class _DepartureForm extends StatefulWidget {
   const _DepartureForm({
     required this.vehicle,
@@ -1430,7 +1430,8 @@ class _DepartureFormState extends State<_DepartureForm> {
   String? _driverId;
   bool _saving = false;
 
-  bool get _seats => widget.vehicle.seats > 5;
+  /// A big vehicle must give a seat fare; a small car may leave it blank.
+  bool get _seatRequired => widget.vehicle.seats > 5;
 
   @override
   void initState() {
@@ -1469,7 +1470,7 @@ class _DepartureFormState extends State<_DepartureForm> {
 
   Future<void> _submit() async {
     final whole = _amount(_whole);
-    final perSeat = _seats ? _amount(_perSeat) : 0.0;
+    final perSeat = _amount(_perSeat);
     String? problem;
     if (_from.text.trim().length < 2) {
       problem = 'Kahan se — likhein.';
@@ -1477,7 +1478,7 @@ class _DepartureFormState extends State<_DepartureForm> {
       problem = 'Kahan tak — likhein.';
     } else if (whole <= 0) {
       problem = 'Poori gaari ka kiraya likhein.';
-    } else if (_seats && perSeat <= 0) {
+    } else if (_seatRequired && perSeat <= 0) {
       problem = 'Per seat kiraya likhein.';
     } else if (perSeat > whole) {
       problem = 'Seat ka kiraya poori gaari se zyada nahi ho sakta.';
@@ -1631,19 +1632,20 @@ class _DepartureFormState extends State<_DepartureForm> {
             ),
           ],
           const SizedBox(height: 12),
-          Text(_seats ? 'Kiraya — dono dein' : 'Kiraya',
+          Text(_seatRequired ? 'Kiraya — dono dein' : 'Kiraya',
               style: AppType.small.copyWith(
                   fontWeight: FontWeight.w800, color: AppText.primary)),
           const SizedBox(height: 8),
           Row(
             children: [
-              if (_seats) ...[
-                Expanded(
-                  child: _fare('Per seat (PKR)', _perSeat, AppTint.success,
-                      AppTint.successText),
-                ),
-                const SizedBox(width: 8),
-              ],
+              Expanded(
+                child: _fare(
+                    _seatRequired ? 'Per seat (PKR)' : 'Per seat (PKR) · optional',
+                    _perSeat,
+                    AppTint.success,
+                    AppTint.successText),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: _fare('Poori gaari (PKR)', _whole, AppTint.personalWash,
                     AppTint.personal),
@@ -1652,10 +1654,12 @@ class _DepartureFormState extends State<_DepartureForm> {
           ),
           const SizedBox(height: 8),
           Text(
-            _seats
+            _seatRequired
                 ? 'Customer seat ya poori gaari direct book karega. Seats full '
                     'hon to nayi requests waiting list mein jayengi.'
-                : '${widget.vehicle.seats} seats ki gaari poori hi book hoti hai.',
+                : 'Per seat likhein to customer ${widget.vehicle.seats} mein se '
+                    'single seat bhi book kar sakega. Khali chhorein to sirf '
+                    'poori gaari.',
             style: AppType.caption.copyWith(color: AppText.secondary),
           ),
           const SizedBox(height: 12),
