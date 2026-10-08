@@ -158,7 +158,8 @@ public sealed class AccountDeletionService(string connectionString, LocalFileSto
             """
             UPDATE udrive.driver_wallet_topups
                SET screenshot_url = NULL, updated_at = now()
-             WHERE driver_profile_id IN (SELECT id FROM udrive.driver_profiles WHERE user_id = @u);
+             WHERE driver_profile_id IN (SELECT id FROM udrive.driver_profiles WHERE user_id = @u)
+                OR owner_user_id = @u;
             """,
             // Last known position. Neither of these is covered by the 30-day
             // purge that clears the trip trail, so without this a deleted
@@ -251,8 +252,8 @@ public sealed class AccountDeletionService(string connectionString, LocalFileSto
             UNION ALL
             SELECT t.screenshot_url
               FROM udrive.driver_wallet_topups t
-              JOIN udrive.driver_profiles p ON p.id = t.driver_profile_id
-             WHERE p.user_id = @u AND t.screenshot_url IS NOT NULL
+              LEFT JOIN udrive.driver_profiles p ON p.id = t.driver_profile_id
+             WHERE (p.user_id = @u OR t.owner_user_id = @u) AND t.screenshot_url IS NOT NULL
             UNION ALL
             -- The customer's own profile photo. It was missing from this union,
             -- so the column was nulled a few lines above while the file stayed

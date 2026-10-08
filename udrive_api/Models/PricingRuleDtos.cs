@@ -229,7 +229,9 @@ public sealed record WalletTopupDto(
     string Status,
     string? AdminNotes,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? ReviewedAt);
+    DateTimeOffset? ReviewedAt,
+    /// <summary>Driver or Hotel: whose wallet it tops up.</summary>
+    string Kind = "Driver");
 
 /// <summary>One commission charge against the prepaid balance.</summary>
 public sealed record WalletChargeDto(
@@ -315,14 +317,20 @@ public sealed record SetCommissionRequest(
     [Range(0, 40)] double Percentage,
     [Range(0, 40)] double? IntercityPercentage = null,
     [Range(0, 40)] double? TourPercentage = null,
-    [Range(0, 40)] double? RentPercentage = null);
+    [Range(0, 40)] double? RentPercentage = null,
+    [Range(0, 40)] double? HotelPercentage = null,
+    [Range(0, 1000000)] double? HotelMinimumBalance = null,
+    [Range(0, 1000000)] double? HotelLowBalanceAlert = null);
 
 /// <summary>Commission per kind of work, in percent.</summary>
 public sealed record CommissionRatesDto(
     double City,
     double Intercity,
     double Tour,
-    double Rent);
+    double Rent,
+    double Hotel = 0,
+    double HotelMinimumBalance = 0,
+    double HotelLowBalanceAlert = 500);
 
 /// <summary>One commission or cancellation charge, as the driver sees it.</summary>
 /// <param name="Percentage">
@@ -349,4 +357,24 @@ public sealed record CommissionEntryDto(
 public sealed record SetWalletSettingsRequest(
     [Range(0, 20000)] double WelcomeBonus,
     [StringLength(24)] string? EasypaisaNumber,
-    [StringLength(120)] string? AccountName);
+    [StringLength(120)] string? AccountName,
+    [Range(0, 20000)] double? TourWelcomeBonus = null,
+    [Range(0, 20000)] double? RentWelcomeBonus = null,
+    [Range(0, 20000)] double? HotelWelcomeBonus = null);
+
+/// <summary>The hotel owner's wallet screen.</summary>
+/// <param name="Visible">False when the balance is below the minimum: hotels are hidden from new customers.</param>
+public sealed record HotelWalletDto(
+    decimal Balance,
+    decimal CommissionPercentage,
+    decimal MinimumBalance,
+    decimal LowBalanceAlert,
+    bool Visible,
+    string? EasypaisaNumber,
+    string? EasypaisaName,
+    IReadOnlyList<HotelWalletEntryDto> Entries,
+    IReadOnlyList<WalletTopupDto> Topups);
+
+/// <param name="Type">Welcome, Topup, Commission, Refund or Adjustment.</param>
+public sealed record HotelWalletEntryDto(
+    Guid Id, string Type, decimal Amount, decimal BalanceAfter, string Description, DateTimeOffset CreatedAt);

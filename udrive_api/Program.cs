@@ -216,6 +216,8 @@ builder.Services.AddScoped<VerificationHubService>(sp => new VerificationHubServ
     sp.GetRequiredService<BusinessService>(),
     sp.GetRequiredService<AdminVerificationService>()));
 builder.Services.AddScoped<HotelOwnerDashboardService>(_ => new HotelOwnerDashboardService(connectionString));
+builder.Services.AddScoped<HotelWalletService>(sp => new HotelWalletService(
+    connectionString, sp.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<MessageTemplateService>(_ => new MessageTemplateService(connectionString));
 builder.Services.AddScoped<HoldService>(sp => new HoldService(
     connectionString,

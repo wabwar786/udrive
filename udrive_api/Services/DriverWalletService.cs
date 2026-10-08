@@ -293,10 +293,11 @@ public sealed class DriverWalletService(
     {
         const string sql = """
             SELECT t.id, u.full_name, t.amount, t.method, t.sender_reference,
-                   t.status, t.admin_notes, t.created_at, t.reviewed_at
+                   t.status, t.admin_notes, t.created_at, t.reviewed_at, t.wallet_kind
             FROM udrive.driver_wallet_topups t
-            JOIN udrive.driver_profiles dp ON dp.id = t.driver_profile_id
-            JOIN udrive.users u ON u.id = dp.user_id
+            LEFT JOIN udrive.driver_profiles dp ON dp.id = t.driver_profile_id
+            -- A hotel top-up names the owner directly.
+            JOIN udrive.users u ON u.id = COALESCE(dp.user_id, t.owner_user_id)
             WHERE t.status = 'Pending'
             ORDER BY t.created_at;
             """;
@@ -318,7 +319,8 @@ public sealed class DriverWalletService(
                 reader.GetString(5),
                 reader.IsDBNull(6) ? null : reader.GetString(6),
                 reader.GetFieldValue<DateTimeOffset>(7),
-                reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8)));
+                reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
+                reader.GetString(9)));
         }
 
         return ServiceResult<IReadOnlyList<WalletTopupDto>>.Ok(list);
@@ -354,12 +356,13 @@ public sealed class DriverWalletService(
                 reviewed_at = now(),
                 updated_at = now()
             WHERE id = @id AND status = 'Pending'
-            RETURNING driver_profile_id, amount, sender_reference;
+            RETURNING driver_profile_id, amount, sender_reference, wallet_kind, owner_user_id;
             """;
 
-        Guid profileId;
+        Guid profileId = Guid.Empty;
         decimal amount;
         string? reference;
+        Guid? hotelOwner = null;
 
         await using (var command = new NpgsqlCommand(closeSql, connection, transaction))
         {
@@ -380,9 +383,23 @@ public sealed class DriverWalletService(
                     "That top-up has already been dealt with.");
             }
 
-            profileId = reader.GetGuid(0);
+            if (reader.GetString(3) == "Hotel") hotelOwner = reader.GetGuid(4);
+            else profileId = reader.GetGuid(0);
             amount = reader.GetDecimal(1);
             reference = reader.IsDBNull(2) ? null : reader.GetString(2);
+        }
+
+        // A hotel owner's top-up goes to the hotel wallet.
+        if (hotelOwner is { } owner)
+        {
+            if (approve)
+            {
+                await HotelWalletService.CreditTopupAsync(
+                    connection, transaction, owner, amount, topupId, reference, actorUserId, cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return ServiceResult<bool>.Ok(true);
         }
 
         if (approve)
@@ -542,10 +559,39 @@ public sealed class DriverWalletService(
     /// or an Admin clicking twice, credits nothing further — this is a welcome,
     /// not a monthly payment.
     /// </remarks>
-    internal static async Task<bool> CreditWelcomeBonusAsync(
+    internal static Task<bool> CreditWelcomeBonusAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid driverProfileId,
+        CancellationToken cancellationToken) =>
+        CreditWelcomeAsync(connection, transaction, driverProfileId,
+            "driver.welcome.bonus", 1000, "welcome:", "Welcome credit on approval", cancellationToken);
+
+    /// <summary>
+    /// The welcome credit for tours or rent-a-car, paid once per owner per
+    /// kind, when a vehicle is first approved for that kind.
+    /// </summary>
+    /// <param name="kind">tour or rent.</param>
+    internal static Task<bool> CreditListingWelcomeAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid driverProfileId,
+        string kind,
+        CancellationToken cancellationToken) =>
+        kind == "rent"
+            ? CreditWelcomeAsync(connection, transaction, driverProfileId,
+                "driver.welcome.rent_bonus", 500, "welcome:rent:", "Welcome credit — rent a car approve", cancellationToken)
+            : CreditWelcomeAsync(connection, transaction, driverProfileId,
+                "driver.welcome.tour_bonus", 500, "welcome:tour:", "Welcome credit — tour approve", cancellationToken);
+
+    private static async Task<bool> CreditWelcomeAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid driverProfileId,
+        string settingKey,
+        decimal fallback,
+        string keyPrefix,
+        string description,
         CancellationToken cancellationToken)
     {
         // The wallet row is created first, in a statement of its own.
@@ -564,7 +610,7 @@ public sealed class DriverWalletService(
             WITH amount AS (
                 SELECT COALESCE((SELECT (value_json #>> '{}')::numeric
                                    FROM udrive.system_settings
-                                  WHERE key = 'driver.welcome.bonus'), 1000) AS value
+                                  WHERE key = @setting), @fallback) AS value
             ), credited AS (
                 UPDATE udrive.driver_wallets w
                 SET commission_balance = w.commission_balance + amount.value,
@@ -579,7 +625,7 @@ public sealed class DriverWalletService(
                   -- with its own history.
                   AND NOT EXISTS (
                       SELECT 1 FROM udrive.driver_wallet_entries e
-                      WHERE e.idempotency_key = 'welcome:' || @driver)
+                      WHERE e.idempotency_key = @prefix || @driver::text)
                 RETURNING w.id AS wallet_id, amount.value AS credited
             )
             INSERT INTO udrive.driver_wallet_entries
@@ -587,8 +633,8 @@ public sealed class DriverWalletService(
                  description, idempotency_key, created_at)
             SELECT gen_random_uuid(), credited.wallet_id, 'CommissionTopup',
                    credited.credited, 'Commission',
-                   'Welcome credit on approval',
-                   'welcome:' || @driver, now()
+                   @description,
+                   @prefix || @driver::text, now()
             FROM credited
             ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
             DO NOTHING
@@ -597,6 +643,10 @@ public sealed class DriverWalletService(
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("driver", driverProfileId);
+        command.Parameters.AddWithValue("setting", settingKey);
+        command.Parameters.AddWithValue("fallback", fallback);
+        command.Parameters.AddWithValue("prefix", keyPrefix);
+        command.Parameters.AddWithValue("description", description);
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is not null and not DBNull;
     }

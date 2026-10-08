@@ -111,6 +111,8 @@ public sealed class AdminServiceAvailabilityController(
     {
         var admin = User.GetRequiredUserId();
         await service.SetWelcomeBonusAsync(admin, request.WelcomeBonus, ct);
+        await service.SetKindWelcomeBonusesAsync(
+            admin, request.TourWelcomeBonus, request.RentWelcomeBonus, request.HotelWelcomeBonus, ct);
         await service.SetTopupAccountAsync(
             admin,
             request.EasypaisaNumber ?? string.Empty,
@@ -124,9 +126,13 @@ public sealed class AdminServiceAvailabilityController(
     public async Task<IActionResult> Wallet(CancellationToken ct)
     {
         var (number, name) = await service.TopupAccountAsync(ct);
+        var bonuses = await service.WelcomeBonusesAsync(ct);
         return Ok(ApiResponse<object>.Ok(new
         {
-            welcomeBonus = await service.WelcomeBonusAsync(ct),
+            welcomeBonus = bonuses.City,
+            tourWelcomeBonus = bonuses.Tour,
+            rentWelcomeBonus = bonuses.Rent,
+            hotelWelcomeBonus = bonuses.Hotel,
             easypaisaNumber = number,
             accountName = name,
         }));

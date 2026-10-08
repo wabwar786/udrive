@@ -1224,6 +1224,18 @@ public sealed class ListingService(string connectionString, LocalFileStorageServ
             }
 
             await MakeLiveAsync(connection, transaction, adminId, vehicleId, ct);
+
+            // The tour / rent welcome credit: once per owner per kind.
+            await using (var owner = new NpgsqlCommand(
+                "SELECT driver_profile_id FROM udrive.vehicles WHERE id = @id;", connection, transaction))
+            {
+                owner.Parameters.AddWithValue("id", vehicleId);
+                if (await owner.ExecuteScalarAsync(ct) is Guid profileId)
+                {
+                    await DriverWalletService.CreditListingWelcomeAsync(connection, transaction, profileId, use, ct);
+                }
+            }
+
             await AuditAsync(connection, transaction, adminId, use == "rent" ? "ListingRentApproved" : "ListingTourApproved",
                 "Vehicle", vehicleId, new { row.Name, row.RegistrationNumber }, ct);
             await transaction.CommitAsync(ct);

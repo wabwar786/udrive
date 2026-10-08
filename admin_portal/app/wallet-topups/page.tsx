@@ -16,7 +16,29 @@ type Topup = {
   status: string;
   adminNotes: string | null;
   createdAt: string;
+  /** Driver or Hotel: whose wallet it tops up. */
+  kind?: 'Driver' | 'Hotel';
 };
+
+function KindBadge({ kind }: { kind?: string }) {
+  const hotel = kind === 'Hotel';
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        marginRight: 6,
+        padding: '3px 8px',
+        borderRadius: 8,
+        fontSize: 10.5,
+        fontWeight: 800,
+        background: hotel ? '#F0ECFF' : '#E1EDFF',
+        color: hotel ? '#6C55C9' : '#255fa5',
+      }}
+    >
+      {hotel ? 'HOTEL' : 'DRIVER'}
+    </span>
+  );
+}
 
 /**
  * Confirming that Driver top-up money actually arrived.
@@ -75,7 +97,7 @@ export default function Page() {
   return (
     <AdminFrame
       title="Driver top-ups"
-      subtitle="Confirm money has arrived before crediting a driver's commission balance."
+      subtitle="Drivers aur hotel owners ke top-ups. Paisa aane ki tasdeeq ke baad approve karein."
     >
       <section className="panel">
         <header className="panelHeader">
@@ -108,7 +130,7 @@ export default function Page() {
             <table>
               <thead>
                 <tr>
-                  <th>Driver</th>
+                  <th>Driver / hotel owner</th>
                   <th>Amount</th>
                   <th>Transaction ID</th>
                   <th>Sent</th>
@@ -119,7 +141,10 @@ export default function Page() {
               <tbody>
                 {rows.map((topup) => (
                   <tr key={topup.id}>
-                    <td>{topup.driverName ?? '—'}</td>
+                    <td>
+                      <KindBadge kind={topup.kind} />
+                      {topup.driverName ?? '—'}
+                    </td>
                     <td>
                       <strong>PKR {topup.amount.toLocaleString()}</strong>
                     </td>

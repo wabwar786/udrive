@@ -67,7 +67,10 @@ export default function Page() {
   const [, setCommission] = useState(10);
 
   /** Commission per kind of work, as text while it is being typed. */
-  const [rates, setRates] = useState({ city: '10', intercity: '10', tour: '10', rent: '10' });
+  const [rates, setRates] = useState({ city: '10', intercity: '10', tour: '10', rent: '10', hotel: '0' });
+  // Hotel wallet: below the minimum the hotel is hidden; below the alert the owner is told.
+  const [hotelMin, setHotelMin] = useState('0');
+  const [hotelAlert, setHotelAlert] = useState('500');
 
   /**
    * The welcome credit, and where drivers send top-ups.
@@ -78,6 +81,8 @@ export default function Page() {
    * drivers, that reason is gone and it comes down.
    */
   const [bonus, setBonus] = useState(1000);
+  // Welcome credit for the other kinds of work (city is `bonus`).
+  const [kindBonus, setKindBonus] = useState({ tour: 500, rent: 500, hotel: 500 });
   const [easypaisa, setEasypaisa] = useState('');
   const [accountName, setAccountName] = useState('');
 
@@ -110,7 +115,15 @@ export default function Page() {
         requestRadiusKm: number;
         nearbyRadiusKm: number;
         commissionPercentage: number;
-        commissionRates?: { city: number; intercity: number; tour: number; rent: number };
+        commissionRates?: {
+          city: number;
+          intercity: number;
+          tour: number;
+          rent: number;
+          hotel?: number;
+          hotelMinimumBalance?: number;
+          hotelLowBalanceAlert?: number;
+        };
         offerCard: Record<string, boolean>;
       }>('/api/v1/settings/operations');
       setPing(ops.pingSeconds);
@@ -123,15 +136,26 @@ export default function Page() {
         intercity: String(r?.intercity ?? ops.commissionPercentage),
         tour: String(r?.tour ?? ops.commissionPercentage),
         rent: String(r?.rent ?? ops.commissionPercentage),
+        hotel: String(r?.hotel ?? 0),
       });
+      setHotelMin(String(r?.hotelMinimumBalance ?? 0));
+      setHotelAlert(String(r?.hotelLowBalanceAlert ?? 500));
       if (ops.offerCard) setCard(ops.offerCard);
 
       const wallet = await apiFetch<{
         welcomeBonus: number;
+        tourWelcomeBonus?: number;
+        rentWelcomeBonus?: number;
+        hotelWelcomeBonus?: number;
         easypaisaNumber: string;
         accountName: string;
       }>('/api/v1/admin/settings/wallet');
       setBonus(wallet.welcomeBonus);
+      setKindBonus({
+        tour: wallet.tourWelcomeBonus ?? 500,
+        rent: wallet.rentWelcomeBonus ?? 500,
+        hotel: wallet.hotelWelcomeBonus ?? 500,
+      });
       setEasypaisa(wallet.easypaisaNumber ?? '');
       setAccountName(wallet.accountName ?? '');
     } catch (e) {
@@ -218,9 +242,16 @@ export default function Page() {
       intercity: Number(rates.intercity),
       tour: Number(rates.tour),
       rent: Number(rates.rent),
+      hotel: Number(rates.hotel),
     };
     if (Object.values(parsed).some((v) => !Number.isFinite(v) || v < 0 || v > 40)) {
       setError('Har commission 0 se 40% ke beech honi chahiye.');
+      return;
+    }
+    const minimum = Number(hotelMin);
+    const alert = Number(hotelAlert);
+    if (![minimum, alert].every((v) => Number.isFinite(v) && v >= 0 && v <= 1000000)) {
+      setError('Hotel wallet ki raqam 0 se 10,00,000 ke beech honi chahiye.');
       return;
     }
     try {
@@ -231,11 +262,14 @@ export default function Page() {
           intercityPercentage: parsed.intercity,
           tourPercentage: parsed.tour,
           rentPercentage: parsed.rent,
+          hotelPercentage: parsed.hotel,
+          hotelMinimumBalance: minimum,
+          hotelLowBalanceAlert: alert,
         }),
       });
       setCommission(parsed.city);
       setSaved(
-        `Commission saved — city ${parsed.city}%, city to city ${parsed.intercity}%, tours ${parsed.tour}%, rent ${parsed.rent}%.`,
+        `Commission saved — city ${parsed.city}%, city to city ${parsed.intercity}%, tours ${parsed.tour}%, rent ${parsed.rent}%, hotel ${parsed.hotel}%.`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save that.');
@@ -250,6 +284,9 @@ export default function Page() {
         method: 'PUT',
         body: JSON.stringify({
           welcomeBonus: bonus,
+          tourWelcomeBonus: kindBonus.tour,
+          rentWelcomeBonus: kindBonus.rent,
+          hotelWelcomeBonus: kindBonus.hotel,
           easypaisaNumber: easypaisa,
           accountName,
         }),
@@ -327,25 +364,55 @@ export default function Page() {
       <section className="panel">
         <header className="panelHeader">
           <div>
-            <h2>Driver wallet</h2>
+            <h2>Wallet + welcome credit</h2>
             <p>
-              What a newly approved driver is credited, and where drivers send
-              top-ups. The credit is paid once, on approval — re-approving
-              somebody after a suspension does not pay it again.
+              Har kaam ka apna welcome credit, approve hone par wallet mein aik dafa
+              (har kaam ka sirf pehli dafa). Neeche woh number jahan drivers aur hotel
+              owners top-up bhejte hain.
             </p>
           </div>
         </header>
 
         <div style={{ padding: '4px 18px 18px', display: 'grid', gap: '12px' }}>
-          <Field label="Welcome credit on approval (PKR)">
-            <input
-              type="number"
-              min={0}
-              max={20000}
-              value={bonus}
-              onChange={(e) => setBonus(Number(e.target.value))}
-            />
-          </Field>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 2fr', gap: 12, fontSize: 12, fontWeight: 800, color: '#5D7068' }}>
+              <span>KAAM</span>
+              <span>WELCOME CREDIT (PKR)</span>
+              <span>KAB MILTA HAI</span>
+            </div>
+            {(
+              [
+                ['city', 'City rides', 'Driver + city gaari approve hone par (city + city to city)'],
+                ['tour', 'Tour', 'Gaari tour ke liye approve hone par'],
+                ['rent', 'Rent a car', 'Gaari rent ke liye approve hone par'],
+                ['hotel', 'Hotel', 'Hotel approve hone par (hotel owner ka wallet)'],
+              ] as const
+            ).map(([key, label, when]) => (
+              <div
+                key={key}
+                style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 2fr', gap: 12, alignItems: 'center', borderTop: '1px solid #EDF2F0', paddingTop: 8 }}
+              >
+                <strong>{label}</strong>
+                <input
+                  type="number"
+                  min={0}
+                  max={20000}
+                  aria-label={`${label} welcome credit`}
+                  value={key === 'city' ? bonus : kindBonus[key]}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    if (key === 'city') setBonus(value);
+                    else setKindBonus((current) => ({ ...current, [key]: value }));
+                  }}
+                  style={{ width: 120, height: 38, borderRadius: 10, border: '1px solid #D3DFDA', textAlign: 'center', fontWeight: 700 }}
+                />
+                <span style={{ color: '#5D7068', fontSize: 13 }}>{when}</span>
+              </div>
+            ))}
+            <p className="pingNote" style={{ margin: 0 }}>
+              0 likhein to us kaam ka credit band. Jo pehle mil chuka woh wapas nahi hota.
+            </p>
+          </div>
           <Field label="EasyPaisa number drivers send to">
             <input
               value={easypaisa}
@@ -379,7 +446,7 @@ export default function Page() {
           <div>
             <h2>Commission</h2>
             <p>
-              Har kaam ka apna %. Sab driver ke prepaid wallet se katta hai. Pehle se kati hui commission
+              Har kaam ka apna %. Driver ke prepaid wallet se katta hai; hotel ki commission hotel owner ke wallet se. Pehle se kati hui commission
               nahi badalti.
             </p>
           </div>
@@ -396,6 +463,7 @@ export default function Page() {
               ['intercity', 'City to city', 'Ride shuru hone par'],
               ['tour', 'Tours', 'Tour shuru hone par'],
               ['rent', 'Rent a car', 'Driver ke accept karne par (customer cancel kare to wapas)'],
+              ['hotel', 'Hotel', 'Booking confirm hone par, hotel owner ke wallet se'],
             ] as const
           ).map(([key, label, when]) => (
             <div
@@ -419,6 +487,18 @@ export default function Page() {
               <span style={{ color: '#5D7068', fontSize: 13 }}>{when}</span>
             </div>
           ))}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, borderTop: '1px solid #EDF2F0', paddingTop: 10 }}>
+            <Field label="Hotel wallet — kam se kam (PKR)">
+              <input type="number" min={0} value={hotelMin} onChange={(e) => setHotelMin(e.target.value)} />
+            </Field>
+            <Field label="Hotel wallet — kam hone ka alert (PKR)">
+              <input type="number" min={0} value={hotelAlert} onChange={(e) => setHotelAlert(e.target.value)} />
+            </Field>
+            <p className="pingNote" style={{ margin: 0, gridColumn: 'span 2' }}>
+              Hotel wallet &quot;kam se kam&quot; se neeche ho to hotel naye customers ko nazar nahi aata (pehle se
+              confirm bookings chalti rahengi). Alert se neeche aaye to owner ko WhatsApp jata hai.
+            </p>
+          </div>
           <div>
             <button className="primaryButton" onClick={() => void saveCommission()}>
               <Save size={15} />

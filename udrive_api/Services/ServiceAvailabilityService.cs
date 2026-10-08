@@ -159,7 +159,10 @@ public sealed class ServiceAvailabilityService(string connectionString)
             city,
             await ReadNumberAsync("driver.commission.intercity_percentage", city, 0, 40, ct),
             await ReadNumberAsync("driver.commission.tour_percentage", city, 0, 40, ct),
-            await ReadNumberAsync("driver.commission.rent_percentage", city, 0, 40, ct));
+            await ReadNumberAsync("driver.commission.rent_percentage", city, 0, 40, ct),
+            await ReadNumberAsync("hotel.commission.percentage", 0, 0, 40, ct),
+            await ReadNumberAsync("hotel.wallet.minimum_balance", 0, 0, 1_000_000, ct),
+            await ReadNumberAsync("hotel.wallet.low_balance_alert", 500, 0, 1_000_000, ct));
     }
 
     public async Task SetCommissionRatesAsync(
@@ -185,6 +188,56 @@ public sealed class ServiceAvailabilityService(string connectionString)
             await WriteNumberAsync(admin, "driver.commission.rent_percentage",
                 "Commission on rent-a-car bookings, taken when the driver accepts.",
                 Math.Clamp(rent, 0, 40), ct);
+        }
+
+        if (request.HotelPercentage is { } hotel)
+        {
+            await WriteNumberAsync(admin, "hotel.commission.percentage",
+                "Commission (%) on a hotel booking, taken from the hotel wallet when the booking is confirmed.",
+                Math.Clamp(hotel, 0, 40), ct);
+        }
+
+        if (request.HotelMinimumBalance is { } minimum)
+        {
+            await WriteNumberAsync(admin, "hotel.wallet.minimum_balance",
+                "Below this hotel wallet balance (PKR) the hotel is hidden from new customers.",
+                Math.Clamp(minimum, 0, 1_000_000), ct);
+        }
+
+        if (request.HotelLowBalanceAlert is { } alert)
+        {
+            await WriteNumberAsync(admin, "hotel.wallet.low_balance_alert",
+                "Below this hotel wallet balance (PKR) the owner is asked to top up.",
+                Math.Clamp(alert, 0, 1_000_000), ct);
+        }
+    }
+
+    /// <summary>Welcome credit per kind of work: city (the original key), tour, rent, hotel.</summary>
+    public async Task<(double City, double Tour, double Rent, double Hotel)> WelcomeBonusesAsync(CancellationToken ct) =>
+        (await WelcomeBonusAsync(ct),
+         await ReadNumberAsync("driver.welcome.tour_bonus", 500, 0, 20000, ct),
+         await ReadNumberAsync("driver.welcome.rent_bonus", 500, 0, 20000, ct),
+         await ReadNumberAsync("hotel.welcome.bonus", 500, 0, 20000, ct));
+
+    public async Task SetKindWelcomeBonusesAsync(
+        Guid admin, double? tour, double? rent, double? hotel, CancellationToken ct)
+    {
+        if (tour is { } t)
+        {
+            await WriteNumberAsync(admin, "driver.welcome.tour_bonus",
+                "Welcome credit (PKR) when a vehicle is first approved for tours.", Math.Clamp(t, 0, 20000), ct);
+        }
+
+        if (rent is { } r)
+        {
+            await WriteNumberAsync(admin, "driver.welcome.rent_bonus",
+                "Welcome credit (PKR) when a vehicle is first approved for rent-a-car.", Math.Clamp(r, 0, 20000), ct);
+        }
+
+        if (hotel is { } h)
+        {
+            await WriteNumberAsync(admin, "hotel.welcome.bonus",
+                "Welcome credit (PKR) in the hotel owner's wallet when a hotel is first approved.", Math.Clamp(h, 0, 20000), ct);
         }
     }
 

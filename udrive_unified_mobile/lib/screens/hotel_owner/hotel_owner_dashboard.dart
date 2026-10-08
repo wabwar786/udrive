@@ -13,6 +13,7 @@ import '../../core/widgets/ud_kit.dart';
 import '../../models/auth_models.dart';
 import '../common/hold_notice.dart';
 import 'hotel_owner_manage_screen.dart';
+import 'hotel_wallet_screen.dart';
 
 /// H-01 — the hotel owner's home: new bookings, who arrives and leaves
 /// today, and how many rooms are free over the next seven days.
@@ -216,6 +217,8 @@ class _HotelOwnerDashboardState extends State<HotelOwnerDashboard> {
             entityId: hotel.id,
             padding: const EdgeInsets.only(top: 12),
           ),
+          // Prepaid wallet: commission comes out of it.
+          const HotelWalletLink(),
           const SizedBox(height: 12),
           Row(
             children: [
