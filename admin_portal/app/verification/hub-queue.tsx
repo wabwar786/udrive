@@ -341,7 +341,9 @@ export function HubQueue({
   const canEdit = can(tabModule, 'edit');
 
   const [rows, setRows] = useState<VerificationRow[]>([]);
-  const [status, setStatus] = useState('Waiting');
+  // City rides opens on everyone — approved drivers too, waiting ones first —
+  // so the drivers approved before this page are always in sight.
+  const [status, setStatus] = useState(tab === 'city' ? 'All' : 'Waiting');
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(true);

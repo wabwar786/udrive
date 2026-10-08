@@ -38,11 +38,8 @@ public sealed class VerificationHubService(
         await using var command = new NpgsqlCommand(
             $"""
             SELECT
-              (SELECT count(*)::int FROM udrive.vehicles v
-                JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
-                LEFT JOIN udrive.territories t ON t.id = COALESCE(v.territory_id, dp.territory_id)
-                WHERE COALESCE(v.listed_via, 'Driver') = 'Driver' AND v.status <> 'Deleted'
-                  AND COALESCE(dp.profile_kind, 'Driver') = 'Driver'
+              (SELECT count(*)::int
+                {CityFromSql}
                   AND ({CityStatusSql}) = 'Waiting'
                   AND {AreaSql("t", "COALESCE(v.territory_id, dp.territory_id)")}),
               (SELECT count(*)::int FROM udrive.vehicles v
@@ -258,7 +255,19 @@ public sealed class VerificationHubService(
             command.Parameters.AddWithValue("tehsil", tehsilId);
             if (await command.ExecuteScalarAsync(ct) is not Guid)
             {
-                return Fail<object>(404, "not_found", "Not found.");
+                // A city row with no vehicle yet is the driver profile itself.
+                var moved = false;
+                if (kind == "city")
+                {
+                    await using var driver = new NpgsqlCommand(
+                        "UPDATE udrive.driver_profiles SET territory_id = @tehsil, updated_at = now() WHERE id = @id RETURNING id;",
+                        connection);
+                    driver.Parameters.AddWithValue("id", id);
+                    driver.Parameters.AddWithValue("tehsil", tehsilId);
+                    moved = await driver.ExecuteScalarAsync(ct) is Guid;
+                }
+
+                if (!moved) return Fail<object>(404, "not_found", "Not found.");
             }
         }
 
@@ -301,16 +310,44 @@ public sealed class VerificationHubService(
 
     /// <summary>
     /// The city-rides row status, from the driver's and the vehicle's own
-    /// statuses. One row per vehicle a driver registered for rides.
+    /// statuses. One row per vehicle a driver registered for rides, plus one
+    /// row for a driver who has not registered a vehicle yet (v is NULL).
     /// </summary>
+    /// <remarks>
+    /// Compared in lower case and with the older spellings ("Verified" for a
+    /// driver, "Approved" for a vehicle, "Pending"), so drivers approved
+    /// before this page existed still show as Approved.
+    /// </remarks>
     private const string CityStatusSql = """
         CASE
-            WHEN dp.verification_status = 'Rejected' OR v.status = 'Suspended' THEN 'Rejected'
-            WHEN dp.verification_status = 'ChangesRequired' OR v.status = 'ChangesRequired' THEN 'Info'
-            WHEN dp.verification_status IN ('Submitted', 'UnderReview') OR v.status = 'PendingReview' THEN 'Waiting'
-            WHEN dp.verification_status = 'Approved' AND v.status = 'Verified' THEN 'Approved'
+            WHEN lower(dp.verification_status) IN ('rejected', 'suspended')
+              OR lower(COALESCE(v.status, '')) IN ('suspended', 'rejected', 'expired') THEN 'Rejected'
+            WHEN lower(dp.verification_status) = 'changesrequired'
+              OR lower(COALESCE(v.status, '')) = 'changesrequired' THEN 'Info'
+            WHEN lower(dp.verification_status) IN ('submitted', 'underreview', 'pending', 'pendingreview')
+              OR lower(COALESCE(v.status, '')) IN ('pendingreview', 'pending', 'submitted') THEN 'Waiting'
+            WHEN lower(dp.verification_status) IN ('approved', 'verified')
+              AND (v.id IS NULL OR lower(v.status) IN ('verified', 'approved')) THEN 'Approved'
             ELSE 'Other'
         END
+        """;
+
+    /// <summary>Driver profiles of city drivers, each with their ride vehicles (or none).</summary>
+    private const string CityFromSql = """
+        FROM udrive.driver_profiles dp
+        JOIN udrive.users u ON u.id = dp.user_id
+        LEFT JOIN udrive.vehicles v
+               ON v.driver_profile_id = dp.id
+              AND COALESCE(v.listed_via, 'Driver') = 'Driver'
+              AND lower(v.status) <> 'deleted'
+        LEFT JOIN udrive.territories t ON t.id = COALESCE(v.territory_id, dp.territory_id)
+        WHERE COALESCE(dp.profile_kind, 'Driver') = 'Driver'
+          AND lower(dp.verification_status) <> 'deleted'
+          -- A driver profile that only lists tour / rent vehicles is not a
+          -- city driver waiting for a car.
+          AND (v.id IS NOT NULL OR NOT EXISTS (
+                SELECT 1 FROM udrive.vehicles x
+                WHERE x.driver_profile_id = dp.id AND lower(x.status) <> 'deleted'))
         """;
 
     private static async Task<IReadOnlyList<VerificationRowDto>> CityRowsAsync(
@@ -320,35 +357,32 @@ public sealed class VerificationHubService(
         await using var command = new NpgsqlCommand(
             $"""
             SELECT * FROM (
-                SELECT v.id,
-                       trim(concat_ws(' ', v.make, v.model, v.year::text)) || ' · ' || v.registration_number AS title,
+                SELECT COALESCE(v.id, dp.id) AS id,
+                       CASE WHEN v.id IS NULL THEN 'Gaari abhi register nahi'
+                            ELSE trim(concat_ws(' ', v.make, v.model, v.year::text)) || ' · ' || v.registration_number
+                       END AS title,
                        {CityUsesSql} AS uses,
                        COALESCE(NULLIF(u.full_name, ''), 'Driver') AS person,
                        COALESCE(u.phone_number, '') AS phone,
-                       t.id AS tehsil_id, t.name AS tehsil, d.name AS district,
-                       COALESCE(dp.submitted_at, v.created_at) AS since,
+                       t.id AS tehsil_id, t.name AS tehsil,
+                       (SELECT d.name FROM udrive.territories d WHERE d.id = t.parent_id) AS district,
+                       COALESCE(dp.submitted_at, v.created_at, dp.created_at) AS since,
                        {CityStatusSql} AS row_status,
                        NULLIF(COALESCE(dp.review_notes,
                            (SELECT vd.review_notes FROM udrive.vehicle_documents vd
                              WHERE vd.vehicle_id = v.id AND NULLIF(vd.review_notes, '') IS NOT NULL
                              ORDER BY vd.updated_at DESC LIMIT 1)), '') AS note,
                        NULLIF(v.image_url, '') AS photo,
-                       {CityChecksDoneSql} AS done
-                FROM udrive.vehicles v
-                JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
-                JOIN udrive.users u ON u.id = dp.user_id
-                LEFT JOIN udrive.territories t ON t.id = COALESCE(v.territory_id, dp.territory_id)
-                LEFT JOIN udrive.territories d ON d.id = t.parent_id
-                WHERE COALESCE(v.listed_via, 'Driver') = 'Driver'
-                  AND v.status <> 'Deleted'
-                  AND COALESCE(dp.profile_kind, 'Driver') = 'Driver'
+                       {CityChecksDoneSql} AS done,
+                       dp.verification_status AS driver_status
+                {CityFromSql}
                   AND {AreaSql("t", "COALESCE(v.territory_id, dp.territory_id)")}
                   AND (@q = '' OR v.registration_number ILIKE @like OR v.make ILIKE @like OR v.model ILIKE @like
                        OR u.full_name ILIKE @like OR u.phone_number ILIKE @like)
-                  AND (@id::uuid IS NULL OR v.id = @id::uuid)
+                  AND (@id::uuid IS NULL OR v.id = @id::uuid OR (v.id IS NULL AND dp.id = @id::uuid))
             ) x
             WHERE (@want = 'All' OR x.row_status = @want)
-            ORDER BY (x.row_status = 'Waiting') DESC, x.since
+            ORDER BY (x.row_status = 'Waiting') DESC, x.since DESC
             LIMIT 300;
             """, connection);
         BindArea(command, area, unassigned, allowed);
@@ -365,7 +399,8 @@ public sealed class VerificationHubService(
                 "city", reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
                 reader.IsDBNull(5) ? null : reader.GetGuid(5), S(6), S(7),
                 reader.GetFieldValue<DateTimeOffset>(8),
-                status == "Other" ? "Rejected" : status,
+                // "Other" is a draft or similar; show the driver's own status.
+                status == "Other" ? reader.GetString(13) : status,
                 S(10), reader.GetInt32(12), CityChecksTotal, S(11), 0));
         }
 
@@ -375,11 +410,12 @@ public sealed class VerificationHubService(
     /// <summary>What the vehicle was registered for, in words.</summary>
     private const string CityUsesSql = """
         CASE
+            WHEN v.id IS NULL THEN 'Sirf driver — gaari abhi nahi'
             WHEN COALESCE(v.wants_city, v.available_for_city, false)
-                 AND COALESCE(v.wants_intercity, v.available_for_intercity, false) THEN 'City + City to city'
-            WHEN COALESCE(v.wants_intercity, v.available_for_intercity, false) THEN 'City to city'
-            ELSE 'City rides'
-        END || ' · ' || v.passenger_capacity::text || ' seats'
+                 AND COALESCE(v.wants_intercity, v.available_for_intercity, false) THEN 'City + City to city · ' || v.passenger_capacity::text || ' seats'
+            WHEN COALESCE(v.wants_intercity, v.available_for_intercity, false) THEN 'City to city · ' || v.passenger_capacity::text || ' seats'
+            ELSE 'City rides · ' || v.passenger_capacity::text || ' seats'
+        END
         """;
 
     private const int CityChecksTotal = 6;
@@ -390,101 +426,134 @@ public sealed class VerificationHubService(
            WHERE dd.driver_profile_id = dp.id
              AND dd.document_type IN ('CNIC_FRONT','CNIC_BACK','SELFIE_WITH_CNIC','DRIVING_LICENCE','DRIVING_LICENCE_BACK','SELFIE')) = 6)::int
         + (COALESCE(dp.driving_licence_expiry > (now() AT TIME ZONE 'Asia/Karachi')::date, false))::int
-        + EXISTS (SELECT 1 FROM udrive.vehicle_documents vd WHERE vd.vehicle_id = v.id AND vd.document_type = 'VEHICLE_FRONT')::int
+        + COALESCE(EXISTS (SELECT 1 FROM udrive.vehicle_documents vd WHERE vd.vehicle_id = v.id AND vd.document_type = 'VEHICLE_FRONT'), false)::int
         + ((SELECT count(DISTINCT vd.document_type) FROM udrive.vehicle_documents vd
              WHERE vd.vehicle_id = v.id AND vd.document_type IN ('REGISTRATION_BOOK','REGISTRATION_BOOK_BACK')) = 2)::int
         + (COALESCE(v.territory_id, dp.territory_id) IS NOT NULL)::int
-        + (v.wants_city IS NOT NULL OR v.wants_intercity IS NOT NULL
-           OR COALESCE(v.available_for_city, false) OR COALESCE(v.available_for_intercity, false))::int
+        + COALESCE(v.wants_city IS NOT NULL OR v.wants_intercity IS NOT NULL
+           OR COALESCE(v.available_for_city, false) OR COALESCE(v.available_for_intercity, false), false)::int
         """;
 
-    private static async Task<VerificationDetailDto?> CityDetailAsync(
-        NpgsqlConnection connection, Guid vehicleId, CancellationToken ct)
-    {
-        var row = (await CityRowsAsync(connection, "All", null, false, null, vehicleId, ct)).FirstOrDefault();
-        if (row is null) return null;
+    /// <summary>The vehicle and driver behind a city row id, which is a vehicle id or, for a driver with no vehicle yet, a driver profile id.</summary>
+    private sealed record CityTarget(
+        Guid ProfileId, Guid? VehicleId, string DriverStatus, string? VehicleStatus,
+        string Phone, string Title, DateOnly? LicenceExpiry, bool AreaKnown, bool UsesKnown, string Uses);
 
-        var documents = new List<VerificationDocumentDto>();
+    private static async Task<CityTarget?> CityTargetAsync(NpgsqlConnection connection, Guid id, CancellationToken ct)
+    {
+        await using var command = new NpgsqlCommand(
+            $"""
+            SELECT dp.id, v.id, dp.verification_status, v.status, COALESCE(u.phone_number, ''),
+                   CASE WHEN v.id IS NULL THEN COALESCE(NULLIF(u.full_name, ''), 'Driver')
+                        ELSE trim(concat_ws(' ', v.make, v.model)) || ' (' || v.registration_number || ')' END,
+                   dp.driving_licence_expiry,
+                   COALESCE(v.territory_id, dp.territory_id) IS NOT NULL,
+                   COALESCE(v.wants_city IS NOT NULL OR v.wants_intercity IS NOT NULL
+                     OR COALESCE(v.available_for_city, false) OR COALESCE(v.available_for_intercity, false), false),
+                   {CityUsesSql}
+            {CityFromSql}
+              AND (v.id = @id OR (v.id IS NULL AND dp.id = @id))
+            LIMIT 1;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        return new CityTarget(
+            reader.GetGuid(0),
+            reader.IsDBNull(1) ? null : reader.GetGuid(1),
+            reader.GetString(2),
+            reader.IsDBNull(3) ? null : reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5),
+            reader.IsDBNull(6) ? null : DateOnly.FromDateTime(reader.GetDateTime(6)),
+            reader.GetBoolean(7),
+            reader.GetBoolean(8),
+            reader.GetString(9));
+    }
+
+    private static bool Is(string? status, params string[] values) =>
+        status is not null && values.Any(v => string.Equals(v, status, StringComparison.OrdinalIgnoreCase));
+
+    private static async Task<VerificationDetailDto?> CityDetailAsync(
+        NpgsqlConnection connection, Guid id, CancellationToken ct)
+    {
+        var row = (await CityRowsAsync(connection, "All", null, false, null, id, ct)).FirstOrDefault();
+        var target = row is null ? null : await CityTargetAsync(connection, id, ct);
+        if (row is null || target is null) return null;
+
         var have = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         await using (var command = new NpgsqlCommand(
             """
             SELECT 'd:' || dd.document_type, dd.file_url FROM udrive.driver_documents dd
-            JOIN udrive.vehicles v ON v.driver_profile_id = dd.driver_profile_id
-            WHERE v.id = @id
+            WHERE dd.driver_profile_id = @profile
             UNION ALL
             SELECT 'v:' || vd.document_type, vd.file_url FROM udrive.vehicle_documents vd
-            WHERE vd.vehicle_id = @id;
+            WHERE vd.vehicle_id = @vehicle;
             """, connection))
         {
-            command.Parameters.AddWithValue("id", vehicleId);
+            command.Parameters.AddWithValue("profile", target.ProfileId);
+            command.Parameters.Add(new NpgsqlParameter("vehicle", NpgsqlDbType.Uuid)
+            {
+                Value = (object?)target.VehicleId ?? DBNull.Value,
+            });
             await using var reader = await command.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct)) have[reader.GetString(0)] = reader.GetString(1);
         }
 
-        (string Key, string Label)[] wanted =
+        (string Key, string Label)[] driverDocs =
         [
             ("d:SELFIE", "Selfie"), ("d:CNIC_FRONT", "CNIC front"), ("d:CNIC_BACK", "CNIC back"),
             ("d:SELFIE_WITH_CNIC", "Selfie + CNIC"), ("d:DRIVING_LICENCE", "Licence front"),
-            ("d:DRIVING_LICENCE_BACK", "Licence back"), ("v:VEHICLE_FRONT", "Gaari front"),
-            ("v:REGISTRATION_BOOK", "Reg. book front"), ("v:REGISTRATION_BOOK_BACK", "Reg. book back"),
+            ("d:DRIVING_LICENCE_BACK", "Licence back"),
         ];
-        foreach (var (key, label) in wanted)
+        (string Key, string Label)[] vehicleDocs =
+        [
+            ("v:VEHICLE_FRONT", "Gaari front"), ("v:REGISTRATION_BOOK", "Reg. book front"),
+            ("v:REGISTRATION_BOOK_BACK", "Reg. book back"),
+        ];
+        var documents = new List<VerificationDocumentDto>();
+        foreach (var (key, label) in target.VehicleId is null ? driverDocs : driverDocs.Concat(vehicleDocs))
         {
             documents.Add(new(label, have.TryGetValue(key, out var url) ? url : null));
         }
 
-        var driverDocs = wanted.Take(6).Count(w => have.ContainsKey(w.Key));
-        var regDocs = wanted.Skip(7).Count(w => have.ContainsKey(w.Key));
-
-        DateOnly? licence;
-        bool areaKnown;
-        bool usesKnown;
-        string uses;
-        string driverStatus;
-        string vehicleStatus;
-        await using (var command = new NpgsqlCommand(
-            $"""
-            SELECT dp.driving_licence_expiry,
-                   COALESCE(v.territory_id, dp.territory_id) IS NOT NULL,
-                   v.wants_city IS NOT NULL OR v.wants_intercity IS NOT NULL
-                     OR COALESCE(v.available_for_city, false) OR COALESCE(v.available_for_intercity, false),
-                   {CityUsesSql},
-                   dp.verification_status, v.status
-            FROM udrive.vehicles v JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
-            WHERE v.id = @id;
-            """, connection))
-        {
-            command.Parameters.AddWithValue("id", vehicleId);
-            await using var reader = await command.ExecuteReaderAsync(ct);
-            await reader.ReadAsync(ct);
-            licence = reader.IsDBNull(0) ? null : DateOnly.FromDateTime(reader.GetDateTime(0));
-            areaKnown = reader.GetBoolean(1);
-            usesKnown = reader.GetBoolean(2);
-            uses = reader.GetString(3);
-            driverStatus = reader.GetString(4);
-            vehicleStatus = reader.GetString(5);
-        }
-
+        var driverCount = driverDocs.Count(w => have.ContainsKey(w.Key));
+        var regDocs = vehicleDocs.Skip(1).Count(w => have.ContainsKey(w.Key));
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(5));
+        var licence = target.LicenceExpiry;
         var licenceValid = licence is { } l && l > today;
+        var kind = target.Uses.Split(" · ")[0];
+
         var checks = new List<VerificationCheckDto>
         {
-            new($"Driver documents ({driverDocs}/6)", driverDocs == 6),
+            new($"Driver documents ({driverCount}/6)", driverCount == 6),
             new(licence is null ? "Licence expiry date nahi" : licenceValid ? "Licence valid" : "Licence expired", licenceValid),
-            new("Gaari ki photo (front)", have.ContainsKey("v:VEHICLE_FRONT")),
-            new(regDocs == 2 ? "Registration front aur back" : "Registration front aur back — " + (regDocs == 0 ? "dono missing" : "aik missing"), regDocs == 2),
-            new("District aur tehsil maloom", areaKnown),
-            new("Gaari kis ke liye: " + uses.Split(" · ")[0], usesKnown),
         };
+        if (target.VehicleId is null)
+        {
+            checks.Add(new("Gaari register ki — abhi nahi ki", false));
+            checks.Add(new("District aur tehsil maloom", target.AreaKnown));
+        }
+        else
+        {
+            checks.Add(new("Gaari ki photo (front)", have.ContainsKey("v:VEHICLE_FRONT")));
+            checks.Add(new(regDocs == 2 ? "Registration front aur back"
+                : "Registration front aur back — " + (regDocs == 0 ? "dono missing" : "aik missing"), regDocs == 2));
+            checks.Add(new("District aur tehsil maloom", target.AreaKnown));
+            checks.Add(new("Gaari kis ke liye: " + kind, target.UsesKnown));
+        }
 
         var facts = new List<VerificationFactDto>
         {
-            new("Kaam", uses.Split(" · ")[0]),
-            new("Seats", uses.Split(" · ").Last().Replace(" seats", string.Empty)),
+            new("Kaam", kind),
             new("Licence", licence is null ? "—" : $"{(licenceValid ? "Valid" : "Expired")} · {licence:MMM yyyy}"),
-            new("Driver status", driverStatus),
-            new("Gaari status", vehicleStatus),
+            new("Driver status", target.DriverStatus),
+            new("Gaari status", target.VehicleStatus ?? "Gaari nahi"),
         };
+        if (target.VehicleId is not null)
+        {
+            facts.Insert(1, new("Seats", target.Uses.Split(" · ").Last().Replace(" seats", string.Empty)));
+        }
 
         var blocked = checks.FirstOrDefault(c => !c.Ok);
         return new VerificationDetailDto(
@@ -495,75 +564,56 @@ public sealed class VerificationHubService(
     }
 
     /// <summary>Approves the driver and the vehicle together.</summary>
-    private async Task<ServiceResult<Decision>> ApproveCityAsync(Guid adminId, Guid vehicleId, CancellationToken ct)
+    private async Task<ServiceResult<Decision>> ApproveCityAsync(Guid adminId, Guid id, CancellationToken ct)
     {
         if (admin is null) return Fail<Decision>(500, "not_configured", "City approval is not available.");
 
-        Guid profileId;
-        string driverStatus;
-        string vehicleStatus;
-        string phone;
-        string title;
+        CityTarget target;
         await using (var connection = await OpenAsync(ct))
         {
-            var detail = await CityDetailAsync(connection, vehicleId, ct);
-            if (detail is null) return Fail<Decision>(404, "not_found", "That vehicle was not found.");
+            var detail = await CityDetailAsync(connection, id, ct);
+            if (detail is null) return Fail<Decision>(404, "not_found", "Yeh driver ya gaari nahi mili.");
             if (!detail.CanApprove)
             {
                 return Fail<Decision>(409, "approval_blocked", detail.BlockReason ?? "Not ready yet.");
             }
 
-            await using var command = new NpgsqlCommand(
-                """
-                SELECT dp.id, dp.verification_status, v.status, COALESCE(u.phone_number, ''),
-                       trim(concat_ws(' ', v.make, v.model)) || ' (' || v.registration_number || ')'
-                FROM udrive.vehicles v
-                JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
-                JOIN udrive.users u ON u.id = dp.user_id
-                WHERE v.id = @id;
-                """, connection);
-            command.Parameters.AddWithValue("id", vehicleId);
-            await using var reader = await command.ExecuteReaderAsync(ct);
-            await reader.ReadAsync(ct);
-            profileId = reader.GetGuid(0);
-            driverStatus = reader.GetString(1);
-            vehicleStatus = reader.GetString(2);
-            phone = reader.GetString(3);
-            title = reader.GetString(4);
+            target = (await CityTargetAsync(connection, id, ct))!;
         }
 
         // The vehicle first: a driver cannot be approved without a verified one.
-        if (vehicleStatus != "Verified")
+        if (target.VehicleId is { } vehicleId && !Is(target.VehicleStatus, "Verified"))
         {
             var vehicle = await admin.ReviewVehicleAsync(
                 adminId, vehicleId, new VerificationReviewRequest("Verified", null), null, ct);
             if (!vehicle.Success) return Fail<Decision>(vehicle.StatusCode, vehicle.ErrorCode!, vehicle.Message!);
         }
 
-        if (driverStatus != "Approved")
+        if (!Is(target.DriverStatus, "Approved"))
         {
             var driver = await admin.ReviewDriverAsync(
-                adminId, profileId, new VerificationReviewRequest("Approved", null), null, ct);
+                adminId, target.ProfileId, new VerificationReviewRequest("Approved", null), null, ct);
             if (!driver.Success) return Fail<Decision>(driver.StatusCode, driver.ErrorCode!, driver.Message!);
         }
 
         await using (var connection = await OpenAsync(ct))
         {
-            var row = (await CityRowsAsync(connection, "All", null, false, null, vehicleId, ct)).First();
+            var row = (await CityRowsAsync(connection, "All", null, false, null, id, ct)).First();
             return ServiceResult<Decision>.Ok(
-                new Decision(row, phone,
-                    $"UDrive: Mubarak ho! Aap aur aap ki gaari {title} city rides ke liye approve ho gaye. "
+                new Decision(row, target.Phone,
+                    $"UDrive: Mubarak ho! Aap aur aap ki gaari {target.Title} city rides ke liye approve ho gaye. "
                     + "App kholein aur online ho jayein."),
                 "Driver aur gaari approve ho gaye.");
         }
     }
 
     /// <summary>
-    /// Reject: the driver while they are still waiting, otherwise the vehicle.
-    /// Ask for info: whichever of the two is waiting is sent back for changes.
+    /// Reject: the driver while they are still waiting (or have no vehicle),
+    /// otherwise the vehicle. Ask for info: whichever of the two is waiting is
+    /// sent back for changes.
     /// </summary>
     private async Task<ServiceResult<Decision>> RejectCityAsync(
-        Guid adminId, Guid vehicleId, string? reason, bool requestInfo, CancellationToken ct)
+        Guid adminId, Guid id, string? reason, bool requestInfo, CancellationToken ct)
     {
         if (admin is null) return Fail<Decision>(500, "not_configured", "City approval is not available.");
         var note = reason?.Trim();
@@ -572,44 +622,27 @@ public sealed class VerificationHubService(
             return Fail<Decision>(400, "note_required", "Write a note to the driver.");
         }
 
-        Guid profileId;
-        string driverStatus;
-        string vehicleStatus;
-        string phone;
-        string title;
+        CityTarget? target;
         await using (var connection = await OpenAsync(ct))
         {
-            await using var command = new NpgsqlCommand(
-                """
-                SELECT dp.id, dp.verification_status, v.status, COALESCE(u.phone_number, ''),
-                       trim(concat_ws(' ', v.make, v.model)) || ' (' || v.registration_number || ')'
-                FROM udrive.vehicles v
-                JOIN udrive.driver_profiles dp ON dp.id = v.driver_profile_id
-                JOIN udrive.users u ON u.id = dp.user_id
-                WHERE v.id = @id AND v.status <> 'Deleted';
-                """, connection);
-            command.Parameters.AddWithValue("id", vehicleId);
-            await using var reader = await command.ExecuteReaderAsync(ct);
-            if (!await reader.ReadAsync(ct)) return Fail<Decision>(404, "not_found", "That vehicle was not found.");
-            profileId = reader.GetGuid(0);
-            driverStatus = reader.GetString(1);
-            vehicleStatus = reader.GetString(2);
-            phone = reader.GetString(3);
-            title = reader.GetString(4);
+            target = await CityTargetAsync(connection, id, ct);
         }
 
-        var driverWaiting = driverStatus is "Submitted" or "UnderReview" or "ChangesRequired";
+        if (target is null) return Fail<Decision>(404, "not_found", "Yeh driver ya gaari nahi mili.");
+
+        var driverWaiting = target.VehicleId is null
+            || Is(target.DriverStatus, "Submitted", "UnderReview", "ChangesRequired", "Pending", "PendingReview", "Draft");
         if (driverWaiting)
         {
             var driver = await admin.ReviewDriverAsync(
-                adminId, profileId,
+                adminId, target.ProfileId,
                 new VerificationReviewRequest(requestInfo ? "ChangesRequired" : "Rejected", note), null, ct);
             if (!driver.Success) return Fail<Decision>(driver.StatusCode, driver.ErrorCode!, driver.Message!);
         }
 
-        if (requestInfo || !driverWaiting)
+        if (target.VehicleId is { } vehicleId && (requestInfo || !driverWaiting))
         {
-            if (vehicleStatus != "Verified" || !requestInfo)
+            if (!Is(target.VehicleStatus, "Verified") || !requestInfo)
             {
                 var vehicle = await admin.ReviewVehicleAsync(
                     adminId, vehicleId,
@@ -620,12 +653,13 @@ public sealed class VerificationHubService(
 
         await using (var connection = await OpenAsync(ct))
         {
-            var row = (await CityRowsAsync(connection, "All", null, false, null, vehicleId, ct)).First();
+            var row = (await CityRowsAsync(connection, "All", null, false, null, id, ct)).First();
+            var what = target.VehicleId is null ? "Aap ki driver registration" : $"{target.Title} ki city rides registration";
             var message = requestInfo
-                ? $"UDrive: {title} ki city rides registration mein yeh cheez chahiye — {note}. App mein upload karein."
-                : $"UDrive: {title} city rides ke liye approve nahi ho saki — {note}";
+                ? $"UDrive: {what} mein yeh cheez chahiye — {note}. App mein upload karein."
+                : $"UDrive: {what} approve nahi ho saki — {note}";
             return ServiceResult<Decision>.Ok(
-                new Decision(row, phone, message),
+                new Decision(row, target.Phone, message),
                 requestInfo ? "Driver ko bata diya gaya kya chahiye." : "Reject ho gaya.");
         }
     }
