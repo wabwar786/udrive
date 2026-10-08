@@ -184,7 +184,19 @@ Future<void> waitFor(WidgetTester tester, Finder finder, {Duration timeout = con
     await tester.pump(const Duration(milliseconds: 250));
     if (finder.evaluate().isNotEmpty) return;
   }
-  throw TestFailure('Screen par nahi mila: $finder');
+  throw TestFailure('Screen par nahi mila. Screen par likha hai: ${screenTexts()}');
+}
+
+/// The words on the screen right now, to say where a step got stuck.
+String screenTexts() {
+  final texts = <String>[];
+  for (final e in find.byType(Text).evaluate()) {
+    final w = e.widget as Text;
+    final t = (w.data ?? w.textSpan?.toPlainText() ?? '').trim();
+    if (t.isNotEmpty && !texts.contains(t)) texts.add(t);
+    if (texts.length >= 25) break;
+  }
+  return texts.join(' | ');
 }
 
 /// Pumps for [duration] without waiting for animations to stop.

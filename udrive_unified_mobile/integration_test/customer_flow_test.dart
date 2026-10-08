@@ -80,11 +80,14 @@ void main() {
         field.controller?.text = otp;
         field.onChanged?.call(otp);
         await tester.pump();
-        await settle(tester, const Duration(seconds: 1));
-        if (verifyButton.evaluate().isNotEmpty && home.evaluate().isEmpty) {
-          await tester.tap(verifyButton);
+        // onChanged sends the code by itself; Verify is pressed only if the
+        // screen is still waiting after 15 seconds.
+        try {
+          await waitFor(tester, home, timeout: const Duration(seconds: 15));
+        } on TestFailure {
+          if (verifyButton.evaluate().isNotEmpty) await tester.tap(verifyButton.first, warnIfMissed: false);
+          await waitFor(tester, home, timeout: const Duration(seconds: 45));
         }
-        await waitFor(tester, home, timeout: const Duration(seconds: 60));
         await settle(tester, const Duration(seconds: 3));
       });
     } else {

@@ -363,7 +363,7 @@ export default function TestingPage() {
                           </span>
                           <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1, minWidth: 0 }}>
                             <span style={{ fontWeight: 700, fontSize: 13 }}>{st.name}</span>
-                            <span style={{ fontSize: 11, color: '#5D7068', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span title={st.detail ?? undefined} style={{ fontSize: 11, color: '#5D7068', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: on ? 'normal' : 'nowrap', wordBreak: 'break-word' }}>
                               {st.device} · {st.detail ?? st.status}
                             </span>
                           </span>
