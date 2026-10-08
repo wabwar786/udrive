@@ -20,7 +20,7 @@ Har type par: **Collected = Yes**, **Shared = No**, **Processed ephemerally = No
 | Category → Data type | Purposes |
 |---|---|
 | Location → Precise location | App functionality; Fraud prevention, security and compliance |
-| Location → Approximate location | App functionality |
+| Location → Approximate location | App functionality; Analytics |
 | Personal info → Name | App functionality; Account management |
 | Personal info → Phone number | App functionality; Account management; Fraud prevention, security and compliance |
 | Personal info → Email address *(optional)* | Account management |
@@ -33,7 +33,16 @@ Har type par: **Collected = Yes**, **Shared = No**, **Processed ephemerally = No
 | App activity → Other user-generated content (trips, ratings) | App functionality |
 | Personal info → Other info (trusted contacts, emergency contacts, and tour passenger names) | App functionality; Fraud prevention, security and compliance |
 | Personal info → Other info (tour passenger **gender** and age group) | App functionality |
-| Device or other IDs | Fraud prevention, security and compliance |
+| Device or other IDs | Fraud prevention, security and compliance; Analytics |
+| App activity → App interactions (app khulna / wapas aana) | Analytics |
+| App info and performance → Other app performance data (phone model, Android/app version, network type) | Analytics |
+
+**App usage (privacy policy 2.1, Oct 2026)** — app khulne par, wapas aane par
+aur har 30 minute: random install id, phone model, Android/app version, network
+type, zaban, timezone, screen size; server IP se andazan shehar nikalta hai
+(ipinfo.io). GPS nahi. Is liye upar Approximate location, Device or other IDs,
+App interactions aur Other app performance data mein **Analytics** purpose.
+Shared = No (ipinfo.io sirf service provider hai).
 
 **Do entries baad mein shaamil ki gayin** (release audit ke dauran — code inhein
 bhejta tha magar form mein declare nahi thin, aur kam declare karna bhee ghalat

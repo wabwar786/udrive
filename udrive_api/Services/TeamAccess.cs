@@ -97,8 +97,8 @@ public static class TeamAccess
         // The Reports Centre (/reports) is not here: each report is given on its
         // own on the Team page (staff_report_access), not through a module.
         new("reports", "Executive operations & audit log", "Reports", ["view"],
-            ["/api/v1/admin/executive", "/api/v1/admin/operations/audit-logs"],
-            ["/executive-operations", "/audit"]),
+            ["/api/v1/admin/executive", "/api/v1/admin/operations/audit-logs", "/api/v1/admin/usage"],
+            ["/executive-operations", "/audit", "/app-usage"]),
         new("settings", "Settings & areas", "Setup", ["view", "edit"],
             ["/api/v1/admin/services", "/api/v1/admin/settings", "/api/v1/admin/operations/settings",
              "/api/v1/admin/areas", "/api/v1/admin/vehicle-images", "/api/v1/admin/message-templates"],
@@ -106,7 +106,9 @@ public static class TeamAccess
         new("team", "Team", "Setup", ["view", "edit", "delete"],
             ["/api/v1/admin/team"], ["/team"]),
         new("data", "Data management", "Setup", ["view", "edit", "delete"],
-            ["/api/v1/admin/data"], ["/data-management"]),
+            ["/api/v1/admin/data", "/api/v1/admin/storage"], ["/data-management", "/storage"]),
+        new("testing", "Live testing", "Setup", ["view", "edit", "delete"],
+            ["/api/v1/admin/testing"], ["/testing"]),
     ];
 
     /// <summary>Ready-made sets of permissions; the form starts from one and any box can change.</summary>

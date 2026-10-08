@@ -181,6 +181,20 @@ public sealed class LocalFileStorageService
         }
 
         var safeCategory = SanitizeSegment(category);
+
+        // Every photo is stored as a small WebP (see ImageShrinker). The 5 GB
+        // volume holds roughly ten times as many documents this way.
+        if (ImageShrinker.IsImageExtension(extension))
+        {
+            var (maxEdge, quality) = ImageShrinker.ProfileFor(safeCategory);
+            var small = await ImageShrinker.ToWebpAsync(bytes, maxEdge, quality, cancellationToken);
+            if (small is not null)
+            {
+                bytes = small;
+                extension = ".webp";
+            }
+        }
+
         var owner = ownerId.ToString("N");
         var relativeFolder = Path.Combine(safeCategory, owner);
         var absoluteFolder = Path.Combine(_uploadRoot, relativeFolder);
@@ -190,7 +204,7 @@ public sealed class LocalFileStorageService
         await File.WriteAllBytesAsync(absolutePath, bytes, cancellationToken);
 
         var protectedUrl = $"/api/v1/admin/verification/files/{safeCategory}/{owner}/{fileName}";
-        return new StoredFile(protectedUrl, file.Length, DetectContentType(extension));
+        return new StoredFile(protectedUrl, bytes.Length, DetectContentType(extension));
     }
 
     /// <param name="allowLegacyFallback">
@@ -262,7 +276,7 @@ public sealed class LocalFileStorageService
         {
             return new ResolvedStoredFile(
                 Path.GetFullPath(path),
-                DetectContentType(Path.GetExtension(path)),
+                ContentTypeOf(path),
                 Path.GetFileName(path));
         }
 
@@ -354,7 +368,7 @@ public sealed class LocalFileStorageService
                 {
                     return new ResolvedStoredFile(
                         Path.GetFullPath(match),
-                        DetectContentType(Path.GetExtension(match)),
+                        ContentTypeOf(match),
                         Path.GetFileName(match));
                 }
             }
@@ -388,7 +402,7 @@ public sealed class LocalFileStorageService
 
         return new ResolvedStoredFile(
             candidate,
-            DetectContentType(Path.GetExtension(candidate)),
+            ContentTypeOf(candidate),
             Path.GetFileName(candidate));
     }
 
@@ -418,6 +432,25 @@ public sealed class LocalFileStorageService
             throw new InvalidDataException("The storage path is invalid.");
         }
         return safe;
+    }
+
+    /// <summary>By the file's first bytes (old photos are shrunk in place), else by extension.</summary>
+    internal static string ContentTypeOf(string path)
+    {
+        try
+        {
+            Span<byte> head = stackalloc byte[12];
+            using var stream = File.OpenRead(path);
+            var read = stream.Read(head);
+            var sniffed = ImageShrinker.Sniff(head[..read]);
+            if (sniffed is not null) return sniffed;
+        }
+        catch
+        {
+            // Fall back to the name.
+        }
+
+        return DetectContentType(Path.GetExtension(path));
     }
 
     private static string DetectContentType(string extension) => extension.ToLowerInvariant() switch

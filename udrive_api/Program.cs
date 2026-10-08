@@ -232,6 +232,20 @@ builder.Services.AddHostedService(sp => new ListingSweepService(
     sp.GetRequiredService<IServiceScopeFactory>(),
     connectionString,
     sp.GetRequiredService<ILogger<ListingSweepService>>()));
+// Storage (5 GB volume): photos stored as small WebP, old ones shrunk, unused
+// files to a trash that empties after 30 days (migration 081).
+builder.Services.AddSingleton<StorageService>(sp => new StorageService(
+    connectionString, sp.GetRequiredService<LocalFileStorageService>()));
+builder.Services.AddHostedService<StorageMaintenanceWorker>();
+// Live testing and app usage (migration 081).
+builder.Services.AddScoped<TestingService>(sp => new TestingService(
+    connectionString, sp.GetRequiredService<LocalFileStorageService>()));
+builder.Services.AddScoped<UsageService>(_ => new UsageService(connectionString));
+builder.Services.AddHttpClient(IpGeoWorker.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+builder.Services.AddHostedService(sp => new IpGeoWorker(
+    connectionString,
+    sp.GetRequiredService<IHttpClientFactory>(),
+    sp.GetRequiredService<ILogger<IpGeoWorker>>()));
 builder.Services.AddHttpClient(DemoFleetPhotos.HttpClientName, client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
@@ -422,6 +436,17 @@ builder.Services.AddRateLimiter(options =>
     // map legitimately fetches a screenful at a time.
     options.AddPolicy("places", context => PerCaller(context, 60));
     options.AddPolicy("map-tiles", context => PerCaller(context, 240));
+    // The app's usage ping: a few an hour per phone. Counted per install id,
+    // so thousands of phones behind one carrier address do not share a bucket.
+    options.AddPolicy("telemetry", context => RateLimitPartition.GetFixedWindowLimiter(
+        "inst:" + (context.Request.Headers["X-Install-Id"].ToString() is { Length: > 0 and <= 64 } id ? id : CallerKey(context)),
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
 });
 
 builder.Services

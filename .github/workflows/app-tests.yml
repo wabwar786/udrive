@@ -1,0 +1,76 @@
+name: App tests
+
+# Drives the app on an Android emulator and sends every screen to
+# Admin → Live testing, where it can be watched as it runs.
+#
+# No secrets: the test signs in with the Google Play reviewer number and code
+# the app already carries (Setup → WhatsApp OTP in the portal). It searches
+# and reads a fare, but never books a ride.
+on:
+  workflow_dispatch:
+    inputs:
+      destination:
+        description: "Manzil jo test search karega"
+        required: false
+        default: "Secretariat"
+        type: string
+      api_url:
+        description: "API (khaali = production)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-tests
+  cancel-in-progress: true
+
+jobs:
+  customer-flow:
+    name: Customer city ride
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: udrive_unified_mobile
+        run: flutter pub get
+
+      # Hardware acceleration for the emulator on GitHub's Linux runners.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          API_URL: ${{ inputs.api_url || 'https://udrive-api-production.up.railway.app' }}
+          TEST_DESTINATION: ${{ inputs.destination }}
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: udrive_unified_mobile
+          # One line per command: the runner executes each line on its own.
+          script: |
+            adb emu geo fix 73.4711 34.3700
+            (for i in $(seq 1 120); do adb shell pm grant com.wabwar.udrive android.permission.ACCESS_FINE_LOCATION >/dev/null 2>&1; adb shell pm grant com.wabwar.udrive android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1; adb shell pm grant com.wabwar.udrive android.permission.POST_NOTIFICATIONS >/dev/null 2>&1; sleep 3; done) &
+            flutter test integration_test/customer_flow_test.dart -d emulator-5554 --dart-define=API_BASE_URL="$API_URL" --dart-define=TEST_DESTINATION="${TEST_DESTINATION:-Secretariat}" --dart-define=TEST_SOURCE="github #$GITHUB_RUN_NUMBER" --dart-define=TEST_COMMIT="$GITHUB_SHA" --dart-define=UDRIVE_FLAVOR=test --dart-define=DEFAULT_MODE=customer

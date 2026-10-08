@@ -225,6 +225,7 @@ jobs:
             --build-name="$BUILD_NAME" \
             --build-number="$BUILD_CODE" \
             --dart-define=DEFAULT_MODE=customer \
+            --dart-define=UDRIVE_FLAVOR=apk \
             --dart-define=API_BASE_URL=https://udrive-api-production.up.railway.app \
             -Pmaps_key="$MAPS_ANDROID_KEY"
           rm -f "$RUNNER_TEMP/upload-keystore.jks"

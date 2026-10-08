@@ -58,7 +58,8 @@ export type ModuleKey =
   | 'reports'
   | 'settings'
   | 'team'
-  | 'data';
+  | 'data'
+  | 'testing';
 
 /**
  * Module → portal routes. Same table as the API contract; keep the two equal.
@@ -96,10 +97,11 @@ export const MODULE_ROUTES: Record<ModuleKey, readonly string[]> = {
   safety: ['/safety', '/disputes', '/support', '/notifications'],
   // '/reports' (Reports Centre) is not a module route: it opens for everyone,
   // and shows only the reports given to that person (checked by the server).
-  reports: ['/executive-operations', '/audit'],
+  reports: ['/executive-operations', '/audit', '/app-usage'],
   settings: ['/services', '/settings', '/areas', '/message-templates'],
   team: ['/team'],
-  data: ['/data-management'],
+  data: ['/data-management', '/storage'],
+  testing: ['/testing'],
 };
 
 export const VERIFICATION_MODULES = [

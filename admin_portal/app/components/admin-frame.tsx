@@ -55,6 +55,9 @@ import {
   X,
   MessageCircle,
   ShieldCheck,
+  HardDrive,
+  Smartphone,
+  MonitorPlay,
 } from 'lucide-react';
 import {
   readSession,
@@ -154,6 +157,7 @@ const groups = [
       ['/executive-operations', 'Executive operations', Radar],
       ['/reports', 'Reports Centre', BarChart3],
       ['/audit', 'Audit log', ListChecks],
+      ['/app-usage', 'App usage', Smartphone],
     ],
   },
   {
@@ -168,6 +172,8 @@ const groups = [
       ['/places', 'Map places', MapPinned],
       ['/appearance', 'Address search', Search],
       ['/data-management', 'Data management', Database],
+      ['/storage', 'Storage', HardDrive],
+      ['/testing', 'Live testing', MonitorPlay],
       ['/diagnostics', 'Diagnostics', Stethoscope],
       ['/help', 'Help / How to use', CircleHelp],
     ],

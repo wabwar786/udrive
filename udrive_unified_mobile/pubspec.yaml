@@ -45,6 +45,11 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Live testing (integration_test/): drives the app on an emulator in GitHub
+  # Actions and reports each screen to Admin → Live testing. Part of the
+  # Flutter SDK, not a download; never in the release build.
+  integration_test:
+    sdk: flutter
   flutter_lints: ^6.0.0
 
 flutter:

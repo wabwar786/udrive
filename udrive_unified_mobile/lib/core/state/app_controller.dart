@@ -6,6 +6,7 @@ import '../auth/auth_repository.dart';
 import '../auth/session_store.dart';
 import '../booking/booking_repository.dart';
 import '../network/api_client.dart';
+import '../telemetry/usage_ping.dart';
 import '../../models/auth_models.dart';
 import '../../models/booking_models.dart';
 import '../../data/dummy_data.dart';
@@ -17,6 +18,9 @@ class AppController extends ChangeNotifier {
   final SessionStore _sessionStore = SessionStore();
   late final AuthRepository _authRepository = AuthRepository(_sessionStore);
   late final BookingRepository _bookingRepository = BookingRepository(_authRepository.client);
+
+  /// App usage ping (Admin → App usage): on start, on resume, every 30 min.
+  late final UsagePing _usagePing = UsagePing(_sessionStore);
 
   bool _initialized = false;
   bool _loggedIn = false;
@@ -282,6 +286,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_initialized) return;
+    _usagePing.start();
     try {
       final prefs = await SharedPreferences.getInstance()
           .timeout(const Duration(seconds: 5));
@@ -388,6 +393,7 @@ class AppController extends ChangeNotifier {
       );
       _loggedIn = true;
       _authError = null;
+      unawaited(_usagePing.send(force: true));
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('loggedIn', true);
       await _loadDriverState();
@@ -1472,6 +1478,7 @@ class AppController extends ChangeNotifier {
   void dispose() {
     _presenceTimer?.cancel();
     _presenceTimer = null;
+    _usagePing.stop();
     super.dispose();
   }
 }

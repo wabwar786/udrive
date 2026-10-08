@@ -109,6 +109,9 @@ public sealed class AccountDeletionService(string connectionString, LocalFileSto
              WHERE user_id = @u AND revoked_at IS NULL;
             """,
             "DELETE FROM udrive.trusted_contacts WHERE user_id = @u;",
+            // App usage: the phones and IP addresses this account used.
+            "DELETE FROM udrive.app_devices WHERE user_id = @u;",
+            "DELETE FROM udrive.app_sessions WHERE user_id = @u;",
             """
             UPDATE udrive.customer_profiles
                SET profile_image_url = NULL, emergency_notes = NULL, updated_at = now()
