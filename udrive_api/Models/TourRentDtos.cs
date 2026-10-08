@@ -12,6 +12,8 @@ public sealed record TourRentHomeDto(
     int NewBookings,
     int WaitingCount,
     decimal WeekEarnings,
+    decimal WeekTour,
+    decimal WeekRent,
     IReadOnlyList<TourRentBookingDto> Bookings,
     IReadOnlyList<TourRentWaitlistDto> Waitlist,
     IReadOnlyList<TourRentDepartureDto> Departures);
@@ -68,6 +70,7 @@ public sealed record TourRentWaitlistDto(
 /// <summary>One upcoming departure and how full it is.</summary>
 public sealed record TourRentDepartureDto(
     Guid Id,
+    Guid VehicleId,
     string Title,
     DateTimeOffset DepartureAt,
     int TotalSeats,

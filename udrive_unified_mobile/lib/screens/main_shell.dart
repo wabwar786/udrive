@@ -947,8 +947,6 @@ class _PremiumDrawer extends StatelessWidget {
         // What "Earn with your vehicle" opened on the customer side: rent and
         // tour vehicles, their requests, departures and drivers.
         ('listedVehicles', Icons.car_rental_rounded, 'Rent / Tour gaariyan'),
-        // Who booked the tour and rent vehicles, and who is waiting.
-        ('tourRent', Icons.event_available_rounded, 'Tour & Rent bookings'),
         ('driverDocuments', Icons.badge_outlined, 'My documents'),
         ('driverPackages', Icons.luggage_outlined, 'My routes & tours'),
         ('settings', Icons.settings_outlined, 'Settings'),

@@ -291,7 +291,7 @@ public sealed class TourRentDriverService(string connectionString)
         var departures = new List<TourRentDepartureDto>();
         await using (var command = new NpgsqlCommand(
             """
-            SELECT tp.id, tp.title, tp.departure_at, tp.total_seats,
+            SELECT tp.id, tp.vehicle_id, tp.title, tp.departure_at, tp.total_seats,
                    tp.total_seats - tp.available_seats,
                    (SELECT count(*)::int FROM udrive.bookings b
                      WHERE b.tour_package_id = tp.id
@@ -302,7 +302,7 @@ public sealed class TourRentDriverService(string connectionString)
               AND tp.status = 'Active'
               AND tp.departure_at > now()
             ORDER BY tp.departure_at
-            LIMIT 20;
+            LIMIT 40;
             """, connection))
         {
             command.Parameters.AddWithValue("user", driverUserId);
@@ -311,16 +311,19 @@ public sealed class TourRentDriverService(string connectionString)
             {
                 departures.Add(new TourRentDepartureDto(
                     reader.GetGuid(0),
-                    reader.GetString(1),
-                    reader.GetFieldValue<DateTimeOffset>(2),
-                    reader.GetInt32(3),
+                    reader.GetGuid(1),
+                    reader.GetString(2),
+                    reader.GetFieldValue<DateTimeOffset>(3),
                     reader.GetInt32(4),
-                    reader.GetInt32(5)));
+                    reader.GetInt32(5),
+                    reader.GetInt32(6)));
             }
         }
 
-        // "Is hafte": this week's work (Monday to Sunday, Pakistan time).
-        decimal week;
+        // "Is hafte": this week's work (Monday to Sunday, Pakistan time),
+        // tours and rentals apart, for each dashboard.
+        decimal weekTour;
+        decimal weekRent;
         await using (var command = new NpgsqlCommand(
             """
             WITH wk AS (
@@ -334,8 +337,8 @@ public sealed class TourRentDriverService(string connectionString)
                           WHERE dp.user_id = @user
                             AND b.status NOT IN ('Cancelled', 'NoShow')
                             AND (b.pickup_at AT TIME ZONE 'Asia/Karachi')::date
-                                BETWEEN wk.d0 AND wk.d0 + 6), 0)
-              + COALESCE((SELECT sum(rb.subtotal)
+                                BETWEEN wk.d0 AND wk.d0 + 6), 0),
+                COALESCE((SELECT sum(rb.subtotal)
                           FROM udrive.rental_bookings rb
                           JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id, wk
                           WHERE dp.user_id = @user
@@ -344,7 +347,10 @@ public sealed class TourRentDriverService(string connectionString)
             """, connection))
         {
             command.Parameters.AddWithValue("user", driverUserId);
-            week = Convert.ToDecimal(await command.ExecuteScalarAsync(cancellationToken) ?? 0m);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            await reader.ReadAsync(cancellationToken);
+            weekTour = reader.GetDecimal(0);
+            weekRent = reader.GetDecimal(1);
         }
 
         var since = DateTimeOffset.UtcNow.AddDays(-7);
@@ -354,7 +360,9 @@ public sealed class TourRentDriverService(string connectionString)
             wallet,
             bookings.Count(b => b.CreatedAt >= since),
             waitlist.Count,
-            week,
+            weekTour + weekRent,
+            weekTour,
+            weekRent,
             bookings,
             waitlist,
             departures));

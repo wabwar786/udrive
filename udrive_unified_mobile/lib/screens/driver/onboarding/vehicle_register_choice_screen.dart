@@ -32,16 +32,17 @@ class VehicleChoice {
       };
 }
 
-/// "Kis ke liye register karna chahte hain?" — asked before every vehicle
+/// "Yeh gaari kis kaam ke liye hai?" — asked before every vehicle
 /// registration in Driver mode.
 ///
-/// Four big choices, nothing else on the screen. City rides / city to city go
-/// on to the driver's own vehicle form ([ridesScreen]); tour and rent only go
-/// to the same three-step form the customer side used to have.
+/// One vehicle, one kind of work. City rides covers both inside the city and
+/// city to city, and goes on to the driver's own vehicle form ([ridesScreen]);
+/// Tour and Rent a car go to the same three-step form the customer side used
+/// to have. Changing a vehicle's work later goes through a request.
 class VehicleRegisterChoiceScreen extends StatefulWidget {
   const VehicleRegisterChoiceScreen({required this.ridesScreen, super.key});
 
-  /// The vehicle form for city rides / city to city.
+  /// The vehicle form for city rides (city + city to city).
   final Widget Function(VehicleChoice choice) ridesScreen;
 
   @override
@@ -49,38 +50,17 @@ class VehicleRegisterChoiceScreen extends StatefulWidget {
       _VehicleRegisterChoiceScreenState();
 }
 
+enum _Work { city, tour, rent }
+
 class _VehicleRegisterChoiceScreenState
     extends State<VehicleRegisterChoiceScreen> {
-  bool _city = false;
-  bool _intercity = false;
-  bool _tour = false;
-  bool _rent = false;
+  _Work _work = _Work.city;
 
-  VehicleChoice get _choice => VehicleChoice(
-      city: _city, intercity: _intercity, tour: _tour, rent: _rent);
-
-  /// Rent and rides exclude each other: a car out on rent is with somebody
-  /// else and cannot pick anyone up. Picking one side clears the other.
-  void _toggle(String which) {
-    setState(() {
-      switch (which) {
-        case 'city':
-          _city = !_city;
-          if (_city) _rent = false;
-        case 'intercity':
-          _intercity = !_intercity;
-          if (_intercity) _rent = false;
-        case 'tour':
-          _tour = !_tour;
-        case 'rent':
-          _rent = !_rent;
-          if (_rent) {
-            _city = false;
-            _intercity = false;
-          }
-      }
-    });
-  }
+  VehicleChoice get _choice => switch (_work) {
+        _Work.city => const VehicleChoice(city: true, intercity: true),
+        _Work.tour => const VehicleChoice(tour: true),
+        _Work.rent => const VehicleChoice(rent: true),
+      };
 
   void _continue() {
     final choice = _choice;
@@ -96,17 +76,37 @@ class _VehicleRegisterChoiceScreenState
 
   @override
   Widget build(BuildContext context) {
-    final options = <(String, String, String, IconData, bool)>[
-      ('city', 'City rides', 'Shehar ke andar', Icons.local_taxi_rounded, _city),
-      ('intercity', 'City to city', 'Aik shehar se doosre', Icons.alt_route_rounded, _intercity),
-      ('tour', 'Tours', 'Packages aur tours', Icons.landscape_rounded, _tour),
-      ('rent', 'Rent a car', 'Gaari kiraye par', Icons.car_rental_rounded, _rent),
+    const options = <(_Work, String, String)>[
+      (
+        _Work.city,
+        'City rides',
+        'Shehar ke andar aur city to city. Customer request bhejta hai, aap '
+            'accept karte hain.',
+      ),
+      (
+        _Work.tour,
+        'Tour',
+        'Departure lagayein — per seat aur poori gaari ka kiraya. Booking '
+            'seedhi aati hai.',
+      ),
+      (
+        _Work.rent,
+        'Rent a car',
+        'Gaari din ke hisaab se kiraye par. Driver ke saath ya self-drive.',
+      ),
     ];
+    final next = switch (_work) {
+      _Work.city => 'Agla step: wohi purana gaari form. Dashboard: City rides.',
+      _Work.tour =>
+        'Agla step: wohi purana tour form. Dashboard: Tour (gaariyan + departure).',
+      _Work.rent =>
+        'Agla step: wohi purana rent form (kiraya, kahan se milegi). Dashboard: Rent a car.',
+    };
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.surface,
       appBar: UdTopBar(
-        title: 'Gaari register karein',
+        title: '',
         onBack: () => Navigator.maybePop(context),
       ),
       body: SafeArea(
@@ -117,37 +117,35 @@ class _VehicleRegisterChoiceScreenState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Kis ke liye register karna chahte hain?',
+                'Yeh gaari kis kaam ke liye hai?',
                 style: AppType.h1.copyWith(color: AppText.primary),
               ),
               const SizedBox(height: 6),
               Text(
-                'Aik ya zyada chunein.',
-                style: AppType.body.copyWith(color: AppText.secondary),
+                'Aik kaam chunein. Har gaari aik hi kaam karegi — baad mein '
+                'badalna ho to request bhej sakte hain.',
+                style: AppType.body
+                    .copyWith(height: 1.45, color: AppText.secondary),
               ),
               const SizedBox(height: 18),
-              for (final (key, title, blurb, icon, on) in options) ...[
+              for (final (work, title, blurb) in options) ...[
                 _ChoiceTile(
                   title: title,
                   blurb: blurb,
-                  icon: icon,
-                  selected: on,
-                  onTap: () => _toggle(key),
+                  selected: _work == work,
+                  onTap: () => setState(() => _work = work),
                 ),
                 const SizedBox(height: 10),
               ],
-              if (_rent) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Rent wali gaari city rides / city to city nahi leti.',
-                  style: AppType.small.copyWith(color: AppText.secondary),
-                ),
-              ],
+              const SizedBox(height: 2),
+              Text(
+                next,
+                style: AppType.small.copyWith(color: AppText.secondary),
+              ),
               const Spacer(),
               UdButton.primary(
-                label: 'Aagay',
-                trailingIcon: Icons.chevron_right_rounded,
-                onPressed: _choice.any ? _continue : null,
+                label: 'Aage barhein',
+                onPressed: _continue,
               ),
             ],
           ),
@@ -157,40 +155,72 @@ class _VehicleRegisterChoiceScreenState
   }
 }
 
+/// One option: a radio, the name of the work, and one line on what it means.
 class _ChoiceTile extends StatelessWidget {
   const _ChoiceTile({
     required this.title,
     required this.blurb,
-    required this.icon,
     required this.selected,
     required this.onTap,
   });
 
   final String title;
   final String blurb;
-  final IconData icon;
   final bool selected;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => UdListGroup(
-        children: [
-          UdListRow(
-            title: title,
-            subtitle: blurb,
-            leading: UdIconTile(
-              icon: icon,
-              tone: selected ? UdIconTone.lime : UdIconTone.neutral,
-            ),
-            trailing: Icon(
-              selected
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              size: 26,
-              color: selected ? AppColors.navy : AppText.caption,
-            ),
-            onTap: onTap,
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? AppColors.brandWash : AppColors.background,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadii.all(16),
+        side: BorderSide(
+          color: selected ? AppColors.limeLine : AppColors.border,
+          width: 2,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: RoundedRectangleBorder(borderRadius: AppRadii.all(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                size: 26,
+                color: selected ? AppColors.brandInk : AppColors.borderStrong,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppType.listTitle.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppText.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      blurb,
+                      style: AppType.small.copyWith(
+                        height: 1.45,
+                        color: AppText.secondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      );
+        ),
+      ),
+    );
+  }
 }

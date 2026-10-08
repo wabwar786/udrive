@@ -125,6 +125,7 @@ class TourRentRequest {
 class TourRentDeparture {
   const TourRentDeparture({
     required this.id,
+    required this.vehicleId,
     required this.title,
     required this.departureAt,
     required this.totalSeats,
@@ -133,6 +134,7 @@ class TourRentDeparture {
   });
 
   final String id;
+  final String vehicleId;
   final String title;
   final DateTime departureAt;
   final int totalSeats;
@@ -144,6 +146,7 @@ class TourRentDeparture {
   factory TourRentDeparture.fromJson(Map<String, dynamic> json) =>
       TourRentDeparture(
         id: '${json['id']}',
+        vehicleId: '${json['vehicleId'] ?? ''}',
         title: '${json['title'] ?? ''}',
         departureAt: _time(json['departureAt']) ?? DateTime.now(),
         totalSeats: (json['totalSeats'] as num?)?.toInt() ?? 0,
@@ -161,6 +164,8 @@ class TourRentHome {
     required this.newBookings,
     required this.waitingCount,
     required this.weekEarnings,
+    required this.weekTour,
+    required this.weekRent,
     required this.bookings,
     required this.waitlist,
     required this.departures,
@@ -175,6 +180,8 @@ class TourRentHome {
   final int newBookings;
   final int waitingCount;
   final double weekEarnings;
+  final double weekTour;
+  final double weekRent;
   final List<TourRentBooking> bookings;
   final List<TourRentRequest> waitlist;
   final List<TourRentDeparture> departures;
@@ -191,6 +198,8 @@ class TourRentHome {
         newBookings: (json['newBookings'] as num?)?.toInt() ?? 0,
         waitingCount: (json['waitingCount'] as num?)?.toInt() ?? 0,
         weekEarnings: _number(json['weekEarnings']),
+        weekTour: _number(json['weekTour']),
+        weekRent: _number(json['weekRent']),
         bookings: _list(json['bookings'], TourRentBooking.fromJson),
         waitlist: _list(json['waitlist'], TourRentRequest.fromJson),
         departures: _list(json['departures'], TourRentDeparture.fromJson),
