@@ -398,6 +398,14 @@ public sealed class RentalService(
         await NotifyOwnerOfBookingAsync(
             connection, transaction, bookingId, confirmed, cancellationToken);
 
+        // A booking that went straight through: WhatsApp to both sides. One
+        // still waiting for the owner gets the old "please confirm" message
+        // from the controller instead.
+        if (confirmed)
+        {
+            await QueueRentWhatsAppAsync(connection, transaction, bookingId, true, cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
 
         var created = await LoadBookingAsync(connection, bookingId, userId, false, cancellationToken);
@@ -495,6 +503,66 @@ public sealed class RentalService(
         await DriverWalletService.ChargeRentCommissionAsync(
             connection, transaction, bookingId, commission, cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// WhatsApp for a confirmed rental: always to the customer, and to the
+    /// owner when <paramref name="toDriver"/> (not when he accepted it himself).
+    /// </summary>
+    private static async Task QueueRentWhatsAppAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid bookingId,
+        bool toDriver,
+        CancellationToken cancellationToken)
+    {
+        var values = new Dictionary<string, string?>();
+        string? customerPhone;
+        string? ownerPhone;
+        await using (var command = new NpgsqlCommand(
+            """
+            SELECT trim(concat_ws(' ', v.make, v.model, v.registration_number)), rb.rental_mode,
+                   rb.start_date, rb.end_date, rb.days, rb.subtotal, rb.advance_amount,
+                   COALESCE(NULLIF(rb.pickup_point, ''), NULLIF(v.rent_pickup_point, '')),
+                   COALESCE(NULLIF(ou.full_name, ''), 'Owner'), ou.phone_number,
+                   COALESCE(NULLIF(cu.full_name, ''), 'Customer'), cu.phone_number,
+                   rb.booking_reference
+            FROM udrive.rental_bookings rb
+            JOIN udrive.vehicles v ON v.id = rb.vehicle_id
+            JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id
+            JOIN udrive.users ou ON ou.id = dp.user_id
+            JOIN udrive.users cu ON cu.id = rb.customer_user_id
+            WHERE rb.id = @id;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", bookingId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken)) return;
+            string? S(int i) => reader.IsDBNull(i) ? null : reader.GetString(i);
+            values["vehicle"] = reader.GetString(0);
+            values["mode"] = WhatsAppOutbox.Mode(reader.GetString(1));
+            values["dates"] = WhatsAppOutbox.Dates(
+                DateOnly.FromDateTime(reader.GetDateTime(2)), DateOnly.FromDateTime(reader.GetDateTime(3)));
+            values["days"] = reader.GetInt32(4).ToString();
+            values["total"] = WhatsAppOutbox.Money(reader.GetDecimal(5));
+            values["advance"] = WhatsAppOutbox.Money(reader.GetDecimal(6));
+            values["pickup"] = S(7);
+            values["owner"] = reader.GetString(8);
+            ownerPhone = S(9);
+            values["owner_phone"] = ownerPhone;
+            values["customer"] = reader.GetString(10);
+            customerPhone = S(11);
+            values["customer_phone"] = customerPhone;
+            values["ref"] = reader.GetString(12);
+        }
+
+        await WhatsAppOutbox.QueueAsync(connection, transaction, WhatsAppOutbox.RentBookingCustomer,
+            customerPhone, values, cancellationToken);
+        if (toDriver)
+        {
+            await WhatsAppOutbox.QueueAsync(connection, transaction, WhatsAppOutbox.RentBookingDriver,
+                ownerPhone, values, cancellationToken);
+        }
     }
 
     /// <summary>Tells the owner, in the app, that a customer booked their car.</summary>
@@ -1121,18 +1189,15 @@ public sealed class RentalService(
             SELECT owner_u.phone_number,
                    trim(concat_ws(' ', v.make, v.model)), v.registration_number,
                    rb.start_date, rb.end_date, rb.days, rb.rental_mode,
-                   rb.subtotal, rb.advance_amount, rb.owner_respond_by, rb.booking_reference,
-                   rb.status
+                   rb.subtotal, rb.advance_amount, rb.owner_respond_by, rb.booking_reference
             FROM udrive.rental_bookings rb
             JOIN udrive.vehicles v ON v.id = rb.vehicle_id
             JOIN udrive.driver_profiles dp ON dp.id = rb.driver_profile_id
             JOIN udrive.users owner_u ON owner_u.id = dp.user_id
-            WHERE rb.id = @id
-              AND (rb.status = 'PendingOwner' OR (@first AND rb.status = 'Confirmed'));
+            WHERE rb.id = @id AND rb.status = 'PendingOwner';
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("first", !reminder);
         command.Parameters.AddWithValue("id", bookingId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken) || reader.IsDBNull(0)) return null;
@@ -1148,17 +1213,9 @@ public sealed class RentalService(
         var advance = reader.GetDecimal(8);
         var respondBy = reader.IsDBNull(9) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(9);
         var reference = reader.GetString(10);
-        var direct = reader.GetString(11) == "Confirmed";
         var by = respondBy is null ? "soon" : respondBy.Value.ToOffset(Karachi).ToString("h:mm tt");
 
-        var message = direct
-            ? $"UDrive: nayi rent booking {reference} — confirm ho chuki\n"
-              + $"Car: {car} ({plate})\n"
-              + $"Dates: {start:dd MMM} – {end:dd MMM} ({days} day{(days == 1 ? "" : "s")})\n"
-              + $"Type: {mode}\n"
-              + $"Total: Rs {total:N0} · advance paid: Rs {advance:N0}\n"
-              + "Customer ka number UDrive app mein hai: Driver mode → Tour & Rent."
-            : reminder
+        var message = reminder
             ? $"UDrive reminder: the rental request {reference} for your {car} ({plate}) "
               + $"is still waiting. Please answer by {by}, or it will be cancelled and the customer refunded.\n"
               + "Open the UDrive app → My vehicles → Rent."
@@ -1322,6 +1379,7 @@ public sealed class RentalService(
         {
             await DriverWalletService.ChargeRentCommissionAsync(
                 connection, transaction, bookingId, rentCommission, cancellationToken);
+            await QueueRentWhatsAppAsync(connection, transaction, bookingId, false, cancellationToken);
         }
 
         await using (var notify = new NpgsqlCommand(

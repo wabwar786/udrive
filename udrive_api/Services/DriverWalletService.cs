@@ -1006,12 +1006,43 @@ public sealed class DriverWalletService(
                    jsonb_build_object('balance', flagged.balance, 'line', flagged.line_value),
                    now(), now()
             FROM flagged
-            JOIN udrive.driver_profiles dp ON dp.id = @driver;
+            JOIN udrive.driver_profiles dp ON dp.id = @driver
+            RETURNING user_id, (data_json->>'balance')::numeric, (data_json->>'line')::numeric;
             """;
 
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("driver", driverProfileId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        Guid? userId = null;
+        decimal balance = 0;
+        decimal line = 0;
+        await using (var command = new NpgsqlCommand(sql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("driver", driverProfileId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                userId = reader.GetGuid(0);
+                balance = reader.GetDecimal(1);
+                line = reader.GetDecimal(2);
+            }
+        }
+
+        // Only when the warning was just raised: once per drop below the line.
+        if (userId is null) return;
+        string? phone;
+        await using (var command = new NpgsqlCommand(
+            "SELECT phone_number FROM udrive.users WHERE id = @id;", connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", userId.Value);
+            phone = await command.ExecuteScalarAsync(cancellationToken) as string;
+        }
+
+        await WhatsAppOutbox.QueueAsync(
+            connection, transaction, WhatsAppOutbox.WalletLowDriver, phone,
+            new Dictionary<string, string?>
+            {
+                ["balance"] = WhatsAppOutbox.Money(balance),
+                ["line"] = WhatsAppOutbox.Money(line),
+            },
+            cancellationToken);
     }
 
     private static async Task CheckLowBalanceForBookingAsync(

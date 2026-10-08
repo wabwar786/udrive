@@ -215,6 +215,12 @@ builder.Services.AddScoped<VerificationHubService>(sp => new VerificationHubServ
     sp.GetRequiredService<HotelService>(),
     sp.GetRequiredService<BusinessService>(),
     sp.GetRequiredService<AdminVerificationService>()));
+builder.Services.AddScoped<MessageTemplateService>(_ => new MessageTemplateService(connectionString));
+// Sends the queued booking / acceptance / low-wallet WhatsApp messages.
+builder.Services.AddHostedService(sp => new WhatsAppOutboxWorker(
+    sp.GetRequiredService<IServiceScopeFactory>(),
+    connectionString,
+    sp.GetRequiredService<ILogger<WhatsAppOutboxWorker>>()));
 builder.Services.AddHostedService(sp => new ListingSweepService(
     sp.GetRequiredService<IServiceScopeFactory>(),
     connectionString,

@@ -590,6 +590,17 @@ public sealed class TourRentDriverService(string connectionString)
             id,
             cancellationToken);
 
+        await WhatsAppOutbox.QueueAsync(
+            connection, transaction, WhatsAppOutbox.WaitlistAcceptedCustomer,
+            await PhoneAsync(connection, transaction, customer, cancellationToken),
+            new Dictionary<string, string?>
+            {
+                ["what"] = $"{title} · {departure.ToOffset(Karachi):d MMM}",
+                ["until"] = WhatsAppOutbox.Time(expiresAt),
+                ["where"] = "Tours",
+            },
+            cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<TourRentWaitlistResultDto>.Ok(
             new TourRentWaitlistResultDto(id, "tour", "Accepted", expiresAt),
@@ -708,6 +719,17 @@ public sealed class TourRentDriverService(string connectionString)
             id,
             cancellationToken);
 
+        await WhatsAppOutbox.QueueAsync(
+            connection, transaction, WhatsAppOutbox.WaitlistAcceptedCustomer,
+            await PhoneAsync(connection, transaction, customer, cancellationToken),
+            new Dictionary<string, string?>
+            {
+                ["what"] = $"{car} · {WhatsAppOutbox.Dates(start, end)}",
+                ["until"] = WhatsAppOutbox.Time(expiresAt),
+                ["where"] = "Rent a car",
+            },
+            cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<TourRentWaitlistResultDto>.Ok(
             new TourRentWaitlistResultDto(id, "rent", "Accepted", expiresAt),
@@ -757,6 +779,18 @@ public sealed class TourRentDriverService(string connectionString)
         command.Parameters.AddWithValue("id", waitlistId);
         command.Parameters.AddWithValue("path", actionPath);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<string?> PhoneAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT phone_number FROM udrive.users WHERE id = @id;", connection, transaction);
+        command.Parameters.AddWithValue("id", userId);
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
     }
 
     private static DateTimeOffset DayStart(DateOnly day) =>

@@ -53,6 +53,7 @@ import {
   Wallet,
   Workflow,
   X,
+  MessageCircle,
 } from 'lucide-react';
 import {
   readSession,
@@ -159,6 +160,7 @@ const groups = [
       ['/services', 'Services', ToggleLeft],
       ['/driver-updates', 'Driver updates', Megaphone],
       ['/notifications', 'Notifications', Megaphone],
+      ['/message-templates', 'WhatsApp messages', MessageCircle],
       ['/settings', 'Settings', Settings],
       ['/areas', 'Areas', MapPinned],
       ['/places', 'Map places', MapPinned],

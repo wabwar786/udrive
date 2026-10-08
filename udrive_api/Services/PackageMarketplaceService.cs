@@ -1357,6 +1357,10 @@ public sealed class PackageMarketplaceService(
             $"{{\"packageId\":\"{package.Id}\",\"seats\":{seats}}}",
             cancellationToken);
 
+        await QueueTourWhatsAppAsync(
+            connection, transaction, customerUserId, package, bookingType, seats,
+            totalAmount, advance, bookingReference, cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<BookingDto>.Created(new BookingDto(
             bookingId,
@@ -1382,6 +1386,72 @@ public sealed class PackageMarketplaceService(
             tripOtp,
             DateTimeOffset.UtcNow),
             "Tour package booking confirmed.");
+    }
+
+    /// <summary>The two WhatsApp messages for a new tour booking: customer and driver.</summary>
+    private static async Task QueueTourWhatsAppAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid customerUserId,
+        LockedPackage package,
+        string bookingType,
+        int seats,
+        decimal total,
+        decimal advance,
+        string reference,
+        CancellationToken cancellationToken)
+    {
+        string? customerName = null;
+        string? customerPhone = null;
+        string title = package.Destination;
+        await using (var command = new NpgsqlCommand(
+            """
+            SELECT COALESCE(NULLIF(u.full_name, ''), 'Customer'), u.phone_number,
+                   (SELECT tp.title FROM udrive.tour_packages tp WHERE tp.id = @package)
+            FROM udrive.users u WHERE u.id = @user;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("user", customerUserId);
+            command.Parameters.AddWithValue("package", package.Id);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                customerName = reader.GetString(0);
+                customerPhone = reader.IsDBNull(1) ? null : reader.GetString(1);
+                if (!reader.IsDBNull(2)) title = reader.GetString(2);
+            }
+        }
+
+        var booking = bookingType == "WholeVehicle" ? "Poori gaari" : $"{seats} seat";
+        var departure = WhatsAppOutbox.DateTime(package.DepartureAt);
+        var booked = package.TotalSeats - (package.AvailableSeats - seats);
+
+        await WhatsAppOutbox.QueueAsync(connection, transaction, WhatsAppOutbox.TourBookingCustomer, customerPhone,
+            new Dictionary<string, string?>
+            {
+                ["tour"] = title,
+                ["departure"] = departure,
+                ["booking"] = booking,
+                ["total"] = WhatsAppOutbox.Money(total),
+                ["advance"] = WhatsAppOutbox.Money(advance),
+                ["pickup"] = package.PickupPoint,
+                ["driver"] = package.DriverName,
+                ["driver_phone"] = package.DriverPhone,
+                ["vehicle"] = $"{package.Vehicle} {package.RegistrationNumber}".Trim(),
+                ["ref"] = reference,
+            }, cancellationToken);
+
+        await WhatsAppOutbox.QueueAsync(connection, transaction, WhatsAppOutbox.TourBookingDriver, package.DriverPhone,
+            new Dictionary<string, string?>
+            {
+                ["tour"] = title,
+                ["departure"] = departure,
+                ["customer"] = customerName,
+                ["customer_phone"] = customerPhone,
+                ["booking"] = booking,
+                ["total"] = WhatsAppOutbox.Money(total),
+                ["seats"] = $"{booked}/{package.TotalSeats}",
+            }, cancellationToken);
     }
 
     private static async Task InsertPassengerAsync(
