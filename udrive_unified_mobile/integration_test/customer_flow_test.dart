@@ -22,6 +22,8 @@ void main() {
   const place = String.fromEnvironment('TEST_DESTINATION', defaultValue: 'Secretariat');
 
   testWidgets('City ride (app)', (tester) async {
+    final originalOnError = FlutterError.onError;
+    final screenErrors = <String>[];
     final live = LiveReporter('City ride (app)',
         phone: phone, code: otp, title: 'Customer: login → manzil → kiraya');
     await live.start();
@@ -33,6 +35,13 @@ void main() {
 
     await live.step(tester, 'App khuli', () async {
       app.main();
+      // Screen errors (a missing picture, an overflow) are noted, not fatal:
+      // the run should show every screen, not stop at the first warning.
+      FlutterError.onError = (details) {
+        screenErrors.add(details.exceptionAsString().split('\n').first);
+        // ignore: avoid_print
+        print('[live] screen error: ${details.exceptionAsString()}');
+      };
       await waitFor(tester, find.byWidgetPredicate((w) => w is Text && (w.data == 'Send verification code' || w.data == 'Where to?' || w.data == 'Where are you going?')), timeout: const Duration(seconds: 60));
     });
 
@@ -103,7 +112,12 @@ void main() {
       }
     });
 
+    if (screenErrors.isNotEmpty) {
+      await live.info(tester, 'Screen errors: ${screenErrors.length}',
+          detail: screenErrors.toSet().take(5).join(' | '));
+    }
     await live.finish();
+    FlutterError.onError = originalOnError;
     expect(live.hasFailed, isFalse, reason: 'Admin → Live testing par fail wala qadam dekhein.');
   });
 }

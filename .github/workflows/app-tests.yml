@@ -73,4 +73,4 @@ jobs:
           script: |
             adb emu geo fix 73.4711 34.3700
             (for i in $(seq 1 120); do adb shell pm grant com.wabwar.udrive android.permission.ACCESS_FINE_LOCATION >/dev/null 2>&1; adb shell pm grant com.wabwar.udrive android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1; adb shell pm grant com.wabwar.udrive android.permission.POST_NOTIFICATIONS >/dev/null 2>&1; sleep 3; done) &
-            flutter test integration_test/customer_flow_test.dart -d emulator-5554 --dart-define=API_BASE_URL="$API_URL" --dart-define=TEST_DESTINATION="${TEST_DESTINATION:-Secretariat}" --dart-define=TEST_SOURCE="github #$GITHUB_RUN_NUMBER" --dart-define=TEST_COMMIT="$GITHUB_SHA" --dart-define=UDRIVE_FLAVOR=test --dart-define=DEFAULT_MODE=customer
+            flutter test integration_test/customer_flow_test.dart -d emulator-5554 --reporter expanded --dart-define=API_BASE_URL="$API_URL" --dart-define=TEST_DESTINATION="${TEST_DESTINATION:-Secretariat}" --dart-define=TEST_SOURCE="github #$GITHUB_RUN_NUMBER" --dart-define=TEST_COMMIT="$GITHUB_SHA" --dart-define=UDRIVE_FLAVOR=test --dart-define=DEFAULT_MODE=customer
