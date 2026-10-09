@@ -3,6 +3,7 @@ import 'package:latlong2/latlong.dart';
 import '../booking/vehicle_booking_mode.dart';
 import '../maps/ud_vehicle_sprites.dart';
 import '../widgets/home_service.dart';
+import 'vehicle_class.dart';
 
 /// A vehicle currently online near the customer, shown as a map marker.
 ///
@@ -21,11 +22,16 @@ class NearbyVehicle {
     required this.rating,
     required this.passengerCapacity,
     required this.availableForTour,
+    required this.vehicleClass,
     this.headingDegrees,
   });
 
   final String id;
   final String category;
+
+  /// Car / Bike / Rickshaw / Hiace / Coster — the same class the server uses
+  /// to decide which drivers receive a request.
+  final VehicleClass vehicleClass;
   final double latitude;
   final double longitude;
   final double distanceKm;
@@ -60,30 +66,18 @@ class NearbyVehicle {
       };
 
   /// Which Home service this vehicle belongs under, so markers can be filtered
-  /// to the service the customer selected.
-  HomeService? get service {
-    final value = category.toLowerCase();
-    if (value.contains('coaster') ||
-        value.contains('coster') ||
-        value.contains('bus') ||
-        value.contains('hiace') ||
-        value.contains('van')) {
-      return HomeService.bus;
-    }
-    if (value.contains('bike') ||
-        value.contains('motorcycle') ||
-        value.contains('motor')) {
-      return HomeService.bike;
-    }
-    // Rickshaws are offered on Home again, so they map to their own service
-    // rather than being dropped. Dropping them meant a rickshaw parked around
-    // the corner counted towards nothing: no marker on the map, and no "n
-    // nearby" against the option the customer was about to choose.
-    if (value.contains('rickshaw') || value.contains('auto')) {
-      return HomeService.rickshaw;
-    }
-    return HomeService.car;
-  }
+  /// to the service the customer selected. Hiace and Coster share the
+  /// "Coster/Hiace" tile.
+  HomeService? get service => switch (vehicleClass) {
+        VehicleClass.coster || VehicleClass.hiace => HomeService.bus,
+        VehicleClass.bike => HomeService.bike,
+        VehicleClass.rickshaw => HomeService.rickshaw,
+        VehicleClass.car => HomeService.car,
+      };
+
+  /// Whether this vehicle is of the kind a customer asked for ("Car", "Bike",
+  /// "Rickshaw", "Hiace", "Coster" — or any driver-side name).
+  bool isKind(String category) => vehicleClass == vehicleClassOf(category);
 
   factory NearbyVehicle.fromJson(Map<String, dynamic> json) => NearbyVehicle(
         id: '${json['id'] ?? ''}',
@@ -97,6 +91,7 @@ class NearbyVehicle {
         rating: _toDouble(json['rating']) ?? 0,
         passengerCapacity: (json['passengerCapacity'] as num?)?.toInt() ?? 4,
         availableForTour: json['availableForTour'] == true,
+        vehicleClass: vehicleClassFromApi(json['vehicleClass'], '${json['category'] ?? 'Car'}'),
         headingDegrees: _toDouble(json['heading']),
       );
 

@@ -382,6 +382,10 @@ public sealed class BookingService(
                       AND CASE WHEN rr.is_intercity
                                THEN COALESCE(fv.available_for_intercity, true)
                                ELSE COALESCE(fv.available_for_city, true) END
+                      -- The kind of vehicle the customer asked for (migration
+                      -- 082): a car request reaches car drivers only, a bike
+                      -- request bike riders only, and so on.
+                      AND udrive.vehicle_class(fv.category) = udrive.vehicle_class(rr.vehicle_category)
                   )
               AND ST_DWithin(dpl.location, rr.pickup_location, @requestRadiusMetres)
               AND rr.pickup_at > now() - interval '15 minutes'
@@ -703,6 +707,8 @@ public sealed class BookingService(
               AND CASE WHEN rr.is_intercity
                        THEN COALESCE(v.available_for_intercity, true)
                        ELSE COALESCE(v.available_for_city, true) END
+              -- Only a vehicle of the kind the customer asked for may answer.
+              AND udrive.vehicle_class(v.category) = udrive.vehicle_class(rr.vehicle_category)
             ORDER BY (v.id = @vehicleId) DESC
             LIMIT 1;
             """,
@@ -721,8 +727,8 @@ public sealed class BookingService(
                 return ServiceResult<DriverOfferDto>.Fail(
                     StatusCodes.Status409Conflict,
                     "vehicle_not_for_this_ride",
-                    "Aap ki koi gaari is qisam ki ride ke liye register nahi (city rides / city to city), ya rent par hai. "
-                    + "Vehicles mein gaari ka kaam badlein.");
+                    "Yeh request kisi aur qisam ki gaari (car / bike / rickshaw / hiace / coster) ke liye hai, "
+                    + "ya aap ki gaari is ride (city rides / city to city) ke liye register nahi, ya rent par hai.");
             }
         }
 

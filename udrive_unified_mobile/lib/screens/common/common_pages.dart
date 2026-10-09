@@ -323,7 +323,7 @@ class SettingsScreen extends StatelessWidget {
                 context: context,
                 applicationName: AppConfig.appName,
                 applicationVersion: AppConfig.buildLabel,
-                applicationLegalese: '© Tech Geni Ltd.',
+                applicationLegalese: '© UDrive',
               ),
             ),
           ],

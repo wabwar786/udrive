@@ -18,8 +18,8 @@ namespace UDrive.Api.Controllers;
 /// WhatsApp works for whoever opens it and the Play listing keeps a single
 /// address. English governs; the switch is at the top of every page.
 ///
-///   PublicPages__CompanyName  overrides the footer name (default Tech Geni Ltd.,
-///                             which must match the Play developer name)
+///   PublicPages__CompanyName  overrides the footer name (default UDrive — the
+///                             customer only ever sees the app's own name)
 /// </summary>
 [ApiController]
 [AllowAnonymous]
@@ -29,7 +29,7 @@ public sealed class PublicPagesController(
     LegalDocumentService documents) : ControllerBase
 {
     private string Company =>
-        configuration["PublicPages:CompanyName"] is { Length: > 0 } name ? name : "Tech Geni Ltd.";
+        configuration["PublicPages:CompanyName"] is { Length: > 0 } name ? name : "UDrive";
 
     [HttpGet("/privacy")]
     [HttpGet("/privacy-policy")]

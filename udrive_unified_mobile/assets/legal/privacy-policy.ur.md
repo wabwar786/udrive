@@ -1,12 +1,12 @@
 ---
 title: Privacy Policy (Roman Urdu)
-version: 2.1
-effective: 2026-10-08
+version: 2.2
+effective: 2026-10-09
 language: ur
 governing: false
 ---
 
-**UDrive** ko **Tech Geni Ltd.** chalati hai ("hum"). Yeh policy batati hai ke
+**UDrive** ("hum") ride-hailing aur sayahat ki app hai. Yeh policy batati hai ke
 UDrive app istemal karte waqt hum kya maloomat lete hain, kyun lete hain, aur
 kaun kaun si dusri companies usay dekhti hain, kitna arsa rakhte hain, aur aap
 hum se kya keh sakte hain.
@@ -38,8 +38,7 @@ paas rehta hai aur zyada se zyada 180 din baad mita diya jata hai.
 
 ## 1. Hum kaun hain
 
-Tech Geni Ltd. UDrive chalati hai — Azad Jammu & Kashmir ke liye ride-hailing
-aur sayahat ka platform. Kya maloomat li jayengi aur kyun, yeh hum tay karte
+UDrive Azad Jammu & Kashmir ke liye ride-hailing aur sayahat ka platform hai. Kya maloomat li jayengi aur kyun, yeh hum tay karte
 hain, is liye zimmedari bhee hamari hai.
 
 Is policy ke baare mein kisi bhee baat par WhatsApp par rabta karein:
@@ -396,7 +395,7 @@ andr, **bina internet ke**, `Settings → Privacy Policy` mein parha ja sakta ha
 
 ## 16. Rabta
 
-**Tech Geni Ltd.** (UDrive)
+**UDrive**
 WhatsApp: **0335-6823975**
 
 Urdu ya English, jo aasan ho, usi mein likh dein.

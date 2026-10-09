@@ -469,18 +469,11 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
     });
   }
 
-  /// Nearby vehicles of the same kind as [option].
-  ///
-  /// Categories arrive spelt both ways ("Coster" and "Coaster"), so both sides
-  /// are normalised before comparing.
-  List<NearbyVehicle> _nearbyFor(VehicleOption option) {
-    String norm(String value) =>
-        value.toLowerCase().replaceAll('coster', 'coaster').trim();
-    final wanted = norm(option.category);
-    return _nearby
-        .where((vehicle) => norm(vehicle.category) == wanted)
-        .toList(growable: false);
-  }
+  /// Nearby vehicles of the same kind as [option] — by class, so "Car" counts
+  /// the Sedan and the SUV and "Bike" the Motorcycle (vehicle_class.dart).
+  List<NearbyVehicle> _nearbyFor(VehicleOption option) => _nearby
+      .where((vehicle) => vehicle.isKind(option.category))
+      .toList(growable: false);
 
   /// Minutes until the nearest vehicle of this kind could reach the pickup,
   /// or null when none is nearby.
@@ -1057,7 +1050,9 @@ class _VehicleChoiceScreenState extends State<VehicleChoiceScreen> {
           label: widget.destinationLabel,
           hue: UdMarkerHue.brand,
         ),
-        for (final vehicle in _nearby)
+        // Only the kind the customer has selected: choosing Car shows cars,
+        // choosing Bike shows bikes.
+        for (final vehicle in _selected == null ? _nearby : _nearbyFor(_selected!))
           UdMarker(
             id: 'nearby-${vehicle.id}',
             position: vehicle.point,

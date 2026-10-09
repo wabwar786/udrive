@@ -92,4 +92,6 @@ public sealed record NearbyVehicleDto(
     decimal Rating,
     int PassengerCapacity,
     bool AvailableForTour,
-    double? Heading);
+    double? Heading,
+    // Car / Bike / Rickshaw / Hiace / Coster (udrive.vehicle_class).
+    string VehicleClass);

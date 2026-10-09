@@ -1124,7 +1124,9 @@ class _DriverOffersScreenState extends State<DriverOffersScreen>
       markers: [
         // The drivers the fare went out to, drawn the same way Home draws
         // them — cars lying on the road, pointing where they are facing.
-        for (final vehicle in _nearby)
+        // Only vehicles of the kind requested — those are the drivers the
+        // request actually went to.
+        for (final vehicle in _nearby.where((v) => v.isKind(widget.vehicleName)))
           UdMarker(
             id: 'offer-nearby-${vehicle.id}',
             position: vehicle.point,

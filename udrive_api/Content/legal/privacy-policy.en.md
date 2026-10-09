@@ -1,12 +1,12 @@
 ---
 title: Privacy Policy
-version: 2.1
-effective: 2026-10-08
+version: 2.2
+effective: 2026-10-09
 language: en
 governing: true
 ---
 
-**UDrive** is operated by **Tech Geni Ltd.** ("we", "us"). This policy explains what
+**UDrive** ("we", "us") is a ride-hailing and tourism app. This policy explains what
 we collect when you use the UDrive app, why, who else sees it, how long we keep it,
 and what you can ask us to do about it.
 
@@ -34,8 +34,7 @@ most 180 days.
 
 ## 1. Who we are
 
-Tech Geni Ltd. operates UDrive, a ride-hailing and tourism platform for Azad
-Jammu & Kashmir. We decide what is collected and why, which makes us responsible
+UDrive is a ride-hailing and tourism platform for Azad Jammu & Kashmir. We decide what is collected and why, which makes us responsible
 for it.
 
 Contact us about anything in this policy on WhatsApp: **0335-6823975**.
@@ -376,7 +375,7 @@ connection, at **Settings → Privacy Policy**.
 
 ## 16. Contact
 
-**Tech Geni Ltd.** (UDrive)
+**UDrive**
 WhatsApp: **0335-6823975**
 
 Write to us in Urdu or English, whichever is easier.

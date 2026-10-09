@@ -12,6 +12,7 @@ import '../../core/maps/ud_map.dart';
 import '../../core/places/place_name.dart';
 import '../../core/routing/route_repository.dart';
 import '../../core/services/service_availability_repository.dart';
+import 'service_soon_sheet.dart';
 import '../../core/vehicles/nearby_repository.dart';
 import '../../core/vehicles/nearby_vehicle.dart';
 import '../../core/vehicles/tour_rates_repository.dart';
@@ -1714,11 +1715,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
         closedMessage: 'This service is not open yet.',
       );
 
-  /// Tapping a closed tile says why, in the admin's own words.
+  /// Tapping a closed tile explains it, and offers owners a way to join now.
   void _serviceClosed(ServiceAvailability service) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(service.closedMessage)),
-    );
+    // Customers wait for the Admin to open it; owners can join already.
+    showServiceSoonSheet(context, service);
   }
 
   /// Car rental now has a screen behind it.

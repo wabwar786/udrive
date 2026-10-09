@@ -5,7 +5,6 @@ import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
-import 'partner_apply_screen.dart';
 
 /// The card that appears on Home when UDrive is not running where you are.
 ///
@@ -25,10 +24,6 @@ import 'partner_apply_screen.dart';
 /// **Registration stays open.** Nobody is locked out. The point of counting the
 /// people waiting is that somebody who registered comes back on the day the city
 /// opens; somebody turned away at the door does not.
-///
-/// **"Be the partner here" is on this card, not buried in a menu.** The person
-/// most likely to run UDrive in a town is somebody who just opened the app in
-/// that town and found it empty.
 class CityStatusCard extends StatefulWidget {
   const CityStatusCard({required this.status, this.onChanged, super.key});
 
@@ -183,28 +178,6 @@ class _CityStatusCardState extends State<CityStatusCard> {
                   Text(
                     _error!,
                     style: AppType.caption.copyWith(color: AppColors.danger),
-                  ),
-                ],
-                if (status.partnerWanted) ...[
-                  const SizedBox(height: 14),
-                  UdButton.outline(
-                    label: 'Run UDrive in ${status.cityName}',
-                    icon: Icons.handshake_outlined,
-                    size: UdButtonSize.small,
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const PartnerApplyScreen(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Nobody runs UDrive here yet. If that is you, ask — and we '
-                    'will talk.',
-                    style: AppType.caption.copyWith(
-                      color: AppText.caption,
-                      height: 1.45,
-                    ),
                   ),
                 ],
               ],

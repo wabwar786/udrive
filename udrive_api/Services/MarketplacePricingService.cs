@@ -372,7 +372,8 @@ public sealed class MarketplacePricingService(string connectionString)
                    COALESCE(dp.average_rating, 0),
                    v.passenger_capacity,
                    COALESCE(v.available_for_tour, false),
-                   dpl.heading
+                   dpl.heading,
+                   udrive.vehicle_class(v.category)
             FROM udrive.driver_presence_locations dpl
             JOIN udrive.driver_profiles dp ON dp.id = dpl.driver_profile_id
             JOIN udrive.users u ON u.id = dp.user_id
@@ -388,7 +389,9 @@ public sealed class MarketplacePricingService(string connectionString)
               AND u.status = 'Approved'
               AND v.status = 'Verified'
               AND NOT EXISTS (SELECT 1 FROM udrive.listing_holds lh WHERE lh.entity_id = v.id AND lh.kind IN ('city', 'tour', 'rent') AND lh.released_at IS NULL)
-              AND (@category = '' OR lower(v.category) = lower(@category))
+              -- By class (migration 082), not by the exact name: "Car" must
+              -- find the Sedan and the SUV, "Bike" the Motorcycle and Scooter.
+              AND (@category = '' OR udrive.vehicle_class(v.category) = udrive.vehicle_class(@category))
               AND (@tourOnly = false OR COALESCE(v.available_for_tour, false) = true)
               -- A vehicle set to go out on rent is not on the map.
               --
@@ -438,7 +441,8 @@ public sealed class MarketplacePricingService(string connectionString)
                 // Deliberately not fuzzed. Heading says which way a car is
                 // pointing, not where it is, so rounding it would only make the
                 // marker point wrong.
-                reader.IsDBNull(9) ? null : reader.GetDouble(9)));
+                reader.IsDBNull(9) ? null : reader.GetDouble(9),
+                reader.GetString(10)));
         }
 
         return list;

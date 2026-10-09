@@ -583,13 +583,14 @@ class _RentCard extends StatelessWidget {
     final rate = (mode == 'WithDriver' ? v.withDriverDaily : v.selfDriveDaily) ??
         v.fromDaily;
     final minDays = v.minimumDays > 1;
-    final features = <String>[
-      t('${v.passengerCapacity} seats', '${v.passengerCapacity} سیٹیں'),
-      if (v.luggageCapacity > 0)
-        t('${v.luggageCapacity} bags', '${v.luggageCapacity} بیگ'),
-      if (v.hasAirConditioning) 'AC',
-      if (v.isFourByFour) '4x4',
-      if (v.kmPerDay != null) t('${v.kmPerDay} km/day', '${v.kmPerDay} کلومیٹر/دن'),
+    // Short, so they sit side by side on one line instead of each taking the
+    // card's full width.
+    final features = <(IconData?, String)>[
+      (Icons.person_rounded, '${v.passengerCapacity}'),
+      if (v.luggageCapacity > 0) (Icons.luggage_rounded, '${v.luggageCapacity}'),
+      if (v.hasAirConditioning) (Icons.ac_unit_rounded, 'AC'),
+      if (v.isFourByFour) (null, '4x4'),
+      if (v.kmPerDay != null) (null, t('${v.kmPerDay} km/din', '${v.kmPerDay} کلومیٹر/دن')),
     ];
     final sub = [
       v.colour,
@@ -611,39 +612,44 @@ class _RentCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // The photo, with the "from 1 day" badge on it rather than in a
+              // separate block under it.
               SizedBox(
-                width: 104,
-                child: Column(
+                width: 112,
+                height: 92,
+                child: Stack(
                   children: [
-                    _RentPhoto(url: v.photoUrl, width: 104, height: 84),
-                    const SizedBox(height: 6),
-                    Container(
-                      height: 24,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: v.bookedOnDates
-                            ? AppTint.warning
-                            : minDays
-                                ? AppColors.surfaceAlt
-                                : AppColors.brandWash,
-                        borderRadius: AppRadii.all(8),
-                      ),
-                      child: Text(
-                        v.bookedOnDates
-                            ? 'Book ho chuki'
-                            : minDays
-                                ? t('Min ${v.minimumDays} days',
-                                    'کم از کم ${v.minimumDays} دن')
-                                : t('From 1 day', 'ایک دن سے'),
-                        maxLines: 1,
-                        style: AppType.caption.copyWith(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
+                    _RentPhoto(url: v.photoUrl, width: 112, height: 92),
+                    Positioned(
+                      left: 6,
+                      bottom: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
                           color: v.bookedOnDates
-                              ? AppTint.warningText
+                              ? AppTint.warning
                               : minDays
-                                  ? AppText.primary
-                                  : AppColors.brandInk,
+                                  ? AppColors.surfaceAlt
+                                  : AppColors.brandWash,
+                          borderRadius: AppRadii.all(7),
+                        ),
+                        child: Text(
+                          v.bookedOnDates
+                              ? 'Book ho chuki'
+                              : minDays
+                                  ? t('Min ${v.minimumDays} din',
+                                      'کم از کم ${v.minimumDays} دن')
+                                  : t('1 din se', 'ایک دن سے'),
+                          maxLines: 1,
+                          style: AppType.caption.copyWith(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            color: v.bookedOnDates
+                                ? AppTint.warningText
+                                : minDays
+                                    ? AppText.primary
+                                    : AppColors.brandInk,
+                          ),
                         ),
                       ),
                     ),
@@ -704,22 +710,33 @@ class _RentCard extends StatelessWidget {
                       spacing: 5,
                       runSpacing: 5,
                       children: [
-                        for (final feature in features)
+                        for (final (icon, text) in features)
+                          // No alignment on this Container: with one it grows
+                          // to the full width the Wrap allows, which is what
+                          // put every chip on a line of its own.
                           Container(
-                            height: 22,
-                            padding: const EdgeInsets.symmetric(horizontal: 7),
-                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 3),
                             decoration: BoxDecoration(
                               color: AppColors.surfaceAlt,
                               borderRadius: AppRadii.all(7),
                             ),
-                            child: Text(
-                              feature,
-                              style: AppType.caption.copyWith(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: AppText.primary,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (icon != null) ...[
+                                  Icon(icon, size: 12, color: AppText.secondary),
+                                  const SizedBox(width: 3),
+                                ],
+                                Text(
+                                  text,
+                                  style: AppType.caption.copyWith(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppText.primary,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                       ],
@@ -741,7 +758,7 @@ class _RentCard extends StatelessWidget {
                                   ),
                                 ),
                                 TextSpan(
-                                  text: t(' / day', ' / دن'),
+                                  text: t(' / din', ' / دن'),
                                   style: AppType.caption.copyWith(
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.w700,
