@@ -222,15 +222,19 @@ class _FormSheet extends StatelessWidget {
             UdTextField(
               controller: name,
               label: urdu ? 'پورا نام' : 'Full name',
-              labelSuffix: urdu ? '(نئے صارف کے لیے)' : '(for a new account)',
               hint: urdu ? 'علی رضا' : 'Ali Raza',
               icon: Icons.person_outline_rounded,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.next,
-              validator: (value) =>
-                  value != null && value.length > 160
-                      ? 'Maximum 160 characters.'
-                      : null,
+              // Required: this is the name drivers and the app show. Without
+              // it the account was saved as "uDrive User 0000".
+              validator: (value) {
+                final name = (value ?? '').trim();
+                if (name.length < 2) {
+                  return urdu ? 'اپنا نام لکھیں۔' : 'Enter your name.';
+                }
+                return name.length > 160 ? 'Maximum 160 characters.' : null;
+              },
             ),
             const SizedBox(height: 16),
             UdTextField(

@@ -55,6 +55,8 @@ void main() {
         var field = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '03001234567');
         // Name first, number second.
         if (field.evaluate().isEmpty) field = find.byType(TextField).last;
+        // Name is required now; an existing account keeps the name it has.
+        await tester.enterText(find.byType(TextField).first, 'Live Test');
         await tester.enterText(field, phone);
         await tester.pump();
         // The terms row (UdCheckboxRow): ticked through its own callback, so a
@@ -86,7 +88,8 @@ void main() {
           await waitFor(tester, home, timeout: const Duration(seconds: 15));
         } on TestFailure {
           if (verifyButton.evaluate().isNotEmpty) await tester.tap(verifyButton.first, warnIfMissed: false);
-          await waitFor(tester, home, timeout: const Duration(seconds: 45));
+          // Sign-in also loads the driver and trip state before Home shows.
+          await waitFor(tester, home, timeout: const Duration(seconds: 120));
         }
         await settle(tester, const Duration(seconds: 3));
       });

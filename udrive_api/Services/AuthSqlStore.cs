@@ -156,9 +156,17 @@ public sealed class AuthSqlStore(string connectionString)
                  true, 0, now(), now(), now())
             ON CONFLICT (phone_number) DO UPDATE SET
                 phone_verified = true,
+                -- A real name replaces an empty one or the "uDrive User 1234"
+                -- placeholder given when the name was left blank. A name the
+                -- person already chose is kept (a driver's matches the CNIC).
                 full_name = CASE
+                    WHEN (udrive.users.full_name IS NULL OR udrive.users.full_name = ''
+                          OR udrive.users.full_name LIKE 'uDrive User %')
+                         AND EXCLUDED.full_name NOT LIKE 'uDrive User %'
+                    THEN EXCLUDED.full_name
                     WHEN udrive.users.full_name IS NULL OR udrive.users.full_name = ''
-                    THEN EXCLUDED.full_name ELSE udrive.users.full_name END,
+                    THEN EXCLUDED.full_name
+                    ELSE udrive.users.full_name END,
                 preferred_language = EXCLUDED.preferred_language,
                 last_login_at = now(),
                 updated_at = now()
