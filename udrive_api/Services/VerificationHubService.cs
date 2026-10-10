@@ -789,6 +789,7 @@ public sealed class VerificationHubService(
             LEFT JOIN udrive.territories t ON t.id = h.territory_id
             LEFT JOIN udrive.territories d ON d.id = t.parent_id
             WHERE ({SimpleStatusSql("h.approval_status", want)})
+              AND h.approval_status <> 'Draft'
               AND {AreaSql("t", "h.territory_id")}
               AND (@q = '' OR h.name ILIKE @like OR h.city ILIKE @like OR u.full_name ILIKE @like OR h.contact_phone ILIKE @like)
               AND (@id::uuid IS NULL OR h.id = @id::uuid)
@@ -938,39 +939,76 @@ public sealed class VerificationHubService(
     private static async Task<(IReadOnlyList<VerificationDocumentDto>, IReadOnlyList<VerificationCheckDto>, IReadOnlyList<VerificationFactDto>)>
         HotelDetailAsync(NpgsqlConnection connection, Guid hotelId, CancellationToken ct)
     {
+        // Every gallery photo (hotel_photos, from the app's hotel wizard), then
+        // the room photos, then the owner's CNIC. Only main_image_url used to be
+        // listed, so a hotel sent with six photos showed one.
         await using var command = new NpgsqlCommand(
             """
             SELECT NULLIF(h.main_image_url, ''), h.latitude, h.longitude, NULLIF(h.contact_phone, ''),
                    COALESCE(h.address, ''), COALESCE(h.city, ''), COALESCE(h.district, ''),
-                   (SELECT count(*)::int FROM udrive.hotel_rooms r WHERE r.hotel_id = h.id),
-                   EXISTS (SELECT 1 FROM udrive.hotel_rooms r WHERE r.hotel_id = h.id AND r.base_rate > 0),
+                   (SELECT count(*)::int FROM udrive.hotel_rooms r WHERE r.hotel_id = h.id AND r.is_active),
+                   EXISTS (SELECT 1 FROM udrive.hotel_rooms r WHERE r.hotel_id = h.id AND r.is_active AND r.base_rate > 0),
                    ARRAY(SELECT r.image_url FROM udrive.hotel_rooms r
-                         WHERE r.hotel_id = h.id AND NULLIF(r.image_url, '') IS NOT NULL ORDER BY r.created_at LIMIT 4)
-            FROM udrive.hotels h WHERE h.id = @id;
+                         WHERE r.hotel_id = h.id AND r.is_active AND NULLIF(r.image_url, '') IS NOT NULL
+                         ORDER BY r.created_at LIMIT 8),
+                   ARRAY(SELECT p.url FROM udrive.hotel_photos p WHERE p.hotel_id = h.id
+                         ORDER BY p.sort_order, p.created_at),
+                   op.cnic_front_url, op.cnic_back_url,
+                   COALESCE(NULLIF(op.owner_name, ''), ''), COALESCE(op.business_name, ''),
+                   COALESCE(op.verification_status, 'NotSubmitted'),
+                   h.property_type,
+                   COALESCE(to_char(h.check_in_time, 'HH24:MI'), '—') || ' / ' || COALESCE(to_char(h.check_out_time, 'HH24:MI'), '—')
+            FROM udrive.hotels h
+            LEFT JOIN udrive.hotel_owner_profiles op ON op.user_id = h.owner_user_id
+            WHERE h.id = @id;
             """, connection);
         command.Parameters.AddWithValue("id", hotelId);
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct)) return ([], [], []);
         var front = reader.IsDBNull(0) ? null : reader.GetString(0);
-        var hasPin = !reader.IsDBNull(1) && !reader.IsDBNull(2);
+        var hasPin = !reader.IsDBNull(1) && !reader.IsDBNull(2) && !(reader.GetDouble(1) == 0 && reader.GetDouble(2) == 0);
         var phone = reader.IsDBNull(3) ? null : reader.GetString(3);
-        var docs = new List<VerificationDocumentDto> { new("Hotel photo", front) };
+        var gallery = reader.GetFieldValue<string[]>(10);
+        var cnicFront = reader.IsDBNull(11) ? null : reader.GetString(11);
+        var cnicBack = reader.IsDBNull(12) ? null : reader.GetString(12);
+
+        var docs = new List<VerificationDocumentDto>();
+        if (gallery.Length == 0)
+        {
+            // A hotel from before the gallery: its one photo.
+            docs.Add(new("Hotel photo", front));
+        }
+        else
+        {
+            for (var i = 0; i < gallery.Length; i++)
+                docs.Add(new(i == 0 ? "Hotel photo 1 (main)" : $"Hotel photo {i + 1}", gallery[i]));
+        }
         var roomImages = reader.GetFieldValue<string[]>(9);
         for (var i = 0; i < roomImages.Length; i++) docs.Add(new($"Room photo {i + 1}", roomImages[i]));
+        docs.Add(new("Owner CNIC front", cnicFront));
+        docs.Add(new("Owner CNIC back", cnicBack));
+
+        var photoCount = gallery.Length == 0 ? (front is null ? 0 : 1) : gallery.Length;
         var checks = new List<VerificationCheckDto>
         {
-            new("Photo of the hotel", front is not null),
+            new($"Photos of the hotel ({photoCount})", photoCount > 0),
             new("Location pin on the map", hasPin),
             new("At least one room with a price", reader.GetBoolean(8)),
-            new("Contact phone", phone is not null),
+            new("Booking WhatsApp number", phone is not null),
+            new("Owner CNIC, both sides", cnicFront is not null && cnicBack is not null),
         };
         var facts = new List<VerificationFactDto>
         {
+            new("Type", reader.GetString(16)),
             new("Address", reader.GetString(4)),
             new("City / district (as typed)", $"{reader.GetString(5)} / {reader.GetString(6)}"),
             new("Room types", reader.GetInt32(7).ToString()),
-            new("Phone", phone ?? "—"),
+            new("Booking WhatsApp", phone ?? "—"),
+            new("Check-in / out", reader.GetString(17)),
             new("Map", hasPin ? $"{reader.GetDouble(1):F5}, {reader.GetDouble(2):F5}" : "—"),
+            new("Owner", reader.GetString(13).Length == 0 ? "—" : reader.GetString(13)),
+            new("Business", reader.GetString(14).Length == 0 ? "—" : reader.GetString(14)),
+            new("Owner verification", reader.GetString(15)),
         };
         return (docs, checks, facts);
     }
