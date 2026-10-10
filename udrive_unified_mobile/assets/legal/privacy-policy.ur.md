@@ -1,7 +1,7 @@
 ---
 title: Privacy Policy (Roman Urdu)
-version: 2.2
-effective: 2026-10-09
+version: 2.3
+effective: 2026-10-10
 language: ur
 governing: false
 ---
@@ -106,6 +106,11 @@ hai.
 - Hotel booking: tareekhein, mehmanon aur kamron ki tadaad.
 - Agar aap koi karobar ya hotel darj karein: uska naam, pata, phone number aur
   map par jagah.
+- Agar aap Hotel mode mein hotel add karein: aap ka naam, business ka naam,
+  contact / WhatsApp number, email (agar dein) aur CNIC ke aage aur peeche ki
+  tasveer. CNIC ki tasveerein sirf UDrive ki hotel check karne wali team dekhti
+  hai, customers ko kabhi nahi dikhai jatin. Hotel aur kamron ki tasveerein
+  public hain — customers unhein dekhte hain.
 
 ## 4. Driver se kya lete hain
 
@@ -329,6 +334,9 @@ cancel karein.
   hua payout account mit jata hai, **aur aap ki bheji hui CNIC, licence, selfie,
   registration book, gaari ki tasweerein aur wallet top-up ke screenshots
   hamari storage se mita diye jate hain.**
+- Hotel owner ke liye: hotel profile par aap ka naam, email aur contact number
+  mit jata hai, **aur CNIC ki dono tasweerein hamari storage se mita di jati
+  hain.**
 - Aap ki aakhri maloom jagah mita di jati hai.
 - Aap ke app istemal ke records — jo phones aap ne istemal kiye, aur un ke IP
   address aur andazan shehar — mita diye jate hain.

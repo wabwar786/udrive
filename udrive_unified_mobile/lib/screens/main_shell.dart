@@ -68,6 +68,9 @@ class _MainShellState extends State<MainShell> {
   final List<String> _customerHistory = <String>[];
   final List<String> _driverHistory = <String>[];
 
+  /// Set while Hotel mode is on screen; see build().
+  bool _cameFromHotel = false;
+
   /// Needed to tell whether the drawer is open when back is pressed.
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -147,7 +150,15 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final controller = AppControllerScope.of(context);
     if (controller.mode == UserMode.hotel) {
+      _cameFromHotel = true;
       return const HotelOwnerShell();
+    }
+    // Leaving Hotel mode for Customer mode always lands on Home, not on
+    // whichever customer page was open before Hotel mode.
+    if (_cameFromHotel) {
+      _cameFromHotel = false;
+      _customerPage = 'home';
+      _customerHistory.clear();
     }
     final driver = controller.mode == UserMode.driver;
     final driverNeedsVerification = driver && !controller.driverApproved;
@@ -800,6 +811,16 @@ class _PremiumDrawer extends StatelessWidget {
                       label: entry.$3,
                       selected: current == entry.$1,
                       onTap: () => onSelected(entry.$1),
+                    ),
+                  // Hotel owners add and edit their hotels in Hotel mode.
+                  if (!driver)
+                    UdDrawerRow(
+                      icon: Icons.apartment_rounded,
+                      label: 'Hotel mode — hotel add / edit',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        controller.switchMode(UserMode.hotel);
+                      },
                     ),
                 ],
               ),

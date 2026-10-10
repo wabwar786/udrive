@@ -29,7 +29,7 @@ Har type par: **Collected = Yes**, **Shared = No**, **Processed ephemerally = No
 | Financial info → Payment info *(drivers only)* | App functionality |
 | Financial info → Other financial info (wallet top-ups, commission) | App functionality |
 | Messages → Other in-app messages (rider ↔ driver chat) | App functionality |
-| Photos and videos → Photos (driver documents, vehicle photos) | App functionality; Fraud prevention, security and compliance |
+| Photos and videos → Photos (driver documents, vehicle photos, hotel owner CNIC, hotel and room photos) | App functionality; Fraud prevention, security and compliance |
 | App activity → Other user-generated content (trips, ratings) | App functionality |
 | Personal info → Other info (trusted contacts, emergency contacts, and tour passenger names) | App functionality; Fraud prevention, security and compliance |
 | Personal info → Other info (tour passenger **gender** and age group) | App functionality |

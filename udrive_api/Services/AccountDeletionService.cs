@@ -137,6 +137,14 @@ public sealed class AccountDeletionService(string connectionString, LocalFileSto
                    updated_at = now()
              WHERE user_id = @u;
             """,
+            // A hotel owner's profile: their name, email and CNIC go. The hotels
+            // stay, as the vehicles do, so past bookings still have a hotel.
+            """
+            UPDATE udrive.hotel_owner_profiles
+               SET owner_name = '', email = '', phone = NULL,
+                   cnic_front_url = NULL, cnic_back_url = NULL, updated_at = now()
+             WHERE user_id = @u;
+            """,
             // The document rows themselves. The files they point at are deleted
             // from the volume after this transaction commits — see below.
             """
@@ -268,7 +276,16 @@ public sealed class AccountDeletionService(string connectionString, LocalFileSto
             -- photos fell into once already.
             SELECT cp.profile_image_url
               FROM udrive.customer_profiles cp
-             WHERE cp.user_id = @u AND cp.profile_image_url IS NOT NULL;
+             WHERE cp.user_id = @u AND cp.profile_image_url IS NOT NULL
+            UNION ALL
+            -- A hotel owner's CNIC, both sides.
+            SELECT hp.cnic_front_url
+              FROM udrive.hotel_owner_profiles hp
+             WHERE hp.user_id = @u AND hp.cnic_front_url IS NOT NULL
+            UNION ALL
+            SELECT hp.cnic_back_url
+              FROM udrive.hotel_owner_profiles hp
+             WHERE hp.user_id = @u AND hp.cnic_back_url IS NOT NULL;
             """;
 
         var urls = new List<string>();

@@ -23,7 +23,7 @@ public static class ImageShrinker
     private static readonly HashSet<string> DocumentCategories = new(StringComparer.OrdinalIgnoreCase)
     {
         "driverdocuments", "vehicledocuments", "wallettopups", "holdclaims",
-        "customerdocuments", "disputes",
+        "customerdocuments", "disputes", "hotelownerdocuments",
     };
 
     public static (int MaxEdge, int Quality) ProfileFor(string category) =>

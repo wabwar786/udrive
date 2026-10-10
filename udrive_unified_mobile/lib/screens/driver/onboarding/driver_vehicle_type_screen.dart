@@ -4,7 +4,6 @@ import '../../../core/state/app_controller.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/ud_kit.dart';
 import '../../../data/models.dart';
-import '../../hotel_owner/hotel_owner_shell.dart';
 import 'driver_signup_screen.dart';
 import 'vehicle_register_choice_screen.dart';
 
@@ -71,22 +70,32 @@ class DriverVehicleTypeScreen extends StatelessWidget {
                 // It has no licence, no number plate and no CNIC-with-selfie
                 // — sending it through the driver steps would mean four
                 // screens of questions with nothing to answer.
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    // A vehicle is first asked what it is for: city rides /
-                    // city to city go on to the driver sign-up, tours and
-                    // rent to the three-step vehicle form.
-                    builder: (_) => name == 'Hotel'
-                        ? const HotelOwnerShell()
-                        : VehicleRegisterChoiceScreen(
-                            ridesScreen: (choice) => DriverSignUpScreen(
-                              vehicleCategory: name,
-                              choice: choice,
-                            ),
-                          ),
-                  ),
-                ),
+                //
+                // It switches to Hotel mode rather than pushing the hotel
+                // screens on top of this one: pushed, they had no Back and no
+                // Home, and switching mode from their Profile tab changed the
+                // app underneath while the hotel page stayed on top.
+                onTap: () {
+                  if (name == 'Hotel') {
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                    controller.switchMode(UserMode.hotel);
+                    return;
+                  }
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      // A vehicle is first asked what it is for: city rides /
+                      // city to city go on to the driver sign-up, tours and
+                      // rent to the three-step vehicle form.
+                      builder: (_) => VehicleRegisterChoiceScreen(
+                        ridesScreen: (choice) => DriverSignUpScreen(
+                          vehicleCategory: name,
+                          choice: choice,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
           ],
         ),

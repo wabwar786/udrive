@@ -195,6 +195,8 @@ builder.Services.AddScoped<PartnerPortalService>(sp =>
 builder.Services.AddScoped<Phase18TourService>(_ => new Phase18TourService(connectionString));
 builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(connectionString));
 builder.Services.AddScoped<HotelService>(_ => new HotelService(connectionString));
+builder.Services.AddScoped<HotelOwnerService>(sp =>
+    new HotelOwnerService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<ExploreService>(_ => new ExploreService(connectionString));
 builder.Services.AddScoped<BusinessService>(_ => new BusinessService(connectionString));
 // "Earn with your vehicle" (migration 070): owner listings, their drivers,

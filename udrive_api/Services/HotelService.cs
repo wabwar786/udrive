@@ -343,7 +343,8 @@ public sealed class HotelService(string connectionString)
             FROM udrive.hotels h
             JOIN udrive.users u ON u.id=h.owner_user_id
             LEFT JOIN udrive.hotel_rooms r ON r.hotel_id=h.id
-            WHERE (@status='' OR h.approval_status=@status)
+            WHERE h.approval_status<>'Draft'
+              AND (@status='' OR h.approval_status=@status)
               AND (@query='' OR h.name ILIKE '%'||@query||'%' OR h.city ILIKE '%'||@query||'%'
                    OR h.address ILIKE '%'||@query||'%' OR u.full_name ILIKE '%'||@query||'%'
                    OR u.phone_number ILIKE '%'||@query||'%')
@@ -375,8 +376,10 @@ public sealed class HotelService(string connectionString)
             cmd.Parameters.AddWithValue("s",x.Approve?"Approved":"Rejected");cmd.Parameters.AddWithValue("r",x.Approve?"":x.Reason!.Trim());cmd.Parameters.AddWithValue("ok",x.Approve);cmd.Parameters.AddWithValue("a",adminId);cmd.Parameters.AddWithValue("id",id);
             var o=await cmd.ExecuteScalarAsync(ct);if(o is not Guid){await tx.RollbackAsync(ct);return ServiceResult<object>.Fail(404,"hotel_not_found","Hotel not found.");}
             await using var audit=c.CreateCommand();audit.Transaction=tx;audit.CommandText="""INSERT INTO udrive.audit_logs(id,actor_user_id,action,entity_type,entity_id,changes_json,created_at,updated_at) VALUES(gen_random_uuid(),@a,@action,'Hotel',CAST(@id AS text),jsonb_build_object('status',@status,'reason',NULLIF(@reason,'')),now(),now())""";audit.Parameters.AddWithValue("a",adminId);audit.Parameters.AddWithValue("action",x.Approve?"HotelApproved":"HotelRejected");audit.Parameters.AddWithValue("id",id);audit.Parameters.AddWithValue("status",x.Approve?"Approved":"Rejected");audit.Parameters.AddWithValue("reason",x.Reason?.Trim()??"");await audit.ExecuteNonQueryAsync(ct);
-            // The hotel welcome credit, once per owner.
-            if(x.Approve){await using var own=c.CreateCommand();own.Transaction=tx;own.CommandText="SELECT owner_user_id FROM udrive.hotels WHERE id=@id";own.Parameters.AddWithValue("id",id);if(await own.ExecuteScalarAsync(ct) is Guid ownerId)await HotelWalletService.CreditWelcomeAsync(c,tx,ownerId,id,ct);}
+            // The hotel welcome credit, once per owner. Approving a hotel is also
+            // the check of its owner's profile and CNIC (HotelOwnerService), so
+            // the owner becomes Verified with their first approved hotel.
+            if(x.Approve){await using var own=c.CreateCommand();own.Transaction=tx;own.CommandText="SELECT owner_user_id FROM udrive.hotels WHERE id=@id";own.Parameters.AddWithValue("id",id);if(await own.ExecuteScalarAsync(ct) is Guid ownerId){await HotelWalletService.CreditWelcomeAsync(c,tx,ownerId,id,ct);await using var verify=c.CreateCommand();verify.Transaction=tx;verify.CommandText="UPDATE udrive.hotel_owner_profiles SET verification_status='Verified',verification_note=NULL,verified_by=@a,verified_at=now(),updated_at=now() WHERE user_id=@o AND verification_status<>'Verified' AND cnic_front_url IS NOT NULL AND cnic_back_url IS NOT NULL";verify.Parameters.AddWithValue("a",adminId);verify.Parameters.AddWithValue("o",ownerId);await verify.ExecuteNonQueryAsync(ct);}}
             await tx.CommitAsync(ct);return ServiceResult<object>.Ok(new{id,status=x.Approve?"Approved":"Rejected"});
         }
         catch{await tx.RollbackAsync(CancellationToken.None);throw;}

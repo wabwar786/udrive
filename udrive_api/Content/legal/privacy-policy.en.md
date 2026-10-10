@@ -1,7 +1,7 @@
 ---
 title: Privacy Policy
-version: 2.2
-effective: 2026-10-09
+version: 2.3
+effective: 2026-10-10
 language: en
 governing: true
 ---
@@ -99,6 +99,11 @@ location or camera details embedded in the photo are removed.
 - Hotel bookings: dates, number of guests and rooms.
 - If you register a business or hotel: its name, address, phone number and
   position on the map.
+- If you add a hotel in Hotel mode: your name, business name, contact /
+  WhatsApp number, email (if you give one) and photographs of the front and
+  back of your CNIC. The CNIC photographs are seen only by the UDrive team that
+  checks hotels; they are never shown to customers. The hotel and room
+  photographs you add are public — customers see them.
 
 ## 4. What we collect from drivers
 
@@ -310,6 +315,9 @@ first.
   emergency contact and bank details are erased, your saved payout account is
   deleted, **and your uploaded CNIC, licence, selfie, registration book, vehicle
   photographs and wallet top-up screenshots are deleted from our storage.**
+- For hotel owners: your owner name, email and contact number on the hotel
+  profile are erased, **and both CNIC photographs are deleted from our
+  storage.**
 - Your last known position is deleted.
 - Your app-usage records — the phones you used and the IP addresses and
   approximate cities they came from — are deleted.

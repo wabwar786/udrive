@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../core/services/service_availability_repository.dart';
+import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/widgets/ud_kit.dart';
+import '../../data/models.dart';
 import '../business_owner/business_owner_add_screen.dart';
 import '../driver/onboarding/driver_vehicle_type_screen.dart';
-import '../hotel_owner/hotel_owner_add_screen.dart';
 import '../listing/listing_wizard_screen.dart';
 
 /// What a closed ("SOON") Home tile does when tapped.
@@ -50,8 +51,17 @@ Future<void> showServiceSoonSheet(
             icon: join.icon,
             onPressed: () {
               Navigator.of(sheetContext).pop();
+              final screen = join.screen;
+              if (screen == null) {
+                // Hotels are added in Hotel mode, which has its own home, its
+                // own Back and Home buttons and the owner profile.
+                final controller = AppControllerScope.of(context);
+                Navigator.of(context).popUntil((route) => route.isFirst);
+                controller.switchMode(UserMode.hotel);
+                return;
+              }
               Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: join.screen),
+                MaterialPageRoute<void>(builder: screen),
               );
             },
           ),
@@ -72,7 +82,9 @@ class _Join {
   final String question;
   final String button;
   final IconData icon;
-  final WidgetBuilder screen;
+
+  /// Null: switch to Hotel mode instead of opening a screen.
+  final WidgetBuilder? screen;
 }
 
 String _nameFor(String key) => switch (key) {
@@ -92,7 +104,7 @@ _Join? _joinFor(String key) => switch (key) {
           'Aap ka hotel ya guest house hai?',
           'Apna hotel add karein',
           Icons.apartment_rounded,
-          (_) => const HotelOwnerAddScreen(standalone: true),
+          null,
         ),
       'carRental' => _Join(
           'Aap ki gaari hai jo rent par de sakte hain?',

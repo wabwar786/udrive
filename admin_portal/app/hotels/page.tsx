@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Building2,
   CheckCircle2,
+  FileSearch,
   Eye,
   EyeOff,
   RefreshCw,
@@ -13,6 +14,7 @@ import {
 import { AdminFrame } from '../components/admin-frame';
 import { Badge, Empty, ErrorBox, Field, Loading, Modal, Stat } from '../components/ui';
 import { API_BASE, apiFetch, when } from '../lib/admin-api';
+import { HotelDetails } from './hotel-details';
 
 type HotelRow = {
   id: string;
@@ -53,6 +55,7 @@ export default function HotelsPage() {
   const [status, setStatus] = useState('All');
   const [rejecting, setRejecting] = useState<HotelRow | null>(null);
   const [reason, setReason] = useState('');
+  const [viewing, setViewing] = useState<HotelRow | null>(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -210,6 +213,9 @@ export default function HotelsPage() {
                     <div className="hotelRejectionReason"><strong>Rejection reason</strong>{item.rejectionReason}</div>
                   )}
                   <div className="hotelApprovalActions">
+                    <button className="secondaryButton" onClick={() => setViewing(item)}>
+                      <FileSearch /> Details & CNIC
+                    </button>
                     {item.approvalStatus !== 'Approved' && (
                       <button
                         className="primaryButton"
@@ -245,6 +251,8 @@ export default function HotelsPage() {
           </div>
         )}
       </section>
+
+      {viewing && <HotelDetails id={viewing.id} name={viewing.name} onClose={() => setViewing(null)} />}
 
       {rejecting && (
         <Modal title={`Reject ${rejecting.name}`} onClose={() => setRejecting(null)}>
