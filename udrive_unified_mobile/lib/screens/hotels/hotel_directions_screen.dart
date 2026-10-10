@@ -9,7 +9,10 @@ import '../../core/maps/ud_map.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../models/hotel_models.dart';
-import '../customer/udrive_route_flow_screen.dart';
+import '../../core/routing/route_repository.dart';
+import '../../core/widgets/home_service.dart';
+import '../../data/models.dart';
+import '../customer/vehicle_choice_screen.dart';
 import 'hotel_bits.dart';
 
 /// How far the hotel is, from where the guest is standing.
@@ -131,20 +134,42 @@ class _HotelDirectionsScreenState extends State<HotelDirectionsScreen> {
     return 'Leave by $when to reach on time.';
   }
 
-  void _bookRide() {
+  bool _openingRide = false;
+
+  /// The same ride flow as Home: the customer picks the vehicle, drivers send
+  /// their fares, and the customer confirms the one they like.
+  ///
+  /// This used to open the old all-in-one route screen ("Choose your ride"),
+  /// which had its own fare table and did not match the ride Home books.
+  Future<void> _bookRide() async {
+    if (_openingRide) return;
     final me = _me;
-    Navigator.push(
+    if (me == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Pehle aap ki location chahiye — location on kar ke dobara try karein.'),
+      ));
+      return;
+    }
+    setState(() => _openingRide = true);
+    // The road route, so the fares are priced on the road and not on the
+    // straight line. Without one, the next screen falls back to its own
+    // straight-line estimate.
+    final result = await RouteRepository().route(origin: me, destination: _hotel);
+    if (!mounted) return;
+    setState(() => _openingRide = false);
+    await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => UDriveRouteFlowScreen(
-          serviceType: UDriveServiceType.city,
+      MaterialPageRoute<void>(
+        builder: (_) => VehicleChoiceScreen(
           pickupLabel: 'Current location',
-          pickupPoint: me ?? const LatLng(34.3700, 73.4700),
-          initialDestinationLabel:
-              '${widget.stay.hotelName} — ${widget.stay.address}',
-          initialDestinationLatitude: widget.stay.latitude,
-          initialDestinationLongitude: widget.stay.longitude,
-          skipRouteEntry: true,
+          destinationLabel: widget.stay.hotelName,
+          pickupPoint: me,
+          destinationPoint: _hotel,
+          route: result.best,
+          routes: result.routes,
+          service: HomeService.car,
+          bookingType: BookingType.wholeVehicle,
+          seats: 1,
         ),
       ),
     );
@@ -350,7 +375,7 @@ class _HotelDirectionsScreenState extends State<HotelDirectionsScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: HotelOutlineButton(
-                            label: 'Book a UDrive ride',
+                            label: _openingRide ? 'Khul raha hai…' : 'Book a UDrive ride',
                             onPressed: _bookRide,
                           ),
                         ),
