@@ -167,3 +167,19 @@ class RouteTracker {
     );
   }
 }
+
+/// How far from the road a GPS fix may be and still be drawn on it.
+///
+/// A fixed 25–30 m was too tight for the hills. Under a ridge or between tall
+/// buildings a phone's fix is often 40–70 m off, and it reports so in its
+/// accuracy. The car was then drawn beside the road, driving through houses,
+/// for the whole trip — the road the customer is actually on was right there.
+///
+/// So the radius follows the phone's own accuracy: a sharp fix (10 m) keeps a
+/// tight 30 m, so a real turn onto another road still shows; a poor fix (35 m)
+/// allows up to 80 m. Rerouting is unaffected — it has its own rule and only
+/// trusts accurate fixes.
+double snapRadiusMeters(double? accuracy) {
+  final a = (accuracy == null || !accuracy.isFinite || accuracy <= 0) ? 20.0 : accuracy;
+  return (a * 2 + 10).clamp(30.0, 80.0).toDouble();
+}

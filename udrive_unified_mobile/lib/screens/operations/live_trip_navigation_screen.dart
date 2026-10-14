@@ -470,7 +470,7 @@ class _DriverLiveNavigationScreenState extends State<DriverLiveNavigationScreen>
       // Close to the road: draw the car on it, pointing along it. GPS that
       // wanders ten metres either side would otherwise show the car driving
       // through the houses beside the road.
-      if (fix.offRouteMeters < 25) {
+      if (fix.offRouteMeters < snapRadiusMeters(position.accuracy)) {
         display = fix.snapped;
         if (moving) heading = fix.bearing;
       }
@@ -1925,7 +1925,7 @@ class _CustomerFullScreenTrackingScreenState
       final fix = tracker.locate(driver);
       _fix = fix;
       _remaining = tracker.remaining(fix);
-      if (fix.offRouteMeters < 30) {
+      if (fix.offRouteMeters < snapRadiusMeters(location.accuracy)) {
         display = fix.snapped;
         if (speed > 3) heading = fix.bearing;
       }
