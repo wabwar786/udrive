@@ -86,7 +86,7 @@ public static class TeamAccess
             ["/api/v1/admin/finance", "/api/v1/admin/wallet-topups", "/api/v1/admin/operations/payments", "/api/v1/payments/"],
             ["/finance", "/payments", "/wallet-topups"]),
         new("pricing", "Pricing & fares", "Money", ["view", "edit", "delete"],
-            ["/api/v1/admin/pricing-rules", "/api/v1/admin/seat-fares", "/api/v1/admin/fare"],
+            ["/api/v1/admin/pricing-rules", "/api/v1/admin/pricing-setup", "/api/v1/admin/seat-fares", "/api/v1/admin/fare"],
             ["/pricing", "/fare-zones", "/fuel-prices", "/rate-insights"]),
         new("growth", "Growth & partners", "Growth", ["view", "edit", "approve"],
             ["/api/v1/admin/growth", "/api/v1/admin/partners"],

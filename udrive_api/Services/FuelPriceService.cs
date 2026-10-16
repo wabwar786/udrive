@@ -63,6 +63,12 @@ public sealed class FuelPriceService(string connectionString)
         IReadOnlyDictionary<string, string> settings,
         string fuelType)
     {
+        // "Petrol index" switch on the admin Pricing page.
+        if (!PricingSettingsService.Bool(settings, "pricing.fuel.enabled", true))
+        {
+            return 1.0m;
+        }
+
         var baselineKey = string.Equals(fuelType, "Diesel", StringComparison.OrdinalIgnoreCase)
             ? "pricing.fuel.baseline.diesel"
             : "pricing.fuel.baseline.petrol";

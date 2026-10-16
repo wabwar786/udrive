@@ -759,51 +759,63 @@ export const guideGroups: GuideGroup[] = [
         path: '/pricing',
         title: 'Pricing & fares',
         purpose: {
-          ur: 'Har gaari ka per-km rate aur minimum fare, aur us se tang qawaid.',
-          en: 'The per-km rate and minimum fare for each vehicle, and any narrower rules.',
+          ur: 'Har gaari ka rate aap khud rakhte hain: Shuru fees, Per km, Per minute aur Minimum. System sirf suggest karta hai.',
+          en: 'You set every vehicle’s rate yourself: start fee, per km, per minute and minimum. The system only suggests.',
         },
         steps: [
           {
-            ur: 'Upar wale grid mein har gaari ke liye do number rakhein: rate per km aur minimum fare. Yeh grid sirf City service ka hai.',
-            en: 'Set two numbers per vehicle in the top grid: rate per km and minimum fare. This grid is the City service only.',
+            ur: '1 · Kiraya aise banta hai: Shuru fees + (Km × Per km) + (Minute × Per minute). Jama Minimum se kam ho to Minimum lagta hai, phir 5 (ya jo aap rakhein) rupay tak upar round hota hai.',
+            en: '1 · How a fare is built: start fee + (km × per km) + (minutes × per minute). If that is below the minimum the minimum is charged, then it is rounded up to 5 rupees (or the step you choose).',
           },
           {
-            ur: 'Base fare aur per-minute rate grid mein nahi hain — woh neeche "Pricing rules" ke andr har rule par set hote hain.',
-            en: 'Base fare and the per-minute rate are not in the grid — they live on each rule under Pricing rules below.',
+            ur: 'Isi box mein upar se lagne wali settings hain — Round kitna, Pahari area, Petrol index, Rush, Customer max offer. Har ek On/Off aap ke haath mein hai, aur har ek ke neeche system ki suggestion likhi hai.',
+            en: 'The same box holds the settings that sit on top — rounding, hill areas, petrol index, rush, customer max offer. Each is yours to switch, with the system’s suggestion underneath.',
           },
           {
-            ur: 'Hisab yeh hai: base fare + (per km × petrol index × road distance) + (per minute × waqt) = meter. Phir zone ka difficulty factor poore meter par lagta hai, aur zone ka return share distance wale hisse ka ek tukra isi difficulty ke sath jama karta hai. Aakhir mein natija minimum fare se neeche nahi jata — aur woh minimum bhi usi petrol index aur usi zone factor se barhta hai.',
-            en: 'The sum is: base fare + (per km × fuel index × road distance) + (per minute × time) = the meter. The zone difficulty then multiplies that whole meter, and the zone’s return share adds a slice of the distance cost through the same difficulty. The result is floored at the minimum fare — and that minimum is itself scaled by the same fuel index and zone factor.',
+            ur: '2 · Har gaari ka rate: paanchon gaariyan ek table mein. Har box ke neeche "Suggest: X · Use" hai — Use dabane se number box mein aata hai, Save dabane tak kuch nahi badalta. Chhota aur lamba safar wale columns likhte hi badalte hain.',
+            en: '2 · Each vehicle’s rate: all five in one table. Under each box is "Suggest: X · Use" — Use fills the box, nothing changes until you press Save. The short and long trip columns update as you type.',
           },
           {
-            ur: 'Kisi tang cheez ke liye — weekend ka rate, ek shehar ka rate — neeche rule banayein jismein din aur ilaqa likha ho.',
-            en: 'For anything narrower — a weekend rate, a rate for one town — add a rule below with days and an area.',
+            ur: 'Suggestion aise banti hai: petrol/diesel ki aaj ki keemat × gaari ki average (litre per km) × 3, aur jahan pichle 30 din mein 10+ trips hon wahan customers ne jo asal kiraya diya us ke saath average.',
+            en: 'A suggestion is today’s petrol/diesel price × the vehicle’s litres per km × 3, averaged with what customers actually paid per km wherever there were 10+ trips in the last 30 days.',
           },
           {
-            ur: 'Fare preview se dekhein ke kaunsa rule lagta hai aur meter kya banta hai.',
-            en: 'Use Fare preview to see which rule applies and what the meter comes to.',
+            ur: '3 · Fare check: gaari, jagah, km aur minute likh kar Check dabayein. Asal server ka hisaab har line ke saath aata hai — wahi number jo customer gaari chunne par dekhta hai.',
+            en: '3 · Fare check: choose a vehicle, a place, km and minutes, then Check. The real server quote comes back line by line — the figure a Customer sees on choosing that vehicle.',
+          },
+          {
+            ur: 'Kisi din ya ek shehar ka alag rate chahiye to neeche "Advanced: Khaas rate" kholein. Fixed per-seat routes bhi wahin hain.',
+            en: 'For a different rate on certain days or in one town, open "Advanced: Special rates" below. Fixed per-seat routes are there too.',
           },
         ],
         cautions: [
           {
-            ur: 'Rate per km aur minimum fare alag number hain. Minimum fare (maslan 1,600) ko per-km wale khane mein daalne se 12 km ka safar unees hazaar ka ban jata hai.',
-            en: 'Rate per km and minimum fare are different numbers. Putting a minimum fare (say 1,600) into the per-km field prices a 12 km trip at nineteen thousand rupees.',
+            ur: 'Per minute lambe safar par bohot barh jata hai: 3 ghante = 180 minute. Per minute 20 ho to sirf waqt ka 3,600 ban jata hai. Table mein peeli warning isi liye aati hai.',
+            en: 'Per minute adds up on long trips: 3 hours is 180 minutes, so a per-minute of 20 is 3,600 in time alone. That is what the yellow warning in the table is for.',
           },
           {
-            ur: 'Sab se makhsoos active rule jeetta hai: ilaqa har jagah se upar, chhota ilaqa bare ilaqe se upar, aur likhe hue din har din se upar.',
-            en: 'The most specific active rule wins: an area beats everywhere, a smaller area beats a larger one, named days beat every day.',
+            ur: 'App ki list (gaari tap karne se pehle) ek chhota andaza dikhati hai — us mein Shuru fees nahi hoti, aur Per minute 0 ho to woh 2 maan leti hai. Gaari tap karte hi asal fare aa jata hai. Fare check dono number dikhata hai.',
+            en: 'The app’s vehicle list (before a vehicle is tapped) shows a quick estimate — without the start fee, and reading a per-minute of 0 as 2. Tapping the vehicle shows the real fare. Fare check shows both.',
+          },
+          {
+            ur: 'Save karne par us gaari ka sirf ek "har din, har jagah" rate on rehta hai — agar purane do bane hue the to doosra band ho jata hai, taake aap ka rakha hua number hi lage.',
+            en: 'Saving keeps exactly one "every day, everywhere" rate on per vehicle — if two existed, the other is switched off so the number you set is the one used.',
+          },
+          {
+            ur: 'Pahari area Off karne se Rush bhi nahi lagta, kyunke Rush zone ke hisaab se napa jata hai.',
+            en: 'Turning hill areas off also stops rush, because rush is measured per zone.',
+          },
+          {
+            ur: 'Coster ke fixed per-seat route par customer bid nahi karta, aur us par na minimum lagta hai na petrol index.',
+            en: 'On a fixed per-seat Coster route the Customer does not bid, and neither the minimum nor the fuel index applies.',
           },
           {
             ur: 'Tourism ki qeemat yahan nahi banti. Har driver apna tour rate Driver app mein khud rakhta hai.',
             en: 'Tourism is not priced here. Each Driver sets their own tour rate in the Driver app.',
           },
           {
-            ur: 'Coster ke per-seat route fixed route fare par chalte hain, jo isi screen par set hota hai. Aise route par customer bid kar hi nahi sakta, aur us fare par na minimum lagta hai na petrol index.',
-            en: 'Coster per-seat routes use fixed route fares, also set on this screen. On a listed route the Customer cannot bid at all, and that fare is subject to neither the minimum nor the fuel index.',
-          },
-          {
-            ur: 'Fare preview sirf meter dikhata hai — us mein zone ka factor, return share, petrol index aur surge shamil nahi. Customer ka asal quote is se upar ho sakta hai, is liye isay aakhri qeemat na samjhein.',
-            en: 'Fare preview shows the meter alone — it excludes the zone factor, the return share, the fuel index and surge. The Customer’s actual quote can be higher, so do not read it as the final price.',
+            ur: 'Ops board ka aaj ka % (±20, raat 12 tak) is rate ke upar lagta hai, aur Fare check mein alag line mein dikhta hai.',
+            en: 'The Ops board’s percent for today (±20, until midnight) applies on top of this rate, and shows as its own line in Fare check.',
           },
         ],
         roles: {
@@ -836,8 +848,8 @@ export const guideGroups: GuideGroup[] = [
             en: 'On a short town trip the multiplier is lower, because the time and base-fare parts carry no return share.',
           },
           {
-            ur: 'Naya zone banane ke baad usay inactive rakhein aur isi screen ka multiplier parh kar faisla karein. Pricing ka Fare preview zone ka asar nahi dikhata, is liye us se zone ki janch na karein.',
-            en: 'Leave a new zone inactive and judge it by the multiplier on this screen. Fare preview under Pricing does not apply zones at all, so it cannot be used to check one.',
+            ur: 'Naya zone banane ke baad usay inactive rakhein aur isi screen ka multiplier parh kar faisla karein. Active karne ke baad Pricing ke Fare check mein us ilaqe ka fare dekh lein — wahan zone ka factor alag line mein aata hai.',
+            en: 'Leave a new zone inactive and judge it by the multiplier on this screen. Once it is active, check a fare there with Fare check under Pricing — the zone factor shows as its own line.',
           },
         ],
         cautions: [

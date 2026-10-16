@@ -54,9 +54,29 @@ public sealed class FareEngine(
     PricingSettingsService settingsService,
     QuoteTokenService quoteTokens)
 {
-    public async Task<ServiceResult<FareQuoteDto>> QuoteAsync(
+    public Task<ServiceResult<FareQuoteDto>> QuoteAsync(
         Guid customerUserId,
         FareQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        QuoteCoreAsync(customerUserId, request, adminCheck: false, cancellationToken);
+
+    /// <summary>The admin Pricing page's "Fare check": the same quote, line by line.</summary>
+    /// <remarks>
+    /// Identical arithmetic to <see cref="QuoteAsync"/>. The only difference is
+    /// that the admin types the kilometres and minutes rather than a real route,
+    /// so the route-length plausibility check is skipped. The token it carries
+    /// is never used to book anything.
+    /// </remarks>
+    public Task<ServiceResult<FareQuoteDto>> AdminCheckAsync(
+        Guid adminUserId,
+        FareQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        QuoteCoreAsync(adminUserId, request, adminCheck: true, cancellationToken);
+
+    private async Task<ServiceResult<FareQuoteDto>> QuoteCoreAsync(
+        Guid customerUserId,
+        FareQuoteRequest request,
+        bool adminCheck,
         CancellationToken cancellationToken)
     {
         var settings = await settingsService.GetAsync(cancellationToken);
@@ -73,7 +93,7 @@ public sealed class FareEngine(
                 "Pickup ya manzil ki jagah sahi nahi mili. Manzil dobara search karein aur list se chunein.");
         }
 
-        var implausible = CheckDistance(request, settings);
+        var implausible = adminCheck ? null : CheckDistance(request, settings);
         if (implausible is not null) return implausible;
 
         var rates = await marketplacePricing.GetRatesAsync(
@@ -102,10 +122,18 @@ public sealed class FareEngine(
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
 
-        var originZone = await zoneService.ResolveAsync(
-            connection, request.PickupLatitude, request.PickupLongitude, cancellationToken);
-        var destinationZone = await zoneService.ResolveAsync(
-            connection, request.DestinationLatitude, request.DestinationLongitude, cancellationToken);
+        // "Pahari area" switch on the admin Pricing page. Off means every trip
+        // prices as Default (factor 1.0, no return share) — and with no zone
+        // there is no surge either, because surge is measured per zone.
+        var zonesOn = PricingSettingsService.Bool(settings, "pricing.zones.enabled", true);
+        var originZone = zonesOn
+            ? await zoneService.ResolveAsync(
+                connection, request.PickupLatitude, request.PickupLongitude, cancellationToken)
+            : PricingZoneService.Default;
+        var destinationZone = zonesOn
+            ? await zoneService.ResolveAsync(
+                connection, request.DestinationLatitude, request.DestinationLongitude, cancellationToken)
+            : PricingZoneService.Default;
 
         var fuelPrices = await fuelPriceService.CurrentAsync(cancellationToken);
         var fuelFactor = FuelPriceService.Factor(fuelPrices, settings, rate.FuelType);

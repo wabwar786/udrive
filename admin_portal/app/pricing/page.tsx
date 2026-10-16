@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Calculator, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 
 import { AdminFrame } from '../components/admin-frame';
 import { Badge, Empty, ErrorBox, Field, Loading, Modal } from '../components/ui';
 import { apiFetch } from '../lib/admin-api';
+import { SimplePricing } from './simple-pricing';
 
 const ENDPOINT = '/api/v1/admin/pricing-rules';
 const SEAT_ENDPOINT = '/api/v1/admin/seat-fares';
@@ -97,16 +98,6 @@ const BLANK_SEAT_FARE: SeatFare = {
   isActive: true,
 };
 
-type Preview = {
-  vehicleCategory: string;
-  matchedRuleName: string | null;
-  perKmRate: number;
-  minimumFare: number;
-  perMinuteRate: number;
-  fare: number;
-  baseFare: number;
-};
-
 const BLANK: Rule = {
   name: '',
   serviceType: 'City',
@@ -138,51 +129,6 @@ function describeArea(rule: Rule) {
   return `${name} · ${rule.areaRadiusKm} km`;
 }
 
-/**
- * What a trip of this length would cost under these numbers.
- *
- * Mirrors the client's formula exactly — distance x rate, plus the per-minute
- * rate, floored at the minimum. Showing the result is the only way an admin can
- * tell which of the two fields is binding, and a minimum that swallows every
- * short trip is otherwise invisible until a customer complains.
- *
- * perMinute used to be the literal 2 here and in the app, even though it is a
- * column on the rule that this very page can edit. Editing it changed nothing
- * either operators or customers could see.
- */
-function FareExample({
-  km,
-  minutes,
-  perKm,
-  perMinute,
-  minimum,
-  baseFare,
-}: {
-  km: number;
-  minutes: number;
-  perKm: number;
-  perMinute: number;
-  minimum: number;
-  baseFare: number;
-}) {
-  const metered = baseFare + perKm * km + minutes * perMinute;
-  const charged = Math.max(metered, minimum);
-  const minimumWins = minimum > metered;
-
-  return (
-    <div style={{ lineHeight: 1.45 }}>
-      <strong style={{ fontSize: 15 }}>
-        {Math.round(charged).toLocaleString()}
-      </strong>
-      <div style={{ fontSize: 11.5, color: minimumWins ? '#a0522d' : '#6f817a' }}>
-        {minimumWins
-          ? `minimum applies (metered ${Math.round(metered).toLocaleString()})`
-          : `${km} km x ${perKm} + ${minutes} min`}
-      </div>
-    </div>
-  );
-}
-
 export default function Page() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [form, setForm] = useState<Rule | null>(null);
@@ -190,13 +136,10 @@ export default function Page() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Preview inputs. Defaults are an ordinary town trip rather than a round
-  // number, so the figure shown is one someone might actually be charged.
-  const [distanceKm, setDistanceKm] = useState(12);
-  const [minutes, setMinutes] = useState(25);
-  const [previewArea, setPreviewArea] = useState('');
-  const [preview, setPreview] = useState<Preview[] | null>(null);
-  const [previewBusy, setPreviewBusy] = useState(false);
+  // Everyday rules are edited in the table up top, so the Advanced list
+  // shows only the narrower ones.
+  const [standardIds, setStandardIds] = useState<string[]>([]);
+  const onSetupLoaded = useCallback((setup: { standardRuleIds: string[] }) => setStandardIds(setup.standardRuleIds), []);
 
   const [seatFares, setSeatFares] = useState<SeatFare[]>([]);
   const [seatForm, setSeatForm] = useState<SeatFare | null>(null);
@@ -284,11 +227,12 @@ export default function Page() {
   const grouped = useMemo(() => {
     const map = new Map<string, Rule[]>();
     for (const rule of rules) {
+      if (rule.id && standardIds.includes(rule.id)) continue;
       const key = rule.serviceType;
       map.set(key, [...(map.get(key) ?? []), rule]);
     }
     return [...map.entries()];
-  }, [rules]);
+  }, [rules, standardIds]);
 
   async function save() {
     if (!form) return;
@@ -319,28 +263,6 @@ export default function Page() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not delete this rule.');
-    }
-  }
-
-  async function runPreview() {
-    setPreviewBusy(true);
-    setError('');
-    try {
-      const area = PRESET_AREAS.find((a) => a.label === previewArea);
-      const query = new URLSearchParams({
-        serviceType: 'City',
-        distanceKm: String(distanceKm),
-        minutes: String(minutes),
-      });
-      if (area) {
-        query.set('lat', String(area.lat));
-        query.set('lng', String(area.lng));
-      }
-      setPreview(await apiFetch<Preview[]>(`${ENDPOINT}/preview?${query}`));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not run the preview.');
-    } finally {
-      setPreviewBusy(false);
     }
   }
 
@@ -378,218 +300,105 @@ export default function Page() {
     });
   }
 
-  /**
-   * The plain per-km rate for each vehicle, with no day or area attached.
-   *
-   * This is the thing most visits to this page are about — a bike costs less
-   * per kilometre than a rickshaw, a rickshaw less than a car, a car less than
-   * a Hiace, a Hiace less than a Coster — and putting them in one grid means
-   * the ladder can be set and compared in one place instead of opening a rule
-   * at a time to read a number at a time.
-   */
-  const baseRules = useMemo(
-    () =>
-      rules
-        .filter(
-          (r) =>
-            r.serviceType === 'City' &&
-            r.areaRadiusKm == null &&
-            (r.daysOfWeek ?? []).length === 0,
-        )
-        .sort(
-          (a, b) =>
-            CATEGORIES.indexOf(a.vehicleCategory as (typeof CATEGORIES)[number]) -
-            CATEGORIES.indexOf(b.vehicleCategory as (typeof CATEGORIES)[number]),
-        ),
-    [rules],
-  );
-
-  const [baseDraft, setBaseDraft] = useState<Record<string, { perKmRate: number; minimumFare: number }>>({});
-  const [baseSaving, setBaseSaving] = useState(false);
-
-  useEffect(() => {
-    setBaseDraft(
-      Object.fromEntries(
-        baseRules.map((r) => [
-          r.id!,
-          { perKmRate: r.perKmRate, minimumFare: r.minimumFare },
-        ]),
-      ),
-    );
-  }, [baseRules]);
-
-  const baseDirty = baseRules.some((r) => {
-    const draft = baseDraft[r.id!];
-    return (
-      draft &&
-      (draft.perKmRate !== r.perKmRate || draft.minimumFare !== r.minimumFare)
-    );
-  });
-
-  async function saveBaseRates() {
-    setBaseSaving(true);
-    setError('');
-    try {
-      // Only the rows that actually changed. Rewriting all four would bump
-      // `updated_at` on rules nobody touched, and that timestamp is what breaks
-      // ties between equally specific rules.
-      for (const rule of baseRules) {
-        const draft = baseDraft[rule.id!];
-        if (!draft) continue;
-        if (
-          draft.perKmRate === rule.perKmRate &&
-          draft.minimumFare === rule.minimumFare
-        ) {
-          continue;
-        }
-        const { id, updatedAt: _updatedAt, ...rest } = rule;
-        await apiFetch(`${ENDPOINT}/${id}`, {
-          method: 'PUT',
-          body: JSON.stringify({ ...rest, ...draft }),
-        });
-      }
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save the rates.');
-    } finally {
-      setBaseSaving(false);
-    }
-  }
-
   return (
     <AdminFrame
       title="Pricing"
-      subtitle="Set the per-kilometre rate, and narrow it to particular days or areas."
+      subtitle="Har number aap khud likhte hain. System sirf Suggest karta hai — Use dabane aur Save karne tak kuch nahi badalta."
     >
-      <section className="panel">
+      <SimplePricing areas={PRESET_AREAS} onSaved={() => void load()} onLoaded={onSetupLoaded} />
+
+      <details className="panel spAdv">
+        <summary>▸ Advanced: Khaas rate — kisi din ya area ke liye</summary>
         <header className="panelHeader">
           <div>
-            <h2>Standard rate per kilometre</h2>
+            <h2>Pricing rules</h2>
             <p>
-              The everyday City rate for each vehicle. Anything more specific — a
-              weekend rate, a rate for one town — goes in the rules below.
+              Har din, har jagah wala rate upar table mein hai. Yahan sirf khaas rules: sab se
+              makhsoos active rule jeetta hai — ilaqa har jagah se upar, chhota ilaqa bare se upar,
+              aur likhe hue din har din se upar.
             </p>
           </div>
           <div className="tableTools">
-            <button
-              className="primaryButton"
-              onClick={() => void saveBaseRates()}
-              disabled={!baseDirty || baseSaving}
-            >
-              {baseSaving ? 'Saving…' : 'Save rates'}
+            <button className="secondaryButton" onClick={() => void load()}>
+              <RefreshCw />
+              Refresh
+            </button>
+            <button className="primaryButton" onClick={() => setForm({ ...BLANK })}>
+              <Plus />
+              Add rule
             </button>
           </div>
         </header>
 
+        {error && <ErrorBox message={error} />}
+
         {busy ? (
           <Loading />
-        ) : baseRules.length === 0 ? (
+        ) : grouped.length === 0 ? (
           <Empty
-            title="No standard rates yet"
-            copy="Add a rule below with no days and no area to create one."
+            title="Koi khaas rule nahi"
+            copy="Har din, har jagah ka rate upar table mein hai. Kisi din ya ilaqe ka alag rate chahiye to Add rule."
           />
         ) : (
-          <div className="tableWrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Vehicle</th>
-                  <th>Rate per km (PKR)</th>
-                  <th>Minimum fare (PKR)</th>
-                  {/*
-                    What the numbers actually produce.
-
-                    The two fields alone do not explain a fare, and the way they
-                    combine surprises people: a 6 km trip at 30/km comes to
-                    about 210, so a 1,600 minimum means every short trip is
-                    1,600 and the per-km rate does nothing at all. That is a
-                    reasonable choice — but it should be a choice, not something
-                    discovered after a customer complains.
-                  */}
-                  <th>A 6 km trip</th>
-                  <th>A 25 km trip</th>
-                </tr>
-              </thead>
-              <tbody>
-                {baseRules.map((rule) => (
-                  <tr key={rule.id}>
-                    <td>
-                      <strong>{rule.vehicleCategory}</strong>
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min={1}
-                        value={baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate}
-                        onChange={(e) =>
-                          setBaseDraft({
-                            ...baseDraft,
-                            [rule.id!]: {
-                              perKmRate: Number(e.target.value),
-                              minimumFare:
-                                baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare,
-                            },
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min={0}
-                        value={baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare}
-                        onChange={(e) =>
-                          setBaseDraft({
-                            ...baseDraft,
-                            [rule.id!]: {
-                              perKmRate:
-                                baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate,
-                              minimumFare: Number(e.target.value),
-                            },
-                          })
-                        }
-                      />
-                    </td>
-                    <td><FareExample
-                      km={6}
-                      minutes={15}
-                      perKm={baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate}
-                      perMinute={rule.perMinuteRate}
-                      minimum={baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare}
-                      baseFare={rule.baseFare}
-                    /></td>
-                    <td><FareExample
-                      km={25}
-                      minutes={45}
-                      perKm={baseDraft[rule.id!]?.perKmRate ?? rule.perKmRate}
-                      perMinute={rule.perMinuteRate}
-                      minimum={baseDraft[rule.id!]?.minimumFare ?? rule.minimumFare}
-                      baseFare={rule.baseFare}
-                    /></td>
+          grouped.map(([serviceType, items]) => (
+            <div key={serviceType} className="tableWrap">
+              <h3 style={{ margin: '14px 4px 6px' }}>{serviceType}</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Vehicle</th>
+                    <th>Shuru fees</th>
+                    <th>Per km</th>
+                    <th>Per minute</th>
+                    <th>Minimum</th>
+                    <th>Days</th>
+                    <th>Area</th>
+                    <th>Priority</th>
+                    <th>Active</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {items.map((rule) => (
+                    <tr key={rule.id} className="clickable" onClick={() => setForm({ ...rule })}>
+                      <td>{rule.name}</td>
+                      <td>{rule.vehicleCategory}</td>
+                      <td>PKR {rule.baseFare}</td>
+                      <td>
+                        <strong>PKR {rule.perKmRate}</strong>
+                      </td>
+                      <td>PKR {rule.perMinuteRate}</td>
+                      <td>PKR {rule.minimumFare}</td>
+                      <td>{describeDays(rule.daysOfWeek)}</td>
+                      <td>{describeArea(rule)}</td>
+                      <td>{rule.priority}</td>
+                      <td>
+                        <Badge value={rule.isActive ? 'Active' : 'Off'} />
+                      </td>
+                      <td>
+                        <button
+                          className="iconButton"
+                          title="Delete"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void remove(rule);
+                          }}
+                        >
+                          <Trash2 />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))
         )}
+      </details>
 
-        <p style={{ margin: '14px 4px 0', opacity: 0.72, fontSize: 13, lineHeight: 1.6 }}>
-          <strong>How a fare is worked out.</strong> Distance times the per-km
-          rate, plus 2 PKR for every minute the route is expected to take — and
-          then, if that total is below the minimum fare, the minimum is charged
-          instead. The two example columns update as you type, so you can see
-          which of the two numbers is actually deciding the price.
-        </p>
-
-        <p style={{ margin: '10px 4px 0', opacity: 0.72, fontSize: 13, lineHeight: 1.6 }}>
-          <strong>Tourism is not priced here.</strong> A multi-day trip is not a
-          metered ride, so each driver publishes their own asking price for their
-          own vehicle, in the Driver app under Tour rate. Nothing on this page
-          changes what a tour costs.
-        </p>
-      </section>
-
-      <section className="panel">
+      <details className="panel spAdv">
+        <summary>▸ Advanced: Fixed per-seat routes</summary>
         <header className="panelHeader">
           <div>
             <h2>Fixed per-seat routes</h2>
@@ -673,164 +482,7 @@ export default function Page() {
             </table>
           </div>
         )}
-      </section>
-
-      <section className="panel">
-        <header className="panelHeader">
-          <div>
-            <h2>Fare preview</h2>
-            <p>What a trip would cost right now, before you change anything.</p>
-          </div>
-          <div className="tableTools">
-            <button className="secondaryButton" onClick={() => void runPreview()} disabled={previewBusy}>
-              <Calculator />
-              {previewBusy ? 'Working…' : 'Preview'}
-            </button>
-          </div>
-        </header>
-
-        <div className="formGrid">
-          <Field label="Distance (km)">
-            <input
-              type="number"
-              min={1}
-              value={distanceKm}
-              onChange={(e) => setDistanceKm(Number(e.target.value))}
-            />
-          </Field>
-          <Field label="Travel time (minutes)">
-            <input
-              type="number"
-              min={1}
-              value={minutes}
-              onChange={(e) => setMinutes(Number(e.target.value))}
-            />
-          </Field>
-          <Field label="Pickup area">
-            <select value={previewArea} onChange={(e) => setPreviewArea(e.target.value)}>
-              <option value="">Anywhere (no area rules)</option>
-              {PRESET_AREAS.map((a) => (
-                <option key={a.label} value={a.label}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-
-        {preview && (
-          <div className="tableWrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Vehicle</th>
-                  <th>Rule applied</th>
-                  <th>Per km</th>
-                  <th>Minimum</th>
-                  <th>Customer sees</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.map((row) => (
-                  <tr key={row.vehicleCategory}>
-                    <td>{row.vehicleCategory}</td>
-                    <td>{row.matchedRuleName ?? '—'}</td>
-                    <td>PKR {row.perKmRate}</td>
-                    <td>PKR {row.minimumFare}</td>
-                    <td>
-                      <strong>PKR {row.fare.toLocaleString()}</strong>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="panel">
-        <header className="panelHeader">
-          <div>
-            <h2>Pricing rules</h2>
-            <p>
-              The most specific active rule wins: an area beats everywhere, a smaller area beats a
-              larger one, and named days beat every day.
-            </p>
-          </div>
-          <div className="tableTools">
-            <button className="secondaryButton" onClick={() => void load()}>
-              <RefreshCw />
-              Refresh
-            </button>
-            <button className="primaryButton" onClick={() => setForm({ ...BLANK })}>
-              <Plus />
-              Add rule
-            </button>
-          </div>
-        </header>
-
-        {error && <ErrorBox message={error} />}
-
-        {busy ? (
-          <Loading />
-        ) : rules.length === 0 ? (
-          <Empty
-            title="No pricing rules yet"
-            copy="Add one to set the per-kilometre rate customers are quoted."
-          />
-        ) : (
-          grouped.map(([serviceType, items]) => (
-            <div key={serviceType} className="tableWrap">
-              <h3 style={{ margin: '14px 4px 6px' }}>{serviceType}</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Vehicle</th>
-                    <th>Per km</th>
-                    <th>Minimum</th>
-                    <th>Days</th>
-                    <th>Area</th>
-                    <th>Priority</th>
-                    <th>Active</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((rule) => (
-                    <tr key={rule.id} className="clickable" onClick={() => setForm({ ...rule })}>
-                      <td>{rule.name}</td>
-                      <td>{rule.vehicleCategory}</td>
-                      <td>
-                        <strong>PKR {rule.perKmRate}</strong>
-                      </td>
-                      <td>PKR {rule.minimumFare}</td>
-                      <td>{describeDays(rule.daysOfWeek)}</td>
-                      <td>{describeArea(rule)}</td>
-                      <td>{rule.priority}</td>
-                      <td>
-                        <Badge value={rule.isActive ? 'Active' : 'Off'} />
-                      </td>
-                      <td>
-                        <button
-                          className="iconButton"
-                          title="Delete"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void remove(rule);
-                          }}
-                        >
-                          <Trash2 />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))
-        )}
-      </section>
+      </details>
 
       {form && (
         <Modal title={form.id ? 'Edit pricing rule' : 'Add pricing rule'} onClose={() => setForm(null)}>

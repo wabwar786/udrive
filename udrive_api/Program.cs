@@ -196,6 +196,7 @@ builder.Services.AddScoped<Phase18TourService>(_ => new Phase18TourService(conne
 builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(connectionString));
 builder.Services.AddScoped<HotelService>(_ => new HotelService(connectionString));
 builder.Services.AddScoped<OpsBoardService>(_ => new OpsBoardService(connectionString));
+builder.Services.AddScoped<PricingSetupService>(sp => new PricingSetupService(connectionString, sp.GetRequiredService<PricingSettingsService>()));
 builder.Services.AddHttpClient(WeatherWorker.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
 builder.Services.AddHostedService(sp => new WeatherWorker(
     connectionString,
