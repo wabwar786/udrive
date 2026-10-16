@@ -195,6 +195,12 @@ builder.Services.AddScoped<PartnerPortalService>(sp =>
 builder.Services.AddScoped<Phase18TourService>(_ => new Phase18TourService(connectionString));
 builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(connectionString));
 builder.Services.AddScoped<HotelService>(_ => new HotelService(connectionString));
+builder.Services.AddScoped<OpsBoardService>(_ => new OpsBoardService(connectionString));
+builder.Services.AddHttpClient(WeatherWorker.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
+builder.Services.AddHostedService(sp => new WeatherWorker(
+    connectionString,
+    sp.GetRequiredService<IHttpClientFactory>(),
+    sp.GetRequiredService<ILogger<WeatherWorker>>()));
 builder.Services.AddScoped<HotelOwnerService>(sp =>
     new HotelOwnerService(connectionString, sp.GetRequiredService<LocalFileStorageService>()));
 builder.Services.AddScoped<ExploreService>(_ => new ExploreService(connectionString));

@@ -192,6 +192,15 @@ public sealed class FareEngine(
             charged = Math.Max(subtotal, floor);
         }
 
+        // The Ops board's temporary percent for this tehsil and vehicle class
+        // (±20, ends at midnight). Not applied to a published fixed seat fare.
+        if (negotiable)
+        {
+            var opsPercent = await OpsBoardService.FarePercentAsync(
+                connection, request.PickupLatitude, request.PickupLongitude, request.VehicleCategory, cancellationToken);
+            if (opsPercent != 0m) charged *= 1m + opsPercent / 100m;
+        }
+
         if (charged <= 0m)
         {
             return ServiceResult<FareQuoteDto>.Fail(

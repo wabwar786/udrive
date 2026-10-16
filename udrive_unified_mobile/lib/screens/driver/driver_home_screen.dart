@@ -24,6 +24,7 @@ import 'driver_founding_screen.dart';
 import 'driver_mission_detail_screen.dart';
 import 'driver_missions_screen.dart';
 import 'driver_welcome_bonus_screen.dart';
+import 'road_report_sheet.dart';
 import 'wallet_topup_guide_screen.dart';
 
 /// D-10 / D-11 — the driver's dashboard, offline and online.
@@ -695,6 +696,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               onPressed: () => _openGrowth(const DriverMissionsScreen()),
             ),
           ],
+
+          // A closed road, reported from where the driver is, to the admin's
+          // Ops board. Two drivers at the same spot make a "Road band" card.
+          const SizedBox(height: 12),
+          UdButton.outline(
+            label: 'Road band hai? Admin ko batayein',
+            icon: Icons.report_gmailerrorred_rounded,
+            onPressed: () => showRoadReportSheet(context),
+          ),
 
           if (controller.marketplaceError != null) ...[
             const SizedBox(height: 14),

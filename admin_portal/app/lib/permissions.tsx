@@ -74,6 +74,7 @@ export const MODULE_ROUTES: Record<ModuleKey, readonly string[]> = {
   'verification.businesses': ['/businesses'],
   operations: [
     '/',
+    '/ops',
     '/ride-requests',
     '/bookings',
     '/operations',

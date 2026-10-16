@@ -92,6 +92,7 @@ const groups = [
     label: 'DAILY OPERATIONS',
     items: [
       ['/', 'Overview', LayoutDashboard],
+      ['/ops', 'Ops board', Radar],
       ['/ride-requests', 'Ride requests', Activity],
       ['/bookings', 'Bookings', BookOpenCheck],
       ['/operations', 'Operations & dispatch', Workflow],

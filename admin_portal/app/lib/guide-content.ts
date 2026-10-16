@@ -343,6 +343,28 @@ export const guideGroups: GuideGroup[] = [
         ],
       },
       {
+        path: '/ops',
+        title: 'Ops board',
+        purpose: {
+          ur: 'Aaj ka haal aur aaj ke kaam: kahan rush hai, kahan rate ghalat hai, kahan road band hai, mausam kaisa hai — har card ke saath kya karna hai.',
+          en: 'Today in one page, and what to do about it: where the rush is, where a rate is wrong, which road is closed, what the weather is doing.',
+        },
+        steps: [
+          {
+            ur: 'Upar ke cards mein aaj ke number kal ke usi waqt se milaye gaye hain (↑ ↓).',
+            en: 'The top counts compare today so far with the same hours yesterday (↑ ↓).',
+          },
+          {
+            ur: 'Har kaam ke card par "Kyun?" ke number parhein, phir button dabayein. System khud kuch nahi karta — fare sirf ±20% aur sirf aaj raat 12 baje tak badalta hai.',
+            en: 'Read the "why" figures on each card, then press its button. Nothing happens by itself — a fare moves at most ±20%, and only until midnight.',
+          },
+          {
+            ur: 'WhatsApp pehle poora dikhaya jata hai. Parhein, zaroorat ho to badlein, phir Bhejein. Har bheja hua message neeche "Kiye gaye kaam" mein likha jata hai.',
+            en: 'A WhatsApp is shown in full first. Read it, edit it if needed, then send. Every message sent is listed under "Done today".',
+          },
+        ],
+      },
+      {
         path: '/ride-requests',
         title: 'Ride requests',
         purpose: {
