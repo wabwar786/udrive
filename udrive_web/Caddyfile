@@ -1,0 +1,51 @@
+# Serves the static website (./out from `npm run build`) on Railway.
+# Railway sets PORT. NEXT_PUBLIC_API_URL is the API origin allowed by the CSP.
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT:8080} {
+	root * /srv
+	encode zstd gzip
+
+	# Long cache for fingerprinted build files; HTML is always revalidated.
+	@static path /_next/static/*
+	header @static Cache-Control "public, max-age=31536000, immutable"
+	@assets path /fonts/* /logo.png /og.png /app-screen.webp /icon.png /apple-icon.png
+	header @assets Cache-Control "public, max-age=604800"
+	@html not path /_next/static/* /fonts/*
+	header @html Cache-Control "public, max-age=0, must-revalidate"
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(self), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' {$NEXT_PUBLIC_API_URL}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+		-Server
+	}
+
+	# /hotels/<new-hotel>/ and /tours/<new-place>/ added after the last build
+	# get the live shell page, which loads them from the API.
+	@hotelNew {
+		path_regexp ^/hotels/[a-z0-9-]+/?$
+		not file {path}/index.html
+	}
+	rewrite @hotelNew /hotels/_/index.html
+	@tourNew {
+		path_regexp ^/tours/[a-z0-9-]+/?$
+		not file {path}/index.html
+	}
+	rewrite @tourNew /tours/_/index.html
+
+	try_files {path} {path}/index.html {path}.html
+	file_server
+
+	handle_errors {
+		rewrite * /404.html
+		file_server
+	}
+}

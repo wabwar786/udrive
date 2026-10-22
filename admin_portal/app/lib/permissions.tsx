@@ -75,6 +75,7 @@ export const MODULE_ROUTES: Record<ModuleKey, readonly string[]> = {
   operations: [
     '/',
     '/ops',
+    '/website',
     '/ride-requests',
     '/bookings',
     '/operations',

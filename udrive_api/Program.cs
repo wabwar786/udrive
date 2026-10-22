@@ -197,6 +197,13 @@ builder.Services.AddScoped<Phase19AdminService>(_ => new Phase19AdminService(con
 builder.Services.AddScoped<HotelService>(_ => new HotelService(connectionString));
 builder.Services.AddScoped<OpsBoardService>(_ => new OpsBoardService(connectionString));
 builder.Services.AddScoped<PricingSetupService>(sp => new PricingSetupService(connectionString, sp.GetRequiredService<PricingSettingsService>()));
+builder.Services.AddScoped<WebsiteService>(sp => new WebsiteService(
+    connectionString,
+    sp.GetRequiredService<PackageMarketplaceService>(),
+    sp.GetRequiredService<Phase18TourService>(),
+    sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
+builder.Services.AddScoped<WebsiteAdminService>(sp => new WebsiteAdminService(
+    connectionString, sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
 builder.Services.AddHttpClient(WeatherWorker.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
 builder.Services.AddHostedService(sp => new WeatherWorker(
     connectionString,
@@ -445,6 +452,12 @@ builder.Services.AddRateLimiter(options =>
     // map legitimately fetches a screenful at a time.
     options.AddPolicy("places", context => PerCaller(context, 60));
     options.AddPolicy("map-tiles", context => PerCaller(context, 240));
+    // The public website: reads are cached server-side, so 120 a minute per
+    // visitor is plenty for a person and a ceiling for a scraper. A booking
+    // or a hotel mark is a handful a minute at most, counted per signed-in
+    // customer (not per carrier IP, which many phones share).
+    options.AddPolicy("web", context => PerCaller(context, 120));
+    options.AddPolicy("web-book", context => PerSession(context, 6));
     // The app's usage ping: a few an hour per phone. Counted per install id,
     // so thousands of phones behind one carrier address do not share a bucket.
     options.AddPolicy("telemetry", context => RateLimitPartition.GetFixedWindowLimiter(

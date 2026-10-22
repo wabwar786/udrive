@@ -58,6 +58,7 @@ import {
   HardDrive,
   Smartphone,
   MonitorPlay,
+  Globe,
 } from 'lucide-react';
 import {
   readSession,
@@ -121,6 +122,7 @@ const groups = [
       ['/businesses', 'Near me businesses', Store],
       ['/routes', 'Routes', Route],
       ['/advisories', 'Road advisories', TriangleAlert],
+      ['/website', 'Website', Globe],
     ],
   },
   {

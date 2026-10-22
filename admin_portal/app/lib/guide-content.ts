@@ -727,6 +727,42 @@ export const guideGroups: GuideGroup[] = [
         ],
       },
       {
+        path: '/website',
+        title: 'Website',
+        purpose: {
+          ur: 'UDrive website ("UDrive – Travel & Tour") se aayi tour bookings aur hotel registrations, aur website par ads ki jagah.',
+          en: 'Tour bookings and hotel registrations from the UDrive website ("UDrive – Travel & Tour"), and the ad places on it.',
+        },
+        steps: [
+          {
+            ur: '"From the website" mein aaj aur is mahine ki web bookings, un ki raqam, aur website se register hue hotels nazar aate hain.',
+            en: '"From the website" shows today\'s and this month\'s web bookings, their value, and hotels registered on the website.',
+          },
+          {
+            ur: 'Website ka hotel bhi baqi hotels ki tarah Tourism → Hotels & approvals mein approve hota hai.',
+            en: 'A hotel from the website is approved under Tourism → Hotels & approvals, like any other.',
+          },
+          {
+            ur: '"Ads" mein New ad: jagah chunein (Home, Tours, Tour page, Hotels, Hotel page), title, text, tasveer aur https link. Tareekhein khali chhorein to foran aur hamesha chalega.',
+            en: '"Ads" → New ad: pick the place (Home, Tours, Tour page, Hotels, Hotel page), title, text, picture and an https link. Leave the dates empty to run from now with no end.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Har jagah par ek waqt mein sirf pehla live ad dikhta hai (Order kam = pehle).',
+            en: 'Each place shows only the first live ad at a time (lower Order first).',
+          },
+          {
+            ur: 'Website khud database se nahi judti. Woh sirf API ke public hisse se data leti hai; booking WhatsApp OTP ke baad hi hoti hai, aur raqam server khud ginta hai.',
+            en: 'The website never connects to the database. It reads only the API\'s public part; a booking needs a WhatsApp OTP, and the server works out the amount itself.',
+          },
+        ],
+        roles: {
+          ur: 'SuperAdmin, Admin, Manager, Operations.',
+          en: 'SuperAdmin, Admin, Manager, Operations.',
+        },
+      },
+      {
         path: '/marketplace',
         title: 'Marketplace console',
         purpose: {
