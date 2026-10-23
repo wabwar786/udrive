@@ -177,3 +177,25 @@ public sealed record AdminWebActivityDto(
     int HotelsThisMonth,
     IReadOnlyList<AdminWebBookingDto> Bookings,
     IReadOnlyList<AdminWebHotelDto> Hotels);
+
+// ───────────────────────────────────────────── weather (from the hourly WeatherWorker readings)
+
+public sealed record WebWeatherDayDto(DateOnly Date, int Code, double Max, double Min, double Rain, double Snow, double WindMax);
+
+public sealed record WebWeatherNowDto(double Temperature, int Code, double Wind);
+
+/// <param name="Level">ok, warn or bad — the label colour.</param>
+public sealed record WebWeatherAdviceDto(string Level, string Text);
+
+public sealed record WebWeatherPlaceDto(
+    string Key,
+    string Name,
+    string District,
+    string Kind,
+    WebWeatherNowDto Now,
+    IReadOnlyList<WebWeatherDayDto> Days,
+    WebWeatherAdviceDto Advice);
+
+public sealed record WebRoadUpdateDto(string Title, string Details, string Severity, string? Route, string Source, DateTimeOffset StartsAt);
+
+public sealed record WebWeatherDto(DateTimeOffset? UpdatedAt, IReadOnlyList<WebWeatherPlaceDto> Places, IReadOnlyList<WebRoadUpdateDto> RoadUpdates);

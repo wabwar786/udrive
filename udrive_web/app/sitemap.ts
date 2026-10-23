@@ -9,13 +9,14 @@ export const dynamic = 'force-static';
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   const s = await atBuild<Sitemap>('/api/v1/web/sitemap', { destinations: [], hotels: [], generatedAt: '' });
-  const page = (path: string, priority: number, changeFrequency: 'daily' | 'weekly' | 'monthly') =>
+  const page = (path: string, priority: number, changeFrequency: 'hourly' | 'daily' | 'weekly' | 'monthly') =>
     ({ url: `${SITE_URL}${path}`, lastModified: now, changeFrequency, priority });
   return [
     page('/', 1, 'daily'),
     page('/tours/', 0.9, 'daily'),
     page('/rent-a-car/', 0.9, 'daily'),
     page('/destinations/', 0.9, 'weekly'),
+    page('/weather/', 0.9, 'hourly'),
     page('/hotels/', 0.8, 'daily'),
     page('/partner/', 0.7, 'monthly'),
     ...s.destinations.map((d) => page(`/tours/${d.slug}/`, d.upcomingTours > 0 ? 0.8 : 0.5, 'daily')),

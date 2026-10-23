@@ -12,7 +12,8 @@ import { PlayButton } from '@/components/PlayButton';
 import { api, img } from '@/lib/api';
 import { whatsappLink } from '@/lib/config';
 import { rs } from '@/lib/format';
-import type { Destination, Home, RentCar } from '@/lib/types';
+import type { Destination, Home, RentCar, Weather } from '@/lib/types';
+import { updatedAt, useWeather, WxCard } from '@/components/Weather';
 
 const POPULAR = ['Keran · 2 days', 'Sharda & Kel · 3 days', 'Arang Kel · 4 days', 'Ratti Gali · 4 days', 'Leepa · 2 days', 'Banjosa & Toli Pir · 1 day'];
 const HOTEL_CITIES = ['Muzaffarabad', 'Neelum', 'Rawalakot', 'Bagh', 'Kotli', 'Mirpur', 'Leepa'];
@@ -23,7 +24,7 @@ const FALLBACK: Slide[] = [
 ];
 type Tab = 'tours' | 'rent' | 'hotels';
 
-export function HomeView({ initial, initialCars }: { initial: Home; initialCars: RentCar[] }) {
+export function HomeView({ initial, initialCars, initialWeather }: { initial: Home; initialCars: RentCar[]; initialWeather: Weather }) {
   const [home, setHome] = useState(initial);
   const [cars, setCars] = useState(initialCars);
   const router = useRouter();
@@ -31,6 +32,8 @@ export function HomeView({ initial, initialCars }: { initial: Home; initialCars:
   const [q, setQ] = useState({ dest: '', date: '', people: '2', mode: '', category: '', city: '' });
   const [plan, setPlan] = useState({ to: '', date: '', people: '4', days: '2' });
   const [district, setDistrict] = useState('');
+  const weather = useWeather(initialWeather);
+  const [wxTab, setWxTab] = useState('');
 
   useEffect(() => {
     api<Home>('/api/v1/web/home').then(setHome).catch(() => undefined);
@@ -154,6 +157,25 @@ export function HomeView({ initial, initialCars }: { initial: Home; initialCars:
           </div>
         </section>
       </div>
+
+      {weather.places.length > 0 && (
+        <div className="wrap">
+          <section className="wxsec" aria-labelledby="wx-h">
+            <div className="h3row">
+              <div><h2 id="wx-h">Weather before you go</h2><p>Live for every tehsil and the high spots — updated every hour{weather.updatedAt ? ` (last ${updatedAt(weather.updatedAt)})` : ''}. Check before you leave.</p></div>
+              <Link className="arrowLink" href="/weather/">All places →</Link>
+            </div>
+            {weather.roadUpdates[0] && <Link href="/weather/" className="wxroad">⚠ {weather.roadUpdates[0].title}{weather.roadUpdates[0].route ? ` · ${weather.roadUpdates[0].route}` : ''} →</Link>}
+            <div className="wxtop" role="tablist" aria-label="Weather places">
+              <button className={wxTab === '' ? 'on' : ''} onClick={() => setWxTab('')}>Popular spots</button>
+              {[...new Set(weather.places.map((p) => p.district).filter(Boolean))].sort().slice(0, 7).map((d) => <button key={d} className={wxTab === d ? 'on' : ''} onClick={() => setWxTab(d)}>{d}</button>)}
+            </div>
+            <div className="wxrow">
+              {(wxTab ? weather.places.filter((p) => p.district === wxTab) : [...weather.places.filter((p) => p.kind === 'Spot'), ...weather.places.filter((p) => p.kind !== 'Spot')]).slice(0, 4).map((p) => <WxCard key={p.key} p={p} />)}
+            </div>
+          </section>
+        </div>
+      )}
 
       <section className="dark3" aria-labelledby="rent-h">
         <div className="wrap">

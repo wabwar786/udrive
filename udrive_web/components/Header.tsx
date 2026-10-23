@@ -12,6 +12,7 @@ const LINKS = [
   ['/rent-a-car/', 'Rent a car'],
   ['/hotels/', 'Hotels'],
   ['/destinations/', 'Destinations'],
+  ['/weather/', 'Weather'],
   ['/partner/', 'Become a partner'],
 ] as const;
 

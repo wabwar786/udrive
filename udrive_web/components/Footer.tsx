@@ -18,6 +18,7 @@ export function Footer() {
           <Link href="/rent-a-car/">Rent a car</Link>
           <Link href="/hotels/">Hotels</Link>
           <Link href="/destinations/">Destinations</Link>
+          <Link href="/weather/">Weather</Link>
           <Link href="/rides/">City rides</Link>
         </div>
         <div>

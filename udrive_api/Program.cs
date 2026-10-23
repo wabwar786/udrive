@@ -204,6 +204,8 @@ builder.Services.AddScoped<WebsiteService>(sp => new WebsiteService(
     sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
 builder.Services.AddScoped<WebRentCarsService>(sp => new WebRentCarsService(
     sp.GetRequiredService<RentalService>(), sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
+builder.Services.AddScoped<WebWeatherService>(sp => new WebWeatherService(
+    connectionString, sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
 builder.Services.AddScoped<PartnerRequestService>(_ => new PartnerRequestService(connectionString));
 builder.Services.AddScoped<HotelSpecialRatesService>(_ => new HotelSpecialRatesService(connectionString));
 builder.Services.AddScoped<WebsiteAdminService>(sp => new WebsiteAdminService(

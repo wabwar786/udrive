@@ -18,8 +18,13 @@ namespace UDrive.Api.Controllers;
 [EnableRateLimiting("web")]
 [RejectMarkup]
 [Route("api/v1/web")]
-public sealed class WebsiteController(WebsiteService service, WebRentCarsService rentCars) : ControllerBase
+public sealed class WebsiteController(WebsiteService service, WebRentCarsService rentCars, WebWeatherService weather) : ControllerBase
 {
+    /// <summary>Weather now and for 4 days, every tehsil and tourist spot, plus active road updates.</summary>
+    [AllowAnonymous]
+    [HttpGet("weather")]
+    public async Task<IActionResult> Weather(CancellationToken ct) => HubResults.From(this, await weather.GetAsync(ct));
+
     /// <summary>Approved rent-a-car vehicles, trimmed for the public site.</summary>
     [AllowAnonymous]
     [HttpGet("rent-cars")]
