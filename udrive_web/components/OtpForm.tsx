@@ -2,22 +2,30 @@
 
 import { useEffect, useState } from 'react';
 
-import { currentToken, requestCode, signedInPhone, verifyCode } from '@/lib/auth';
+import { currentToken, requestCode, verifyCode } from '@/lib/auth';
+import { useSession } from '@/lib/useSession';
 import { normalisePhone } from '@/lib/format';
 
 /**
  * Name + WhatsApp number → 4-digit code on WhatsApp → signed in.
- * The token stays in memory only. `onVerified` gets the token.
+ * The session is kept for this tab only (see lib/auth). `onVerified` gets the token.
+ * `askName={false}` hides the name (log-in page: the name is optional there).
  */
 export function OtpForm({
   action,
   onVerified,
   busy,
+  askName = true,
+  presetName = '',
 }: {
   action: string;
   onVerified: (token: string, name: string) => void;
   busy?: boolean;
+  askName?: boolean;
+  /** Name typed elsewhere on the page (sent with the code when askName is off). */
+  presetName?: string;
 }) {
+  const { ready, user } = useSession();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -32,13 +40,17 @@ export function OtpForm({
     return () => clearTimeout(t);
   }, [wait]);
 
-  const token = currentToken();
-  if (token && signedInPhone()) {
+  useEffect(() => {
+    if (user?.name && !name) setName(user.name);
+  }, [user, name]);
+
+  const token = ready && user ? currentToken() : null;
+  if (token && user) {
     return (
       <>
-        <label className="fld"><span>Your name</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoComplete="name" /></label>
-        <div className="msg info">Signed in with {signedInPhone()}.</div>
-        <button className="btn dark block" disabled={busy || name.trim().length < 2} onClick={() => onVerified(token, name.trim())}>{action}</button>
+        {askName && <label className="fld"><span>Your name</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoComplete="name" /></label>}
+        <div className="msg info">Logged in with {user.phone}.</div>
+        <button className="btn dark block" disabled={busy || (askName && name.trim().length < 2)} onClick={() => onVerified(token, askName ? name.trim() : presetName.trim())}>{action}</button>
       </>
     );
   }
@@ -46,7 +58,7 @@ export function OtpForm({
   async function send() {
     setError('');
     const p = normalisePhone(phone);
-    if (name.trim().length < 2) return setError('Please write your name.');
+    if (askName && name.trim().length < 2) return setError('Please write your name.');
     if (!p) return setError('Write a Pakistani mobile number, like 0300 1234567.');
     setWorking(true);
     try {
@@ -65,7 +77,7 @@ export function OtpForm({
     if (!/^\d{4,8}$/.test(code.trim())) return setError('Write the code from WhatsApp.');
     setWorking(true);
     try {
-      const t = await verifyCode(p, code, name);
+      const t = await verifyCode(p, code, askName ? name : presetName);
       onVerified(t, name.trim());
     } catch (e) {
       setError((e as Error).message);
@@ -76,7 +88,7 @@ export function OtpForm({
 
   return (
     <>
-      <label className="fld"><span>Your name</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoComplete="name" disabled={sent} /></label>
+      {askName && <label className="fld"><span>Your name</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoComplete="name" disabled={sent} /></label>}
       <label className="fld"><span>WhatsApp number</span><input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="0300 1234567" disabled={sent} /></label>
       {sent && (
         <label className="fld"><span>Code sent to your WhatsApp</span><input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} inputMode="numeric" autoComplete="one-time-code" maxLength={8} autoFocus /></label>

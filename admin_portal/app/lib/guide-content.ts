@@ -763,6 +763,46 @@ export const guideGroups: GuideGroup[] = [
         },
       },
       {
+        path: '/partner-requests',
+        title: 'Partner requests',
+        purpose: {
+          ur: 'Website ke "Become a partner" form se aayi requests: kaun, kis shehar mein, kitna budget. Yahan se status badlein aur jawab dein.',
+          en: 'Requests from the website "Become a partner" form: who, which city, what budget. Change the status and reply from here.',
+        },
+        steps: [
+          {
+            ur: 'Bayen list se request chunein. Upar chips se New, Contacted, Meeting waghaira filter karein.',
+            en: 'Pick a request on the left. Use the chips at the top to filter New, Contacted, Meeting and so on.',
+          },
+          {
+            ur: 'Reply likhein aur "Also send on WhatsApp" tick rakhein — applicant ko WhatsApp par bhi jayega aur website par "My partnership request" mein bhi dikhega. Pehla reply status ko New se Contacted kar deta hai.',
+            en: 'Write a reply and keep "Also send on WhatsApp" ticked — the applicant gets it on WhatsApp and sees it on the website under "My partnership request". The first reply moves New to Contacted.',
+          },
+          {
+            ur: '"Internal note" sirf team ko dikhta hai, applicant ko kabhi nahi.',
+            en: '"Internal note" is for the team only; the applicant never sees it.',
+          },
+          {
+            ur: 'Meeting tay ho to status Meeting karein; faisla ho to Approved ya Declined; kaam khatam ho to Closed.',
+            en: 'Set Meeting once a meeting is agreed; Approved or Declined after the decision; Closed when finished.',
+          },
+        ],
+        cautions: [
+          {
+            ur: 'Form bharna agreement nahi. Kabhi WhatsApp par raqam na maangein — agreement sign hone ke baad hi.',
+            en: 'The form is not an agreement. Never ask for money on WhatsApp — only after an agreement is signed.',
+          },
+          {
+            ur: 'Phone number login (WhatsApp OTP) se aata hai, is liye asli hai. Ek waqt mein ek shakhs ki sirf ek khuli request hoti hai.',
+            en: 'The phone number comes from the WhatsApp OTP login, so it is real. One person can have only one open request at a time.',
+          },
+        ],
+        roles: {
+          ur: 'SuperAdmin, Admin, Manager, Operations.',
+          en: 'SuperAdmin, Admin, Manager, Operations.',
+        },
+      },
+      {
         path: '/marketplace',
         title: 'Marketplace console',
         purpose: {

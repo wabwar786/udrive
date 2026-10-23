@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { OtpForm } from '@/components/OtpForm';
 import { PlayButton } from '@/components/PlayButton';
-import { api, img } from '@/lib/api';
-import { signedInPhone } from '@/lib/auth';
+import { img } from '@/lib/api';
+import Link from 'next/link';
+import { authApi, session, signedInPhone } from '@/lib/auth';
 import { normalisePhone, rs } from '@/lib/format';
 
 /*
@@ -36,7 +37,6 @@ function parseLocation(text: string): [number, number] | null {
 
 export function HotelWizard() {
   const [step, setStep] = useState(0);
-  const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -49,7 +49,12 @@ export function HotelWizard() {
   });
   const [room, setRoom] = useState({ roomType: 'Double room', capacity: 2, totalRooms: 1, baseRate: 5000, description: '' });
 
-  const call = async <T,>(path: string, init: RequestInit = {}) => api<T>(path, { ...init, token });
+  const call = async <T,>(path: string, init: RequestInit = {}) => authApi<T>(path, init);
+  // Already logged in on the website: skip the sign-in step.
+  useEffect(() => {
+    const s = session();
+    if (s) { setOwner((o) => ({ ...o, ownerName: o.ownerName || s.name })); setStep((x) => (x === 0 ? 1 : x)); }
+  }, []);
   async function run(fn: () => Promise<void>) {
     setBusy(true);
     setError('');
@@ -154,7 +159,7 @@ export function HotelWizard() {
         <div className="box">
           <h3 style={{ marginBottom: 6 }}>Sign in with WhatsApp</h3>
           <p className="muted" style={{ marginTop: 0 }}>Use the owner&apos;s own number. The same number opens Hotel mode in the UDrive app.</p>
-          <OtpForm action="Continue" onVerified={(t, name) => { setToken(t); setOwner((o) => ({ ...o, ownerName: o.ownerName || name })); setStep(1); }} />
+          <OtpForm action="Continue" onVerified={(_t, name) => { setOwner((o) => ({ ...o, ownerName: o.ownerName || name })); setStep(1); }} />
         </div>
       )}
 
@@ -247,8 +252,11 @@ export function HotelWizard() {
         <div className="box done">
           <div className="big">✓</div>
           <h3>Sent for review</h3>
-          <p className="muted">We&apos;ll check it soon. To edit photos, rooms or prices later, open the UDrive app with the same number and switch to Hotel mode. Keep your hotel wallet topped up to receive bookings.</p>
-          <PlayButton />
+          <p className="muted">We&apos;ll check it soon. Change rooms, rates, special dates and photos any time from your account here, or from Hotel mode in the UDrive app. Keep your hotel wallet topped up to receive bookings.</p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link className="btn dark" href="/account/?tab=hotels">Go to my account</Link>
+            <PlayButton />
+          </div>
         </div>
       )}
     </div>

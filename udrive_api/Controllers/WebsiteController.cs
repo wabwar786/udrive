@@ -16,9 +16,16 @@ namespace UDrive.Api.Controllers;
 /// </remarks>
 [ApiController]
 [EnableRateLimiting("web")]
+[RejectMarkup]
 [Route("api/v1/web")]
-public sealed class WebsiteController(WebsiteService service) : ControllerBase
+public sealed class WebsiteController(WebsiteService service, WebRentCarsService rentCars) : ControllerBase
 {
+    /// <summary>Approved rent-a-car vehicles, trimmed for the public site.</summary>
+    [AllowAnonymous]
+    [HttpGet("rent-cars")]
+    public async Task<IActionResult> RentCars([FromQuery] string? mode, [FromQuery] string? category, CancellationToken ct) =>
+        HubResults.From(this, await rentCars.ListAsync(mode, category, ct));
+
     [AllowAnonymous]
     [HttpGet("home")]
     public async Task<IActionResult> Home(CancellationToken ct) => HubResults.From(this, await service.HomeAsync(ct));

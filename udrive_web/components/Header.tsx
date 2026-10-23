@@ -1,22 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import { PLAY_URL, WHATSAPP, whatsappLabel, whatsappLink } from '@/lib/config';
+import { signOut } from '@/lib/auth';
+import { useSession } from '@/lib/useSession';
 
 const LINKS = [
   ['/tours/', 'Tours'],
+  ['/rent-a-car/', 'Rent a car'],
   ['/hotels/', 'Hotels'],
-  ['/rides/', 'City rides'],
-  ['/list-your-hotel/', 'List your hotel'],
-  ['/drive/', 'Drive with us'],
+  ['/destinations/', 'Destinations'],
+  ['/partner/', 'Become a partner'],
 ] as const;
 
 export function Header() {
   const path = usePathname() ?? '/';
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const { user } = useSession();
+  const first = (user?.name || '').split(' ')[0] || 'Account';
+
   return (
     <header className="top">
       <div className="wrap">
@@ -30,13 +36,23 @@ export function Header() {
               {label}
             </Link>
           ))}
+          <Link className="navOnly" href={user ? '/account/' : '/login/?next=/account/'} onClick={() => setOpen(false)}>List your vehicle or hotel</Link>
         </nav>
-        {WHATSAPP && (
-          <a className="wa" href={whatsappLink()} target="_blank" rel="noopener noreferrer">
-            WhatsApp {whatsappLabel()}
-          </a>
+        <Link className="btn ghost listBtn" href={user ? '/account/' : '/login/?next=/account/'}>List your vehicle or hotel</Link>
+        {user ? (
+          <div className="who">
+            <button className="btn dark" aria-expanded={menu} onClick={() => setMenu(!menu)}>{first} ▾</button>
+            {menu && (
+              <div className="whoMenu" onMouseLeave={() => setMenu(false)}>
+                <Link href="/account/" onClick={() => setMenu(false)}>My account</Link>
+                <Link href="/account/?tab=partner" onClick={() => setMenu(false)}>My partnership request</Link>
+                <button onClick={async () => { setMenu(false); await signOut(); router.push('/'); }}>Log out</button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <Link className="btn dark" href={`/login/?next=${encodeURIComponent(path.startsWith('/login') ? '/account/' : path)}`}>Log in</Link>
         )}
-        <a className="btn dark getApp" href={PLAY_URL} target="_blank" rel="noopener noreferrer">Get the app</a>
         <button className="menuBtn" aria-expanded={open} onClick={() => setOpen(!open)}>Menu</button>
       </div>
     </header>

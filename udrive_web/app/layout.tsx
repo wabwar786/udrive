@@ -3,12 +3,12 @@ import type { Metadata, Viewport } from 'next';
 import { Footer } from '@/components/Footer';
 import { Header } from '@/components/Header';
 import { JsonLd } from '@/components/JsonLd';
-import { PLAY_URL, SITE_DESCRIPTION, SITE_NAME, SITE_URL, WHATSAPP } from '@/lib/config';
+import { API_URL, PLAY_URL, SITE_DESCRIPTION, SITE_NAME, SITE_URL, WHATSAPP } from '@/lib/config';
 import './globals.css';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: `${SITE_NAME} — Tours, hotels and rides in Azad Kashmir`, template: `%s | ${SITE_NAME}` },
+  title: { default: `${SITE_NAME} — Tours, rent a car and hotels in Azad Kashmir`, template: `%s | ${SITE_NAME}` },
   description: SITE_DESCRIPTION,
   applicationName: 'UDrive',
   alternates: { canonical: '/' },
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     locale: 'en_PK',
     url: '/',
-    title: `${SITE_NAME} — Tours, hotels and rides in Azad Kashmir`,
+    title: `${SITE_NAME} — Tours, rent a car and hotels in Azad Kashmir`,
     description: SITE_DESCRIPTION,
     images: [{ url: '/og.png', width: 1200, height: 630, alt: 'UDrive — Travel & Tour in Azad Kashmir' }],
   },
@@ -31,6 +31,7 @@ export const viewport: Viewport = { themeColor: '#0B1B33', width: 'device-width'
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>{API_URL && <link rel="preconnect" href={API_URL} crossOrigin="anonymous" />}</head>
       <body>
         <JsonLd
           data={{
@@ -50,7 +51,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 ...(WHATSAPP ? { telephone: `+${WHATSAPP}` } : {}),
                 sameAs: [PLAY_URL],
               },
-              { '@type': 'WebSite', '@id': `${SITE_URL}/#site`, url: `${SITE_URL}/`, name: SITE_NAME, publisher: { '@id': `${SITE_URL}/#org` }, inLanguage: 'en' },
+              { '@type': 'WebSite', '@id': `${SITE_URL}/#site`, url: `${SITE_URL}/`, name: SITE_NAME, alternateName: 'UDrive', publisher: { '@id': `${SITE_URL}/#org` }, inLanguage: 'en' },
+              {
+                '@type': 'SiteNavigationElement',
+                name: ['Tours', 'Rent a car', 'Hotels', 'Destinations', 'Become a partner'],
+                url: ['/tours/', '/rent-a-car/', '/hotels/', '/destinations/', '/partner/'].map((p) => `${SITE_URL}${p}`),
+              },
             ],
           }}
         />

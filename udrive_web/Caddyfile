@@ -28,6 +28,10 @@
 		-Server
 	}
 
+	# Signed-in pages are never indexed.
+	@private path /account/* /login/*
+	header @private X-Robots-Tag "noindex, nofollow"
+
 	# /hotels/<new-hotel>/ and /tours/<new-place>/ added after the last build
 	# get the live shell page, which loads them from the API.
 	@hotelNew {

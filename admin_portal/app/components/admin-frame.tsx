@@ -29,6 +29,7 @@ import {
   Megaphone,
   Gift,
   Handshake,
+  Inbox,
   Menu,
   MessageSquareWarning,
   Mountain,
@@ -141,6 +142,7 @@ const groups = [
     items: [
       ['/campaigns', 'Campaigns', Gift],
       ['/launch-cities', 'Launch cities', TowerControl],
+      ['/partner-requests', 'Partner requests', Inbox],
       ['/partners', 'Territory partners', Handshake],
       ['/territories', 'Territories & areas', Network],
     ],

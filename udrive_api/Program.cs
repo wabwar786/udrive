@@ -202,6 +202,10 @@ builder.Services.AddScoped<WebsiteService>(sp => new WebsiteService(
     sp.GetRequiredService<PackageMarketplaceService>(),
     sp.GetRequiredService<Phase18TourService>(),
     sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
+builder.Services.AddScoped<WebRentCarsService>(sp => new WebRentCarsService(
+    sp.GetRequiredService<RentalService>(), sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
+builder.Services.AddScoped<PartnerRequestService>(_ => new PartnerRequestService(connectionString));
+builder.Services.AddScoped<HotelSpecialRatesService>(_ => new HotelSpecialRatesService(connectionString));
 builder.Services.AddScoped<WebsiteAdminService>(sp => new WebsiteAdminService(
     connectionString, sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
 builder.Services.AddHttpClient(WeatherWorker.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));

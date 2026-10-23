@@ -103,3 +103,73 @@ export const EMPTY_HOME: Home = {
   destinations: [],
   ads: [],
 };
+
+// ───────────────────────────── rent a car (public)
+export type RentCar = {
+  id: string;
+  name: string;
+  category: string;
+  year: number;
+  seats: number;
+  photoUrl: string | null;
+  withDriverDaily: number | null;
+  selfDriveDaily: number | null;
+  securityDeposit: number;
+  minimumDays: number;
+  kmPerDay: number | null;
+  fuelIncluded: boolean;
+  pickupPoint: string | null;
+  ownerName: string;
+  ownerRating: number;
+  airConditioning: boolean;
+  fourByFour: boolean;
+};
+
+// ───────────────────────────── owner area (same API as the app)
+export type Kit = { fourByFour: boolean; firstAidKit: boolean; spareTyre: boolean; fireExtinguisher: boolean; snowChains: boolean; heating: boolean; airConditioning: boolean };
+export type Review = { status: 'None' | 'Pending' | 'Approved' | 'Rejected' | 'Info' | string; note: string | null };
+export type OwnerVehicle = {
+  id: string; name: string; make: string; model: string; year: number; category: string; isFourByFour: boolean;
+  registrationNumber: string; seats: number; photoUrl: string | null; status: string; reviewNote: string | null;
+  wantsRent: boolean; wantsTour: boolean; availableForRent: boolean; availableForTour: boolean;
+  withDriverDaily: number | null; selfDriveDaily: number | null; pickupPoint: string | null;
+  readinessScore: number; readinessRequired: number; kit: Kit;
+  docs: { front: boolean; registrationFront: boolean; registrationBack: boolean };
+  pendingRentals: number; tehsilId?: string | null; tehsilName?: string | null; districtName?: string | null;
+  rentReview?: Review; tourReview?: Review;
+};
+export type OwnerProfile = {
+  hasProfile: boolean; drivesSelf: boolean; cnicFront: boolean; cnicBack: boolean; selfie: boolean;
+  licenceFront: boolean; licenceBack: boolean; licenceNumber: string | null; licenceExpiry: string | null;
+  agreementAccepted: boolean; agreementVersion: number;
+};
+export type FleetDriver = { id: string; name: string; phone: string; isOwner: boolean; status: string; licenceExpiry: string | null; licenceValid: boolean; expiresInDays: number | null; reviewNote: string | null };
+export type ListingHome = { owner: OwnerProfile; vehicles: OwnerVehicle[]; drivers: FleetDriver[]; invites: number };
+export type Area = { id: string; name: string; tehsils: { id: string; name: string }[] };
+export type CalendarDay = { date: string; state: 'past' | 'booked' | 'pending' | 'blocked' | 'tour' | 'free' | string };
+export type Departure = {
+  date: string | null; packageId: string | null; from: string; destinationId: string; destination: string; time: string;
+  durationDays: number; seatsSold: number; totalSeats: number; pricePerSeat: number; wholeVehiclePrice: number;
+  pickupPoint: string; fleetDriverId: string | null; driverName: string | null;
+};
+export type DepartureMonth = { days: Departure[]; template: Departure | null; totalSeats: number; perSeatAllowed: boolean };
+export type OwnerRental = {
+  id: string; bookingReference: string; vehicleId: string; vehicleName: string; registrationNumber: string; photoUrl: string | null;
+  startDate: string; endDate: string; rentalMode: string; days: number; dailyRate: number; subtotal: number; securityDeposit: number;
+  advanceAmount: number; balanceDue: number; pickupPoint: string | null; status: string; counterpartName: string; counterpartPhone: string | null; createdAt: string;
+};
+
+// hotels (owner)
+export type OwnerHotelCard = { id: string; name: string; propertyType: string; city: string; district: string; status: string; rejectionReason: string | null; isActive: boolean; photoUrl: string; photoCount: number; roomTypes: number; contactPhone: string };
+export type HotelOwnerHome = { profile: { ownerName: string; businessName: string; cnicFront: boolean; cnicBack: boolean; verificationStatus: string; complete: boolean }; hotels: OwnerHotelCard[] };
+export type OwnerRoom = { id: string; roomType: string; description: string; capacity: number; totalRooms: number; baseRate: number; imageUrl: string };
+export type OwnerHotel = {
+  id: string; name: string; propertyType: string; description: string; address: string; city: string; district: string;
+  contactPhone: string; status: string; rejectionReason: string | null; isActive: boolean;
+  photos: { id: string; url: string; isMain: boolean }[]; rooms: OwnerRoom[]; missing: string[];
+};
+export type SpecialRate = { id: string; roomId: string | null; roomType: string; startsOn: string; endsOn: string; rate: number | null; percent: number | null; roomsOpen: number | null };
+
+// partner
+export type PartnerMessage = { id: string; author: 'Applicant' | 'Team' | string; body: string; whatsAppSent: boolean; createdAt: string };
+export type PartnerRequest = { id: string; reference: string; fullName: string; currentCity: string; targetCity: string; budget: string; status: string; createdAt: string; messages: PartnerMessage[] };

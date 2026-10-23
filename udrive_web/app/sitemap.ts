@@ -14,7 +14,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   return [
     page('/', 1, 'daily'),
     page('/tours/', 0.9, 'daily'),
+    page('/rent-a-car/', 0.9, 'daily'),
+    page('/destinations/', 0.9, 'weekly'),
     page('/hotels/', 0.8, 'daily'),
+    page('/partner/', 0.7, 'monthly'),
     ...s.destinations.map((d) => page(`/tours/${d.slug}/`, d.upcomingTours > 0 ? 0.8 : 0.5, 'daily')),
     ...s.hotels.map((h) => page(`/hotels/${h.slug}/`, 0.7, 'weekly')),
     page('/list-your-hotel/', 0.6, 'monthly'),

@@ -14,6 +14,7 @@ namespace UDrive.Api.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
+[RejectMarkup]
 [Route("api/v1/listings")]
 public sealed class ListingsController(
     ListingService service,

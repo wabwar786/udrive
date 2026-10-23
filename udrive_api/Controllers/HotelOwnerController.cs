@@ -16,8 +16,9 @@ namespace UDrive.Api.Controllers;
 /// </remarks>
 [ApiController]
 [Authorize]
+[RejectMarkup]
 [Route("api/v1/hotels/owner")]
-public sealed class HotelOwnerController(HotelOwnerService service) : ControllerBase
+public sealed class HotelOwnerController(HotelOwnerService service, HotelSpecialRatesService specialRates) : ControllerBase
 {
     [HttpGet("home")]
     public async Task<IActionResult> Home(CancellationToken ct) =>
@@ -73,12 +74,34 @@ public sealed class HotelOwnerController(HotelOwnerService service) : Controller
         HubResults.From(this, await service.SaveRoomAsync(User.GetRequiredUserId(), id, null, request, ct));
 
     [HttpPut("hotels/{id:guid}/rooms/{roomId:guid}")]
-    public async Task<IActionResult> UpdateRoom(Guid id, Guid roomId, SaveOwnerRoomRequest request, CancellationToken ct) =>
-        HubResults.From(this, await service.SaveRoomAsync(User.GetRequiredUserId(), id, roomId, request, ct));
+    public async Task<IActionResult> UpdateRoom(Guid id, Guid roomId, SaveOwnerRoomRequest request, CancellationToken ct)
+    {
+        var result = await service.SaveRoomAsync(User.GetRequiredUserId(), id, roomId, request, ct);
+        // A percent special date follows the room's base rate.
+        if (result.Success) await specialRates.RebuildForOwnerAsync(User.GetRequiredUserId(), id, ct);
+        return HubResults.From(this, result);
+    }
+
+    /// <summary>Special dates: a different rate or fewer rooms open for a range of days.</summary>
+    [HttpGet("hotels/{id:guid}/special-rates")]
+    public async Task<IActionResult> SpecialRates(Guid id, CancellationToken ct) =>
+        HubResults.From(this, await specialRates.ListAsync(User.GetRequiredUserId(), id, ct));
+
+    [HttpPost("hotels/{id:guid}/special-rates")]
+    public async Task<IActionResult> AddSpecialRate(Guid id, SaveSpecialRateRequest request, CancellationToken ct) =>
+        HubResults.From(this, await specialRates.AddAsync(User.GetRequiredUserId(), id, request, ct));
+
+    [HttpPost("hotels/{id:guid}/special-rates/{rateId:guid}/remove")]
+    public async Task<IActionResult> RemoveSpecialRate(Guid id, Guid rateId, CancellationToken ct) =>
+        HubResults.From(this, await specialRates.RemoveAsync(User.GetRequiredUserId(), id, rateId, ct));
 
     [HttpPost("hotels/{id:guid}/rooms/{roomId:guid}/remove")]
-    public async Task<IActionResult> RemoveRoom(Guid id, Guid roomId, CancellationToken ct) =>
-        HubResults.From(this, await service.RemoveRoomAsync(User.GetRequiredUserId(), id, roomId, ct));
+    public async Task<IActionResult> RemoveRoom(Guid id, Guid roomId, CancellationToken ct)
+    {
+        var result = await service.RemoveRoomAsync(User.GetRequiredUserId(), id, roomId, ct);
+        if (result.Success) await specialRates.RebuildForOwnerAsync(User.GetRequiredUserId(), id, ct);
+        return HubResults.From(this, result);
+    }
 
     [HttpPost("hotels/{id:guid}/rooms/{roomId:guid}/photo")]
     [Consumes("multipart/form-data")]

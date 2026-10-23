@@ -10,7 +10,7 @@ export const PLAY_URL =
 
 export const SITE_NAME = 'UDrive – Travel & Tour';
 export const SITE_DESCRIPTION =
-  'Book tours across Azad Kashmir with verified local drivers — Neelum, Leepa, Banjosa and more. Per seat or the whole vehicle, 20% advance, hotels on the route.';
+  'Tours, rent a car and hotels across Azad Kashmir — Neelum, Leepa, Banjosa and more, with verified local drivers and owners. Book a seat or the whole vehicle with a 20% advance.';
 
 export const whatsappLink = (text?: string) =>
   WHATSAPP ? `https://wa.me/${WHATSAPP}${text ? `?text=${encodeURIComponent(text)}` : ''}` : PLAY_URL;

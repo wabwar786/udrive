@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import { img } from '@/lib/api';
 import { daysLabel, rs, when } from '@/lib/format';
-import type { HotelCard as Hotel, TourCard as Tour } from '@/lib/types';
+import type { HotelCard as Hotel, RentCar, TourCard as Tour } from '@/lib/types';
 import { Picture } from './Scene';
 
 export function TourCard({ t }: { t: Tour }) {
@@ -70,4 +70,26 @@ export function HotelCard({ h, href }: { h: Hotel; href?: string }) {
 
 export function SkeletonGrid({ n = 4, cls = 'grid4' }: { n?: number; cls?: string }) {
   return <div className={cls}>{Array.from({ length: n }, (_, i) => <div key={i} className="skel" />)}</div>;
+}
+
+/** A car for rent. Booking happens in the UDrive app (deposit, handover photos). */
+export function RentCard({ c }: { c: RentCar }) {
+  const extras = [`${c.seats} seats`, c.airConditioning && 'AC', c.fourByFour && '4×4', c.pickupPoint].filter(Boolean).join(' · ');
+  return (
+    <div className="rc">
+      <div className="im"><Picture src={img(c.photoUrl)} alt={`${c.name} ${c.year} for rent`} seed={c.name} /></div>
+      <div className="bd">
+        <b>{c.name} {c.year}</b>
+        <div className="m">{extras}</div>
+        <div className="p">
+          <span>with driver<br /><strong>{c.withDriverDaily ? rs(c.withDriverDaily) : '—'}</strong>{c.withDriverDaily ? '/day' : ''}</span>
+          <span style={{ textAlign: 'right' }}>self drive<br /><strong>{c.selfDriveDaily ? rs(c.selfDriveDaily) : '—'}</strong>{c.selfDriveDaily ? '/day' : ''}</span>
+        </div>
+        <div className="driver" style={{ marginTop: 8 }}>
+          <span className="av">{c.ownerName.slice(0, 1)}</span>{c.ownerName}{c.ownerRating > 0 ? ` · ★ ${c.ownerRating.toFixed(1)}` : ' · new owner'}
+          {c.minimumDays > 1 ? ` · min ${c.minimumDays} days` : ''}
+        </div>
+      </div>
+    </div>
+  );
 }

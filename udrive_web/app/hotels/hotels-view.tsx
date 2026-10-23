@@ -16,6 +16,12 @@ export function HotelsView({ initial }: { initial: Page<Hotel> }) {
   const [data, setData] = useState<Page<Hotel> | null>(initial.items.length ? initial : null);
   const [error, setError] = useState('');
 
+  // /hotels/?city=Neelum from the home page search.
+  useEffect(() => {
+    const c = new URLSearchParams(window.location.search).get('city');
+    if (c && CITIES.includes(c)) setCity(c);
+  }, []);
+
   useEffect(() => {
     const q = new URLSearchParams({ page: String(page) });
     if (city) q.set('city', city);

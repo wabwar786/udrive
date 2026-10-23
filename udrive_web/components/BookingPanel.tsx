@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import { api } from '@/lib/api';
+import { authApi } from '@/lib/auth';
 import { whatsappLink } from '@/lib/config';
 import { rs, when } from '@/lib/format';
 import type { BookingResult, TourDetail } from '@/lib/types';
@@ -21,13 +21,12 @@ export function BookingPanel({ detail }: { detail: TourDetail }) {
   const advance = Math.ceil((total * detail.advancePercent) / 100);
   const canBook = mode === 'whole' ? t.wholeVehicleAvailable : seatSale;
 
-  async function book(token: string, name: string) {
+  async function book(_token: string, name: string) {
     setBusy(true);
     setError('');
     try {
-      const r = await api<BookingResult>(`/api/v1/web/tours/${t.id}/book`, {
+      const r = await authApi<BookingResult>(`/api/v1/web/tours/${t.id}/book`, {
         method: 'POST',
-        token,
         body: JSON.stringify({ mode, seats: mode === 'whole' ? t.totalSeats : seats, fullName: name }),
       });
       setDone(r);

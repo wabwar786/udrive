@@ -15,12 +15,15 @@ export function Footer() {
         <div>
           <b>Travel</b>
           <Link href="/tours/">Tour packages</Link>
+          <Link href="/rent-a-car/">Rent a car</Link>
           <Link href="/hotels/">Hotels</Link>
+          <Link href="/destinations/">Destinations</Link>
           <Link href="/rides/">City rides</Link>
-          <Link href="/rides/#rent">Rent a car</Link>
         </div>
         <div>
           <b>Partners</b>
+          <Link href="/partner/">Become a partner</Link>
+          <Link href="/account/">List your vehicle</Link>
           <Link href="/list-your-hotel/">List your hotel</Link>
           <Link href="/drive/">Drive with UDrive</Link>
           <a href={whatsappLink('Assalam o Alaikum, I want to advertise on UDrive.')} target="_blank" rel="noopener noreferrer">Advertise with us</a>
