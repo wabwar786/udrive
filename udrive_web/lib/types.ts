@@ -197,7 +197,7 @@ export type MyRental = {
 export type Waitlist = { id: string; vehicleId: string; vehicleName: string; startDate: string; endDate: string; rentalMode: string; status: string; acceptExpiresAt: string | null; createdAt: string };
 
 // ───────────────────────────── weather (hourly readings stored by the API)
-export type WxDay = { date: string; code: number; max: number; min: number; rain: number; snow: number; windMax: number };
+export type WxDay = { date: string; code: number; max: number; min: number; rain: number; snow: number; windMax: number; chance?: number | null };
 export type WxPlace = { key: string; name: string; district: string; kind: 'Spot' | 'Tehsil' | string; latitude?: number; longitude?: number; now: { temperature: number; code: number; wind: number }; days: WxDay[]; advice: { level: 'ok' | 'warn' | 'bad' | string; text: string } };
 export type RoadUpdate = { title: string; details: string; severity: string; route: string | null; source: string; startsAt: string };
 export type Weather = { updatedAt: string | null; places: WxPlace[]; roadUpdates: RoadUpdate[] };

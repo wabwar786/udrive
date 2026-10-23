@@ -51,11 +51,17 @@ export function dayName(iso: string, k: number) {
   if (k === 0) return 'Today';
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' });
 }
+/** “Updated 7:22 am” for the label. */
 export const updatedAt = (iso: string | null) => (iso ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(iso)) : '');
 
 /** Live weather: build-time snapshot first, then fresh from the API. */
 export function useWeather(initial: Weather = EMPTY_WEATHER) {
+  // The snapshot baked in at build time can be days old: shown only if it is
+  // under 3 hours old, otherwise nothing until the live reading arrives.
   const [w, setW] = useState(initial);
+  useEffect(() => {
+    if (initial.updatedAt && Date.now() - Date.parse(initial.updatedAt) > 3 * 3600_000) setW((x) => (x === initial ? EMPTY_WEATHER : x));
+  }, [initial]);
   useEffect(() => { api<Weather>('/api/v1/web/weather').then(setW).catch(() => undefined); }, []);
   return w;
 }
@@ -63,7 +69,7 @@ export function useWeather(initial: Weather = EMPTY_WEATHER) {
 function Days({ days, size = 26 }: { days: WxDay[]; size?: number }) {
   return (
     <div className="wxd">
-      {days.slice(0, 4).map((d, k) => <div key={d.date}>{dayName(d.date, k)}<WxIcon code={d.code} size={size} /><b>{deg(d.max)}</b>{deg(d.min)}</div>)}
+      {days.slice(0, 4).map((d, k) => <div key={d.date}>{dayName(d.date, k)}<WxIcon code={d.code} size={size} /><b>{deg(d.max)}</b>{deg(d.min)}{d.chance != null && d.chance >= 30 ? <i className="chance">💧{d.chance}%</i> : null}</div>)}
     </div>
   );
 }
@@ -138,7 +144,7 @@ export function WxDestination({ name, district, lat, lng }: { name: string; dist
           <div key={d.date}>
             <b>{dayName(d.date, k)}</b><WxIcon code={d.code} size={30} />
             <span className="bar"><i style={{ left: `${((d.min - lo) / span) * 100}%`, right: `${100 - ((d.max - lo) / span) * 100}%` }} /></span>
-            <span>{deg(d.min)} / <b>{deg(d.max)}</b>{d.snow >= 1 ? ` · snow ${Math.round(d.snow)} cm` : d.rain >= 2 ? ` · rain ${Math.round(d.rain)} mm` : ''}</span>
+            <span>{deg(d.min)} / <b>{deg(d.max)}</b>{d.snow >= 1 ? ` · snow ${Math.round(d.snow)} cm` : d.rain >= 2 ? ` · rain ${Math.round(d.rain)} mm` : d.chance != null && d.chance >= 30 ? ` · ${d.chance}% rain` : ''}</span>
           </div>
         ))}
       </div>

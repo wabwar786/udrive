@@ -191,7 +191,8 @@ public sealed record AdminWebActivityDto(
 
 // ───────────────────────────────────────────── weather (from the hourly WeatherWorker readings)
 
-public sealed record WebWeatherDayDto(DateOnly Date, int Code, double Max, double Min, double Rain, double Snow, double WindMax);
+/// <param name="Chance">Highest chance of rain or snow that day, 0–100 (null when not given).</param>
+public sealed record WebWeatherDayDto(DateOnly Date, int Code, double Max, double Min, double Rain, double Snow, double WindMax, int? Chance = null);
 
 public sealed record WebWeatherNowDto(double Temperature, int Code, double Wind);
 

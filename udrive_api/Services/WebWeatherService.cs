@@ -115,8 +115,11 @@ public sealed class WebWeatherService(string connectionString, IMemoryCache cach
             for (var i = 0; i < dates.Count && i < 4; i++)
             {
                 if (!DateOnly.TryParseExact(dates[i], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) continue;
-                days.Add(new WebWeatherDayDto(date, (int)At("weather_code", i), Round(At("temperature_2m_max", i)), Round(At("temperature_2m_min", i)),
-                    Round(At("precipitation_sum", i)), Round(At("snowfall_sum", i)), Round(At("wind_speed_10m_max", i))));
+                var rain = Round(At("precipitation_sum", i));
+                var snow = Round(At("snowfall_sum", i));
+                int? chance = d.TryGetProperty("precipitation_probability_max", out var pp) && pp.GetArrayLength() > i && pp[i].ValueKind == JsonValueKind.Number ? pp[i].GetInt32() : null;
+                days.Add(new WebWeatherDayDto(date, DayCode((int)At("weather_code", i), rain, snow), Round(At("temperature_2m_max", i)), Round(At("temperature_2m_min", i)),
+                    rain, snow, Round(At("wind_speed_10m_max", i)), chance));
             }
             return (now, days);
         }
@@ -126,16 +129,36 @@ public sealed class WebWeatherService(string connectionString, IMemoryCache cach
         }
     }
 
-    /// <summary>The label: snow is red, rain or strong wind amber, otherwise green.</summary>
+    /// <summary>
+    /// Open-Meteo gives a day the "worst" code of any hour, so one hour of
+    /// 0.1 mm drizzle makes a sunny day show as drizzle. Below half a
+    /// millimetre the day shows as what it mostly is — partly cloudy.
+    /// </summary>
+    internal static int DayCode(int code, double rain, double snow)
+    {
+        var wet = code is >= 51 and <= 67 or >= 80 and <= 82;
+        var snowy = code is >= 71 and <= 77 or 85 or 86;
+        if (wet && rain < 0.5) return 2;
+        if (snowy && snow < 0.5 && rain < 0.5) return 3;
+        return code;
+    }
+
+    /// <summary>
+    /// The label. Red: real snow (1 cm or more) in the next two days. Amber:
+    /// thunderstorm, rain of 2 mm or more, wind 35 km/h+, or nights below −3°.
+    /// "Landslide risk" only for heavy rain (10 mm+). Otherwise green.
+    /// </summary>
     internal static WebWeatherAdviceDto Advise(WebWeatherNowDto now, IReadOnlyList<WebWeatherDayDto> days)
     {
-        static bool Snowy(int code) => code is >= 71 and <= 77 or 85 or 86;
-        static bool Wet(int code) => code is >= 51 and <= 67 or >= 80 and <= 82 or >= 95;
         var soon = days.Take(2).ToList();
-        if (Snowy(now.Code) || soon.Any(x => x.Snow >= 1 || Snowy(x.Code))) return new("bad", "Snow — 4×4 jeep only");
-        if (now.Code >= 95 || soon.Any(x => x.Code >= 95)) return new("warn", "Thunderstorm — start early");
-        var rainy = soon.FirstOrDefault(x => x.Rain >= 2 || Wet(x.Code));
-        if (rainy is not null) return new("warn", $"Rain {Day(rainy.Date)} — landslide risk");
+        var snowNow = now.Code is >= 71 and <= 77 or 85 or 86;
+        if (soon.Any(x => x.Snow >= 1) || (snowNow && soon.FirstOrDefault()?.Snow > 0)) return new("bad", "Snow — 4×4 jeep only");
+        var storm = soon.FirstOrDefault(x => x.Code >= 95 && x.Rain >= 1);
+        if (storm is not null) return new("warn", $"Thunderstorm {Day(storm.Date)} — start early");
+        var heavy = soon.FirstOrDefault(x => x.Rain >= 10);
+        if (heavy is not null) return new("warn", $"Heavy rain {Day(heavy.Date)} — landslide risk");
+        var rainy = soon.FirstOrDefault(x => x.Rain >= 2);
+        if (rainy is not null) return new("warn", $"Rain {Day(rainy.Date)} — carry a jacket");
         var windy = soon.FirstOrDefault(x => x.WindMax >= 35);
         if (windy is not null || now.Wind >= 35) return new("warn", $"Windy — {Math.Round(Math.Max(now.Wind, windy?.WindMax ?? 0))} km/h");
         if (soon.Any(x => x.Min <= -3)) return new("warn", $"Very cold nights — {soon.Min(x => x.Min):0}°");

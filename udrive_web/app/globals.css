@@ -590,3 +590,5 @@ input::placeholder,textarea::placeholder{color:#A6AEB8;font-weight:500}
 .avoid{display:flex;gap:8px 10px;flex-wrap:wrap;align-items:center;margin-top:18px;font-size:13.5px;color:#5B4A2A}.avoid b{color:#8A5A00}
 .avoid span{background:#FFF6E5;border:1px solid #F3D9A4;border-radius:999px;padding:7px 12px}
 .note3{font-size:12.5px;color:var(--soft);margin:14px 0 0}
+
+.wxd .chance{font-style:normal;font-size:10.5px;color:#4DA3FF;font-weight:700;margin-top:1px}
