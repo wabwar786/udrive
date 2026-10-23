@@ -58,7 +58,7 @@ public sealed record AdminPartnerDetailDto(
 
 public sealed record AdminPartnerListDto(IReadOnlyList<AdminPartnerRowDto> Items, IReadOnlyDictionary<string, int> Counts);
 
-public sealed record PartnerStatusRequest([Required, StringLength(16)] string Status);
+public sealed record PartnerRequestStatusRequest([Required, StringLength(16)] string Status);
 
 public sealed record AdminPartnerReplyRequest([Required, StringLength(1000)] string Body, bool SendWhatsApp, bool InternalNote);
 

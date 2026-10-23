@@ -44,7 +44,7 @@ public sealed class AdminPartnerRequestController(PartnerRequestService service)
         HubResults.From(this, await service.AdminGetAsync(id, ct));
 
     [HttpPost("{id:guid}/status")]
-    public async Task<IActionResult> Status(Guid id, PartnerStatusRequest request, CancellationToken ct) =>
+    public async Task<IActionResult> Status(Guid id, PartnerRequestStatusRequest request, CancellationToken ct) =>
         HubResults.From(this, await service.AdminStatusAsync(User.GetRequiredUserId(), id, request, ct));
 
     [HttpPost("{id:guid}/reply")]

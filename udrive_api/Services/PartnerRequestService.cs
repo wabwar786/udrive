@@ -205,7 +205,7 @@ public sealed partial class PartnerRequestService(string connectionString)
         return detail is null ? Fail<AdminPartnerDetailDto>(404, "request_not_found", "Request not found.") : ServiceResult<AdminPartnerDetailDto>.Ok(detail);
     }
 
-    public async Task<ServiceResult<AdminPartnerDetailDto>> AdminStatusAsync(Guid adminId, Guid id, PartnerStatusRequest x, CancellationToken ct)
+    public async Task<ServiceResult<AdminPartnerDetailDto>> AdminStatusAsync(Guid adminId, Guid id, PartnerRequestStatusRequest x, CancellationToken ct)
     {
         var status = Statuses.FirstOrDefault(s => s.Equals((x.Status ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
         if (status is null) return Fail<AdminPartnerDetailDto>(400, "status_invalid", "Status: " + string.Join(", ", Statuses));
