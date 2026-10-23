@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { signOut } from '@/lib/auth';
 import { useSession } from '@/lib/useSession';
@@ -22,9 +22,19 @@ export function Header() {
   const [menu, setMenu] = useState(false);
   const { user } = useSession();
   const first = (user?.name || '').split(' ')[0] || 'Account';
+  // Home: the header floats over the hero picture until the page scrolls.
+  const home = path === '/';
+  const [solid, setSolid] = useState(false);
+  useEffect(() => {
+    if (!home) return;
+    const on = () => setSolid(window.scrollY > 40);
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, [home]);
 
   return (
-    <header className="top">
+    <header className={`top ${home ? `home ${solid || open ? 'solid' : ''}` : ''}`}>
       <div className="wrap">
         <Link href="/" className="logo" aria-label="UDrive home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -44,7 +54,8 @@ export function Header() {
             <button className="btn dark" aria-expanded={menu} onClick={() => setMenu(!menu)}>{first} ▾</button>
             {menu && (
               <div className="whoMenu" onMouseLeave={() => setMenu(false)}>
-                <Link href="/account/" onClick={() => setMenu(false)}>My account</Link>
+                <Link href="/account/?tab=myrentals" onClick={() => setMenu(false)}>My rentals</Link>
+                <Link href="/account/?tab=vehicles" onClick={() => setMenu(false)}>My vehicles &amp; hotels</Link>
                 <Link href="/account/?tab=partner" onClick={() => setMenu(false)}>My partnership request</Link>
                 <button onClick={async () => { setMenu(false); await signOut(); router.push('/'); }}>Log out</button>
               </div>

@@ -173,3 +173,19 @@ export type SpecialRate = { id: string; roomId: string | null; roomType: string;
 // partner
 export type PartnerMessage = { id: string; author: 'Applicant' | 'Team' | string; body: string; whatsAppSent: boolean; createdAt: string };
 export type PartnerRequest = { id: string; reference: string; fullName: string; currentCity: string; targetCity: string; budget: string; status: string; createdAt: string; messages: PartnerMessage[] };
+
+// ───────────────────────────── rent a car booking (customer, same API as the app)
+export type RentQuote = {
+  vehicleId: string; startDate: string; endDate: string; rentalMode: string; days: number; dailyRate: number; subtotal: number;
+  securityDeposit: number; advanceAmount: number; balanceDue: number; kmIncluded: number | null; fuelIncluded: boolean;
+  disclaimerVersion: number; requiresCustomerDocuments: boolean; customerDocumentsOnFile: boolean;
+};
+export type CustomerDocs = { cnicFront: boolean; cnicBack: boolean; drivingLicence: boolean; selfie: boolean; complete: boolean };
+export type MyRental = {
+  id: string; bookingReference: string; vehicleId: string; vehicleName: string; photoUrl: string | null; startDate: string; endDate: string;
+  rentalMode: string; days: number; dailyRate: number; subtotal: number; securityDeposit: number; advanceAmount: number; balanceDue: number;
+  kmPerDay: number | null; fuelIncluded: boolean; pickupPoint: string | null; status: string; counterpartName: string; counterpartPhone: string | null;
+  createdAt: string; cancelledAt: string | null; cancelReason: string | null; advanceRefundableNow: boolean;
+  ownerRespondBy?: string | null; driverName?: string | null; driverPhone?: string | null;
+};
+export type Waitlist = { id: string; vehicleId: string; vehicleName: string; startDate: string; endDate: string; rentalMode: string; status: string; acceptExpiresAt: string | null; createdAt: string };

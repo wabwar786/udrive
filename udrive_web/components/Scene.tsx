@@ -1,3 +1,5 @@
+import { Art } from './Art';
+
 /**
  * A calm flat landscape used wherever a tour or hotel has no photo yet.
  * Deterministic per name, so the same place always gets the same picture.
@@ -41,12 +43,12 @@ export function Scene({ seed, label }: { seed: string; label?: string }) {
   );
 }
 
-/** A real photo when there is one, otherwise the landscape. */
+/** A real photo when there is one, otherwise the atmospheric landscape. */
 export function Picture({ src, alt, seed, eager }: { src: string | null; alt: string; seed: string; eager?: boolean }) {
   return src ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={src} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" />
   ) : (
-    <Scene seed={seed} label={alt} />
+    <Art seed={seed} label={alt} w={600} h={360} />
   );
 }

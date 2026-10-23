@@ -35,7 +35,27 @@ public sealed class WebRentCarsService(RentalService rentals, IMemoryCache cache
         IReadOnlyList<WebRentCarDto> list = result.Data
             .Where(v => !v.IsDemo && WebsiteService.SafeImage(v.PhotoUrl ?? ""))
             .Take(30)
-            .Select(v => new WebRentCarDto(
+            .Select(Map)
+            .ToList();
+
+        cache.Set(key, list, TimeSpan.FromSeconds(60));
+        return ServiceResult<IReadOnlyList<WebRentCarDto>>.Ok(list);
+    }
+
+    /// <summary>One car for its booking page. Same rules as the list; misses are not cached.</summary>
+    public async Task<ServiceResult<WebRentCarDto>> GetAsync(Guid id, CancellationToken ct)
+    {
+        var key = $"web:rent:car:{id}";
+        if (cache.TryGetValue(key, out WebRentCarDto? hit) && hit is not null) return ServiceResult<WebRentCarDto>.Ok(hit);
+        var result = await rentals.SearchAsync(null, null, "", "", ct);
+        var v = result.Data?.FirstOrDefault(x => x.VehicleId == id && !x.IsDemo && WebsiteService.SafeImage(x.PhotoUrl ?? ""));
+        if (v is null) return ServiceResult<WebRentCarDto>.Fail(404, "car_not_found", "Yeh gaari abhi rent par nahi.");
+        var car = Map(v);
+        cache.Set(key, car, TimeSpan.FromSeconds(60));
+        return ServiceResult<WebRentCarDto>.Ok(car);
+    }
+
+    private static WebRentCarDto Map(RentalVehicleDto v) => new(
                 v.VehicleId,
                 WebsiteService.Clean(v.Name, 80) ?? "Vehicle",
                 v.Category,
@@ -52,10 +72,5 @@ public sealed class WebRentCarsService(RentalService rentals, IMemoryCache cache
                 WebsiteService.FirstName(v.OwnerName),
                 Math.Round(v.OwnerRating, 1),
                 v.HasAirConditioning,
-                v.IsFourByFour))
-            .ToList();
-
-        cache.Set(key, list, TimeSpan.FromSeconds(60));
-        return ServiceResult<IReadOnlyList<WebRentCarDto>>.Ok(list);
-    }
+                v.IsFourByFour);
 }

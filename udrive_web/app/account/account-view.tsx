@@ -11,12 +11,14 @@ import { Departures } from './departures';
 import { Documents } from './documents';
 import { Drivers } from './drivers';
 import { Hotels } from './hotels';
+import { MyRentals } from './my-rentals';
 import { PartnerTrack } from './partner-track';
 import { Rentals } from './rentals';
 import { call, Msg } from './ui';
 import { Vehicles } from './vehicles';
 
 const TABS = [
+  ['myrentals', 'My rentals'],
   ['vehicles', 'Vehicles'],
   ['departures', 'Tour departures'],
   ['rentals', 'Rent bookings'],
@@ -25,6 +27,8 @@ const TABS = [
   ['hotels', 'Hotels'],
   ['partner', 'Partnership'],
 ] as const;
+// Owner tabs below a thin line in the sidebar.
+const OWNER_FROM = 'vehicles';
 type Tab = (typeof TABS)[number][0];
 
 export function AccountView() {
@@ -77,7 +81,7 @@ export function AccountView() {
         <aside className="side2" aria-label="Account">
           <div className="whoBox"><b>{user.name || 'UDrive owner'}</b>{user.phone}</div>
           {TABS.map(([k, label]) => (
-            <a key={k} href={`/account/?tab=${k}`} className={tab === k ? 'on' : ''} onClick={(e) => { e.preventDefault(); go(k); }}>
+            <a key={k} data-split={k === OWNER_FROM ? '' : undefined} href={`/account/?tab=${k}`} className={tab === k ? 'on' : ''} onClick={(e) => { e.preventDefault(); go(k); }}>
               {label}{count[k] ? <span>{count[k]}</span> : null}
             </a>
           ))}
@@ -85,6 +89,7 @@ export function AccountView() {
         </aside>
         <section className="acctMain">
           <Msg error={error} />
+          {tab === 'myrentals' && <MyRentals />}
           {tab === 'vehicles' && <Vehicles home={home} reload={reload} go={go} />}
           {tab === 'departures' && <Departures home={home} />}
           {tab === 'rentals' && <Rentals home={home} />}

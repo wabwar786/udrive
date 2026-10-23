@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { RentCard, SkeletonGrid } from '@/components/Cards';
-import { PlayButton } from '@/components/PlayButton';
 import { api } from '@/lib/api';
 import { whatsappLink } from '@/lib/config';
 import type { RentCar } from '@/lib/types';
@@ -44,9 +43,9 @@ export function RentView({ initial }: { initial: RentCar[] }) {
         <div className="rent">
           {cars.map((c) => <RentCard key={c.id} c={c} />)}
           <div className="addc">
-            <b>{cars.length ? 'Book in the UDrive app' : 'No car matches yet'}</b>
-            <p>{cars.length ? 'Pick dates, pay the advance, and the owner confirms on WhatsApp.' : 'Tell us your dates on WhatsApp — we will find an owner.'}</p>
-            {cars.length ? <PlayButton /> : <a className="btn dark" href={whatsappLink('Assalam o Alaikum, I need a car on rent.')} target="_blank" rel="noopener noreferrer">Ask on WhatsApp</a>}
+            <b>{cars.length ? 'Not the right car?' : 'No car matches yet'}</b>
+            <p>Tell us your dates on WhatsApp — we will find an owner.</p>
+            <a className="btn dark" href={whatsappLink('Assalam o Alaikum, I need a car on rent.')} target="_blank" rel="noopener noreferrer">Ask on WhatsApp</a>
           </div>
           <div className="addc">
             <b>Have a car?</b>

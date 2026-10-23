@@ -76,7 +76,7 @@ export function SkeletonGrid({ n = 4, cls = 'grid4' }: { n?: number; cls?: strin
 export function RentCard({ c }: { c: RentCar }) {
   const extras = [`${c.seats} seats`, c.airConditioning && 'AC', c.fourByFour && '4×4', c.pickupPoint].filter(Boolean).join(' · ');
   return (
-    <div className="rc">
+    <Link className="rc" href={`/rent-a-car/car/?id=${c.id}`}>
       <div className="im"><Picture src={img(c.photoUrl)} alt={`${c.name} ${c.year} for rent`} seed={c.name} /></div>
       <div className="bd">
         <b>{c.name} {c.year}</b>
@@ -89,7 +89,8 @@ export function RentCard({ c }: { c: RentCar }) {
           <span className="av">{c.ownerName.slice(0, 1)}</span>{c.ownerName}{c.ownerRating > 0 ? ` · ★ ${c.ownerRating.toFixed(1)}` : ' · new owner'}
           {c.minimumDays > 1 ? ` · min ${c.minimumDays} days` : ''}
         </div>
+        <span className="btn dark block" style={{ marginTop: 12 }}>Book this car</span>
       </div>
-    </div>
+    </Link>
   );
 }

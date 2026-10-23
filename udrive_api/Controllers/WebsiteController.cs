@@ -27,6 +27,11 @@ public sealed class WebsiteController(WebsiteService service, WebRentCarsService
         HubResults.From(this, await rentCars.ListAsync(mode, category, ct));
 
     [AllowAnonymous]
+    [HttpGet("rent-cars/{id:guid}")]
+    public async Task<IActionResult> RentCar(Guid id, CancellationToken ct) =>
+        HubResults.From(this, await rentCars.GetAsync(id, ct));
+
+    [AllowAnonymous]
     [HttpGet("home")]
     public async Task<IActionResult> Home(CancellationToken ct) => HubResults.From(this, await service.HomeAsync(ct));
 

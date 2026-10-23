@@ -15,6 +15,7 @@ namespace UDrive.Api.Controllers;
 /// owns it by first name.
 /// </remarks>
 [ApiController]
+[RejectMarkup]
 [Route("api/v1/rentals")]
 public sealed class RentalController(RentalService service) : ControllerBase
 {

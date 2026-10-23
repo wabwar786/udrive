@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 const FAQ = [
-  ['How do I book a car?', 'Choose a car here, then book it in the UDrive app: pick your dates, pay the advance, and the owner confirms on WhatsApp.'],
+  ['How do I book a car?', 'Choose a car here, pick your dates and see the full price, then log in with your WhatsApp number and send the booking. The owner confirms on WhatsApp — if they say no or don’t answer in time, your advance comes back.'],
   ['Can I drive it myself?', 'Yes, where the owner offers self drive. You need your CNIC and a valid driving licence; some cars ask for a security deposit at handover.'],
   ['Do you have 4×4 jeeps for Neelum and Leepa?', 'Yes — filter by Jeep / 4×4. For high roads like Arang Kel or Ratti Gali, a jeep with an experienced local driver is best.'],
 ];

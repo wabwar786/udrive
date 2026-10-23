@@ -2,55 +2,70 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { Scene } from './Scene';
+import { Art } from './Art';
 
-export type Slide = { src: string | null; name: string; district: string };
+export type Slide = { src: string | null; name: string; district: string; season?: string };
 
 /**
- * Hero pictures that cross-fade every 5 seconds.
- * - Pauses while the pointer is over it, or the tab is hidden.
- * - No movement at all for people who ask for reduced motion.
- * - Only the current and next photo are downloaded; the rest load in turn.
+ * Full-bleed hero pictures: slow zoom, cross-fade every 5 seconds.
+ * - Pauses on hover and while the tab is hidden.
+ * - Still for people who ask for reduced motion.
+ * - Only the current and next photo are downloaded.
+ * Renders the background layer and the caption card (with progress bars and
+ * thumbnails) as two parts, so the page can place the card where it wants.
  */
-export function HeroSlides({ slides }: { slides: Slide[] }) {
-  const list = slides.length ? slides : [{ src: null, name: 'Azad Kashmir', district: '' }];
+export function useSlides(count: number) {
   const [i, setI] = useState(0);
   const [seen, setSeen] = useState(() => new Set([0, 1]));
   const paused = useRef(false);
-
   useEffect(() => {
-    if (list.length < 2) return;
+    if (count < 2) return;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     const t = window.setInterval(() => {
       if (paused.current || document.hidden) return;
-      setI((x) => {
-        const n = (x + 1) % list.length;
-        setSeen((s) => new Set([...s, n, (n + 1) % list.length]));
-        return n;
-      });
+      setI((x) => { const n = (x + 1) % count; setSeen((s) => new Set([...s, n, (n + 1) % count])); return n; });
     }, 5000);
     return () => window.clearInterval(t);
-  }, [list.length]);
+  }, [count]);
+  const go = (k: number) => { setI(k); setSeen((s) => new Set([...s, k, (k + 1) % count])); };
+  return { i, seen, go, paused };
+}
 
+export function HeroBackground({ slides, i, seen }: { slides: Slide[]; i: number; seen: Set<number> }) {
   return (
-    <div className="slides" onMouseEnter={() => (paused.current = true)} onMouseLeave={() => (paused.current = false)}
-      aria-roledescription="carousel" aria-label="Places in Azad Kashmir">
-      {list.map((s, k) => (
+    <div className="h3bg" aria-roledescription="carousel" aria-label="Places in Azad Kashmir">
+      {slides.map((s, k) => (
         <figure key={`${s.name}${k}`} className={k === i ? 'on' : ''} aria-hidden={k !== i}>
           {s.src && seen.has(k)
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={s.src} alt={`${s.name}${s.district ? `, ${s.district}` : ''} — Azad Kashmir`} loading={k === 0 ? 'eager' : 'lazy'} decoding="async" fetchPriority={k === 0 ? 'high' : 'low'} referrerPolicy="no-referrer" />
-            : <Scene seed={s.name} label={s.name} />}
-          <figcaption>{s.name}{s.district ? ` · ${s.district}` : ''}</figcaption>
+            : <Art seed={s.name} label={s.name} w={1600} h={900} palette={['dawn', 'alpine', 'day', 'dusk', 'night', 'day'][k % 6]} lake={k % 2 === 0} />}
         </figure>
       ))}
-      {list.length > 1 && (
-        <div className="dots" role="tablist" aria-label="Choose picture">
-          {list.map((s, k) => (
-            <button key={k} role="tab" aria-selected={k === i} aria-label={s.name} className={k === i ? 'on' : ''}
-              onClick={() => { setI(k); setSeen((x) => new Set([...x, k, (k + 1) % list.length])); }} />
-          ))}
-        </div>
+    </div>
+  );
+}
+
+export function HeroCaption({ slides, i, go }: { slides: Slide[]; i: number; go: (k: number) => void }) {
+  const s = slides[i];
+  if (!s) return null;
+  return (
+    <div className="slideCard" aria-live="polite">
+      <div className="n">{String(i + 1).padStart(2, '0')} / {String(slides.length).padStart(2, '0')} · NOW SHOWING</div>
+      <b>{s.name}</b>
+      <span>{[s.district, s.season ? `best ${s.season}` : ''].filter(Boolean).join(' · ')}</span>
+      {slides.length > 1 && (
+        <>
+          <div className="bars">{slides.map((_, k) => <i key={k} className={k < i ? 'done' : k === i ? 'on' : ''} />)}</div>
+          <div className="thumbs3" role="tablist" aria-label="Choose picture">
+            {slides.map((x, k) => (
+              <button key={k} role="tab" aria-selected={k === i} aria-label={x.name} className={k === i ? 'on' : ''} onClick={() => go(k)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {x.src ? <img src={x.src} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <Art seed={x.name} w={160} h={110} palette={['dawn', 'alpine', 'day', 'dusk', 'night', 'day'][k % 6]} lake={k % 2 === 0} />}
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
