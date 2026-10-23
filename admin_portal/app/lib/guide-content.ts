@@ -746,6 +746,14 @@ export const guideGroups: GuideGroup[] = [
             ur: '"Ads" mein New ad: jagah chunein (Home, Tours, Tour page, Hotels, Hotel page), title, text, tasveer aur https link. Tareekhein khali chhorein to foran aur hamesha chalega.',
             en: '"Ads" → New ad: pick the place (Home, Tours, Tour page, Hotels, Hotel page), title, text, picture and an https link. Leave the dates empty to run from now with no end.',
           },
+          {
+            ur: '"Photos": website ki tasveerein. Har hafte Wikimedia Commons se har Azad Kashmir jagah ke 2 km ke andar ki free tasveerein khud aati hain (LoC wali jagahon par 1 km). Galat tasveer par Hide dabayein. Apni tasveer: jagah chunein → Upload — woh hamesha pehle aati hai.',
+            en: '"Photos": pictures for the website. Every week free photos within 2 km of each Azad Kashmir place (1 km on the LoC) come in from Wikimedia Commons. Press Hide on a wrong one. Your own: choose the place → Upload — it always shows first.',
+          },
+          {
+            ur: '"Where to go this week" ke liye neeche har jagah ki Kind (Lake / Meadow / River & town) aur Muzaffarabad se ghante likhein. Ghante khali hon to website map se andaza lagati hai.',
+            en: 'For "Where to go this week", set each place\'s Kind (Lake / Meadow / River & town) and hours from Muzaffarabad below. Empty hours are estimated from the map.',
+          },
         ],
         cautions: [
           {

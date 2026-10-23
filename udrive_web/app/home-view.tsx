@@ -12,7 +12,9 @@ import { PlayButton } from '@/components/PlayButton';
 import { api, img } from '@/lib/api';
 import { whatsappLink } from '@/lib/config';
 import { rs } from '@/lib/format';
-import type { Destination, Home, RentCar, Weather } from '@/lib/types';
+import type { Destination, Home, RentCar, WebPhoto, Weather } from '@/lib/types';
+import { type Love, ORIGINS, type Origin, rankPicks, type Trip } from '@/lib/picks';
+import { placeFor, WxIcon } from '@/components/Weather';
 import { updatedAt, useWeather, WxCard } from '@/components/Weather';
 
 const POPULAR = ['Keran · 2 days', 'Sharda & Kel · 3 days', 'Arang Kel · 4 days', 'Ratti Gali · 4 days', 'Leepa · 2 days', 'Banjosa & Toli Pir · 1 day'];
@@ -24,7 +26,7 @@ const FALLBACK: Slide[] = [
 ];
 type Tab = 'tours' | 'rent' | 'hotels';
 
-export function HomeView({ initial, initialCars, initialWeather }: { initial: Home; initialCars: RentCar[]; initialWeather: Weather }) {
+export function HomeView({ initial, initialCars, initialWeather, initialPhotos }: { initial: Home; initialCars: RentCar[]; initialWeather: Weather; initialPhotos: WebPhoto[] }) {
   const [home, setHome] = useState(initial);
   const [cars, setCars] = useState(initialCars);
   const router = useRouter();
@@ -34,24 +36,52 @@ export function HomeView({ initial, initialCars, initialWeather }: { initial: Ho
   const [district, setDistrict] = useState('');
   const weather = useWeather(initialWeather);
   const [wxTab, setWxTab] = useState('');
+  const [photos, setPhotos] = useState(initialPhotos);
+  const [trip, setTrip] = useState<Trip>('short');
+  const [love, setLove] = useState<Love>('any');
+  const [from, setFrom] = useState<Origin>('Muzaffarabad');
+  // 0 until the browser knows today's month (the static HTML must not depend on the build date).
+  const [month, setMonth] = useState(0);
+  useEffect(() => {
+    setMonth(Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', month: 'numeric' }).format(new Date())));
+    api<WebPhoto[]>('/api/v1/web/photos').then(setPhotos).catch(() => undefined);
+  }, []);
+  const picks = useMemo(() => rankPicks(home.destinations, weather, home.tours, { trip, love, from, month }), [home.destinations, weather, home.tours, trip, love, from, month]);
 
   useEffect(() => {
     api<Home>('/api/v1/web/home').then(setHome).catch(() => undefined);
     api<RentCar[]>('/api/v1/web/rent-cars').then(setCars).catch(() => undefined);
   }, []);
 
+  // Hero: the best places this week first; for each, the photo that matches
+  // its weather now (snow when it is snowing there) and the season.
   const slides: Slide[] = useMemo(() => {
-    const seen = new Set<string>();
+    const ranked = rankPicks(home.destinations, weather, home.tours, { trip: 'long', love: 'any', from: 'Muzaffarabad', month });
+    // Good places this week first (best first), then the rest; a place with snow-closed roads comes last.
+    const order = [...ranked.ranked.map((p) => p.d), ...home.destinations.filter((d) => !ranked.ranked.some((p) => p.d.slug === d.slug))];
+    // One place where it is snowing right now goes second — the snow picture, with "snowing now".
+    const snowAt = order.findIndex((d, k) => k > 0 && photos.some((p) => p.destination === d.slug && p.season === 'snow')
+      && (() => { const w = placeFor(weather, d.name, d.district, d.latitude, d.longitude); return !!w && ((w.now.code >= 71 && w.now.code <= 77) || w.now.code === 85 || w.now.code === 86); })());
+    if (snowAt > 1) order.splice(1, 0, order.splice(snowAt, 1)[0]);
+    const season = month === 12 || month <= 2 ? 'winter' : month <= 4 ? 'spring' : month <= 8 ? 'summer' : 'autumn';
+    const used = new Set<string>();
     const out: Slide[] = [];
-    for (const d of home.destinations) {
-      const src = img(d.imageUrl);
-      if (!src || seen.has(src)) continue;
-      seen.add(src);
-      out.push({ src, name: d.name, district: d.district, season: d.bestSeason });
+    for (const d of order) {
+      const wx = placeFor(weather, d.name, d.district, d.latitude, d.longitude);
+      const snowing = !!wx && ((wx.now.code >= 71 && wx.now.code <= 77) || wx.now.code === 85 || wx.now.code === 86);
+      const want = snowing ? ['snow', 'winter', season, 'any'] : [season, 'any', ...(season === 'winter' ? ['snow'] : []), 'spring', 'summer', 'autumn'];
+      const mine = photos.filter((p) => p.destination === d.slug && !used.has(p.url));
+      const photo = [...mine].sort((a, b) => (Number(b.own) - Number(a.own)) || ((want.indexOf(a.season) + 1 || 99) - (want.indexOf(b.season) + 1 || 99)))
+        .find((p) => want.includes(p.season) || p.own);
+      const src = photo ? img(photo.url) : img(d.imageUrl);
+      if (!src || used.has(src)) continue;
+      used.add(photo?.url ?? src); used.add(src);
+      out.push({ src, name: d.name, district: d.district, season: d.bestSeason, wx: wx ? { temp: wx.now.temperature, code: wx.now.code } : null,
+        credit: photo && !photo.own ? { author: photo.author, license: photo.license, pageUrl: photo.pageUrl } : null });
       if (out.length === 6) break;
     }
     return out.length ? out : FALLBACK;
-  }, [home.destinations]);
+  }, [home.destinations, home.tours, weather, photos, month]);
   const { i, seen, go, paused } = useSlides(slides.length);
 
   const s = home.stats;
@@ -82,9 +112,9 @@ export function HomeView({ initial, initialCars, initialWeather }: { initial: Ho
         <div className="shade" />
         <div className="wrap in">
           <div className="heroText">
-            <span className="kick">Azad Jammu &amp; Kashmir</span>
-            <h1>Kashmir, the way <em>locals</em> know it.</h1>
-            <p className="l">Book a tour seat, rent a car by the day or find a room on the way — with drivers and owners checked by UDrive.</p>
+            <span className="kick">Azad Jammu &amp; Kashmir · Pakistan</span>
+            <h1>Azad Kashmir, the way <em>locals</em> know it.</h1>
+            <p className="l">Neelum, Leepa, Banjosa and beyond — book a tour seat, rent a car or find a room, with drivers and owners checked by UDrive.</p>
             <form className="find" onSubmit={search} role="search">
               <div className="tb" role="tablist" aria-label="Search">
                 {([['tours', 'Tours'], ['rent', 'Rent a car'], ['hotels', 'Hotels']] as const).map(([k, l]) => (
@@ -129,6 +159,46 @@ export function HomeView({ initial, initialCars, initialWeather }: { initial: Ho
           <div><b>20<sup>%</sup></b><span>advance only — rest on the day</span></div>
           <div><b>{s.verifiedDrivers > 0 ? s.verifiedDrivers : '✓'}</b><span>{s.verifiedDrivers > 0 ? 'verified drivers' : 'every driver and owner checked'}</span></div>
         </div>
+
+        <section className="pick" aria-labelledby="pick-h">
+          <div className="h3row">
+            <div><h2 id="pick-h">Where to go this week</h2><p>UDrive picks the best places in Azad Kashmir for you — from this week&apos;s weather, the season, road updates and tours already going.</p></div>
+          </div>
+          <div className="ask">
+            <div role="group" aria-label="Trip length"><small>Trip</small>{([['day', 'Day trip'], ['short', '2–3 days'], ['long', '4+ days']] as const).map(([k, l]) => <button key={k} className={trip === k ? 'on' : ''} onClick={() => setTrip(k)}>{l}</button>)}</div>
+            <div role="group" aria-label="What you love"><small>Love</small>{([['any', 'Any'], ['lake', 'Lakes'], ['meadow', 'Meadows'], ['snow', 'Snow'], ['river', 'Rivers & towns']] as const).map(([k, l]) => <button key={k} className={love === k ? 'on' : ''} onClick={() => setLove(k)}>{l}</button>)}</div>
+            <div role="group" aria-label="Starting from"><small>From</small>{(Object.keys(ORIGINS) as Origin[]).map((k) => <button key={k} className={from === k ? 'on' : ''} onClick={() => setFrom(k)}>{k}</button>)}</div>
+          </div>
+          {picks.top.length === 0 ? <div className="empty" style={{ background: '#fff' }}>{picks.note || 'Loading this week’s picks…'}</div> : (
+            <div className="picks">
+              {picks.top.map((p, k) => {
+                const ph = photos.find((x) => x.destination === p.d.slug);
+                const planText = `Assalam o Alaikum UDrive, I want a trip to ${p.d.name} (${p.d.district}, Azad Kashmir) from ${from}.`;
+                return (
+                  <div key={p.d.slug} className={`pc ${k === 0 ? 'top' : ''}`}>
+                    <Link className="im" href={`/tours/${p.d.slug}/`}>
+                      <Photo src={ph ? img(ph.url) : img(p.d.imageUrl)} alt={`${p.d.name}, ${p.d.district} — Azad Kashmir`} seed={p.d.name} w={600} h={k === 0 ? 260 : 200} palette={PALETTES[(k + 1) % 6]} lake={p.d.kind === 'lake'} />
+                      <span className="rank">{k === 0 ? '#1 this week' : `#${k + 1}`}</span>
+                      {p.wx && <span className="wxb"><WxIcon code={p.wx.now.code} size={18} /> {Math.round(p.wx.now.temperature)}°</span>}
+                    </Link>
+                    <div className="bd">
+                      <div><b>{p.d.name}</b><div className="m">{p.d.district}{p.hours != null ? ` · about ${p.hours} h from ${from}` : ''}</div></div>
+                      <ul className="why">{p.reasons.filter((r) => !r.startsWith('About ')).slice(0, 4).map((r) => <li key={r}>{r}</li>)}</ul>
+                      <div className="act">
+                        {p.tours > 0
+                          ? <Link className="btn dark" href={`/tours/${p.d.slug}/`}>See {p.tours} {p.tours === 1 ? 'tour' : 'tours'}</Link>
+                          : <a className="btn dark" href={whatsappLink(planText)} target="_blank" rel="noopener noreferrer">Plan this trip</a>}
+                        <Link className="btn ghost" href={p.wx ? `/weather/#${p.wx.key}` : `/tours/${p.d.slug}/`}>{p.wx ? 'Weather' : 'Details'}</Link>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {picks.avoid.length > 0 && <div className="avoid"><b>Not this week:</b>{picks.avoid.map((a) => <span key={a}>{a}</span>)}</div>}
+          <p className="note3">Only places in Azad Jammu &amp; Kashmir. Picks change every hour with the weather.</p>
+        </section>
 
         <section className="s3" aria-labelledby="dest-h">
           <div className="h3row">

@@ -6,6 +6,7 @@ import { Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { AdminFrame } from '../components/admin-frame';
 import { Badge, Empty, ErrorBox, Field, Loading, Modal, Stat } from '../components/ui';
 import { API_BASE, apiAction, apiFetch, apiUpload } from '../lib/admin-api';
+import { PhotosTab } from './photos-tab';
 
 /**
  * Website ("UDrive – Travel & Tour"): what came in from the website, and the
@@ -50,7 +51,7 @@ const apiBase = API_BASE.replace(/\/$/, '');
 const preview = (u: string | null) => (!u ? null : u.startsWith('/') ? `${apiBase}${u}` : u);
 
 export default function Page() {
-  const [tab, setTab] = useState<'activity' | 'ads'>('activity');
+  const [tab, setTab] = useState<'activity' | 'ads' | 'photos'>('activity');
   const [activity, setActivity] = useState<Activity | null>(null);
   const [ads, setAds] = useState<Ad[] | null>(null);
   const [form, setForm] = useState<Ad | null>(null);
@@ -122,6 +123,7 @@ export default function Page() {
         <div className="tableTools">
           <button className={tab === 'activity' ? 'primaryButton' : 'secondaryButton'} onClick={() => setTab('activity')}>From the website</button>
           <button className={tab === 'ads' ? 'primaryButton' : 'secondaryButton'} onClick={() => setTab('ads')}>Ads</button>
+          <button className={tab === 'photos' ? 'primaryButton' : 'secondaryButton'} onClick={() => setTab('photos')}>Photos</button>
           <button className="secondaryButton" onClick={() => void load()}><RefreshCw /> Refresh</button>
         </div>
       }
@@ -190,6 +192,8 @@ export default function Page() {
           )}
         </section>
       )}
+
+      {tab === 'photos' && <PhotosTab />}
 
       {form && (
         <Modal title={form.id ? 'Edit ad' : 'New ad'} onClose={() => setForm(null)}>

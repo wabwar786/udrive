@@ -18,8 +18,13 @@ namespace UDrive.Api.Controllers;
 [EnableRateLimiting("web")]
 [RejectMarkup]
 [Route("api/v1/web")]
-public sealed class WebsiteController(WebsiteService service, WebRentCarsService rentCars, WebWeatherService weather) : ControllerBase
+public sealed class WebsiteController(WebsiteService service, WebRentCarsService rentCars, WebWeatherService weather, WebPhotoService photos) : ControllerBase
 {
+    /// <summary>Destination photos (own uploads first, then Wikimedia Commons with credit).</summary>
+    [AllowAnonymous]
+    [HttpGet("photos")]
+    public async Task<IActionResult> Photos(CancellationToken ct) => HubResults.From(this, await photos.PublicAsync(ct));
+
     /// <summary>Weather now and for 4 days, every tehsil and tourist spot, plus active road updates.</summary>
     [AllowAnonymous]
     [HttpGet("weather")]
@@ -101,9 +106,29 @@ public sealed class WebsiteController(WebsiteService service, WebRentCarsService
 /// <summary>Admin portal → Website: ad places and what came in from the website.</summary>
 [ApiController]
 [Authorize(Roles = "SuperAdmin,Admin,Manager,Operations")]
+[RejectMarkup]
 [Route("api/v1/admin/web")]
-public sealed class AdminWebsiteController(WebsiteAdminService service, LocalFileStorageService files) : ControllerBase
+public sealed class AdminWebsiteController(WebsiteAdminService service, LocalFileStorageService files, WebPhotoService photos) : ControllerBase
 {
+    [HttpGet("photos")]
+    public async Task<IActionResult> Photos(CancellationToken ct) => HubResults.From(this, await photos.AdminAsync(ct));
+
+    [HttpPost("photos/{id:guid}/hide")]
+    public async Task<IActionResult> HidePhoto(Guid id, CancellationToken ct) => HubResults.From(this, await photos.SetHiddenAsync(id, true, ct));
+
+    [HttpPost("photos/{id:guid}/show")]
+    public async Task<IActionResult> ShowPhoto(Guid id, CancellationToken ct) => HubResults.From(this, await photos.SetHiddenAsync(id, false, ct));
+
+    /// <summary>Adds a photo uploaded with POST ads/image to a destination.</summary>
+    [HttpPost("photos")]
+    public async Task<IActionResult> AddPhoto(AddWebPhotoRequest request, CancellationToken ct) => HubResults.From(this, await photos.AddOwnAsync(request, ct));
+
+    [HttpPost("photos/find")]
+    public IActionResult FindPhotos() => HubResults.From(this, photos.FindNow());
+
+    [HttpPut("places/{id:guid}")]
+    public async Task<IActionResult> SavePlace(Guid id, SaveWebPlaceRequest request, CancellationToken ct) => HubResults.From(this, await photos.SavePlaceAsync(id, request, ct));
+
     [HttpGet("ads")]
     public async Task<IActionResult> Ads(CancellationToken ct) => HubResults.From(this, await service.AdsAsync(ct));
 

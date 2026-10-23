@@ -204,6 +204,17 @@ builder.Services.AddScoped<WebsiteService>(sp => new WebsiteService(
     sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
 builder.Services.AddScoped<WebRentCarsService>(sp => new WebRentCarsService(
     sp.GetRequiredService<RentalService>(), sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
+builder.Services.AddHttpClient(WebPhotoWorker.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+    // Wikimedia asks every client to name itself.
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("UDriveWebsite/1.0 (+https://udrive.pk; photos of Azad Kashmir destinations)");
+});
+builder.Services.AddSingleton(sp => new WebPhotoWorker(
+    connectionString, sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<ILogger<WebPhotoWorker>>()));
+builder.Services.AddHostedService(sp => sp.GetRequiredService<WebPhotoWorker>());
+builder.Services.AddScoped<WebPhotoService>(sp => new WebPhotoService(
+    connectionString, sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(), sp.GetRequiredService<WebPhotoWorker>()));
 builder.Services.AddScoped<WebWeatherService>(sp => new WebWeatherService(
     connectionString, sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
 builder.Services.AddScoped<PartnerRequestService>(_ => new PartnerRequestService(connectionString));

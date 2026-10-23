@@ -282,17 +282,25 @@ public sealed class WebsiteService(
                 """
                 SELECT d.id, d.slug, d.name_en, d.district, d.summary_en, d.best_season, NULLIF(d.cover_image_url, ''),
                        (SELECT count(*)::int FROM udrive.tour_packages tp
-                         WHERE tp.destination_id = d.id AND tp.status = 'Active' AND tp.departure_at > now())
+                         WHERE tp.destination_id = d.id AND tp.status = 'Active' AND tp.departure_at > now()),
+                       ST_Y(d.location::geometry), ST_X(d.location::geometry), d.web_kind, d.drive_hours
                   FROM udrive.destinations d
-                 WHERE d.is_active
+                 WHERE d.is_active AND lower(d.district) = ANY(@ajk)
                  ORDER BY 8 DESC, d.name_en
                  LIMIT 60;
                 """, c);
+            cmd.Parameters.AddWithValue("ajk", AjkDistricts);
             await using var r = await cmd.ExecuteReaderAsync(ct);
             while (await r.ReadAsync(ct))
             {
-                list.Add(new WebDestinationDto(r.GetGuid(0), r.GetString(1), r.GetString(2), r.GetString(3),
-                    Clean(r.GetString(4), 600) ?? "", r.GetString(5), r.IsDBNull(6) || !SafeImage(r.GetString(6), allowHttps: true) ? null : r.GetString(6), r.GetInt32(7)));
+                list.Add(new WebDestinationDto(r.GetGuid(0), r.GetString(1), PlaceName(r.GetString(2)), DistrictName(r.GetString(3)),
+                    Clean(r.GetString(4), 600) ?? "", r.GetString(5), r.IsDBNull(6) || !SafeImage(r.GetString(6), allowHttps: true) ? null : r.GetString(6), r.GetInt32(7))
+                {
+                    Latitude = r.IsDBNull(8) ? null : Math.Round(r.GetDouble(8), 5),
+                    Longitude = r.IsDBNull(9) ? null : Math.Round(r.GetDouble(9), 5),
+                    Kind = r.IsDBNull(10) ? null : r.GetString(10),
+                    DriveHours = r.IsDBNull(11) ? null : r.GetDecimal(11),
+                });
             }
             return (IReadOnlyList<WebDestinationDto>)list;
         }))!;
@@ -680,6 +688,25 @@ public sealed class WebsiteService(
         }
         return allowHttps && Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps;
     }
+
+    /// <summary>
+    /// The website is for Azad Jammu &amp; Kashmir only. A place a driver typed
+    /// that lies elsewhere (Rawalpindi, Islamabad, or anywhere across the LoC)
+    /// never shows as a destination, a pick or a photo.
+    /// </summary>
+    public static readonly string[] AjkDistricts =
+        ["muzaffarabad", "neelum", "jhelum valley", "hattian bala", "bagh", "haveli", "poonch", "sudhnoti", "kotli", "mirpur", "bhimber"];
+
+    /// <summary>Customer wording: "Neelum", not "Neelum Valley".</summary>
+    internal static string PlaceName(string name)
+    {
+        var n = (Clean(name, 160) ?? "").Trim();
+        return n.EndsWith(" Valley", StringComparison.OrdinalIgnoreCase) && n.Length > 10 ? n[..^7] : n;
+    }
+
+    /// <summary>The official district name ("Jhelum Valley" is Hattian Bala).</summary>
+    internal static string DistrictName(string district) =>
+        string.Equals(district?.Trim(), "Jhelum Valley", StringComparison.OrdinalIgnoreCase) ? "Hattian Bala" : Clean(district, 80) ?? "";
 
     internal static string FirstName(string? fullName)
     {

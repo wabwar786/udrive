@@ -52,7 +52,18 @@ public sealed record WebDestinationDto(
     string Summary,
     string BestSeason,
     string? ImageUrl,
-    int UpcomingTours);
+    int UpcomingTours)
+{
+    public double? Latitude { get; init; }
+
+    public double? Longitude { get; init; }
+
+    /// <summary>lake, meadow or river (rivers &amp; towns); null = not set.</summary>
+    public string? Kind { get; init; }
+
+    /// <summary>Drive from Muzaffarabad, set by the team; null = the website estimates it.</summary>
+    public decimal? DriveHours { get; init; }
+}
 
 public sealed record WebHotelCardDto(
     Guid Id,
@@ -194,8 +205,29 @@ public sealed record WebWeatherPlaceDto(
     string Kind,
     WebWeatherNowDto Now,
     IReadOnlyList<WebWeatherDayDto> Days,
-    WebWeatherAdviceDto Advice);
+    WebWeatherAdviceDto Advice)
+{
+    public double Latitude { get; init; }
+
+    public double Longitude { get; init; }
+}
 
 public sealed record WebRoadUpdateDto(string Title, string Details, string Severity, string? Route, string Source, DateTimeOffset StartsAt);
 
 public sealed record WebWeatherDto(DateTimeOffset? UpdatedAt, IReadOnlyList<WebWeatherPlaceDto> Places, IReadOnlyList<WebRoadUpdateDto> RoadUpdates);
+
+// ───────────────────────────────────────────── destination photos
+
+public sealed record WebPhotoDto(Guid Id, string Destination, string Url, string? PageUrl, string Author, string License, string? LicenseUrl, string Season, bool Own);
+
+public sealed record AdminWebPhotoDto(
+    Guid Id, Guid DestinationId, string Destination, string Source, string Url, string? PageUrl, string Author, string License,
+    string Season, int? TakenMonth, bool Hidden, DateTimeOffset CreatedAt);
+
+public sealed record AdminWebPlaceDto(Guid Id, string Slug, string Name, string District, bool HasLocation, string? Kind, decimal? DriveHours, int Photos);
+
+public sealed record AdminWebPhotosDto(IReadOnlyList<AdminWebPlaceDto> Places, IReadOnlyList<AdminWebPhotoDto> Photos, DateTimeOffset? LastSearch, bool Searching);
+
+public sealed record AddWebPhotoRequest(Guid DestinationId, [Required, StringLength(300)] string Url, [StringLength(10)] string? Season);
+
+public sealed record SaveWebPlaceRequest([StringLength(16)] string? Kind, decimal? DriveHours);

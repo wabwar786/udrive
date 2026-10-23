@@ -57,7 +57,7 @@ export function DestinationView({ slug, initialDestination, initialTours }: {
               <div><b>{d.upcomingTours}</b>upcoming tours</div>
             </div>
           )}
-          {d && <WxDestination name={d.name} district={d.district} />}
+          {d && <WxDestination name={d.name} district={d.district} lat={d.latitude} lng={d.longitude} />}
         </div>
         <div className="heroimg" style={{ height: 240 }}>
           <Picture src={img(d?.imageUrl)} alt={`${name || 'Mountains'}, Azad Kashmir`} seed={realSlug || 'x'} eager />

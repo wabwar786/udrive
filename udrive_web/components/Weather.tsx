@@ -93,21 +93,34 @@ export function WxRow({ p }: { p: WxPlace }) {
   );
 }
 
-/** Find the reading for a destination: its own spot, else a place sharing its first word, else its district's tehsil. */
-export function placeFor(w: Weather, name: string, district: string): WxPlace | null {
+/**
+ * The reading for a destination: the nearest place within 25 km when the
+ * destination has a map location (so a lake is never given a far-away town's
+ * snow), otherwise a place with the same name.
+ */
+export function placeFor(w: Weather, name: string, district: string, lat?: number | null, lng?: number | null): WxPlace | null {
   const n = name.toLowerCase();
+  const same = w.places.find((p) => p.name.toLowerCase() === n);
+  if (same) return same;
+  if (lat != null && lng != null) {
+    let best: WxPlace | null = null, bestKm = 25;
+    for (const p of w.places) {
+      if (p.latitude == null || p.longitude == null) continue;
+      const k = Math.hypot((p.latitude - lat) * 111, (p.longitude - lng) * 111 * Math.cos((lat * Math.PI) / 180));
+      if (k < bestKm) { bestKm = k; best = p; }
+    }
+    return best;
+  }
   const first = n.split(/[\s-]+/)[0];
-  return w.places.find((p) => p.name.toLowerCase() === n)
-    ?? w.places.find((p) => first.length > 3 && p.name.toLowerCase().startsWith(first))
+  return w.places.find((p) => first.length > 3 && p.name.toLowerCase().startsWith(first))
     ?? w.places.find((p) => p.kind === 'Tehsil' && p.name.toLowerCase() === district.toLowerCase())
-    ?? w.places.find((p) => p.district.toLowerCase() === district.toLowerCase())
     ?? null;
 }
 
 /** Card on a destination page. */
-export function WxDestination({ name, district }: { name: string; district: string }) {
+export function WxDestination({ name, district, lat, lng }: { name: string; district: string; lat?: number | null; lng?: number | null }) {
   const w = useWeather();
-  const p = name ? placeFor(w, name, district) : null;
+  const p = name ? placeFor(w, name, district, lat, lng) : null;
   if (!p) return null;
   const lo = Math.min(...p.days.map((d) => d.min)), hi = Math.max(...p.days.map((d) => d.max)), span = Math.max(1, hi - lo);
   return (

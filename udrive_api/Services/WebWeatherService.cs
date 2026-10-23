@@ -47,7 +47,7 @@ public sealed class WebWeatherService(string connectionString, IMemoryCache cach
         await c.OpenAsync(ct);
         await using (var cmd = new NpgsqlCommand(
             """
-            SELECT w.place_key, w.name, w.payload::text, w.fetched_at, COALESCE(d.name, '')
+            SELECT w.place_key, w.name, w.payload::text, w.fetched_at, COALESCE(d.name, ''), w.latitude, w.longitude
               FROM udrive.weather_readings w
               LEFT JOIN udrive.territories t ON w.place_key = 't:' || t.id::text
               LEFT JOIN udrive.territories d ON d.id = t.parent_id
@@ -69,7 +69,11 @@ public sealed class WebWeatherService(string connectionString, IMemoryCache cach
                 if (parsed is null) continue;
                 var (now, days) = parsed.Value;
                 places.Add(new WebWeatherPlaceDto(spot ? key : $"t-{name.ToLowerInvariant().Replace(' ', '-')}", name, district,
-                    spot ? "Spot" : "Tehsil", now, days, Advise(now, days)));
+                    spot ? "Spot" : "Tehsil", now, days, Advise(now, days))
+                {
+                    Latitude = Math.Round(r.GetDouble(5), 4),
+                    Longitude = Math.Round(r.GetDouble(6), 4),
+                });
             }
         }
 
